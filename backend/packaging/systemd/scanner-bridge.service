@@ -1,0 +1,13 @@
+[Unit]
+Description=Scanner Bridge Backend
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/scanner-bridge --config /etc/scanner-bridge/config.yaml --daemon
+Restart=on-failure
+User=scanner
+Group=scanner
+
+[Install]
+WantedBy=multi-user.target

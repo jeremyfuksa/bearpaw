@@ -1,0 +1,666 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Scanner Bridge",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/status": {
+      "get": {
+        "summary": "Get Status",
+        "operationId": "get_status_api_v1_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveStateModel"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Api V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/device/info": {
+      "get": {
+        "summary": "Get Device Info",
+        "operationId": "get_device_info_api_v1_device_info_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceInfoModel"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/commands/hold": {
+      "post": {
+        "summary": "Hold Command",
+        "operationId": "hold_command_api_v1_commands_hold_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Hold Command Api V1 Commands Hold Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/commands/scan": {
+      "post": {
+        "summary": "Scan Command",
+        "operationId": "scan_command_api_v1_commands_scan_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Scan Command Api V1 Commands Scan Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/commands/key": {
+      "post": {
+        "summary": "Key Command",
+        "operationId": "key_command_api_v1_commands_key_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Key Command Api V1 Commands Key Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/frequency": {
+      "post": {
+        "summary": "Set Frequency",
+        "operationId": "set_frequency_api_v1_frequency_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FrequencyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Frequency Api V1 Frequency Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/channels": {
+      "get": {
+        "summary": "List Channels",
+        "operationId": "list_channels_api_v1_memory_channels_get",
+        "parameters": [
+          {
+            "name": "bank",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bank"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelDataModel"
+                  },
+                  "title": "Response List Channels Api V1 Memory Channels Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/channels/{channel_id}": {
+      "get": {
+        "summary": "Get Channel",
+        "operationId": "get_channel_api_v1_memory_channels__channel_id__get",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Channel Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelDataModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/sync": {
+      "post": {
+        "summary": "Memory Sync",
+        "operationId": "memory_sync_api_v1_memory_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Memory Sync Api V1 Memory Sync Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memory/sync/cancel": {
+      "post": {
+        "summary": "Memory Sync Cancel",
+        "operationId": "memory_sync_cancel_api_v1_memory_sync_cancel_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Memory Sync Cancel Api V1 Memory Sync Cancel Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChannelDataModel": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "frequency": {
+            "type": "number",
+            "title": "Frequency"
+          },
+          "modulation": {
+            "type": "string",
+            "title": "Modulation"
+          },
+          "alpha_tag": {
+            "type": "string",
+            "title": "Alpha Tag"
+          },
+          "delay": {
+            "type": "integer",
+            "title": "Delay"
+          },
+          "lockout": {
+            "type": "boolean",
+            "title": "Lockout"
+          },
+          "priority": {
+            "type": "boolean",
+            "title": "Priority"
+          },
+          "tone_squelch": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone Squelch"
+          },
+          "bank": {
+            "type": "integer",
+            "title": "Bank"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "frequency",
+          "modulation",
+          "alpha_tag",
+          "delay",
+          "lockout",
+          "priority",
+          "tone_squelch",
+          "bank"
+        ],
+        "title": "ChannelDataModel"
+      },
+      "DeviceInfoModel": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "vid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vid"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "serial_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Serial Number"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "firmware": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "port",
+          "vid",
+          "pid",
+          "serial_number",
+          "description"
+        ],
+        "title": "DeviceInfoModel"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "HTTP status code",
+            "default": 400
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "ErrorResponse"
+      },
+      "FrequencyRequest": {
+        "properties": {
+          "frequency": {
+            "type": "number",
+            "title": "Frequency"
+          },
+          "modulation": {
+            "type": "string",
+            "title": "Modulation",
+            "default": "AUTO"
+          }
+        },
+        "type": "object",
+        "required": [
+          "frequency"
+        ],
+        "title": "FrequencyRequest"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KeyRequest": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "KeyRequest"
+      },
+      "LiveStateModel": {
+        "properties": {
+          "timestamp": {
+            "type": "number",
+            "title": "Timestamp"
+          },
+          "frequency": {
+            "type": "number",
+            "title": "Frequency"
+          },
+          "modulation": {
+            "type": "string",
+            "title": "Modulation"
+          },
+          "squelch_open": {
+            "type": "boolean",
+            "title": "Squelch Open"
+          },
+          "rssi": {
+            "type": "integer",
+            "title": "Rssi"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "volume": {
+            "type": "integer",
+            "title": "Volume"
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "frequency",
+          "modulation",
+          "squelch_open",
+          "rssi",
+          "mode",
+          "channel",
+          "volume",
+          "battery"
+        ],
+        "title": "LiveStateModel"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
