@@ -76,24 +76,14 @@ class SR30CDriver(ScannerDriver):
     async def send_key(self, key_code: str) -> bool:
         response = await self._send(f"KEY,{key_code},P", PRIORITY_CONTROL)
         ok = self._is_ok_response(response)
+        if not ok:
+            response = await self._send(f"KEY,{key_code}", PRIORITY_CONTROL)
+            ok = self._is_ok_response(response)
         if ok:
             self.last_error = None
         else:
             self.last_error = response.strip() or "key_failed"
             self._logger.warning("Key command failed (%s): %s", key_code, self.last_error)
-        return ok
-
-    async def set_frequency(self, freq_mhz: float, modulation: str = "AUTO") -> bool:
-        response = await self._send(
-            f"DO,{freq_mhz:.4f},{modulation}", PRIORITY_CONTROL
-        )
-        ok = self._is_ok_response(response)
-        if ok:
-            self._mode = "DIRECT"
-            self.last_error = None
-        else:
-            self.last_error = response.strip() or "frequency_failed"
-            self._logger.warning("Set frequency failed: %s", self.last_error)
         return ok
 
     async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:

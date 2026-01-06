@@ -1,4 +1,4 @@
-import type { ChannelData, DeviceInfo, LiveState } from "../types";
+import type { ChannelData, DeviceInfo, LiveState, LockoutsResponse } from "../types";
 
 export class APIError extends Error {
   status: number;
@@ -89,13 +89,6 @@ export class ScannerAPIClient {
     });
   }
 
-  async setFrequency(frequency: number, modulation: string = "AUTO"): Promise<void> {
-    await this.request("/frequency", {
-      method: "POST",
-      body: JSON.stringify({ frequency, modulation }),
-    });
-  }
-
   async getStatus(): Promise<LiveState> {
     return this.request<LiveState>("/status");
   }
@@ -118,6 +111,69 @@ export class ScannerAPIClient {
   async getChannels(bank?: number): Promise<ChannelData[]> {
     const query = bank ? `?bank=${bank}` : "";
     return this.request<ChannelData[]>(`/memory/channels${query}`);
+  }
+
+  async getChannel(index: number): Promise<ChannelData> {
+    return this.request<ChannelData>(`/memory/channels/${index}`);
+  }
+
+  async toggleTemporaryLockout(options?: {
+    frequency?: number;
+    channel?: number;
+  }): Promise<{ frequency: number; locked: boolean; channel?: number }> {
+    return this.request<{ frequency: number; locked: boolean; channel?: number }>(
+      "/commands/lockout",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "temporary",
+          frequency: options?.frequency,
+          channel: options?.channel,
+        }),
+      }
+    );
+  }
+
+  async togglePermanentLockout(channel?: number): Promise<ChannelData> {
+    const response = await this.request<{ channel: ChannelData }>("/commands/lockout", {
+      method: "POST",
+      body: JSON.stringify({ mode: "permanent", channel }),
+    });
+    return response.channel;
+  }
+
+  async setVolume(volume: number): Promise<void> {
+    await this.request("/volume", {
+      method: "POST",
+      body: JSON.stringify({ volume }),
+    });
+  }
+
+  async getLockouts(options?: { includeFrequencies?: boolean }): Promise<LockoutsResponse> {
+    const include = options?.includeFrequencies ?? true;
+    const query = include ? "" : "?include_frequencies=false";
+    return this.request<LockoutsResponse>(`/lockouts${query}`);
+  }
+
+  async clearTemporaryLockouts(): Promise<{ cleared: number[]; failed: number[] }> {
+    return this.request<{ cleared: number[]; failed: number[] }>(
+      "/lockouts/temporary/clear",
+      { method: "POST" }
+    );
+  }
+
+  async clearGlobalLockouts(): Promise<{ cleared: number[]; failed: number[] }> {
+    return this.request<{ cleared: number[]; failed: number[] }>(
+      "/lockouts/clear",
+      { method: "POST" }
+    );
+  }
+
+  async clearChannelLockouts(): Promise<{ cleared: number[]; failed: number[] }> {
+    return this.request<{ cleared: number[]; failed: number[] }>(
+      "/lockouts/channels/clear",
+      { method: "POST" }
+    );
   }
 
   async syncMemory(): Promise<{ status?: string; task_id?: string }> {

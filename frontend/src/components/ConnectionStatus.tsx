@@ -4,13 +4,23 @@ export function ConnectionStatus() {
   const connected = useStore((state) => state.connected);
   const connecting = useStore((state) => state.connecting);
   const deviceInfo = useStore((state) => state.deviceInfo);
+  const isStale = useStore((state) => Boolean(state.liveState?.stale));
+  const socketDisconnected = !connected && !connecting;
 
-  let label = "Disconnected";
-  if (connecting) {
-    label = "Connecting";
-  } else if (connected) {
-    label = "Connected";
-  }
+  const deviceConnection = deviceInfo?.connection_status;
+  const status =
+    socketDisconnected || isStale || deviceConnection === "disconnected"
+      ? "disconnected"
+      : deviceConnection === "connecting"
+        ? "connecting"
+        : deviceConnection === "connected"
+          ? "connected"
+          : connected
+            ? "connected"
+            : connecting
+              ? "connecting"
+              : "disconnected";
+  const label = status === "disconnected" ? "Disconnected" : deviceInfo?.model || "Scanner";
 
   return (
     <div
@@ -20,12 +30,11 @@ export function ConnectionStatus() {
       aria-label={`${label} to scanner`}
     >
       <span
-        className={`status-dot ${connected ? "connected" : connecting ? "connecting" : "disconnected"}`}
+        className={`status-dot ${status}`}
         aria-hidden="true"
       />
       <div className="status-text">
         <span className="status-label">{label}</span>
-        <span className="status-device">{deviceInfo?.model || "Scanner"}</span>
       </div>
     </div>
   );

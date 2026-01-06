@@ -81,6 +81,12 @@ export interface ActivityLogEntry {
   type: "hit" | "hold" | "manual";
 }
 
+export interface LockoutsResponse {
+  frequencies: number[];
+  channels: number[];
+  temporary_channels: { channel: number; frequency: number }[];
+}
+
 export interface Notification {
   id: string;
   type: "success" | "error" | "info" | "warning";

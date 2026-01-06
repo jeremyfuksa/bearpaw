@@ -17,10 +17,11 @@ from scanner_bridge.models import (
     DeviceInfoModel,
     ErrorResponse,
     BanksModel,
-    FrequencyRequest,
     KeyRequest,
+    LockoutRequest,
     LiveState,
     LiveStateModel,
+    VolumeRequest,
 )
 from scanner_bridge.protocol import BC125ATDriver, SR30CDriver
 from scanner_bridge.scheduler import CommandScheduler, PRIORITY_BACKGROUND, PRIORITY_TELEMETRY
@@ -332,15 +333,213 @@ def create_app(
             raise HTTPException(status_code=500, detail=detail)
         return {"status": "ok"}
 
-    @app.post("/api/v1/frequency")
-    async def set_frequency(request: FrequencyRequest) -> Dict[str, str]:
+    @app.post("/api/v1/commands/lockout")
+    async def toggle_lockout(request: LockoutRequest) -> dict:
         runtime: RuntimeState = app.state.runtime
         driver = require_driver(runtime)
-        ok = await driver.set_frequency(request.frequency, request.modulation)
+        mode = request.mode.lower()
+        logger.info("Lockout request mode=%s channel=%s frequency=%s", mode, request.channel, request.frequency)
+
+        async def _resume_scan_with_retry() -> None:
+            await asyncio.sleep(1.0)
+            ok = await driver.send_scan()
+            if not ok:
+                detail = getattr(driver, "last_error", None) or "scan_failed"
+                logger.warning("Auto-resume scan failed: %s", detail)
+                return
+            await asyncio.sleep(0.6)
+            ok = await driver.send_scan()
+            if not ok:
+                detail = getattr(driver, "last_error", None) or "scan_failed"
+                logger.warning("Auto-resume scan retry failed: %s", detail)
+            try:
+                await asyncio.sleep(0.8)
+                status = await driver.get_status()
+            except Exception as exc:
+                logger.warning("Auto-resume scan status check failed: %s", exc)
+                return
+            if (status.mode or "").upper() != "SCAN":
+                logger.warning("Auto-resume scan failed after retries: %s", status.mode)
+        if mode == "temporary":
+            live_state = runtime.state_store.get_live_state()
+            channel_id = request.channel or live_state.channel
+            if not channel_id:
+                raise HTTPException(status_code=400, detail="channel_required")
+            set_lock = getattr(driver, "set_channel_lockout", None)
+            if not callable(set_lock):
+                raise HTTPException(status_code=400, detail="lockout_unsupported")
+            try:
+                temporary = runtime.state_store.get_temporary_lockouts()
+                if channel_id in temporary:
+                    updated = await set_lock(channel_id, False)
+                    runtime.state_store.set_shadow_channel(updated)
+                    runtime.state_store.clear_temporary_lockout(channel_id)
+                    locked = False
+                else:
+                    updated = await set_lock(channel_id, True)
+                    runtime.state_store.set_shadow_channel(updated)
+                    runtime.state_store.toggle_temporary_lockout(channel_id, updated.frequency)
+                    locked = True
+            except Exception as exc:
+                detail = str(exc) or "lockout_failed"
+                logger.warning("Temporary lockout failed: %s", detail)
+                raise HTTPException(status_code=500, detail=detail) from exc
+            asyncio.create_task(_resume_scan_with_retry())
+            return {
+                "mode": "temporary",
+                "channel": channel_id,
+                "frequency": live_state.frequency,
+                "locked": locked,
+            }
+        if mode == "permanent":
+            live_state = runtime.state_store.get_live_state()
+            channel_id = request.channel or live_state.channel
+            if not channel_id:
+                raise HTTPException(status_code=400, detail="channel_required")
+            toggle = getattr(driver, "toggle_channel_lockout", None)
+            if not callable(toggle):
+                raise HTTPException(status_code=400, detail="lockout_unsupported")
+            try:
+                updated = await toggle(channel_id)
+            except Exception as exc:
+                detail = str(exc) or "lockout_failed"
+                logger.warning("Lockout toggle failed: %s", detail)
+                raise HTTPException(status_code=500, detail=detail) from exc
+            runtime.state_store.set_shadow_channel(updated)
+            runtime.state_store.clear_temporary_lockout(updated.index)
+            asyncio.create_task(_resume_scan_with_retry())
+            return {"mode": "permanent", "channel": ChannelDataModel.model_validate(updated)}
+        raise HTTPException(status_code=400, detail="invalid_lockout_mode")
+
+    @app.post("/api/v1/lockouts/temporary/clear")
+    async def clear_temporary_lockouts() -> dict:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        set_lock = getattr(driver, "set_channel_lockout", None)
+        if not callable(set_lock):
+            raise HTTPException(status_code=400, detail="lockout_unsupported")
+        cleared = runtime.state_store.clear_temporary_lockouts()
+        cleared_list: list[int] = []
+        failed_list: list[int] = []
+        for channel_id, _frequency in sorted(cleared.items()):
+            try:
+                updated = await set_lock(channel_id, False)
+                runtime.state_store.set_shadow_channel(updated)
+                if not updated.lockout:
+                    cleared_list.append(channel_id)
+                else:
+                    failed_list.append(channel_id)
+            except Exception as exc:
+                failed_list.append(channel_id)
+                runtime.state_store.toggle_temporary_lockout(channel_id, _frequency)
+                logger.warning("Failed to clear temporary lockout %s: %s", channel_id, exc)
+        return {"cleared": cleared_list, "failed": failed_list}
+
+    @app.post("/api/v1/lockouts/clear")
+    async def clear_global_lockouts() -> dict:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_frequency_lockouts", None)
+        set_lock = getattr(driver, "set_frequency_lockout", None)
+        if not callable(getter) or not callable(set_lock):
+            raise HTTPException(status_code=400, detail="lockout_unsupported")
+        try:
+            raw_list = await getter()
+        except Exception as exc:
+            logger.warning("Failed to list lockouts: %s", exc)
+            raise HTTPException(status_code=500, detail="lockout_failed") from exc
+        cleared_list: list[float] = []
+        failed_list: list[float] = []
+        for raw in raw_list:
+            frequency = raw / 10000.0
+            try:
+                await set_lock(raw, False)
+                cleared_list.append(frequency)
+            except Exception as exc:
+                failed_list.append(frequency)
+                logger.warning("Failed to clear global lockout %s: %s", raw, exc)
+        return {"cleared": cleared_list, "failed": failed_list}
+
+    @app.post("/api/v1/lockouts/channels/clear")
+    async def clear_channel_lockouts() -> dict:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_channel_lockout", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="lockout_unsupported")
+        channels = runtime.state_store.get_shadow_channels()
+        locked_ids = sorted([chan.index for chan in channels.values() if chan.lockout])
+        cleared_list: list[int] = []
+        failed_list: list[int] = []
+        for channel_id in locked_ids:
+            try:
+                updated = await setter(channel_id, False)
+                runtime.state_store.set_shadow_channel(updated)
+                if not updated.lockout:
+                    cleared_list.append(channel_id)
+                else:
+                    failed_list.append(channel_id)
+            except Exception as exc:
+                failed_list.append(channel_id)
+                logger.warning("Failed to clear channel lockout %s: %s", channel_id, exc)
+        return {"cleared": cleared_list, "failed": failed_list}
+
+    @app.get("/api/v1/lockouts")
+    async def list_lockouts(include_frequencies: bool = True) -> dict:
+        runtime: RuntimeState = app.state.runtime
+        raw: list[int] = []
+        if include_frequencies:
+            driver = require_driver(runtime)
+            getter = getattr(driver, "get_frequency_lockouts", None)
+            if not callable(getter):
+                raise HTTPException(status_code=400, detail="lockout_unsupported")
+            try:
+                raw = await getter()
+            except Exception as exc:
+                logger.warning("Failed to list lockouts: %s", exc)
+                raise HTTPException(status_code=500, detail="lockout_failed") from exc
+        channels = runtime.state_store.get_shadow_channels()
+        locked_channels = sorted([chan.index for chan in channels.values() if chan.lockout])
+        temporary_lockouts = runtime.state_store.get_temporary_lockouts()
+        return {
+            "frequencies": [value / 10000.0 for value in raw],
+            "channels": locked_channels,
+            "temporary_channels": [
+                {"channel": channel_id, "frequency": frequency}
+                for channel_id, frequency in sorted(temporary_lockouts.items())
+            ],
+        }
+
+    @app.get("/api/v1/lockouts/{frequency}")
+    async def get_lockout_status(frequency: float) -> dict:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        checker = getattr(driver, "_is_frequency_locked", None)
+        if not callable(checker):
+            raise HTTPException(status_code=400, detail="lockout_unsupported")
+        raw = int(round(frequency * 10000))
+        try:
+            locked = await checker(raw)
+        except Exception as exc:
+            logger.warning("Failed to check lockout: %s", exc)
+            raise HTTPException(status_code=500, detail="lockout_failed") from exc
+        return {"frequency": frequency, "locked": locked}
+
+    @app.post("/api/v1/volume")
+    async def set_volume(request: VolumeRequest) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        set_volume = getattr(driver, "set_volume", None)
+        if not callable(set_volume):
+            raise HTTPException(status_code=400, detail="volume_unsupported")
+        try:
+            ok = await set_volume(request.volume)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not ok:
-            detail = getattr(driver, "last_error", None) or "invalid_frequency"
-            logger.warning("Set frequency failed: %s", detail)
-            raise HTTPException(status_code=400, detail=detail)
+            detail = getattr(driver, "last_error", None) or "volume_failed"
+            logger.warning("Volume command failed: %s", detail)
+            raise HTTPException(status_code=500, detail=detail)
         return {"status": "ok"}
 
     @app.get("/api/v1/memory/channels", response_model=list[ChannelDataModel])
@@ -413,6 +612,16 @@ def create_app(
         finally:
             await driver._send("EPG", PRIORITY_BACKGROUND)
         return {"response": response}
+
+    @app.get("/api/v1/debug/glf")
+    async def debug_glf() -> Dict[str, list[str]]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        debugger = getattr(driver, "debug_glf_sequence", None)
+        if not callable(debugger):
+            raise HTTPException(status_code=400, detail="glf_unsupported")
+        responses = await debugger()
+        return {"responses": responses}
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:

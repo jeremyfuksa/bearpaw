@@ -13,6 +13,7 @@ class StateStore:
         self._lock = threading.Lock()
         self._live_state: Optional[LiveState] = None
         self._shadow_state = ShadowState()
+        self._temporary_lockouts: Dict[int, float] = {}
         self._persistence = persistence
 
     def load_shadow(self) -> None:
@@ -102,6 +103,28 @@ class StateStore:
     def is_shadow_dirty(self) -> bool:
         with self._lock:
             return self._shadow_state.dirty
+
+    def toggle_temporary_lockout(self, channel_id: int, frequency: float) -> bool:
+        with self._lock:
+            if channel_id in self._temporary_lockouts:
+                del self._temporary_lockouts[channel_id]
+                return False
+            self._temporary_lockouts[channel_id] = frequency
+            return True
+
+    def clear_temporary_lockout(self, channel_id: int) -> None:
+        with self._lock:
+            self._temporary_lockouts.pop(channel_id, None)
+
+    def get_temporary_lockouts(self) -> Dict[int, float]:
+        with self._lock:
+            return dict(self._temporary_lockouts)
+
+    def clear_temporary_lockouts(self) -> Dict[int, float]:
+        with self._lock:
+            cleared = dict(self._temporary_lockouts)
+            self._temporary_lockouts.clear()
+            return cleared
 
 
 def build_persistence(kind: str, path: str) -> object:

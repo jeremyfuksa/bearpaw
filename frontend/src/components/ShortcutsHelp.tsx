@@ -30,20 +30,20 @@ export function ShortcutsHelp({ isOpen, onClose }: ShortcutsHelpProps) {
             <dd>Hold current frequency</dd>
           </div>
           <div>
-            <dt>Ctrl/Cmd + F</dt>
-            <dd>Open direct tune</dd>
-          </div>
-          <div>
-            <dt>Ctrl/Cmd + M</dt>
-            <dd>Browse memory</dd>
-          </div>
-          <div>
-            <dt>Ctrl/Cmd + B</dt>
-            <dd>Jump to current bank view</dd>
+            <dt>Ctrl/Cmd + L</dt>
+            <dd>Temporary lockout</dd>
           </div>
           <div>
             <dt>Ctrl/Cmd + C</dt>
             <dd>Copy current frequency</dd>
+          </div>
+          <div>
+            <dt>Shift + Ctrl/Cmd + L</dt>
+            <dd>Open activity log</dd>
+          </div>
+          <div>
+            <dt>Ctrl/Cmd + ?</dt>
+            <dd>Open shortcuts help</dd>
           </div>
           <div>
             <dt>Ctrl/Cmd + ↑/↓</dt>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useAPI } from "../api/useApi";
 import { useStore } from "../store/useStore";
+import { stepToChannel } from "../utils/channelNavigation";
 
 interface MemoryBrowserPanelProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ export function MemoryBrowserPanel({ isOpen, onClose }: MemoryBrowserPanelProps)
   const api = useAPI();
   const channels = useStore((state) => state.channels);
   const connected = useStore((state) => state.connected);
+  const liveChannel = useStore((state) => state.liveState?.channel);
   const [bankFilter, setBankFilter] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -97,7 +99,7 @@ export function MemoryBrowserPanel({ isOpen, onClose }: MemoryBrowserPanelProps)
                   className="btn btn-tertiary"
                   type="button"
                   onClick={() => {
-                    api.setFrequency(channel.frequency);
+                    void stepToChannel(api, liveChannel, channel.index);
                     onClose();
                   }}
                   disabled={!connected}
