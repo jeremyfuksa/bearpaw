@@ -88,6 +88,8 @@ function App() {
   const activityLog = useStore((state) => state.activityLog);
 
   const [toggleBusy, setToggleBusy] = useState(false);
+  const [banks, setBanks] = useState<boolean[]>(() => Array.from({ length: 10 }, () => true));
+  const [banksBusy, setBanksBusy] = useState(false);
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
   const lastHitOpenRef = useRef(false);
@@ -246,6 +248,31 @@ function App() {
   const deviceConnecting = deviceConnection === "connecting";
   const deviceDisconnected = deviceConnection === "disconnected";
 
+  useEffect(() => {
+    if (!deviceConnected) return;
+    let active = true;
+
+    const loadBanks = async () => {
+      try {
+        const result = await api.getBanks();
+        if (!active) return;
+        if (Array.isArray(result.banks) && result.banks.length === 10) {
+          setBanks(result.banks);
+        }
+      } catch (error) {
+        if (active) {
+          console.warn("Failed to load banks", error);
+        }
+      }
+    };
+
+    loadBanks();
+
+    return () => {
+      active = false;
+    };
+  }, [api, deviceConnected]);
+
   const normalizedMode = (liveState?.mode ?? "").toString().trim().toUpperCase();
   const isHold = normalizedMode === "HOLD";
   const isDirect = normalizedMode === "DIRECT";
@@ -315,69 +342,106 @@ function App() {
     }
   }, [api, deviceConnected, isHold, toggleBusy]);
 
+  const handleBankToggle = useCallback(
+    async (index: number) => {
+      if (banksBusy) return;
+      const nextBanks = banks.map((active, idx) => (idx === index ? !active : active));
+      setBanks(nextBanks);
+      setBanksBusy(true);
+      try {
+        const result = await api.setBanks(nextBanks);
+        if (Array.isArray(result.banks) && result.banks.length === 10) {
+          setBanks(result.banks);
+        }
+      } catch (error) {
+        console.warn("Failed to update banks", error);
+        setBanks((prev) => prev.map((active, idx) => (idx === index ? !active : active)));
+      } finally {
+        setBanksBusy(false);
+      }
+    },
+    [api, banks, banksBusy]
+  );
+
   return (
     <div className="mvp">
       <div
         className={`mvp-ui${isDeviceDisconnected ? " mvp-ui--disabled" : ""}`}
         aria-label="Uniden Scanner Control"
       >
-        <header className="mvp-header">
-          <div className="mvp-headerLeft">
-            <span className={`mvp-statusDot mvp-statusDot--${statusDotState}`} aria-hidden="true" />
-            <p className="mvp-statusText">
-              {statusText}
-            </p>
-          </div>
-          {isHold && <p className="mvp-holdLabel">HOLD</p>}
-        </header>
-
-        <div className="mvp-display" role="status" aria-label="Scanner display">
-          <div className="mvp-displayRow">
-            <p className="mvp-displayText">{displayText}</p>
-            <div className="mvp-displayIcon" aria-hidden="true">
-              {isDeviceDisconnected ? (
-                <FontAwesomeIcon icon={byPrefixAndName.fab["usb"]} className="mvp-icon" />
-              ) : isStarting || showScanning ? (
-                <FontAwesomeIcon icon={byPrefixAndName.fas["rotate"]} spin className="mvp-icon" />
-              ) : (
-                <SignalIcon bars={signalBars} />
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="mvp-controls">
-          <button
-            className="mvp-scanToggle"
-            onClick={handleToggle}
-            disabled={(!deviceConnected && !connected) || toggleBusy}
-          >
-            {isHold ? "Scan" : "Hold"}
-          </button>
-        </div>
-
-        <section className="mvp-hitLog" aria-label="Recent hits">
-          <div className="mvp-hitLogHeader">
-            <p className="mvp-hitLogTitle">Recent hits</p>
-            <p className="mvp-hitLogSubtitle">Last 5</p>
-          </div>
-          {activityLog.length === 0 ? (
-            <div className="mvp-hitLogEmpty">No hits yet.</div>
-          ) : (
-            <div className="mvp-hitLogTable">
-              <div className="mvp-hitLogRow mvp-hitLogRow--head">
-                <span>Alpha tag</span>
-                <span>Frequency</span>
+        <div className="mvp-layout">
+          <div className="mvp-main">
+            <header className="mvp-header">
+              <div className="mvp-headerLeft">
+                <span className={`mvp-statusDot mvp-statusDot--${statusDotState}`} aria-hidden="true" />
+                <p className="mvp-statusText">
+                  {statusText}
+                </p>
               </div>
-              {activityLog.map((entry) => (
-                <div key={entry.id} className="mvp-hitLogRow">
-                  <span>{entry.alpha_tag || "—"}</span>
-                  <span>{entry.frequency.toFixed(4)}</span>
+              <button
+                className={`mvp-holdToggle${isHold ? " mvp-holdToggle--active" : ""}`}
+                onClick={handleToggle}
+                disabled={(!deviceConnected && !connected) || toggleBusy}
+              >
+                {isHold ? "Scan" : "Hold"}
+              </button>
+            </header>
+
+            <div className="mvp-display" role="status" aria-label="Scanner display">
+              <div className="mvp-displayRow">
+                <p className="mvp-displayText">{displayText}</p>
+                <div className="mvp-displayIcon" aria-hidden="true">
+                  {isDeviceDisconnected ? (
+                    <FontAwesomeIcon icon={byPrefixAndName.fab["usb"]} className="mvp-icon" />
+                  ) : isStarting || showScanning ? (
+                    <FontAwesomeIcon icon={byPrefixAndName.fas["rotate"]} spin className="mvp-icon" />
+                  ) : (
+                    <SignalIcon bars={signalBars} />
+                  )}
                 </div>
+              </div>
+            </div>
+
+            <div className="mvp-bankControls" aria-label="Bank controls">
+              {banks.map((active, index) => (
+                <button
+                  key={`bank-${index + 1}`}
+                  className={`mvp-bankToggle${active ? " mvp-bankToggle--active" : ""}`}
+                  type="button"
+                  onClick={() => handleBankToggle(index)}
+                  disabled={banksBusy || (!deviceConnected && !connected)}
+                >
+                  {index + 1}
+                </button>
               ))}
             </div>
-          )}
-        </section>
+          </div>
+
+          <aside className="mvp-side" aria-label="Recent hits">
+            <section className="mvp-hitLog">
+              <div className="mvp-hitLogHeader">
+                <p className="mvp-hitLogTitle">Recent hits</p>
+                <p className="mvp-hitLogSubtitle">Last 5</p>
+              </div>
+              {activityLog.length === 0 ? (
+                <div className="mvp-hitLogEmpty">No hits yet.</div>
+              ) : (
+                <div className="mvp-hitLogTable">
+                  <div className="mvp-hitLogRow mvp-hitLogRow--head">
+                    <span>Alpha tag</span>
+                    <span>Frequency</span>
+                  </div>
+                  {activityLog.map((entry) => (
+                    <div key={entry.id} className="mvp-hitLogRow">
+                      <span>{entry.alpha_tag || "—"}</span>
+                      <span>{entry.frequency.toFixed(4)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </aside>
+        </div>
 
       </div>
     </div>

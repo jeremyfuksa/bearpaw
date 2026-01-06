@@ -16,13 +16,14 @@ from scanner_bridge.models import (
     DeviceInfo,
     DeviceInfoModel,
     ErrorResponse,
+    BanksModel,
     FrequencyRequest,
     KeyRequest,
     LiveState,
     LiveStateModel,
 )
 from scanner_bridge.protocol import BC125ATDriver, SR30CDriver
-from scanner_bridge.scheduler import CommandScheduler, PRIORITY_TELEMETRY
+from scanner_bridge.scheduler import CommandScheduler, PRIORITY_BACKGROUND, PRIORITY_TELEMETRY
 from scanner_bridge.state import StateStore, build_persistence
 from scanner_bridge.sync import MemorySyncTask
 from scanner_bridge.transport import SerialTransport
@@ -281,6 +282,22 @@ def create_app(
         runtime: RuntimeState = app.state.runtime
         return DeviceInfoModel.model_validate(runtime.device_info)
 
+    @app.get("/api/v1/banks", response_model=BanksModel)
+    async def get_banks() -> BanksModel:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        banks = await driver.get_banks()
+        return BanksModel(banks=banks)
+
+    @app.post("/api/v1/banks", response_model=BanksModel)
+    async def set_banks(payload: BanksModel) -> BanksModel:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        if len(payload.banks) != 10:
+            raise HTTPException(status_code=400, detail="banks_length_invalid")
+        await driver.set_banks(payload.banks)
+        return BanksModel(banks=payload.banks)
+
     @app.post("/api/v1/commands/hold")
     async def hold_command() -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
@@ -366,6 +383,17 @@ def create_app(
         if not callable(get_glg):
             raise HTTPException(status_code=400, detail="glg_unsupported")
         response = await driver._send("GLG", PRIORITY_TELEMETRY)
+        return {"response": response}
+
+    @app.get("/api/v1/debug/scg")
+    async def debug_scg() -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        try:
+            await driver._send("PRG", PRIORITY_BACKGROUND)
+            response = await driver._send("SCG", PRIORITY_BACKGROUND)
+        finally:
+            await driver._send("EPG", PRIORITY_BACKGROUND)
         return {"response": response}
 
     @app.websocket("/ws")

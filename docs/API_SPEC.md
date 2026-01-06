@@ -273,6 +273,7 @@ Enter scan mode (resume scanning).
 
 ---
 
+---
 #### POST /commands/key
 
 Simulate keypress on scanner.

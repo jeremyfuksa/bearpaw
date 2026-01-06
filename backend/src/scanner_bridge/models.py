@@ -111,6 +111,10 @@ class ErrorResponse(BaseModel):
     code: int = Field(400, description="HTTP status code")
 
 
+class BanksModel(BaseModel):
+    banks: list[bool]
+
+
 class FrequencyRequest(BaseModel):
     frequency: float
     modulation: str = "AUTO"

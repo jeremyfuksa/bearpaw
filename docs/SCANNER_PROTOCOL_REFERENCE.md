@@ -127,6 +127,7 @@ Driver:   send_key(key_code), send_hold(), send_scan()
 **Key Codes:**
 - `H,P`: Hold button press
 - `S,P`: Scan button press
+- `SRCH,P`: Search mode
 - `UP,P`: Channel up
 - `DOWN,P`: Channel down
 - `L/O,P`: Lockout toggle
