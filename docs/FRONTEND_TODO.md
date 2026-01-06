@@ -1,8 +1,21 @@
 # Frontend (Web UI) Todo List
 
+> **UX Philosophy: "Radio First, Computer Second"**
+>
+> The UI should feel like using a scanner, not configuring software. Follow the hierarchy:
+> - **Primary (always visible):** Alpha tag (large), metadata row (signal, CH, mode, MHz), Scan/Hold toggle
+> - **Secondary (collapsible):** Current Bank Channels (below controls)
+> - **Progressive (hidden until needed):** Direct Tune, Full Memory Browser, Activity Log, Settings
+>
+> **Design:** Single-column, mobile-first, centered on desktop (max-width: 640px)
+>
+> See FRONTEND_SPEC.md § 1.4 for full UX principles and § 1.2 for device-agnostic design.
+
+---
+
 ## Phase 1: Project Foundation
 
-- [ ] **PROJECT-001** Initialize frontend project
+- [x] **PROJECT-001** Initialize frontend project
   - Create `frontend/` directory
   - Set up Vite + React (or Vue/Svelte)
   - Configure TypeScript
@@ -20,39 +33,47 @@
   - Source maps for debugging
   - Bundle size analysis
 
+- [ ] **PROJECT-004** Implement device-agnostic design principles
+  - **NEVER hardcode** frequency ranges, bank counts, channel counts, or model-specific features
+  - **ALWAYS query** device capabilities from backend API
+  - Display model name from `deviceInfo.model` (never hardcoded)
+  - Validate user input against device-specific limits from API
+  - UI adapts to device capabilities without special cases
+  - See FRONTEND_SPEC.md § 1.2 for full guidelines
+
 ## Phase 2: API Integration
 
-- [ ] **API-001** Create REST client module
+- [x] **API-001** Create REST client module
   - Base HTTP client (fetch or axios)
   - Error handling and retry logic
   - Request/response interceptors
   - TypeScript types from OpenAPI spec
 
-- [ ] **API-002** Implement control command functions
+- [x] **API-002** Implement control command functions
   - `sendHold()` - POST /commands/hold
   - `sendScan()` - POST /commands/scan
   - `sendKey(keyCode)` - POST /commands/key
   - `setFrequency(freq)` - POST /frequency
 
-- [ ] **API-003** Implement query functions
+- [x] **API-003** Implement query functions
   - `getStatus()` - GET /status
   - `getDeviceInfo()` - GET /device/info
   - `getChannels()` - GET /memory/channels
   - `syncMemory()` - POST /memory/sync
 
-- [ ] **WS-001** Create WebSocket client
+- [x] **WS-001** Create WebSocket client
   - Connection management (connect, disconnect)
   - Auto-reconnect with exponential backoff
   - Heartbeat/ping-pong
   - Connection state tracking
 
-- [ ] **WS-002** Implement message handling
+- [x] **WS-002** Implement message handling
   - Parse incoming JSON messages
   - Type guards for message discrimination
   - Message queue for offline buffering
   - Event emitter for message dispatch
 
-- [ ] **WS-003** Create WebSocket service hook/composable
+- [x] **WS-003** Create WebSocket service hook/composable
   - React: `useWebSocket()` hook
   - Vue: `useWebSocket()` composable
   - Subscribe to specific message types
@@ -60,25 +81,27 @@
 
 ## Phase 3: State Management
 
-- [ ] **STATE-001** Design client-side state structure
+- [x] **STATE-001** Design client-side state structure
   - Live state (frequency, mode, RSSI, squelch)
   - Device info (model, connection status)
   - Shadow state (channels, alpha tags)
   - UI state (selected view, preferences)
 
-- [ ] **STATE-002** Implement state store
+- [x] **STATE-002** Implement state store
   - Zustand (React) or Pinia (Vue)
   - Actions for state updates
   - Selectors for derived state
   - Persistence for UI preferences (localStorage)
+  - Sequence number tracking for stale state prevention
 
-- [ ] **STATE-003** Connect WebSocket to state store
+- [x] **STATE-003** Connect WebSocket to state store
   - Listen for state update messages
   - Merge updates into local state
-  - Handle out-of-order messages
+  - Handle out-of-order messages with sequence number validation
   - Optimistic updates for control commands
+  - Reject stale updates (sequence number <= last processed)
 
-- [ ] **STATE-004** Implement connection state management
+- [x] **STATE-004** Implement connection state management
   - Connected, disconnected, connecting states
   - Backend availability detection
   - Retry attempts tracking
@@ -86,57 +109,92 @@
 
 ## Phase 4: Core Components
 
-- [ ] **COMP-001** Create Virtual Display component
+- [x] **COMP-001** Create Virtual Display component (Two States - Figma design)
   - LCD-style text rendering (monospace font)
-  - Frequency display mode (large digits)
-  - Alpha tag display mode
-  - Automatic mode switching based on scanner state
+  - High contrast (green-on-black or amber-on-black)
+  - **STATE 1 - SCANNING:** "Scanning..." text, only signal icon in metadata
+  - **STATE 2 - LISTENING:** Alpha tag (large), full metadata row
+  - Conditional rendering based on `liveState.mode === "SCAN" && !channel`
+  - Optional: Animated dots for "Scanning..." state
 
-- [ ] **COMP-002** Add Virtual Display features
-  - Squelch indicator (open/closed)
-  - Mode indicator (FM, AM, NFM)
-  - Bank/channel indicator
-  - Visual blinking for scan hits
+- [x] **COMP-002** Add Virtual Display metadata row (State-aware)
+  - **Scanning state:** Only signal strength icon visible
+  - **Listening state:** Full metadata row:
+    - Signal strength (Font Awesome icon, left)
+    - Channel ("CH67" or "DIRECT")
+    - Mode ("FM", "AM", "NFM")
+    - Frequency ("442.1250 MHz", right-aligned)
+  - Responsive spacing, readable on mobile
 
-- [ ] **COMP-003** Create Signal Strength Indicator
-  - S-meter style visualization
-  - RSSI value (0-100%)
-  - Color coding (green/yellow/red)
-  - Peak hold display
+- [x] **COMP-003** Create Signal Strength Indicator (Font Awesome)
+  - **Font Awesome icons:** `fa-signal-weak` through `fa-signal` (5 levels)
+  - RSSI value (0-100%) determines which icon to show
+  - Color coding: red (weak <40%), yellow (medium 40-70%), green (strong >70%)
+  - Integrated into Virtual Display metadata row
+  - Install: `npm install @fortawesome/fontawesome-free`
+  - ARIA labels for accessibility
 
-- [ ] **COMP-004** Create Transport Controls component
-  - Scan button (large, primary action)
-  - Hold button
-  - Channel up/down buttons
-  - Direct frequency entry field
+- [x] **COMP-004** Create Primary Controls component (Single Toggle)
+  - **Single Scan/Hold toggle button** (not two separate buttons)
+  - Button changes label and state when clicked
+  - Shows "🔄 Scan" when scanning (green background)
+  - Shows "⏸ Hold" when holding (orange background)
+  - Large, touch-friendly (min 44x44px / 60px recommended)
+  - aria-pressed attribute for accessibility
+  - Backend manages state, UI reflects current mode
 
-- [ ] **COMP-005** Implement frequency entry validation
-  - Format validation (xxx.xxxx MHz)
-  - Range validation based on scanner model
-  - Modulation selection (FM/AM)
-  - Submit on Enter key
+- [x] **COMP-005** Create Direct Tune Modal (progressive disclosure)
+  - Frequency input with validation (xxx.xxxx format)
+  - **DEVICE-AGNOSTIC:** Validate using device capabilities API, NOT hardcoded ranges
+  - Query device min/max frequency from backend, display in error messages
+  - Modulation selector (FM/AM/NFM/AUTO)
+  - Modal overlay (dims background, click-outside to close)
+  - Keyboard shortcuts (Ctrl/Cmd+F to open, Escape to close, Enter to submit)
+  - Auto-focus input on open
 
-- [ ] **COMP-006** Create Activity Log component
-  - Scrollable list of recent hits
-  - Timestamped entries (relative and absolute)
-  - Frequency, alpha tag, duration
+- [x] **COMP-006** Create Memory Browser Panel (progressive disclosure)
+  - Channel list table (index, frequency, tag, bank)
+  - Filter by bank (dropdown)
+  - Search by alpha tag or frequency
   - Click to tune functionality
+  - Slide-out panel or separate view
+  - Close button and escape key support
 
-- [ ] **COMP-007** Add Activity Log features
-  - Auto-scroll to newest
-  - Manual scroll lock
-  - Clear log button
-  - Export to CSV/JSON
+- [x] **COMP-007** Create Activity Log component (SIMPLIFIED)
+  - **LIMITED:** Show only last 10 entries (not 100)
+  - Collapsible panel (collapsed by default on mobile)
+  - Timestamped entries (relative: "2m ago" or absolute)
+  - Frequency and alpha tag only (no duration field)
+  - Click to tune functionality
+  - Empty state message when no entries
+  - **DEPRIORITIZED:** Moved to progressive disclosure, not always visible
+
+- [x] **COMP-008** Create Current Bank Quick View component (Below Controls)
+  - **Positioned below primary controls** in single-column layout
+  - **Collapsible** with toggle button (▼/▶ icon)
+  - Show channels in currently active bank only
+  - Highlight currently active channel with ● indicator
+  - Grid layout: CH# | Frequency | Alpha Tag
+  - Click any channel to tune directly
+  - "Browse All Channels →" button at bottom
+  - Returns `null` if not scanning a bank (hidden)
+  - Max-height with scrolling for long lists
+  - Starts expanded on desktop, collapsed on mobile
 
 ## Phase 5: Layout & Navigation
 
-- [ ] **LAYOUT-001** Design responsive layout
-  - Desktop: multi-column (display, controls, log)
-  - Tablet: adaptive layout
-  - Mobile: stacked, swipeable views
+- [x] **LAYOUT-001** Design responsive layout (Single-Column, Mobile-First)
+  - **Single-column layout** on all screen sizes
+  - **Centered on desktop** with max-width: 640px (or 800px)
+  - **Mobile-first:** Stack vertically (header → display → controls → bank view)
+  - Container: `width: 100%; max-width: 640px; margin: 0 auto;`
+  - Padding: 1rem desktop, 0.5rem mobile
+  - Signal strength in metadata row (Font Awesome icons)
+  - Current Bank View below controls (collapsible)
+  - Activity log in modal/menu (deprioritized)
   - Dark mode support
 
-- [ ] **LAYOUT-002** Create app shell component
+- [x] **LAYOUT-002** Create app shell component
   - Header with device connection status
   - Navigation (if multiple views)
   - Footer with version info
@@ -150,11 +208,12 @@
 
 ## Phase 6: Advanced Features
 
-- [ ] **FEATURE-001** Create memory browser view
-  - Channel list table
-  - Filter by bank
-  - Search by alpha tag or frequency
-  - Sort by column
+- [ ] **FEATURE-001** Enhance Memory Browser (extends COMP-006)
+  - Sort by column (frequency, tag, bank)
+  - Multi-column sorting
+  - Lockout indicator and toggle
+  - Priority indicator
+  - Advanced filtering (lockout status, modulation)
 
 - [ ] **FEATURE-002** Implement memory sync UI
   - Progress bar during sync
@@ -162,12 +221,17 @@
   - Success/error notification
   - Last sync timestamp display
 
-- [ ] **FEATURE-003** Add keyboard shortcuts
-  - Space: toggle scan/hold
-  - Arrow keys: channel up/down
-  - F: focus frequency entry
-  - H: hold
-  - S: scan
+- [x] **FEATURE-003** Add keyboard shortcuts (IMPORTANT: replaces on-screen channel buttons)
+  - Require Ctrl/Cmd modifier to avoid conflicts with assistive tech
+  - Ctrl/Cmd+S: start scan
+  - Ctrl/Cmd+H: hold current frequency
+  - Ctrl/Cmd+F: open direct tune modal
+  - Ctrl/Cmd+M: open full memory browser
+  - Ctrl/Cmd+B: jump to current bank view (NEW)
+  - Ctrl/Cmd+C: copy current frequency to clipboard (NEW)
+  - Ctrl/Cmd+↑/↓: channel up/down (PRIMARY navigation method)
+  - Escape: close modals/panels (no modifier needed)
+  - Keyboard shortcut help panel showing all shortcuts
 
 - [ ] **FEATURE-004** Create settings panel
   - WebSocket reconnect interval
@@ -189,7 +253,71 @@
   - Latency monitoring
   - Buffer underrun handling
 
-## Phase 8: Polish & UX
+## Phase 8: Accessibility (WCAG 2.1 AA Compliance)
+
+- [x] **A11Y-001** Implement ARIA live regions
+  - Polite announcements for frequency changes
+  - Assertive announcements for scan hits
+  - Activity log announcements for new entries
+  - Connection status announcements
+  - Screen reader only text (.sr-only CSS class)
+
+- [x] **A11Y-002** Implement focus management
+  - Modal focus trapping (trap focus in open modals)
+  - Focus restoration (return focus when closing modals)
+  - Skip links (skip to main content, skip to controls)
+  - Focus indicators for all interactive elements
+  - Keyboard shortcuts help panel
+
+- [ ] **A11Y-003** Add semantic HTML and ARIA labels
+  - Proper ARIA labels for all buttons
+  - Role attributes (dialog, status, log, article)
+  - aria-pressed for toggle buttons
+  - aria-expanded for expandable controls
+  - Landmark regions (main, navigation, complementary)
+
+- [ ] **A11Y-004** Visual accessibility improvements
+  - High contrast mode support (@media prefers-contrast: high)
+  - Reduced motion support (@media prefers-reduced-motion: reduce)
+  - Color contrast WCAG AA compliance (4.5:1 text, 3:1 UI)
+  - Minimum 44x44px touch targets
+  - Focus visible indicators
+
+- [ ] **A11Y-005** Screen reader testing
+  - Test with NVDA (Windows)
+  - Test with JAWS (Windows)
+  - Test with VoiceOver (macOS/iOS)
+  - Validate with axe DevTools
+  - Test at 200% zoom
+
+## Phase 9: Mobile & PWA Optimization
+
+- [x] **MOBILE-001** Implement iOS safe area handling
+  - viewport-fit=cover meta tag
+  - env(safe-area-inset-*) CSS variables
+  - Safe area padding for header and controls
+  - Test on iPhone X+ devices with notch
+
+- [ ] **MOBILE-002** Create landscape layout
+  - Horizontal flex layout for landscape orientation
+  - Compact font sizes for limited vertical space
+  - Side-by-side display/controls/log layout
+  - Test on tablets in landscape mode
+
+- [ ] **MOBILE-003** Implement PWA configuration
+  - Create manifest.json (icons, name, theme color)
+  - Service worker with cache strategy
+  - iOS-specific meta tags (apple-mobile-web-app-*)
+  - Install prompt handling
+  - Offline capability for static assets
+
+- [ ] **MOBILE-004** Add battery-aware behavior
+  - Detect battery level with Battery API
+  - Reduce WebSocket poll rate when battery < 20%
+  - Optional: Reduce animation complexity on low battery
+  - Test on mobile devices
+
+## Phase 10: Polish & UX
 
 - [ ] **UX-001** Add loading states
   - Skeleton screens for initial load
@@ -209,13 +337,7 @@
   - Pulse effect for signal strength updates
   - Transition animations between states
 
-- [ ] **UX-004** Improve accessibility
-  - ARIA labels for controls
-  - Keyboard navigation support
-  - Focus management
-  - Screen reader announcements for state changes
-
-## Phase 9: Testing
+## Phase 11: Testing
 
 - [ ] **TEST-001** Set up testing framework
   - Vitest or Jest configuration
@@ -241,7 +363,7 @@
   - Configurable scenarios (scanning, hits, errors)
   - Standalone mode for UI-only development
 
-## Phase 10: Deployment
+## Phase 12: Deployment
 
 - [ ] **DEPLOY-001** Optimize production build
   - Code splitting by route
@@ -261,7 +383,7 @@
   - Versioning strategy
   - Health check for UI availability
 
-## Phase 11: Documentation
+## Phase 13: Documentation
 
 - [ ] **DOCS-001** Write user guide
   - Quick start instructions
@@ -281,9 +403,9 @@
   - Interactive prop controls
   - Visual regression testing baseline
 
-## Phase 12: Future Enhancements
+## Phase 14: Future Enhancements
 
-- [ ] **FUTURE-001** Mobile-optimized layout
+- [ ] **FUTURE-001** Advanced mobile features
   - Touch-friendly controls
   - Gesture support (swipe for channel change)
   - Portrait/landscape adaptation

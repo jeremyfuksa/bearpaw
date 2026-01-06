@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+import logging
+
 from scanner_bridge.models import ChannelData, LiveState
 from scanner_bridge.protocol.base import ScannerDriver
 from scanner_bridge.scheduler import (
@@ -18,6 +20,9 @@ class BC125ATDriver(ScannerDriver):
         self._scheduler = scheduler
         self._mode = "SCAN"
         self._pre_program_mode: Optional[str] = None
+        self.last_error: Optional[str] = None
+
+        self._logger = logging.getLogger(__name__)
 
     async def detect_model(self) -> str:
         response = await self._send("MDL", PRIORITY_CONTROL)
@@ -46,9 +51,14 @@ class BC125ATDriver(ScannerDriver):
             rssi=rssi,
             mode=self._mode,
             channel=channel,
+            alpha_tag=None,
             volume=volume,
             battery=battery,
         )
+
+    async def get_glg_status(self) -> LiveState:
+        response = await self._send("GLG", PRIORITY_TELEMETRY)
+        return self._parse_glg_status(response)
 
     def _parse_glg_status(self, response: str) -> LiveState:
         parts = [part.strip() for part in response.split(",")]
@@ -58,7 +68,20 @@ class BC125ATDriver(ScannerDriver):
         except ValueError:
             frequency = 0.0
         modulation = parts[2] if len(parts) > 2 and parts[2] else "AUTO"
-        squelch_open = parts[4] == "0" if len(parts) > 4 else False
+        squelch_open = False
+        squelch_token_alt = parts[8] if len(parts) > 8 else ""
+        if squelch_token_alt in ("0", "1"):
+            squelch_open = squelch_token_alt == "1"
+        else:
+            squelch_token = parts[4] if len(parts) > 4 else ""
+            if squelch_token in ("0", "1"):
+                squelch_open = squelch_token == "0"
+        alpha_tag = parts[7] if len(parts) > 7 and parts[7] else None
+        channel = None
+        for value in reversed(parts):
+            if value.isdigit():
+                channel = int(value)
+                break
         rssi_raw = parts[11] if len(parts) > 11 else "0"
         try:
             rssi = min(100, int(rssi_raw))
@@ -71,37 +94,76 @@ class BC125ATDriver(ScannerDriver):
             squelch_open=squelch_open,
             rssi=rssi,
             mode=self._mode,
-            channel=None,
+            channel=channel,
+            alpha_tag=alpha_tag,
             volume=0,
             battery=None,
         )
 
     async def send_hold(self) -> bool:
         response = await self._send("KEY,H,P", PRIORITY_CONTROL)
-        self._mode = "HOLD"
-        return response.strip() == "OK"
+        ok = self._is_ok_response(response)
+        if ok:
+            self._mode = "HOLD"
+            self.last_error = None
+        else:
+            self.last_error = response.strip() or "hold_failed"
+            self._logger.warning("Hold command failed: %s", self.last_error)
+        return ok
 
     async def send_scan(self) -> bool:
         response = await self._send("KEY,S,P", PRIORITY_CONTROL)
-        self._mode = "SCAN"
-        return response.strip() == "OK"
+        ok = self._is_ok_response(response)
+        if ok:
+            self._mode = "SCAN"
+            self.last_error = None
+        else:
+            self.last_error = response.strip() or "scan_failed"
+            self._logger.warning("Scan command failed: %s", self.last_error)
+        return ok
 
     async def send_key(self, key_code: str) -> bool:
         response = await self._send(f"KEY,{key_code},P", PRIORITY_CONTROL)
-        return response.strip() == "OK"
+        ok = self._is_ok_response(response)
+        if ok:
+            self.last_error = None
+        else:
+            self.last_error = response.strip() or "key_failed"
+            self._logger.warning("Key command failed (%s): %s", key_code, self.last_error)
+        return ok
 
     async def set_frequency(self, freq_mhz: float, modulation: str = "AUTO") -> bool:
         response = await self._send(
             f"DO,{freq_mhz:.4f},{modulation}", PRIORITY_CONTROL
         )
-        self._mode = "DIRECT"
-        return response.strip() == "OK"
+        ok = self._is_ok_response(response)
+        if ok:
+            self._mode = "DIRECT"
+            self.last_error = None
+        else:
+            self.last_error = response.strip() or "frequency_failed"
+            self._logger.warning("Set frequency failed: %s", self.last_error)
+        return ok
 
-    async def read_channel(self, index: int) -> ChannelData:
+    async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
+        if not assume_program_mode:
+            await self._exit_program_mode()
+        return self._parse_channel_response(index, response)
+
+    async def begin_memory_sync(self) -> None:
+        await self._enter_program_mode()
+
+    async def end_memory_sync(self) -> None:
+        await self._exit_program_mode()
+
+    async def read_channel_raw(self, index: int) -> str:
         await self._enter_program_mode()
         response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
         await self._exit_program_mode()
-        return self._parse_channel_response(index, response)
+        return response
 
     async def _enter_program_mode(self) -> None:
         self._pre_program_mode = self._mode
@@ -121,17 +183,77 @@ class BC125ATDriver(ScannerDriver):
         parts = [part.strip() for part in response.split(",")]
         if parts and parts[0] == "CIN":
             parts = parts[1:]
-        freq = float(parts[1]) if len(parts) > 1 and parts[1] else 0.0
-        modulation = parts[2] if len(parts) > 2 else "FM"
-        alpha_tag = parts[3] if len(parts) > 3 else ""
-        delay = int(parts[4]) if len(parts) > 4 and parts[4] else 2
-        lockout = parts[5] == "1" if len(parts) > 5 else False
-        priority = parts[6] == "1" if len(parts) > 6 else False
-        tone = float(parts[7]) if len(parts) > 7 and parts[7] else None
-        bank = int(parts[8]) if len(parts) > 8 and parts[8] else 0
+        if parts and parts[0].isdigit():
+            parts = parts[1:]
+
+        def parse_float(value: str) -> Optional[float]:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return None
+
+        def looks_like_frequency(value: str) -> bool:
+            value = value.strip()
+            if not value:
+                return False
+            if "." in value:
+                return True
+            try:
+                return int(value) >= 10000
+            except ValueError:
+                return False
+
+        def parse_frequency(value: str) -> float:
+            parsed = parse_float(value)
+            if parsed is None:
+                return 0.0
+            return parsed / 10000.0 if parsed >= 10000 else parsed
+
+        freq_value = 0.0
+        modulation = "FM"
+        alpha_tag = ""
+        delay = 2
+        lockout = False
+        priority = False
+        tone = None
+        bank = 0
+
+        if len(parts) >= 2 and looks_like_frequency(parts[1]) and not looks_like_frequency(parts[0]):
+            alpha_tag = parts[0]
+            freq_value = parse_frequency(parts[1])
+            modulation = parts[2] if len(parts) > 2 and parts[2] else "FM"
+            remaining = parts[3:]
+            if len(remaining) > 0 and remaining[0] != "":
+                lockout = remaining[0] == "1"
+            if len(remaining) > 1 and remaining[1] != "":
+                delay = int(remaining[1])
+            if len(remaining) > 2 and remaining[2] != "":
+                priority = remaining[2] == "1"
+            if len(remaining) > 3 and remaining[3] != "":
+                if len(remaining) > 4:
+                    tone = parse_float(remaining[3])
+                    if remaining[4] != "":
+                        bank = int(remaining[4])
+                else:
+                    bank = int(remaining[3])
+        else:
+            if len(parts) > 0:
+                freq_value = parse_frequency(parts[0])
+            modulation = parts[1] if len(parts) > 1 and parts[1] else "FM"
+            alpha_tag = parts[2] if len(parts) > 2 else ""
+            if len(parts) > 3 and parts[3]:
+                delay = int(parts[3])
+            if len(parts) > 4 and parts[4]:
+                lockout = parts[4] == "1"
+            if len(parts) > 5 and parts[5]:
+                priority = parts[5] == "1"
+            if len(parts) > 6 and parts[6]:
+                tone = parse_float(parts[6])
+            if len(parts) > 7 and parts[7]:
+                bank = int(parts[7])
         return ChannelData(
             index=index,
-            frequency=freq,
+            frequency=freq_value,
             modulation=modulation,
             alpha_tag=alpha_tag,
             delay=delay,
@@ -140,6 +262,11 @@ class BC125ATDriver(ScannerDriver):
             tone_squelch=tone,
             bank=bank,
         )
+
+    @staticmethod
+    def _is_ok_response(response: str) -> bool:
+        value = response.strip().upper()
+        return value == "OK" or value.endswith(",OK")
 
     async def _send(self, raw: str, priority: int) -> str:
         future = self._scheduler.enqueue(raw, priority)

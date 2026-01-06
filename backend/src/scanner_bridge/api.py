@@ -18,10 +18,11 @@ from scanner_bridge.models import (
     ErrorResponse,
     FrequencyRequest,
     KeyRequest,
+    LiveState,
     LiveStateModel,
 )
 from scanner_bridge.protocol import BC125ATDriver, SR30CDriver
-from scanner_bridge.scheduler import CommandScheduler
+from scanner_bridge.scheduler import CommandScheduler, PRIORITY_TELEMETRY
 from scanner_bridge.state import StateStore, build_persistence
 from scanner_bridge.sync import MemorySyncTask
 from scanner_bridge.transport import SerialTransport
@@ -39,13 +40,14 @@ class RuntimeState:
     config: AppConfig
     transport: Optional[SerialTransport]
     scheduler: Optional[CommandScheduler]
-    driver: object
+    driver: Optional[object]
     state_store: StateStore
     ws_manager: WebSocketManager
     device_info: DeviceInfo
     poller_task: Optional[asyncio.Task] = None
     sync_task: Optional[MemorySyncTask] = None
     heartbeat_task: Optional[asyncio.Task] = None
+    reconnect_task: Optional[asyncio.Task] = None
     text_exporter: Optional[TextFileExporter] = None
     json_exporter: Optional[JsonEventStream] = None
     mqtt_exporter: Optional[MqttExporter] = None
@@ -100,6 +102,11 @@ def create_app(
         )
         return JSONResponse(status_code=500, content=payload.model_dump())
 
+    def require_driver(runtime: RuntimeState) -> object:
+        if not runtime.driver or not runtime.scheduler or not runtime.transport:
+            raise HTTPException(status_code=503, detail="device_disconnected")
+        return runtime.driver
+
     async def startup() -> None:
         device_port = port_override or config.device.port
         transport: Optional[SerialTransport] = None
@@ -118,7 +125,13 @@ def create_app(
                 serial_number=config.device.usb_serial,
                 timeout=0.5,
             )
-            transport.connect()
+            try:
+                transport.connect()
+                device_info.connection_status = "connected"
+            except ConnectionError as exc:
+                logger.warning("USB device not found: %s", exc)
+                device_info.connection_status = "disconnected"
+                transport = None
         else:
             if not device_port and config.device.auto_detect:
                 devices = discover_devices()
@@ -167,13 +180,17 @@ def create_app(
                 transport = SerialTransport(device_port, timeout=0.5)
                 transport.connect()
 
-        scheduler = CommandScheduler(transport)
-        await scheduler.start()
+        scheduler: Optional[CommandScheduler] = None
+        driver: Optional[object] = None
+        if transport:
+            scheduler = CommandScheduler(transport)
+            await scheduler.start()
 
-        model = await asyncio.wrap_future(transport.send_command("MDL"))
-        model = model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
-        driver = SR30CDriver(scheduler) if "SR30C" in model else BC125ATDriver(scheduler)
-        device_info.model = model.strip()
+            model = await asyncio.wrap_future(transport.send_command("MDL"))
+            model = model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
+            driver = SR30CDriver(scheduler) if "SR30C" in model else BC125ATDriver(scheduler)
+            device_info.model = model.strip()
+            device_info.connection_status = "connected"
 
         persistence = build_persistence(config.state.persistence, config.state.db_path)
         state_store = StateStore(persistence)
@@ -221,12 +238,21 @@ def create_app(
             mqtt_exporter=mqtt_exporter,
         )
         app.state.runtime = runtime
-        runtime.poller_task = asyncio.create_task(_poll_status(app))
+        if runtime.driver and runtime.transport:
+            runtime.poller_task = asyncio.create_task(_poll_status(app))
+        if (
+            config.device.transport == "usb"
+            or isinstance(runtime.transport, UsbTransport)
+            or (runtime.transport is None and config.device.transport in ("usb", "auto"))
+        ):
+            runtime.reconnect_task = asyncio.create_task(_monitor_usb(app))
 
     async def shutdown() -> None:
         runtime: RuntimeState = app.state.runtime
         if runtime.poller_task:
             runtime.poller_task.cancel()
+        if runtime.reconnect_task:
+            runtime.reconnect_task.cancel()
         if runtime.heartbeat_task:
             runtime.heartbeat_task.cancel()
         runtime.state_store.save_shadow()
@@ -258,33 +284,45 @@ def create_app(
     @app.post("/api/v1/commands/hold")
     async def hold_command() -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
-        ok = await runtime.driver.send_hold()
+        driver = require_driver(runtime)
+        ok = await driver.send_hold()
         if not ok:
-            raise HTTPException(status_code=500, detail="hold_failed")
+            detail = getattr(driver, "last_error", None) or "hold_failed"
+            logger.warning("Hold command failed: %s", detail)
+            raise HTTPException(status_code=500, detail=detail)
         return {"status": "ok"}
 
     @app.post("/api/v1/commands/scan")
     async def scan_command() -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
-        ok = await runtime.driver.send_scan()
+        driver = require_driver(runtime)
+        ok = await driver.send_scan()
         if not ok:
-            raise HTTPException(status_code=500, detail="scan_failed")
+            detail = getattr(driver, "last_error", None) or "scan_failed"
+            logger.warning("Scan command failed: %s", detail)
+            raise HTTPException(status_code=500, detail=detail)
         return {"status": "ok"}
 
     @app.post("/api/v1/commands/key")
     async def key_command(request: KeyRequest) -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
-        ok = await runtime.driver.send_key(request.key)
+        driver = require_driver(runtime)
+        ok = await driver.send_key(request.key)
         if not ok:
-            raise HTTPException(status_code=500, detail="key_failed")
+            detail = getattr(driver, "last_error", None) or "key_failed"
+            logger.warning("Key command failed (%s): %s", request.key, detail)
+            raise HTTPException(status_code=500, detail=detail)
         return {"status": "ok"}
 
     @app.post("/api/v1/frequency")
     async def set_frequency(request: FrequencyRequest) -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
-        ok = await runtime.driver.set_frequency(request.frequency, request.modulation)
+        driver = require_driver(runtime)
+        ok = await driver.set_frequency(request.frequency, request.modulation)
         if not ok:
-            raise HTTPException(status_code=400, detail="invalid_frequency")
+            detail = getattr(driver, "last_error", None) or "invalid_frequency"
+            logger.warning("Set frequency failed: %s", detail)
+            raise HTTPException(status_code=400, detail=detail)
         return {"status": "ok"}
 
     @app.get("/api/v1/memory/channels", response_model=list[ChannelDataModel])
@@ -304,9 +342,10 @@ def create_app(
     @app.post("/api/v1/memory/sync")
     async def memory_sync() -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
         if runtime.sync_task:
             return {"status": "already_running", "task_id": runtime.sync_task.task_id}
-        task = MemorySyncTask(runtime.driver, runtime.state_store, runtime.ws_manager)
+        task = MemorySyncTask(driver, runtime.state_store, runtime.ws_manager)
         runtime.sync_task = task
         asyncio.create_task(_run_sync(app, task))
         return {"status": "started", "task_id": task.task_id}
@@ -318,6 +357,16 @@ def create_app(
             return {"status": "no_task"}
         runtime.sync_task.cancel()
         return {"status": "cancelling", "task_id": runtime.sync_task.task_id}
+
+    @app.get("/api/v1/debug/glg")
+    async def debug_glg() -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        get_glg = getattr(driver, "get_glg_status", None)
+        if not callable(get_glg):
+            raise HTTPException(status_code=400, detail="glg_unsupported")
+        response = await driver._send("GLG", PRIORITY_TELEMETRY)
+        return {"response": response}
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
@@ -339,6 +388,49 @@ async def _run_sync(app: FastAPI, task: MemorySyncTask) -> None:
         runtime.sync_task = None
 
 
+async def _monitor_usb(app: FastAPI) -> None:
+    runtime: RuntimeState = app.state.runtime
+    backoff = runtime.config.polling.reconnect_backoff
+    while True:
+        await asyncio.sleep(1.0)
+        if runtime.transport and not isinstance(runtime.transport, UsbTransport):
+            continue
+        if runtime.device_info.connection_status == "connected" and runtime.transport:
+            continue
+        runtime.device_info.connection_status = "connecting"
+        created_transport = False
+        try:
+            if runtime.transport:
+                await asyncio.to_thread(runtime.transport.reconnect, backoff)
+            else:
+                transport = UsbTransport(
+                    runtime.config.device.usb_vid,
+                    runtime.config.device.usb_pid,
+                    serial_number=runtime.config.device.usb_serial,
+                    timeout=0.5,
+                )
+                transport.connect()
+                runtime.transport = transport
+                created_transport = True
+
+            if created_transport or not runtime.scheduler:
+                if runtime.scheduler:
+                    await runtime.scheduler.stop()
+                runtime.scheduler = CommandScheduler(runtime.transport)
+                await runtime.scheduler.start()
+
+            model = await asyncio.wrap_future(runtime.transport.send_command("MDL"))
+            model = model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
+            runtime.driver = SR30CDriver(runtime.scheduler) if "SR30C" in model else BC125ATDriver(runtime.scheduler)
+            runtime.device_info.model = model.strip()
+            runtime.device_info.connection_status = "connected"
+            if not runtime.poller_task or runtime.poller_task.done():
+                runtime.poller_task = asyncio.create_task(_poll_status(app))
+        except Exception as exc:
+            runtime.device_info.connection_status = "disconnected"
+            logger.warning("USB reconnect failed: %s", exc)
+
+
 async def _poll_status(app: FastAPI) -> None:
     runtime: RuntimeState = app.state.runtime
     failures = 0
@@ -348,14 +440,37 @@ async def _poll_status(app: FastAPI) -> None:
                 await asyncio.sleep(0.01)
                 continue
             state = await runtime.driver.get_status()
+            if state.squelch_open:
+                get_glg = getattr(runtime.driver, "get_glg_status", None)
+                if callable(get_glg):
+                    try:
+                        glg_state = await get_glg()
+                        state = LiveState(
+                            timestamp=glg_state.timestamp,
+                            frequency=glg_state.frequency or state.frequency,
+                            modulation=glg_state.modulation or state.modulation,
+                            squelch_open=glg_state.squelch_open,
+                            rssi=glg_state.rssi or state.rssi,
+                            mode=state.mode,
+                            channel=glg_state.channel or state.channel,
+                            alpha_tag=glg_state.alpha_tag or state.alpha_tag,
+                            volume=state.volume,
+                            battery=state.battery,
+                            stale=state.stale,
+                        )
+                    except Exception as exc:
+                        logger.warning("GLG poll failed: %s", exc)
             changes = runtime.state_store.update_live_state(state)
             if changes:
+                payload = changes
+                if len(changes) == 1 and "timestamp" in changes:
+                    payload = state.__dict__
                 await runtime.ws_manager.broadcast(
                     {
                         "type": "state_update",
                         "timestamp": state.timestamp,
                         "sequence": int(state.timestamp * 1000),
-                        "data": changes,
+                        "data": payload,
                     }
                 )
                 if runtime.mqtt_exporter:
@@ -385,8 +500,12 @@ async def _poll_status(app: FastAPI) -> None:
                 if runtime.text_exporter and runtime.text_exporter.should_update(changes):
                     runtime.text_exporter.write(state)
             failures = 0
+            if runtime.device_info.connection_status != "connected":
+                runtime.device_info.connection_status = "connected"
         except Exception as exc:
             failures += 1
+            if failures == 1 and runtime.device_info.connection_status != "connecting":
+                runtime.device_info.connection_status = "connecting"
             if isinstance(exc, (ConnectionError, OSError)):
                 try:
                     await asyncio.to_thread(
@@ -397,6 +516,7 @@ async def _poll_status(app: FastAPI) -> None:
             if failures >= 3:
                 stale_changes = runtime.state_store.mark_live_state_stale()
                 if stale_changes:
+                    runtime.device_info.connection_status = "disconnected"
                     await runtime.ws_manager.broadcast(
                         {
                             "type": "event",

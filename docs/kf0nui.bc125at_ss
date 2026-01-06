@@ -1,0 +1,536 @@
+Misc	K+S	Off	Off	8	14	2	2	USA
+Priority	Off
+WxPri	On
+Service	1	Police	Off
+Service	2	Fire/Emergency	Off
+Service	3	HAM Radio	Off
+Service	4	Marine	Off
+Service	5	Railroad	Off
+Service	6	Civil Air	Off
+Service	7	Military Air	Off
+Service	8	CB Radio	Off
+Service	9	FRS/GMRS/MURS	Off
+Service	10	Racing	Off
+Custom	1	Search Bnak1	25000000	27995000	Off
+Custom	2	Search Bnak2	28000000	29695000	Off
+Custom	3	Search Bnak3	29700000	49995000	Off
+Custom	4	Search Bnak4	50000000	54000000	Off
+Custom	5	Search Bnak5	108000000	136991600	Off
+Custom	6	Search Bnak6	137000000	143995000	Off
+Custom	7	Search Bnak7	144000000	147995000	Off
+Custom	8	Search Bnak8	225000000	380000000	On
+Custom	9	Search Bnak9	400000000	449993700	On
+Custom	10	Search Bnak10	450000000	469993700	On
+CloseCall	Pri	On	On	On
+CloseCallBands	On	On	On	On	On
+GeneralSearch	2	On
+Conventional	1	Bank 1	On
+C-Freq	1	NOAA Weather	162550000	Auto	Off	Off	2	Off
+C-Freq	2	NOAA Channel 1	162400000	Auto	Off	Off	2	Off
+C-Freq	3	NOAA Channel 2	162425000	Auto	Off	Off	2	Off
+C-Freq	4	NOAA Channel 3	162450000	Auto	Off	Off	2	Off
+C-Freq	5	NOAA Channel 4	162475000	Auto	Off	Off	2	Off
+C-Freq	6	NOAA Channel 5	162500000	Auto	Off	Off	2	Off
+C-Freq	7	NOAA Channel 6	162525000	Auto	Off	Off	2	Off
+C-Freq	8	Storm Spotters	146550000	Auto	Srch	Off	2	Off
+C-Freq	9	RACES Net	146880000	Auto	Srch	Off	2	Off
+C-Freq	10	Chasers Net	146940000	Auto	Srch	Off	2	Off
+C-Freq	11	ARES Primary	147000000	Auto	Srch	Off	2	Off
+C-Freq	12	ARES Secondary	147330000	Auto	Srch	Off	2	Off
+C-Freq	13		0	Auto	Off	On	2	Off
+C-Freq	14		0	Auto	Off	On	2	Off
+C-Freq	15		0	Auto	Off	On	2	Off
+C-Freq	16		0	Auto	Off	On	2	Off
+C-Freq	17		0	Auto	Off	On	2	Off
+C-Freq	18		0	Auto	Off	On	2	Off
+C-Freq	19		0	Auto	Off	On	2	Off
+C-Freq	20		0	Auto	Off	On	2	Off
+C-Freq	21		0	Auto	Off	On	2	Off
+C-Freq	22		0	Auto	Off	On	2	Off
+C-Freq	23		0	Auto	Off	On	2	Off
+C-Freq	24		0	Auto	Off	On	2	Off
+C-Freq	25		0	Auto	Off	On	2	Off
+C-Freq	26		0	Auto	Off	On	2	Off
+C-Freq	27		0	Auto	Off	On	2	Off
+C-Freq	28		0	Auto	Off	On	2	Off
+C-Freq	29		0	Auto	Off	On	2	Off
+C-Freq	30		0	Auto	Off	On	2	Off
+C-Freq	31		0	Auto	Off	On	2	Off
+C-Freq	32		0	Auto	Off	On	2	Off
+C-Freq	33		0	Auto	Off	On	2	Off
+C-Freq	34		0	Auto	Off	On	2	Off
+C-Freq	35		0	Auto	Off	On	2	Off
+C-Freq	36		0	Auto	Off	On	2	Off
+C-Freq	37		0	Auto	Off	On	2	Off
+C-Freq	38		0	Auto	Off	On	2	Off
+C-Freq	39		0	Auto	Off	On	2	Off
+C-Freq	40		0	Auto	Off	On	2	Off
+C-Freq	41		0	Auto	Off	On	2	Off
+C-Freq	42		0	Auto	Off	On	2	Off
+C-Freq	43		0	Auto	Off	On	2	Off
+C-Freq	44		0	Auto	Off	On	2	Off
+C-Freq	45		0	Auto	Off	On	2	Off
+C-Freq	46		0	Auto	Off	On	2	Off
+C-Freq	47		0	Auto	Off	On	2	Off
+C-Freq	48		0	Auto	Off	On	2	Off
+C-Freq	49		0	Auto	Off	On	2	Off
+C-Freq	50		0	Auto	Off	On	2	Off
+Conventional	2	Bank 2	Off
+C-Freq	51	MHP Troop A	42120000	Auto	Off	Off	2	Off
+C-Freq	52	Nat Guard Op 1	149537500	Auto	Off	Off	2	Off
+C-Freq	53	Nat Guard Op 2	149587500	Auto	Off	Off	2	Off
+C-Freq	54	Nat Guard Op 3	149600000	Auto	Off	Off	2	Off
+C-Freq	55	Fire Tac 1	154265000	Auto	Off	Off	2	Off
+C-Freq	56	Fire Call	154280000	Auto	Off	Off	2	Off
+C-Freq	57	Fire Tac 2	154295000	Auto	Off	Off	2	Off
+C-Freq	58	HEAR Alt	155280000	Auto	Off	Off	2	Off
+C-Freq	59	HEAR	155340000	Auto	Off	Off	2	Off
+C-Freq	60	Federal Inter	168350000	Auto	Off	Off	2	Off
+C-Freq	61	MHP Car-Car	453200000	Auto	Off	Off	2	Off
+C-Freq	62	EMS Disp	462950000	Auto	Off	Off	2	Off
+C-Freq	63	Medical 1	463000000	Auto	Off	Off	2	Off
+C-Freq	64	Medical 2	463025000	Auto	Off	Off	2	Off
+C-Freq	65	Medical 3	463050000	Auto	Off	Off	2	Off
+C-Freq	66	Medical 4	463075000	Auto	Off	Off	2	Off
+C-Freq	67	Medical 5	463100000	Auto	Off	Off	2	Off
+C-Freq	68	Medical 6	463125000	Auto	Off	Off	2	Off
+C-Freq	69	Medical 7	463150000	Auto	Off	Off	2	Off
+C-Freq	70	Medical 8	463175000	Auto	Off	Off	2	Off
+C-Freq	71	GMRS xx RP	462650000	Auto	Off	Off	2	Off
+C-Freq	72	GMRS CH 01	462562500	Auto	Off	Off	2	Off
+C-Freq	73	GMRS CH 02	462587500	Auto	Off	Off	2	Off
+C-Freq	74	GMRS CH 03	462612500	Auto	Off	Off	2	Off
+C-Freq	75	GMRS CH 04	462637500	Auto	Off	Off	2	Off
+C-Freq	76	GMRS CH 05	462662500	Auto	Off	Off	2	Off
+C-Freq	77	GMRS CH 06	462687500	Auto	Off	Off	2	Off
+C-Freq	78	GMRS CH 07	462712500	Auto	Off	Off	2	Off
+C-Freq	79	GMRS RP 15	462550000	Auto	Off	Off	2	Off
+C-Freq	80	GMRS RP 16	462575000	Auto	Off	Off	2	Off
+C-Freq	81	GMRS RP 17	462600000	Auto	Off	Off	2	Off
+C-Freq	82	GMRS RP 18	462625000	Auto	Off	Off	2	Off
+C-Freq	83	GMRS RP 19	462650000	Auto	Off	Off	2	Off
+C-Freq	84	GMRS RP 20	462675000	Auto	Off	Off	2	Off
+C-Freq	85	GMRS RP 21	462700000	Auto	Off	Off	2	Off
+C-Freq	86	GMRS RP 22	462725000	Auto	Off	Off	2	Off
+C-Freq	87		0	Auto	Off	On	2	Off
+C-Freq	88		0	Auto	Off	On	2	Off
+C-Freq	89		0	Auto	Off	On	2	Off
+C-Freq	90		0	Auto	Off	On	2	Off
+C-Freq	91	MURS CH 1	151820000	Auto	Off	Off	2	Off
+C-Freq	92	MURS CH 2	151880000	Auto	Off	Off	2	Off
+C-Freq	93	MURS CH 3	151940000	Auto	Off	Off	2	Off
+C-Freq	94	MURS CH 4	154570000	Auto	Off	Off	2	Off
+C-Freq	95	MURS CH 5	154600000	Auto	Off	Off	2	Off
+C-Freq	96		0	Auto	Off	On	2	Off
+C-Freq	97		0	Auto	Off	On	2	Off
+C-Freq	98		0	Auto	Off	On	2	Off
+C-Freq	99		0	Auto	Off	On	2	Off
+C-Freq	100		0	Auto	Off	On	2	Off
+Conventional	3	Bank 3	Off
+C-Freq	101	Wheeler Tower	118300000	Auto	Off	Off	2	Off
+C-Freq	102	Wheeler ATIS	119650000	Auto	Off	Off	2	Off
+C-Freq	103	Guard Emer	121500000	Auto	Off	Off	2	Off
+C-Freq	104	KCI Clearance	121650000	Auto	Off	Off	2	Off
+C-Freq	105	Wheeler Ground	121700000	Auto	Off	Off	2	Off
+C-Freq	106	KCI Ramp	121850000	Auto	Off	Off	2	Off
+C-Freq	107	KCI Ground	121900000	Auto	Off	Off	2	Off
+C-Freq	108	Unicom Chat	122750000	Auto	Off	Off	2	Off
+C-Freq	109	GA Unicom	122800000	Auto	Off	Off	2	Off
+C-Freq	110	CTAF/Unicom	122950000	Auto	Off	Off	2	Off
+C-Freq	111	Air-To-Air	123450000	Auto	Off	Off	2	Off
+C-Freq	112	KCI Departure	124250000	Auto	Off	Off	2	Off
+C-Freq	113	KCI Tower	124500000	Auto	Off	Off	2	Off
+C-Freq	114	KCI Approach	125800000	Auto	Off	Off	2	Off
+C-Freq	115	ZKC Alt Sector	127675000	Auto	Off	Off	2	Off
+C-Freq	116	KCI ATIS	127750000	Auto	Off	Off	2	Off
+C-Freq	117	ZKC Low Sect 2	132950000	Auto	Off	Off	2	Off
+C-Freq	118	ZKC Center	133150000	Auto	Off	Off	2	Off
+C-Freq	119	ZKC Low Sect 3	133500000	Auto	Off	Off	2	Off
+C-Freq	120	ZKC Low Sect 1	134725000	Auto	Off	Off	2	Off
+C-Freq	121	ZKC High Sector	135200000	Auto	Off	Off	2	Off
+C-Freq	122	Marine CH 04A	156200000	Auto	Off	Off	2	Off
+C-Freq	123	Marine CH 06	156300000	Auto	Off	Off	2	Off
+C-Freq	124	Marine CH 09	156450000	Auto	Off	Off	2	Off
+C-Freq	125	Marine CH 70	156525000	Auto	Off	Off	2	Off
+C-Freq	126	Marine CH 12	156600000	Auto	Off	Off	2	Off
+C-Freq	127	Marine CH 13	156650000	Auto	Off	Off	2	Off
+C-Freq	128	Marine CH 14	156700000	Auto	Off	Off	2	Off
+C-Freq	129	Marine CH 16	156800000	Auto	Off	Off	2	Off
+C-Freq	130	Marine CH 17	156850000	Auto	Off	Off	2	Off
+C-Freq	131	Marine CH 20	157000000	Auto	Off	Off	2	Off
+C-Freq	132	Marine CH 21A	157050000	Auto	Off	Off	2	Off
+C-Freq	133	Marine CH 22A	157100000	Auto	Off	Off	2	Off
+C-Freq	134	Marine CH 23A	157150000	Auto	Off	Off	2	Off
+C-Freq	135	Marine CH 83A	157175000	Auto	Off	Off	2	Off
+C-Freq	136	Marine CH 00	160050000	Auto	Off	Off	2	Off
+C-Freq	137	Rail CH 1	160305000	Auto	Off	Off	2	Off
+C-Freq	138	Rail CH 2	160320000	Auto	Off	Off	2	Off
+C-Freq	139	Rail CH 3	160425000	Auto	Off	Off	2	Off
+C-Freq	140	Rail CH 4	160650000	Auto	Off	Off	2	Off
+C-Freq	141	Rail CH 5	160800000	Auto	Off	Off	2	Off
+C-Freq	142	Rail CH 6	160845000	Auto	Off	Off	2	Off
+C-Freq	143	Rail CH 7	160920000	Auto	Off	Off	2	Off
+C-Freq	144	Rail CH 8	160950000	Auto	Off	Off	2	Off
+C-Freq	145	Marine CH 10	161715000	Auto	Off	Off	2	Off
+C-Freq	146		0	Auto	Off	On	2	Off
+C-Freq	147		0	Auto	Off	On	2	Off
+C-Freq	148		0	Auto	Off	On	2	Off
+C-Freq	149		0	Auto	Off	On	2	Off
+C-Freq	150		0	Auto	Off	On	2	Off
+Conventional	4	Bank 4	Off
+C-Freq	151	CB Ch 2	26975000	Auto	Off	Off	2	Off
+C-Freq	152	CB Ch 3	26985000	Auto	Off	Off	2	Off
+C-Freq	153	CB Ch 4	27005000	Auto	Off	Off	2	Off
+C-Freq	154	CB Ch 5	27015000	Auto	Off	Off	2	Off
+C-Freq	155	CB Super Bowl	27025000	Auto	Off	Off	2	Off
+C-Freq	156	CB Ch 7	27035000	Auto	Off	Off	2	Off
+C-Freq	157	CB Ch 8	27055000	Auto	Off	Off	2	Off
+C-Freq	158	CB Ch 9 Emerg	27065000	Auto	Off	Off	2	Off
+C-Freq	159	CB Ch 10	27075000	Auto	Off	Off	2	Off
+C-Freq	160	CB Ch 11 SSB	27085000	Auto	Off	Off	2	Off
+C-Freq	161	CB Ch 12	27105000	Auto	Off	Off	2	Off
+C-Freq	162	CB Ch 13	27115000	Auto	Off	Off	2	Off
+C-Freq	163	CB Ch 14	27125000	Auto	Off	Off	2	Off
+C-Freq	164	CB Ch 15	27135000	Auto	Off	Off	2	Off
+C-Freq	165	CB Ch 16 DX	27155000	Auto	Off	Off	2	Off
+C-Freq	166	CB Ch 17	27165000	Auto	Off	Off	2	Off
+C-Freq	167	CB Ch 18	27175000	Auto	Off	Off	2	Off
+C-Freq	168	CB Ch 19 Main	27185000	Auto	Off	Off	2	Off
+C-Freq	169	CB Ch 20	27205000	Auto	Off	Off	2	Off
+C-Freq	170	CB Ch 21	27215000	Auto	Off	Off	2	Off
+C-Freq	171	CB Ch 22	27225000	Auto	Off	Off	2	Off
+C-Freq	172	CB Ch 23	27255000	Auto	Off	Off	2	Off
+C-Freq	173	CB Ch 24	27235000	Auto	Off	Off	2	Off
+C-Freq	174	CB Ch 25	27245000	Auto	Off	Off	2	Off
+C-Freq	175	CB Ch 26	27265000	Auto	Off	Off	2	Off
+C-Freq	176	CB Ch 27	27275000	Auto	Off	Off	2	Off
+C-Freq	177	CB Ch 28	27285000	Auto	Off	Off	2	Off
+C-Freq	178	CB Ch 29	27295000	Auto	Off	Off	2	Off
+C-Freq	179	CB Ch 30	27305000	Auto	Off	Off	2	Off
+C-Freq	180	CB Ch 36 SSB	27365000	Auto	Off	Off	2	Off
+C-Freq	181	CB Ch 38 LSB	27385000	Auto	Off	Off	2	Off
+C-Freq	182	Walmart/Target	464500000	Auto	Off	Off	2	Off
+C-Freq	183	Fast Food	464550000	Auto	Off	Off	2	Off
+C-Freq	184	Event Radios	467762500	Auto	Off	Off	2	Off
+C-Freq	185	School Radios	467850000	Auto	Off	Off	2	Off
+C-Freq	186	Hospital Staff	461037500	Auto	Off	Off	2	Off
+C-Freq	187	Security	464825000	Auto	Off	Off	2	Off
+C-Freq	188	Retail Ops	467812500	Auto	Off	Off	2	Off
+C-Freq	189	Stadium Ops	463762500	Auto	Off	Off	2	Off
+C-Freq	190	Event Control	461300000	Auto	Off	Off	2	Off
+C-Freq	191	Hotel Radios	462675000	Auto	Off	Off	2	Off
+C-Freq	192	Church/Venue	467925000	Auto	Off	Off	2	Off
+C-Freq	193	Maintenance	462712500	Auto	Off	Off	2	Off
+C-Freq	194	Event Staff	467875000	Auto	Off	Off	2	Off
+C-Freq	195	Worlds of Fun	464275000	Auto	Off	Off	2	Off
+C-Freq	196	School Maint	464325000	Auto	Off	Off	2	Off
+C-Freq	197	Venue Ops	467787500	Auto	Off	Off	2	Off
+C-Freq	198	General Radio	467900000	Auto	Off	Off	2	Off
+C-Freq	199	Overflow Ops	461112500	Auto	Off	Off	2	Off
+C-Freq	200	Utility Staff	464000000	Auto	Off	Off	2	Off
+Conventional	5	Bank 5	Off
+C-Freq	201	IL - N9MQW	144830000	Auto	Off	Off	2	Off
+C-Freq	202	NE - WB0QQK	145115000	Auto	Off	Off	2	Off
+C-Freq	203	MO - K0HAM	145130000	Auto	Off	Off	2	Off
+C-Freq	204	MO - K0KYZ	145170000	Auto	Off	Off	2	Off
+C-Freq	205	IL - W9ANL	145190000	Auto	Off	Off	2	Off
+C-Freq	206	IL - WB9IRL	145210000	Auto	Off	Off	2	Off
+C-Freq	207	NE - W0JJK	145235000	Auto	Off	Off	2	Off
+C-Freq	208	KS - W0CET	145270000	Auto	Off	Off	2	Off
+C-Freq	209	IA - N0WKF	145290000	Auto	Off	Off	2	Off
+C-Freq	210	SD - N0DCA	145325000	Auto	Off	Off	2	Off
+C-Freq	211	MO - KO0A	145330000	Auto	Off	Off	2	Off
+C-Freq	212	MO - N0ARS	145350000	Auto	Off	Off	2	Off
+C-Freq	213	NE - N0YMJ	145370000	Auto	Off	Off	2	Off
+C-Freq	214	IL - N9NWI	145390000	Auto	Off	Off	2	Off
+C-Freq	215	MO - K0RBR	145410000	Auto	Off	Off	2	Off
+C-Freq	216	IL - N9MQW	145430000	Auto	Off	Off	2	Off
+C-Freq	217	NE - K0BOY	145450000	Auto	Off	Off	2	Off
+C-Freq	218	KS - K0ECS	145470000	Auto	Off	Off	2	Off
+C-Freq	219	IL - WB9UGX	145490000	Auto	Off	Off	2	Off
+C-Freq	220	KS - K0DXY	146610000	Auto	Off	Off	2	Off
+C-Freq	221	MO - K0QOD	146625000	Auto	Off	Off	2	Off
+C-Freq	222	IL - W9AML	146640000	Auto	Off	Off	2	Off
+C-Freq	223	IL - WB9AET	146670000	Auto	Off	Off	2	Off
+C-Freq	224	MO - W0QMF	146685000	Auto	Off	Off	2	Off
+C-Freq	225	MO - KC0SKY	146700000	Auto	Off	Off	2	Off
+C-Freq	226	MO - N0ZS	146730000	Auto	Off	Off	2	Off
+C-Freq	227	KS - W0UK	146760000	Auto	Off	Off	2	Off
+C-Freq	228	IL - W9AIU	146790000	Auto	Off	Off	2	Off
+C-Freq	229	IL - WD9HSY	146805000	Auto	Off	Off	2	Off
+C-Freq	230	IA - K0SWI	146820000	Auto	Off	Off	2	Off
+C-Freq	231	MO - AC0HA	146835000	Auto	Off	Off	2	Off
+C-Freq	232	IL - WA9DZO	146850000	Auto	Off	Off	2	Off
+C-Freq	233	IL - K9MCE	146865000	Auto	Off	Off	2	Off
+C-Freq	234	IL - K9GFY	146880000	Auto	Off	Off	2	Off
+C-Freq	235	NE - KC0OAU	146895000	Auto	Off	Off	2	Off
+C-Freq	236	MO - W0SRC	146910000	Auto	Off	Off	2	Off
+C-Freq	237	MO - KB0UFL	146925000	Auto	Off	Off	2	Off
+C-Freq	238	KS - K0HAM	146940000	Auto	Off	Off	2	Off
+C-Freq	239	MO - KA0RFO	146955000	Auto	Off	Off	2	Off
+C-Freq	240	MO - W0WJB	146970000	Auto	Off	Off	2	Off
+C-Freq	241	KS - KD0ZKP	147000000	Auto	Off	Off	2	Off
+C-Freq	242	MO - KB0VBN	147015000	Auto	Off	Off	2	Off
+C-Freq	243	IL - AD9L	147030000	Auto	Off	Off	2	Off
+C-Freq	244	MO - WA0SDO	147030000	Auto	Off	Off	2	Off
+C-Freq	245	MO - KA0CWU	147045000	Auto	Off	Off	2	Off
+C-Freq	246	MO - W0MA	147060000	Auto	Off	Off	2	Off
+C-Freq	247	MO - KB0TLL	147075000	Auto	Off	Off	2	Off
+C-Freq	248	IL - KC9YFX	147105000	Auto	Off	Off	2	Off
+C-Freq	249	IL - W9YPC	147135000	Auto	Off	Off	2	Off
+C-Freq	250	KS - W0LB	147150000	Auto	Off	Off	2	Off
+Conventional	6	Bank 6	Off
+C-Freq	251	IL - WD9HSY	147165000	Auto	Off	Off	2	Off
+C-Freq	252	KS - K0NK	147195000	Auto	Off	Off	2	Off
+C-Freq	253	KS - W0KCK	147210000	Auto	Off	Off	2	Off
+C-Freq	254	MO - N0FLC	147225000	Auto	Off	Off	2	Off
+C-Freq	255	KS - KA0FMZ	147240000	Auto	Off	Off	2	Off
+C-Freq	256	IL - K9IM	147255000	Auto	Off	Off	2	Off
+C-Freq	257	MO - N0QVO	147270000	Auto	Off	Off	2	Off
+C-Freq	258	MO - KC0MV	147315000	Auto	Off	Off	2	Off
+C-Freq	259	IL - K9BAR	147330000	Auto	Off	Off	2	Off
+C-Freq	260	IL - K9ZM	147345000	Auto	Off	Off	2	Off
+C-Freq	261	IL - W9BZW	147360000	Auto	Off	Off	2	Off
+C-Freq	262	MO - W0SLW	147390000	Auto	Off	Off	2	Off
+C-Freq	263	IL - KC9POS	440200000	Auto	Off	Off	2	Off
+C-Freq	264	IL - W9LSO	440225000	Auto	Off	Off	2	Off
+C-Freq	265	IL - K9CSN	440275000	Auto	Off	Off	2	Off
+C-Freq	266	IL - N9LOE	440850000	Auto	Off	Off	2	Off
+C-Freq	267	IL - W9AJI	441275000	Auto	Off	Off	2	Off
+C-Freq	268	IL - W9IC	441800000	Auto	Off	Off	2	Off
+C-Freq	269	IL - KB9VR	441875000	Auto	Off	Off	2	Off
+C-Freq	270	IA - N0WKF	442025000	Auto	Off	Off	2	Off
+C-Freq	271	IL - N9HW	442050000	Auto	Off	Off	2	Off
+C-Freq	272	IA - N0GR	442075000	Auto	Off	Off	2	Off
+C-Freq	273	MO - W0SRC	442100000	Auto	Off	Off	2	Off
+C-Freq	274	KS - W0LHK	442150000	Auto	Off	Off	2	Off
+C-Freq	275	IL - W9EGA	442175000	Auto	Off	Off	2	Off
+C-Freq	276	KS - KS0KS	442200000	Auto	Off	Off	2	Off
+C-Freq	277	IL - K9HAM	442225000	Auto	Off	Off	2	Off
+C-Freq	278	IL - W9OFR	442300000	Auto	Off	Off	2	Off
+C-Freq	279	IL - KA9KEI	442375000	Auto	Off	Off	2	Off
+C-Freq	280	IL - W9AIU	442400000	Auto	Off	Off	2	Off
+C-Freq	281	KS - KS0JA	442450000	Auto	Off	Off	2	Off
+C-Freq	282	NE - WB0YLA	442500000	Auto	Off	Off	2	Off
+C-Freq	283	IL - N9OZG	442575000	Auto	Off	Off	2	Off
+C-Freq	284	IL - N9RYR	442600000	Auto	Off	Off	2	Off
+C-Freq	285	IL - W9FT	442625000	Auto	Off	Off	2	Off
+C-Freq	286	MO - KA0GFC	442700000	Auto	Off	Off	2	Off
+C-Freq	287	IL - KB9ZAM	442725000	Auto	Off	Off	2	Off
+C-Freq	288	IL - K9HAM	442775000	Auto	Off	Off	2	Off
+C-Freq	289	IL - K9HAM	442900000	Auto	Off	Off	2	Off
+C-Freq	290	MO - AA0IY	442925000	Auto	Off	Off	2	Off
+C-Freq	291	MO - KC0HJG	442950000	Auto	Off	Off	2	Off
+C-Freq	292	MO - I-435	442975000	Auto	Off	Off	2	Off
+C-Freq	293	IA - N0WKF	443025000	Auto	Off	Off	2	Off
+C-Freq	294	IL - NE9MA	443050000	Auto	Off	Off	2	Off
+C-Freq	295	IL - K9AIR	443100000	Auto	Off	Off	2	Off
+C-Freq	296	IL - N9XKY	443125000	Auto	Off	Off	2	Off
+C-Freq	297	MO - N0FLC	443150000	Auto	Off	Off	2	Off
+C-Freq	298	MO - W0WJB	443175000	Auto	Off	Off	2	Off
+C-Freq	299	IL - N9EAO	443200000	Auto	Off	Off	2	Off
+C-Freq	300	MO - W0OEM	443250000	Auto	Off	Off	2	Off
+Conventional	7	Bank 7	Off
+C-Freq	301	IL - WD9HSY	443325000	Auto	Off	Off	2	Off
+C-Freq	302	NE - WB0QQK	443350000	Auto	Off	Off	2	Off
+C-Freq	303	IL - WI9K	443375000	Auto	Off	Off	2	Off
+C-Freq	304	MO - W0KE	443450000	Auto	Off	Off	2	Off
+C-Freq	305	MO - WD0EFP	443475000	Auto	Off	Off	2	Off
+C-Freq	306	MO - KC0VA	443500000	Auto	Off	Off	2	Off
+C-Freq	307	KS - K0GXL	443525000	Auto	Off	Off	2	Off
+C-Freq	308	IL - K9IYP	443575000	Auto	Off	Off	2	Off
+C-Freq	309	IL - KD9FA	443600000	Auto	Off	Off	2	Off
+C-Freq	310	MO - W0JD	443700000	Auto	Off	Off	2	Off
+C-Freq	311	MO - K0AMC	443725000	Auto	Off	Off	2	Off
+C-Freq	312	MO - WA0NQA	443775000	Auto	Off	Off	2	Off
+C-Freq	313	IL - K9HGX	443800000	Auto	Off	Off	2	Off
+C-Freq	314	IL - N9NWI	443825000	Auto	Off	Off	2	Off
+C-Freq	315	MO - KB9TQJ	443850000	Auto	Off	Off	2	Off
+C-Freq	316	IL - N9ATO	443900000	Auto	Off	Off	2	Off
+C-Freq	317	KS - WA0VRS	443925000	Auto	Off	Off	2	Off
+C-Freq	318	MO - KM0HP	443950000	Auto	Off	Off	2	Off
+C-Freq	319	NE - KC0YUR	443975000	Auto	Off	Off	2	Off
+C-Freq	320	MO - K0CEH	444000000	Auto	Off	Off	2	Off
+C-Freq	321	MO - WB0QXW	444150000	Auto	Off	Off	2	Off
+C-Freq	322	IL - N9RBQ	444175000	Auto	Off	Off	2	Off
+C-Freq	323	MO - W0RMS	444200000	Auto	Off	Off	2	Off
+C-Freq	324	IL - K9MCE	444250000	Auto	Off	Off	2	Off
+C-Freq	325	MO - KF0FPF	444275000	Auto	Off	Off	2	Off
+C-Freq	326	IA - N0WKF	444325000	Auto	Off	Off	2	Off
+C-Freq	327	MO - N0AAP	444350000	Auto	Off	Off	2	Off
+C-Freq	328	NE - KD0PGV	444375000	Auto	Off	Off	2	Off
+C-Freq	329	IL - KC9GGR	444425000	Auto	Off	Off	2	Off
+C-Freq	330	IL - W9BXR	444450000	Auto	Off	Off	2	Off
+C-Freq	331	MO - W0ECA	444475000	Auto	Off	Off	2	Off
+C-Freq	332	NE - WB0YLA	444500000	Auto	Off	Off	2	Off
+C-Freq	333	MO - KM0HP	444525000	Auto	Off	Off	2	Off
+C-Freq	334	IL - W9WIL	444550000	Auto	Off	Off	2	Off
+C-Freq	335	IL - KC9ZI	444575000	Auto	Off	Off	2	Off
+C-Freq	336	NE - W0MAO	444625000	Auto	Off	Off	2	Off
+C-Freq	337	NE - K0BOY	444650000	Auto	Off	Off	2	Off
+C-Freq	338	MO - KA0GFC	444700000	Auto	Off	Off	2	Off
+C-Freq	339	IL - WA9PAC	444775000	Auto	Off	Off	2	Off
+C-Freq	340	IL - W9AZ	444800000	Auto	Off	Off	2	Off
+C-Freq	341	IL - WD9HGO	444850000	Auto	Off	Off	2	Off
+C-Freq	342	IL - K9XD	444875000	Auto	Off	Off	2	Off
+C-Freq	343	IL - W9OAR	444900000	Auto	Off	Off	2	Off
+C-Freq	344	MO - KB0QWQ	444925000	Auto	Off	Off	2	Off
+C-Freq	345	IL - W9AML	444950000	Auto	Off	Off	2	Off
+C-Freq	346	IL - N9MQW	449700000	Auto	Off	Off	2	Off
+C-Freq	347		0	Auto	Off	Off	2	Off
+C-Freq	348		0	Auto	Off	Off	2	Off
+C-Freq	349		0	Auto	Off	Off	2	Off
+C-Freq	350		0	Auto	Off	Off	2	Off
+Conventional	8	Bank 8	On
+C-Freq	351		0	Auto	Off	Off	2	Off
+C-Freq	352		0	Auto	Off	Off	2	Off
+C-Freq	353		0	Auto	Off	Off	2	Off
+C-Freq	354		0	Auto	Off	Off	2	Off
+C-Freq	355		0	Auto	Off	Off	2	Off
+C-Freq	356		0	Auto	Off	Off	2	Off
+C-Freq	357		0	Auto	Off	Off	2	Off
+C-Freq	358		0	Auto	Off	Off	2	Off
+C-Freq	359		0	Auto	Off	Off	2	Off
+C-Freq	360		0	Auto	Off	Off	2	Off
+C-Freq	361		0	Auto	Off	Off	2	Off
+C-Freq	362		0	Auto	Off	Off	2	Off
+C-Freq	363		0	Auto	Off	Off	2	Off
+C-Freq	364		0	Auto	Off	Off	2	Off
+C-Freq	365		0	Auto	Off	Off	2	Off
+C-Freq	366		0	Auto	Off	Off	2	Off
+C-Freq	367		0	Auto	Off	Off	2	Off
+C-Freq	368		0	Auto	Off	Off	2	Off
+C-Freq	369		0	Auto	Off	Off	2	Off
+C-Freq	370		0	Auto	Off	Off	2	Off
+C-Freq	371		0	Auto	Off	Off	2	Off
+C-Freq	372		0	Auto	Off	Off	2	Off
+C-Freq	373		0	Auto	Off	Off	2	Off
+C-Freq	374		0	Auto	Off	Off	2	Off
+C-Freq	375		0	Auto	Off	Off	2	Off
+C-Freq	376		0	Auto	Off	Off	2	Off
+C-Freq	377		0	Auto	Off	Off	2	Off
+C-Freq	378		0	Auto	Off	Off	2	Off
+C-Freq	379		0	Auto	Off	Off	2	Off
+C-Freq	380		0	Auto	Off	Off	2	Off
+C-Freq	381		0	Auto	Off	Off	2	Off
+C-Freq	382		0	Auto	Off	Off	2	Off
+C-Freq	383		0	Auto	Off	Off	2	Off
+C-Freq	384		0	Auto	Off	Off	2	Off
+C-Freq	385		0	Auto	Off	Off	2	Off
+C-Freq	386		0	Auto	Off	Off	2	Off
+C-Freq	387		0	Auto	Off	Off	2	Off
+C-Freq	388		0	Auto	Off	Off	2	Off
+C-Freq	389		0	Auto	Off	Off	2	Off
+C-Freq	390		0	Auto	Off	Off	2	Off
+C-Freq	391		0	Auto	Off	Off	2	Off
+C-Freq	392		0	Auto	Off	Off	2	Off
+C-Freq	393		0	Auto	Off	Off	2	Off
+C-Freq	394		0	Auto	Off	Off	2	Off
+C-Freq	395		0	Auto	Off	Off	2	Off
+C-Freq	396		0	Auto	Off	Off	2	Off
+C-Freq	397		0	Auto	Off	Off	2	Off
+C-Freq	398		0	Auto	Off	Off	2	Off
+C-Freq	399		0	Auto	Off	Off	2	Off
+C-Freq	400		0	Auto	Off	Off	2	Off
+Conventional	9	Bank 9	On
+C-Freq	401		0	Auto	Off	Off	2	Off
+C-Freq	402		0	Auto	Off	Off	2	Off
+C-Freq	403		0	Auto	Off	Off	2	Off
+C-Freq	404		0	Auto	Off	Off	2	Off
+C-Freq	405		0	Auto	Off	Off	2	Off
+C-Freq	406		0	Auto	Off	Off	2	Off
+C-Freq	407		0	Auto	Off	Off	2	Off
+C-Freq	408		0	Auto	Off	Off	2	Off
+C-Freq	409		0	Auto	Off	Off	2	Off
+C-Freq	410		0	Auto	Off	Off	2	Off
+C-Freq	411		0	Auto	Off	Off	2	Off
+C-Freq	412		0	Auto	Off	Off	2	Off
+C-Freq	413		0	Auto	Off	Off	2	Off
+C-Freq	414		0	Auto	Off	Off	2	Off
+C-Freq	415		0	Auto	Off	Off	2	Off
+C-Freq	416		0	Auto	Off	Off	2	Off
+C-Freq	417		0	Auto	Off	Off	2	Off
+C-Freq	418		0	Auto	Off	Off	2	Off
+C-Freq	419		0	Auto	Off	Off	2	Off
+C-Freq	420		0	Auto	Off	Off	2	Off
+C-Freq	421		0	Auto	Off	Off	2	Off
+C-Freq	422		0	Auto	Off	Off	2	Off
+C-Freq	423		0	Auto	Off	Off	2	Off
+C-Freq	424		0	Auto	Off	Off	2	Off
+C-Freq	425		0	Auto	Off	Off	2	Off
+C-Freq	426		0	Auto	Off	Off	2	Off
+C-Freq	427		0	Auto	Off	Off	2	Off
+C-Freq	428		0	Auto	Off	Off	2	Off
+C-Freq	429		0	Auto	Off	Off	2	Off
+C-Freq	430		0	Auto	Off	Off	2	Off
+C-Freq	431		0	Auto	Off	Off	2	Off
+C-Freq	432		0	Auto	Off	Off	2	Off
+C-Freq	433		0	Auto	Off	Off	2	Off
+C-Freq	434		0	Auto	Off	Off	2	Off
+C-Freq	435		0	Auto	Off	Off	2	Off
+C-Freq	436		0	Auto	Off	Off	2	Off
+C-Freq	437		0	Auto	Off	Off	2	Off
+C-Freq	438		0	Auto	Off	Off	2	Off
+C-Freq	439		0	Auto	Off	Off	2	Off
+C-Freq	440		0	Auto	Off	Off	2	Off
+C-Freq	441		0	Auto	Off	Off	2	Off
+C-Freq	442		0	Auto	Off	Off	2	Off
+C-Freq	443		0	Auto	Off	Off	2	Off
+C-Freq	444		0	Auto	Off	Off	2	Off
+C-Freq	445		0	Auto	Off	Off	2	Off
+C-Freq	446		0	Auto	Off	Off	2	Off
+C-Freq	447		0	Auto	Off	Off	2	Off
+C-Freq	448		0	Auto	Off	Off	2	Off
+C-Freq	449		0	Auto	Off	Off	2	Off
+C-Freq	450		0	Auto	Off	Off	2	Off
+Conventional	10	Bank 10	On
+C-Freq	451		0	Auto	Off	Off	2	Off
+C-Freq	452		0	Auto	Off	Off	2	Off
+C-Freq	453		0	Auto	Off	Off	2	Off
+C-Freq	454		0	Auto	Off	Off	2	Off
+C-Freq	455		0	Auto	Off	Off	2	Off
+C-Freq	456		0	Auto	Off	Off	2	Off
+C-Freq	457		0	Auto	Off	Off	2	Off
+C-Freq	458		0	Auto	Off	Off	2	Off
+C-Freq	459		0	Auto	Off	Off	2	Off
+C-Freq	460		0	Auto	Off	Off	2	Off
+C-Freq	461		0	Auto	Off	Off	2	Off
+C-Freq	462		0	Auto	Off	Off	2	Off
+C-Freq	463		0	Auto	Off	Off	2	Off
+C-Freq	464		0	Auto	Off	Off	2	Off
+C-Freq	465		0	Auto	Off	Off	2	Off
+C-Freq	466		0	Auto	Off	Off	2	Off
+C-Freq	467		0	Auto	Off	Off	2	Off
+C-Freq	468		0	Auto	Off	Off	2	Off
+C-Freq	469		0	Auto	Off	Off	2	Off
+C-Freq	470		0	Auto	Off	Off	2	Off
+C-Freq	471		0	Auto	Off	Off	2	Off
+C-Freq	472		0	Auto	Off	Off	2	Off
+C-Freq	473		0	Auto	Off	Off	2	Off
+C-Freq	474		0	Auto	Off	Off	2	Off
+C-Freq	475		0	Auto	Off	Off	2	Off
+C-Freq	476		0	Auto	Off	Off	2	Off
+C-Freq	477		0	Auto	Off	Off	2	Off
+C-Freq	478		0	Auto	Off	Off	2	Off
+C-Freq	479		0	Auto	Off	Off	2	Off
+C-Freq	480		0	Auto	Off	Off	2	Off
+C-Freq	481		0	Auto	Off	Off	2	Off
+C-Freq	482		0	Auto	Off	Off	2	Off
+C-Freq	483		0	Auto	Off	Off	2	Off
+C-Freq	484		0	Auto	Off	Off	2	Off
+C-Freq	485		0	Auto	Off	Off	2	Off
+C-Freq	486		0	Auto	Off	Off	2	Off
+C-Freq	487		0	Auto	Off	Off	2	Off
+C-Freq	488		0	Auto	Off	Off	2	Off
+C-Freq	489		0	Auto	Off	Off	2	Off
+C-Freq	490		0	Auto	Off	Off	2	Off
+C-Freq	491		0	Auto	Off	Off	2	Off
+C-Freq	492		0	Auto	Off	Off	2	Off
+C-Freq	493		0	Auto	Off	Off	2	Off
+C-Freq	494		0	Auto	Off	Off	2	Off
+C-Freq	495		0	Auto	Off	Off	2	Off
+C-Freq	496		0	Auto	Off	Off	2	Off
+C-Freq	497		0	Auto	Off	Off	2	Off
+C-Freq	498		0	Auto	Off	Off	2	Off
+C-Freq	499		0	Auto	Off	Off	2	Off
+C-Freq	500		0	Auto	Off	Off	2	Off
