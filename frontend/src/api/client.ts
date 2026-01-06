@@ -79,6 +79,17 @@ export class ScannerAPIClient {
     return this.request<DeviceInfo>("/device/info");
   }
 
+  async getBanks(): Promise<{ banks: boolean[] }> {
+    return this.request<{ banks: boolean[] }>("/banks");
+  }
+
+  async setBanks(banks: boolean[]): Promise<{ banks: boolean[] }> {
+    return this.request<{ banks: boolean[] }>("/banks", {
+      method: "POST",
+      body: JSON.stringify({ banks }),
+    });
+  }
+
   async getChannels(bank?: number): Promise<ChannelData[]> {
     const query = bank ? `?bank=${bank}` : "";
     return this.request<ChannelData[]>(`/memory/channels${query}`);

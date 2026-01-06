@@ -41,6 +41,14 @@ class ScannerDriver(ABC):
     async def detect_model(self) -> str:
         """Return model string (MDL command)."""
 
+    async def get_banks(self) -> list[bool]:
+        """Return enabled/disabled scan banks (True = enabled)."""
+        raise NotImplementedError
+
+    async def set_banks(self, banks: list[bool]) -> None:
+        """Set enabled/disabled scan banks (True = enabled)."""
+        raise NotImplementedError
+
     @staticmethod
     def parse_key_value_pairs(payload: str) -> Dict[str, str]:
         fields: Dict[str, str] = {}

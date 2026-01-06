@@ -179,6 +179,32 @@ class BC125ATDriver(ScannerDriver):
         self._mode = self._pre_program_mode or self._mode
         self._pre_program_mode = None
 
+    async def get_banks(self) -> list[bool]:
+        await self._enter_program_mode()
+        try:
+            response = await self._send("SCG", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        parts = [part.strip() for part in response.split(",")]
+        if parts and parts[0] == "SCG":
+            parts = parts[1:]
+        flags = parts[0] if parts else ""
+        if len(flags) != 10 or not all(ch in ("0", "1") for ch in flags):
+            raise ValueError(f"Invalid SCG response: {response}")
+        return [ch == "0" for ch in flags]
+
+    async def set_banks(self, banks: list[bool]) -> None:
+        if len(banks) != 10:
+            raise ValueError("banks must contain 10 values")
+        flags = "".join("0" if enabled else "1" for enabled in banks)
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"SCG,{flags}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        if not self._is_ok_response(response):
+            raise ValueError(f"SCG set failed: {response}")
+
     def _parse_channel_response(self, index: int, response: str) -> ChannelData:
         parts = [part.strip() for part in response.split(",")]
         if parts and parts[0] == "CIN":

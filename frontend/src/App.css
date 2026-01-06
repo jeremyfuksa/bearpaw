@@ -9,8 +9,8 @@
   display: flex;
   flex-direction: column;
   gap: 11px;
-  align-items: flex-start;
-  width: min(509px, calc(100vw - 64px));
+  align-items: stretch;
+  width: min(980px, calc(100vw - 64px));
 }
 
 .mvp-ui--disabled {
@@ -57,11 +57,20 @@
   line-height: normal;
 }
 
-.mvp-holdLabel {
-  margin: 0;
+.mvp-holdToggle {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px 12px;
   font-size: 12px;
-  font-weight: 400;
-  line-height: normal;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.mvp-holdToggle--active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-text);
 }
 
 .mvp-display {
@@ -106,25 +115,63 @@
   display: block;
 }
 
-.mvp-controls {
-  display: flex;
-  justify-content: flex-end;
+.mvp-bankControls {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 8px;
   width: 100%;
 }
 
-.mvp-scanToggle {
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: normal;
-  color: var(--color-on-accent);
+.mvp-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  gap: 16px;
+  width: 100%;
 }
 
-.mvp-scanToggle:disabled {
+.mvp-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mvp-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+
+.mvp-bankToggle {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mvp-bankToggle--active {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  color: var(--color-on-accent);
+  border-color: transparent;
+}
+
+.mvp-bankToggle:disabled,
+.mvp-holdToggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (max-width: 680px) {
+  .mvp-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mvp-bankControls {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 .mvp-hitLog {
