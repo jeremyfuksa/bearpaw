@@ -95,6 +95,14 @@ class StateStore:
         with self._lock:
             return self._shadow_state.channels.get(index)
 
+    def has_shadow_channels(self) -> bool:
+        with self._lock:
+            return bool(self._shadow_state.channels)
+
+    def is_shadow_dirty(self) -> bool:
+        with self._lock:
+            return self._shadow_state.dirty
+
 
 def build_persistence(kind: str, path: str) -> object:
     if kind == "sqlite":
