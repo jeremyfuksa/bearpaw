@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,6 +32,7 @@ from scanner_bridge.websocket import WebSocketManager
 from scanner_bridge.exporters.text_exporter import TextFileExporter
 from scanner_bridge.exporters.json_stream import JsonEventStream
 from scanner_bridge.exporters.mqtt import MqttExporter
+from scanner_bridge.exporters.bc125at_ss import export_bc125at_ss
 
 logger = logging.getLogger("scanner_bridge")
 
@@ -376,6 +377,21 @@ def create_app(
             return {"status": "no_task"}
         runtime.sync_task.cancel()
         return {"status": "cancelling", "task_id": runtime.sync_task.task_id}
+
+    @app.get("/api/v1/memory/export/bc125at_ss")
+    async def export_bc125at_ss_file() -> Response:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        if not isinstance(driver, BC125ATDriver):
+            raise HTTPException(status_code=400, detail="unsupported_model")
+        if runtime.sync_task:
+            raise HTTPException(status_code=409, detail="sync_in_progress")
+        region = "USA"
+        if runtime.device_info.model and "UBC" in runtime.device_info.model:
+            region = "EUR"
+        payload = await export_bc125at_ss(driver, region=region)
+        headers = {"Content-Disposition": "attachment; filename=scanner.bc125at_ss"}
+        return Response(content=payload, media_type="text/plain", headers=headers)
 
     @app.get("/api/v1/debug/glg")
     async def debug_glg() -> Dict[str, str]:

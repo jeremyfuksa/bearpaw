@@ -449,6 +449,26 @@ Start full memory sync from scanner (read all channels).
 
 ---
 
+#### GET /memory/export/bc125at_ss
+
+Download full scanner memory in Uniden `.bc125at_ss` format.
+
+**Response:** `200 OK` (text/plain)
+
+**Headers:**
+- `Content-Disposition: attachment; filename=scanner.bc125at_ss`
+
+**Behavior:**
+- Reads all programming settings and channels from the scanner.
+- Runs in program mode; do not use while a sync is in progress.
+
+**Errors:**
+- `400 Bad Request` if scanner model is not BC125AT
+- `409 Conflict` if a memory sync is in progress
+- `503 Service Unavailable` if scanner disconnected
+
+---
+
 #### DELETE /memory/sync/{task_id}
 
 Cancel in-progress memory sync.

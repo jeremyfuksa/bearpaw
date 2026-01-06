@@ -25,6 +25,12 @@
   width: 100%;
 }
 
+.mvp-headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .mvp-headerLeft {
   display: flex;
   align-items: center;
@@ -58,6 +64,16 @@
 }
 
 .mvp-holdToggle {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.mvp-exportButton {
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: 999px;
@@ -159,7 +175,8 @@
 }
 
 .mvp-bankToggle:disabled,
-.mvp-holdToggle:disabled {
+.mvp-holdToggle:disabled,
+.mvp-exportButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -165,6 +165,9 @@ class BC125ATDriver(ScannerDriver):
         await self._exit_program_mode()
         return response
 
+    async def send_program_command(self, command: str) -> str:
+        return await self._send(command, PRIORITY_BACKGROUND)
+
     async def _enter_program_mode(self) -> None:
         self._pre_program_mode = self._mode
         if self._mode == "SCAN":

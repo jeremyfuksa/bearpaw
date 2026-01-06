@@ -73,6 +73,18 @@ function SignalIcon({ bars }: { bars: number }) {
   );
 }
 
+function downloadTextFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function App() {
   const api = useAPI();
   const { ws, connected, connecting } = useWebSocket();
@@ -90,6 +102,7 @@ function App() {
   const [toggleBusy, setToggleBusy] = useState(false);
   const [banks, setBanks] = useState<boolean[]>(() => Array.from({ length: 10 }, () => true));
   const [banksBusy, setBanksBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
   const lastHitOpenRef = useRef(false);
@@ -363,6 +376,20 @@ function App() {
     [api, banks, banksBusy]
   );
 
+  const handleExport = useCallback(async () => {
+    if (!deviceConnected || exportBusy || syncInProgressRef.current) return;
+    setExportBusy(true);
+    try {
+      const payload = await api.exportBc125atSs();
+      const model = deviceInfo?.model?.trim() || "scanner";
+      downloadTextFile(payload, `${model}.bc125at_ss`);
+    } catch (error) {
+      console.warn("Failed to export scanner memory", error);
+    } finally {
+      setExportBusy(false);
+    }
+  }, [api, deviceConnected, deviceInfo?.model, exportBusy]);
+
   return (
     <div className="mvp">
       <div
@@ -378,13 +405,22 @@ function App() {
                   {statusText}
                 </p>
               </div>
-              <button
-                className={`mvp-holdToggle${isHold ? " mvp-holdToggle--active" : ""}`}
-                onClick={handleToggle}
-                disabled={(!deviceConnected && !connected) || toggleBusy}
-              >
-                {isHold ? "Scan" : "Hold"}
-              </button>
+              <div className="mvp-headerActions">
+                <button
+                  className="mvp-exportButton"
+                  onClick={handleExport}
+                  disabled={(!deviceConnected && !connected) || exportBusy || syncInProgressRef.current}
+                >
+                  Read
+                </button>
+                <button
+                  className={`mvp-holdToggle${isHold ? " mvp-holdToggle--active" : ""}`}
+                  onClick={handleToggle}
+                  disabled={(!deviceConnected && !connected) || toggleBusy}
+                >
+                  {isHold ? "Scan" : "Hold"}
+                </button>
+              </div>
             </header>
 
             <div className="mvp-display" role="status" aria-label="Scanner display">

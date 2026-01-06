@@ -49,6 +49,31 @@ export class ScannerAPIClient {
     return response.json() as Promise<T>;
   }
 
+  private async requestText(endpoint: string, options?: RequestInit): Promise<string> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      ...options,
+      headers: {
+        ...options?.headers,
+      },
+    });
+
+    if (!response.ok) {
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = await response.text();
+      }
+      const message =
+        typeof payload === "object" && payload && "message" in payload
+          ? String((payload as { message?: string }).message)
+          : response.statusText;
+      throw new APIError(message || "Request failed", response.status, payload);
+    }
+
+    return response.text();
+  }
+
   async sendHold(): Promise<void> {
     await this.request("/commands/hold", { method: "POST" });
   }
@@ -99,5 +124,9 @@ export class ScannerAPIClient {
     return this.request<{ status?: string; task_id?: string }>("/memory/sync", {
       method: "POST",
     });
+  }
+
+  async exportBc125atSs(): Promise<string> {
+    return this.requestText("/memory/export/bc125at_ss");
   }
 }

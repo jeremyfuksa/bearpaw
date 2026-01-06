@@ -507,6 +507,7 @@ class CommandScheduler:
 | GET | `/memory/channels` | `?bank=1` | List[ChannelData] | Get channel list |
 | GET | `/memory/channels/{id}` | - | ChannelData | Get specific channel |
 | POST | `/memory/sync` | - | `{"status": "started", "task_id": "..."}` | Start full sync |
+| GET | `/memory/export/bc125at_ss` | - | File (text/plain) | Download full BC125AT memory file |
 
 **Error Responses:**
 
