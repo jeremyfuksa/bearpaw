@@ -87,6 +87,73 @@ export interface LockoutsResponse {
   temporary_channels: { channel: number; frequency: number }[];
 }
 
+export interface BacklightSettings {
+  event: string;
+}
+
+export interface BatterySettings {
+  charge_time: number;
+}
+
+export interface KeyBeepSettings {
+  level: number;
+  lock: boolean;
+}
+
+export interface PrioritySettings {
+  mode: number;
+}
+
+export interface SearchSettings {
+  delay: number;
+  code_search: boolean;
+}
+
+export interface CloseCallSettings {
+  mode: number;
+  alert_beep: boolean;
+  alert_light: boolean;
+  band: boolean[];
+  lockout: boolean;
+}
+
+export interface ServiceSearchSettings {
+  groups: boolean[];
+}
+
+export interface CustomSearchSettings {
+  groups: boolean[];
+}
+
+export interface CustomSearchRange {
+  index: number;
+  lower: number;
+  upper: number;
+}
+
+export interface WeatherSettings {
+  priority: boolean;
+}
+
+export interface ContrastSettings {
+  level: number;
+}
+
+export interface ConfigSnapshot {
+  firmware?: string | null;
+  backlight?: BacklightSettings | null;
+  battery?: BatterySettings | null;
+  key_beep?: KeyBeepSettings | null;
+  priority?: PrioritySettings | null;
+  search?: SearchSettings | null;
+  close_call?: CloseCallSettings | null;
+  service_search?: ServiceSearchSettings | null;
+  custom_search?: CustomSearchSettings | null;
+  custom_search_ranges?: CustomSearchRange[];
+  weather?: WeatherSettings | null;
+  contrast?: ContrastSettings | null;
+}
+
 export interface Notification {
   id: string;
   type: "success" | "error" | "info" | "warning";

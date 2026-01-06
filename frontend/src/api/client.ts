@@ -1,4 +1,21 @@
-import type { ChannelData, DeviceInfo, LiveState, LockoutsResponse } from "../types";
+import type {
+  BacklightSettings,
+  BatterySettings,
+  ChannelData,
+  CloseCallSettings,
+  ConfigSnapshot,
+  ContrastSettings,
+  CustomSearchRange,
+  CustomSearchSettings,
+  DeviceInfo,
+  KeyBeepSettings,
+  LiveState,
+  LockoutsResponse,
+  PrioritySettings,
+  SearchSettings,
+  ServiceSearchSettings,
+  WeatherSettings,
+} from "../types";
 
 export class APIError extends Error {
   status: number;
@@ -149,6 +166,142 @@ export class ScannerAPIClient {
     });
   }
 
+  async getSquelch(): Promise<{ level: number }> {
+    return this.request<{ level: number }>("/squelch");
+  }
+
+  async setSquelch(level: number): Promise<void> {
+    await this.request("/squelch", {
+      method: "POST",
+      body: JSON.stringify({ level }),
+    });
+  }
+
+  async getConfig(): Promise<ConfigSnapshot> {
+    return this.request<ConfigSnapshot>("/config");
+  }
+
+  async getBacklight(): Promise<BacklightSettings> {
+    return this.request<BacklightSettings>("/settings/backlight");
+  }
+
+  async setBacklight(event: string): Promise<void> {
+    await this.request("/settings/backlight", {
+      method: "POST",
+      body: JSON.stringify({ event }),
+    });
+  }
+
+  async getBatterySettings(): Promise<BatterySettings> {
+    return this.request<BatterySettings>("/settings/battery");
+  }
+
+  async setBatterySettings(charge_time: number): Promise<void> {
+    await this.request("/settings/battery", {
+      method: "POST",
+      body: JSON.stringify({ charge_time }),
+    });
+  }
+
+  async getKeyBeepSettings(): Promise<KeyBeepSettings> {
+    return this.request<KeyBeepSettings>("/settings/key-beep");
+  }
+
+  async setKeyBeepSettings(level: number, lock: boolean): Promise<void> {
+    await this.request("/settings/key-beep", {
+      method: "POST",
+      body: JSON.stringify({ level, lock }),
+    });
+  }
+
+  async getPrioritySettings(): Promise<PrioritySettings> {
+    return this.request<PrioritySettings>("/settings/priority");
+  }
+
+  async setPrioritySettings(mode: number): Promise<void> {
+    await this.request("/settings/priority", {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    });
+  }
+
+  async getSearchSettings(): Promise<SearchSettings> {
+    return this.request<SearchSettings>("/settings/search");
+  }
+
+  async setSearchSettings(delay: number, code_search: boolean): Promise<void> {
+    await this.request("/settings/search", {
+      method: "POST",
+      body: JSON.stringify({ delay, code_search }),
+    });
+  }
+
+  async getCloseCallSettings(): Promise<CloseCallSettings> {
+    return this.request<CloseCallSettings>("/settings/close-call");
+  }
+
+  async setCloseCallSettings(payload: CloseCallSettings): Promise<void> {
+    await this.request("/settings/close-call", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getServiceSearchSettings(): Promise<ServiceSearchSettings> {
+    return this.request<ServiceSearchSettings>("/settings/service-search");
+  }
+
+  async setServiceSearchSettings(groups: boolean[]): Promise<void> {
+    await this.request("/settings/service-search", {
+      method: "POST",
+      body: JSON.stringify({ groups }),
+    });
+  }
+
+  async getCustomSearchSettings(): Promise<CustomSearchSettings> {
+    return this.request<CustomSearchSettings>("/settings/custom-search");
+  }
+
+  async setCustomSearchSettings(groups: boolean[]): Promise<void> {
+    await this.request("/settings/custom-search", {
+      method: "POST",
+      body: JSON.stringify({ groups }),
+    });
+  }
+
+  async getCustomSearchRange(index: number): Promise<CustomSearchRange> {
+    return this.request<CustomSearchRange>(`/settings/custom-search/ranges/${index}`);
+  }
+
+  async setCustomSearchRange(index: number, lower: number, upper: number): Promise<void> {
+    await this.request(`/settings/custom-search/ranges/${index}`, {
+      method: "POST",
+      body: JSON.stringify({ index, lower, upper }),
+    });
+  }
+
+  async getWeatherSettings(): Promise<WeatherSettings> {
+    return this.request<WeatherSettings>("/settings/weather");
+  }
+
+  async setWeatherSettings(priority: boolean): Promise<void> {
+    await this.request("/settings/weather", {
+      method: "POST",
+      body: JSON.stringify({ priority }),
+    });
+  }
+
+  async getContrastSettings(): Promise<ContrastSettings> {
+    return this.request<ContrastSettings>("/settings/contrast");
+  }
+
+  async setContrastSettings(level: number): Promise<void> {
+    await this.request("/settings/contrast", {
+      method: "POST",
+      body: JSON.stringify({ level }),
+    });
+  }
+
   async getLockouts(options?: { includeFrequencies?: boolean }): Promise<LockoutsResponse> {
     const include = options?.includeFrequencies ?? true;
     const query = include ? "" : "?include_frequencies=false";
@@ -169,10 +322,13 @@ export class ScannerAPIClient {
     );
   }
 
-  async clearChannelLockouts(): Promise<{ cleared: number[]; failed: number[] }> {
+  async clearChannelLockouts(channels?: number[]): Promise<{ cleared: number[]; failed: number[] }> {
     return this.request<{ cleared: number[]; failed: number[] }>(
       "/lockouts/channels/clear",
-      { method: "POST" }
+      {
+        method: "POST",
+        body: JSON.stringify({ channels: channels ?? [] }),
+      }
     );
   }
 

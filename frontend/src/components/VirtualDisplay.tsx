@@ -48,17 +48,15 @@ export function VirtualDisplay({
   const spinnerIcon = withCurrentColor(spinnerIconRaw);
   const usbIcon = withCurrentColor(usbIconRaw);
   const plugIcon = withCurrentColor(plugIconRaw);
-  const channelNumber =
-    liveState?.channel && liveState.channel > 0 ? liveState.channel : null;
   const effectiveState =
     debouncedSignal && lastHitRef.current
       ? {
-          frequency: lastHitRef.current.frequency,
-          modulation: lastHitRef.current.modulation,
-          channel: lastHitRef.current.channel ?? null,
-          alpha_tag: lastHitRef.current.alphaTag,
-          rssi: lastHitRef.current.rssi,
-        }
+        frequency: lastHitRef.current.frequency,
+        modulation: lastHitRef.current.modulation,
+        channel: lastHitRef.current.channel ?? null,
+        alpha_tag: lastHitRef.current.alphaTag,
+        rssi: lastHitRef.current.rssi,
+      }
       : liveState;
   const effectiveChannel =
     effectiveState?.channel && effectiveState.channel > 0 ? effectiveState.channel : null;

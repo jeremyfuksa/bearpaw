@@ -49,6 +49,14 @@ class ScannerDriver(ABC):
         """Set volume level (device-specific)."""
         raise NotImplementedError
 
+    async def get_squelch(self) -> int:
+        """Return squelch level (device-specific)."""
+        raise NotImplementedError
+
+    async def set_squelch(self, level: int) -> bool:
+        """Set squelch level (device-specific)."""
+        raise NotImplementedError
+
     async def toggle_channel_lockout(self, index: int) -> ChannelData:
         """Toggle lockout for a specific memory channel."""
         raise NotImplementedError
@@ -67,6 +75,105 @@ class ScannerDriver(ABC):
 
     async def set_frequency_lockout(self, frequency_raw: int, locked: bool) -> bool:
         """Set global frequency lockout state. Returns True on success."""
+        raise NotImplementedError
+
+    async def get_firmware_version(self) -> str:
+        """Return firmware version (device-specific)."""
+        raise NotImplementedError
+
+    async def get_backlight(self) -> str:
+        """Return backlight event mode."""
+        raise NotImplementedError
+
+    async def set_backlight(self, event: str) -> bool:
+        """Set backlight event mode."""
+        raise NotImplementedError
+
+    async def get_battery_charge_time(self) -> int:
+        """Return battery charge time setting."""
+        raise NotImplementedError
+
+    async def set_battery_charge_time(self, charge_time: int) -> bool:
+        """Set battery charge time setting."""
+        raise NotImplementedError
+
+    async def get_key_beep_settings(self) -> tuple[int, bool]:
+        """Return key beep level and key lock flag."""
+        raise NotImplementedError
+
+    async def set_key_beep_settings(self, level: int, lock: bool) -> bool:
+        """Set key beep level and key lock flag."""
+        raise NotImplementedError
+
+    async def get_priority_mode(self) -> int:
+        """Return priority mode."""
+        raise NotImplementedError
+
+    async def set_priority_mode(self, mode: int) -> bool:
+        """Set priority mode."""
+        raise NotImplementedError
+
+    async def get_search_settings(self) -> tuple[int, bool]:
+        """Return search/close call delay and code search flag."""
+        raise NotImplementedError
+
+    async def set_search_settings(self, delay: int, code_search: bool) -> bool:
+        """Set search/close call delay and code search flag."""
+        raise NotImplementedError
+
+    async def get_close_call_settings(self) -> tuple[int, bool, bool, list[bool], bool]:
+        """Return close call settings."""
+        raise NotImplementedError
+
+    async def set_close_call_settings(
+        self,
+        mode: int,
+        alert_beep: bool,
+        alert_light: bool,
+        band: list[bool],
+        lockout: bool,
+    ) -> bool:
+        """Set close call settings."""
+        raise NotImplementedError
+
+    async def get_service_search_groups(self) -> list[bool]:
+        """Return service search enabled groups."""
+        raise NotImplementedError
+
+    async def set_service_search_groups(self, groups: list[bool]) -> bool:
+        """Set service search enabled groups."""
+        raise NotImplementedError
+
+    async def get_custom_search_groups(self) -> list[bool]:
+        """Return custom search enabled groups."""
+        raise NotImplementedError
+
+    async def set_custom_search_groups(self, groups: list[bool]) -> bool:
+        """Set custom search enabled groups."""
+        raise NotImplementedError
+
+    async def get_custom_search_range(self, index: int) -> tuple[float, float]:
+        """Return custom search range in MHz."""
+        raise NotImplementedError
+
+    async def set_custom_search_range(self, index: int, lower: float, upper: float) -> bool:
+        """Set custom search range in MHz."""
+        raise NotImplementedError
+
+    async def get_weather_priority(self) -> bool:
+        """Return weather alert priority setting."""
+        raise NotImplementedError
+
+    async def set_weather_priority(self, priority: bool) -> bool:
+        """Set weather alert priority setting."""
+        raise NotImplementedError
+
+    async def get_contrast(self) -> int:
+        """Return LCD contrast."""
+        raise NotImplementedError
+
+    async def set_contrast(self, level: int) -> bool:
+        """Set LCD contrast."""
         raise NotImplementedError
 
     @staticmethod

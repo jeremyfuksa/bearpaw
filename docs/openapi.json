@@ -297,6 +297,16 @@
       "post": {
         "summary": "Clear Channel Lockouts",
         "operationId": "clear_channel_lockouts_api_v1_lockouts_channels_clear_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelLockoutClearRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -306,6 +316,16 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Clear Channel Lockouts Api V1 Lockouts Channels Clear Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -421,6 +441,774 @@
                   },
                   "type": "object",
                   "title": "Response Set Volume Api V1 Volume Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/squelch": {
+      "get": {
+        "summary": "Get Squelch",
+        "operationId": "get_squelch_api_v1_squelch_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "type": "object",
+                  "title": "Response Get Squelch Api V1 Squelch Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Squelch",
+        "operationId": "set_squelch_api_v1_squelch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SquelchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Squelch Api V1 Squelch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/config": {
+      "get": {
+        "summary": "Get Config Snapshot",
+        "operationId": "get_config_snapshot_api_v1_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigSnapshot"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/firmware": {
+      "get": {
+        "summary": "Get Firmware",
+        "operationId": "get_firmware_api_v1_settings_firmware_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirmwareInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/backlight": {
+      "get": {
+        "summary": "Get Backlight",
+        "operationId": "get_backlight_api_v1_settings_backlight_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacklightSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Backlight",
+        "operationId": "set_backlight_api_v1_settings_backlight_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacklightSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Backlight Api V1 Settings Backlight Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/battery": {
+      "get": {
+        "summary": "Get Battery Charge Time",
+        "operationId": "get_battery_charge_time_api_v1_settings_battery_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatterySettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Battery Charge Time",
+        "operationId": "set_battery_charge_time_api_v1_settings_battery_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatterySettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Battery Charge Time Api V1 Settings Battery Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/key-beep": {
+      "get": {
+        "summary": "Get Key Beep",
+        "operationId": "get_key_beep_api_v1_settings_key_beep_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyBeepSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Key Beep",
+        "operationId": "set_key_beep_api_v1_settings_key_beep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyBeepSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Key Beep Api V1 Settings Key Beep Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/priority": {
+      "get": {
+        "summary": "Get Priority Mode",
+        "operationId": "get_priority_mode_api_v1_settings_priority_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrioritySettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Priority Mode",
+        "operationId": "set_priority_mode_api_v1_settings_priority_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrioritySettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Priority Mode Api V1 Settings Priority Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/search": {
+      "get": {
+        "summary": "Get Search Settings",
+        "operationId": "get_search_settings_api_v1_settings_search_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Search Settings",
+        "operationId": "set_search_settings_api_v1_settings_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Search Settings Api V1 Settings Search Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/close-call": {
+      "get": {
+        "summary": "Get Close Call Settings",
+        "operationId": "get_close_call_settings_api_v1_settings_close_call_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseCallSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Close Call Settings",
+        "operationId": "set_close_call_settings_api_v1_settings_close_call_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseCallSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Close Call Settings Api V1 Settings Close Call Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/service-search": {
+      "get": {
+        "summary": "Get Service Search",
+        "operationId": "get_service_search_api_v1_settings_service_search_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceSearchSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Service Search",
+        "operationId": "set_service_search_api_v1_settings_service_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceSearchSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Service Search Api V1 Settings Service Search Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/custom-search": {
+      "get": {
+        "summary": "Get Custom Search",
+        "operationId": "get_custom_search_api_v1_settings_custom_search_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomSearchSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Custom Search",
+        "operationId": "set_custom_search_api_v1_settings_custom_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomSearchSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Custom Search Api V1 Settings Custom Search Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/custom-search/ranges/{index}": {
+      "get": {
+        "summary": "Get Custom Search Range",
+        "operationId": "get_custom_search_range_api_v1_settings_custom_search_ranges__index__get",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomSearchRange"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Custom Search Range",
+        "operationId": "set_custom_search_range_api_v1_settings_custom_search_ranges__index__post",
+        "parameters": [
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomSearchRange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Set Custom Search Range Api V1 Settings Custom Search Ranges  Index  Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/weather": {
+      "get": {
+        "summary": "Get Weather Settings",
+        "operationId": "get_weather_settings_api_v1_settings_weather_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Weather Settings",
+        "operationId": "set_weather_settings_api_v1_settings_weather_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeatherSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Weather Settings Api V1 Settings Weather Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/contrast": {
+      "get": {
+        "summary": "Get Contrast",
+        "operationId": "get_contrast_api_v1_settings_contrast_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContrastSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Contrast",
+        "operationId": "set_contrast_api_v1_settings_contrast_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContrastSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Set Contrast Api V1 Settings Contrast Post"
                 }
               }
             }
@@ -659,6 +1447,19 @@
   },
   "components": {
     "schemas": {
+      "BacklightSettings": {
+        "properties": {
+          "event": {
+            "type": "string",
+            "title": "Event"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event"
+        ],
+        "title": "BacklightSettings"
+      },
       "BanksModel": {
         "properties": {
           "banks": {
@@ -674,6 +1475,19 @@
           "banks"
         ],
         "title": "BanksModel"
+      },
+      "BatterySettings": {
+        "properties": {
+          "charge_time": {
+            "type": "integer",
+            "title": "Charge Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "charge_time"
+        ],
+        "title": "BatterySettings"
       },
       "ChannelDataModel": {
         "properties": {
@@ -734,6 +1548,231 @@
           "bank"
         ],
         "title": "ChannelDataModel"
+      },
+      "ChannelLockoutClearRequest": {
+        "properties": {
+          "channels": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Channels"
+          }
+        },
+        "type": "object",
+        "title": "ChannelLockoutClearRequest"
+      },
+      "CloseCallSettings": {
+        "properties": {
+          "mode": {
+            "type": "integer",
+            "title": "Mode"
+          },
+          "alert_beep": {
+            "type": "boolean",
+            "title": "Alert Beep"
+          },
+          "alert_light": {
+            "type": "boolean",
+            "title": "Alert Light"
+          },
+          "band": {
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array",
+            "title": "Band"
+          },
+          "lockout": {
+            "type": "boolean",
+            "title": "Lockout"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "alert_beep",
+          "alert_light",
+          "band",
+          "lockout"
+        ],
+        "title": "CloseCallSettings"
+      },
+      "ConfigSnapshot": {
+        "properties": {
+          "firmware": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firmware"
+          },
+          "backlight": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BacklightSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BatterySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "key_beep": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KeyBeepSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrioritySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SearchSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "close_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseCallSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "service_search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceSearchSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom_search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomSearchSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom_search_ranges": {
+            "items": {
+              "$ref": "#/components/schemas/CustomSearchRange"
+            },
+            "type": "array",
+            "title": "Custom Search Ranges"
+          },
+          "weather": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WeatherSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContrastSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ConfigSnapshot"
+      },
+      "ContrastSettings": {
+        "properties": {
+          "level": {
+            "type": "integer",
+            "title": "Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level"
+        ],
+        "title": "ContrastSettings"
+      },
+      "CustomSearchRange": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "lower": {
+            "type": "number",
+            "title": "Lower"
+          },
+          "upper": {
+            "type": "number",
+            "title": "Upper"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "lower",
+          "upper"
+        ],
+        "title": "CustomSearchRange"
+      },
+      "CustomSearchSettings": {
+        "properties": {
+          "groups": {
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "groups"
+        ],
+        "title": "CustomSearchSettings"
       },
       "DeviceInfoModel": {
         "properties": {
@@ -855,6 +1894,19 @@
         ],
         "title": "ErrorResponse"
       },
+      "FirmwareInfo": {
+        "properties": {
+          "firmware": {
+            "type": "string",
+            "title": "Firmware"
+          }
+        },
+        "type": "object",
+        "required": [
+          "firmware"
+        ],
+        "title": "FirmwareInfo"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -867,6 +1919,24 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "KeyBeepSettings": {
+        "properties": {
+          "level": {
+            "type": "integer",
+            "title": "Level"
+          },
+          "lock": {
+            "type": "boolean",
+            "title": "Lock"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level",
+          "lock"
+        ],
+        "title": "KeyBeepSettings"
       },
       "KeyRequest": {
         "properties": {
@@ -997,6 +2067,66 @@
         "type": "object",
         "title": "LockoutRequest"
       },
+      "PrioritySettings": {
+        "properties": {
+          "mode": {
+            "type": "integer",
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "PrioritySettings"
+      },
+      "SearchSettings": {
+        "properties": {
+          "delay": {
+            "type": "integer",
+            "title": "Delay"
+          },
+          "code_search": {
+            "type": "boolean",
+            "title": "Code Search"
+          }
+        },
+        "type": "object",
+        "required": [
+          "delay",
+          "code_search"
+        ],
+        "title": "SearchSettings"
+      },
+      "ServiceSearchSettings": {
+        "properties": {
+          "groups": {
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array",
+            "title": "Groups"
+          }
+        },
+        "type": "object",
+        "required": [
+          "groups"
+        ],
+        "title": "ServiceSearchSettings"
+      },
+      "SquelchRequest": {
+        "properties": {
+          "level": {
+            "type": "integer",
+            "title": "Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "level"
+        ],
+        "title": "SquelchRequest"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1042,6 +2172,19 @@
           "volume"
         ],
         "title": "VolumeRequest"
+      },
+      "WeatherSettings": {
+        "properties": {
+          "priority": {
+            "type": "boolean",
+            "title": "Priority"
+          }
+        },
+        "type": "object",
+        "required": [
+          "priority"
+        ],
+        "title": "WeatherSettings"
       }
     }
   }

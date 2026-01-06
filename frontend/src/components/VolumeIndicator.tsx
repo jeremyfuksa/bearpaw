@@ -21,15 +21,16 @@ export function VolumeIndicator() {
     }
   }, [isOpen, volume]);
 
-  const applyVolume = useCallback(async () => {
-    if (draftVolume === volume) {
+  const applyVolume = useCallback(async (nextVolume?: number) => {
+    const targetVolume = nextVolume ?? draftVolume;
+    if (targetVolume === volume) {
       setIsOpen(false);
       return;
     }
     setBusy(true);
     try {
-      await api.setVolume(draftVolume);
-      updateLiveState({ volume: draftVolume });
+      await api.setVolume(targetVolume);
+      updateLiveState({ volume: targetVolume });
     } catch (error) {
       console.warn("Failed to set volume", error);
     } finally {
@@ -81,6 +82,15 @@ export function VolumeIndicator() {
               step={1}
               value={draftVolume}
               onChange={(event) => setDraftVolume(Number(event.target.value))}
+              onMouseUp={(event) =>
+                applyVolume(Number((event.target as HTMLInputElement).value))
+              }
+              onTouchEnd={(event) =>
+                applyVolume(Number((event.target as HTMLInputElement).value))
+              }
+              onKeyUp={(event) =>
+                applyVolume(Number((event.target as HTMLInputElement).value))
+              }
               disabled={busy}
             />
             <div className="volume-readout">{draftVolume}</div>

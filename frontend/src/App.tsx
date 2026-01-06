@@ -4,6 +4,7 @@ import { useAPI } from "./api/useApi";
 import "./App.css";
 import { ActivityLog } from "./components/ActivityLog";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { ConfigModeView } from "./components/ConfigModeView";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { PrimaryControls } from "./components/PrimaryControls";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
@@ -34,6 +35,7 @@ function App() {
 
   const { notifications, addNotification, removeNotification } = useNotifications();
 
+  const [mode, setMode] = useState<"scan" | "device" | "channels">("scan");
   const [showActivityLog, setShowActivityLog] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [toggleBusy, setToggleBusy] = useState(false);
@@ -419,72 +421,6 @@ function App() {
     [triggerPermanentLockout, triggerTemporaryLockout]
   );
 
-  const handleClearTemporaryLockouts = useCallback(async () => {
-    if (!deviceConnected) return;
-    try {
-      const result = await api.clearTemporaryLockouts();
-      addNotification({
-        type: result.failed.length > 0 ? "warning" : "info",
-        message:
-          result.failed.length > 0
-            ? `Cleared ${result.cleared.length} temp lockouts, ${result.failed.length} failed`
-            : `Cleared ${result.cleared.length} temp lockouts`,
-        duration: 2500,
-      });
-    } catch (error) {
-      console.warn("Failed to clear temporary lockouts", error);
-      notifyError("Failed to clear temporary lockouts", error);
-    }
-  }, [addNotification, api, deviceConnected, notifyError]);
-
-  const handleClearGlobalLockouts = useCallback(async () => {
-    if (!deviceConnected) return;
-    try {
-      const result = await api.clearGlobalLockouts();
-      if (result.cleared.length > 0) {
-        setTemporaryLockoutChannels((prev) =>
-          prev.filter((channelId) => !result.cleared.includes(channelId))
-        );
-      }
-      addNotification({
-        type: result.failed.length > 0 ? "warning" : "info",
-        message:
-          result.failed.length > 0
-            ? `Cleared ${result.cleared.length} global lockouts, ${result.failed.length} failed`
-            : `Cleared ${result.cleared.length} global lockouts`,
-        duration: 2500,
-      });
-    } catch (error) {
-      console.warn("Failed to clear global lockouts", error);
-      notifyError("Failed to clear global lockouts", error);
-    }
-  }, [addNotification, api, deviceConnected, notifyError]);
-
-  const handleClearChannelLockouts = useCallback(async () => {
-    if (!deviceConnected) return;
-    try {
-      const result = await api.clearChannelLockouts();
-      if (result.cleared.length > 0) {
-        setChannels(
-          channels.map((channel) =>
-            result.cleared.includes(channel.index) ? { ...channel, lockout: false } : channel
-          )
-        );
-      }
-      addNotification({
-        type: result.failed.length > 0 ? "warning" : "info",
-        message:
-          result.failed.length > 0
-            ? `Cleared ${result.cleared.length} channel lockouts, ${result.failed.length} failed`
-            : `Cleared ${result.cleared.length} channel lockouts`,
-        duration: 2500,
-      });
-    } catch (error) {
-      console.warn("Failed to clear channel lockouts", error);
-      notifyError("Failed to clear channel lockouts", error);
-    }
-  }, [addNotification, api, channels, deviceConnected, notifyError, setChannels]);
-
   const handleBankToggle = useCallback(
     async (index: number) => {
       if (banksBusy) return;
@@ -513,21 +449,52 @@ function App() {
         className={`mvp-ui${isDeviceDisconnected ? " mvp-ui--disabled" : ""}`}
         aria-label="Uniden Scanner Control"
       >
-        <div className="mvp-layout">
-          <div className="mvp-main">
-            <header className="mvp-header">
-              <div className="mvp-headerLeft">
-                <ConnectionStatus />
-                <VolumeIndicator />
-              </div>
-              <div className="mvp-headerActions">
-                <button
-                  className="mvp-actionButton"
-                  onClick={() => setShowShortcutsHelp(true)}
-                  aria-label="Open keyboard shortcuts"
-                >
-                  ?
-                </button>
+        <div className="mvp-tabs" role="tablist" aria-label="App modes">
+          <button
+            className={`mvp-tab${mode === "scan" ? " is-active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={mode === "scan"}
+            onClick={() => setMode("scan")}
+          >
+            Scan
+          </button>
+          <button
+            className={`mvp-tab${mode === "device" ? " is-active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={mode === "device"}
+            onClick={() => setMode("device")}
+          >
+            Device
+          </button>
+          <button
+            className={`mvp-tab${mode === "channels" ? " is-active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected={mode === "channels"}
+            onClick={() => setMode("channels")}
+          >
+            Channels
+          </button>
+        </div>
+
+        {mode === "scan" ? (
+          <div className="mvp-layout">
+            <div className="mvp-main">
+              <header className="mvp-header">
+                <div className="mvp-headerLeft">
+                  <ConnectionStatus />
+                  <VolumeIndicator />
+                </div>
+                <div className="mvp-headerActions">
+                  <button
+                    className="mvp-actionButton"
+                    onClick={() => setShowShortcutsHelp(true)}
+                    aria-label="Open keyboard shortcuts"
+                  >
+                    ?
+                  </button>
                 <button
                   className={`mvp-actionButton${
                     lockoutFlash === "perm"
@@ -544,98 +511,87 @@ function App() {
                 >
                   L/O
                 </button>
-                <button
-                  className="mvp-actionButton"
-                  onClick={handleClearTemporaryLockouts}
-                  disabled={!deviceConnected}
-                  title="Clear temporary lockouts"
-                  aria-label="Clear temporary lockouts"
-                >
-                  CLR TL/O
-                </button>
-                <button
-                  className="mvp-actionButton"
-                  onClick={handleClearGlobalLockouts}
-                  disabled={!deviceConnected}
-                  title="Clear global lockouts"
-                  aria-label="Clear global lockouts"
-                >
-                  CLR L/O
-                </button>
-                <button
-                  className="mvp-actionButton"
-                  onClick={handleClearChannelLockouts}
-                  disabled={!deviceConnected}
-                  title="Clear channel lockouts"
-                  aria-label="Clear channel lockouts"
-                >
-                  CLR CH
-                </button>
                 <PrimaryControls
                   isHolding={isHold}
                   onToggle={handleToggle}
                   disabled={(!deviceConnected && !connected) || toggleBusy}
                 />
+                </div>
+              </header>
+
+              <VirtualDisplay
+                temporaryLockoutChannels={temporaryLockoutChannels}
+                scanOverrideActive={isScanOverrideActive}
+              />
+
+              <div className="mvp-bankControls" aria-label="Bank controls">
+                {banks.map((active, index) => (
+                  <button
+                    key={`bank-${index + 1}`}
+                    className={`mvp-bankToggle${active ? " mvp-bankToggle--active" : ""}`}
+                    type="button"
+                    onClick={() => handleBankToggle(index)}
+                    disabled={banksBusy || (!deviceConnected && !connected)}
+                  >
+                    {index + 1}
+                  </button>
+                ))}
               </div>
-            </header>
+            </div>
 
-            <VirtualDisplay
-              temporaryLockoutChannels={temporaryLockoutChannels}
-              scanOverrideActive={isScanOverrideActive}
-            />
-
-            <div className="mvp-bankControls" aria-label="Bank controls">
-              {banks.map((active, index) => (
-                <button
-                  key={`bank-${index + 1}`}
-                  className={`mvp-bankToggle${active ? " mvp-bankToggle--active" : ""}`}
-                  type="button"
-                  onClick={() => handleBankToggle(index)}
-                  disabled={banksBusy || (!deviceConnected && !connected)}
-                >
-                  {index + 1}
-                </button>
-              ))}
+            <aside className="mvp-side" aria-label="Recent hits">
+              <section className="mvp-hitLog">
+                <div className="mvp-hitLogHeader">
+                  <div>
+                    <p className="mvp-hitLogTitle">Recent hits</p>
+                    <p className="mvp-hitLogSubtitle">Last 5</p>
+                  </div>
+                </div>
+                {activityLog.length === 0 ? (
+                  <div className="mvp-hitLogEmpty">No hits yet.</div>
+                ) : (
+                  <div className="mvp-hitLogTable">
+                    <div className="mvp-hitLogRow mvp-hitLogRow--head">
+                      <span>Alpha tag</span>
+                      <span>Frequency</span>
+                    </div>
+                    {activityLog.map((entry) => (
+                      <button
+                        key={entry.id}
+                        className="mvp-hitLogRow"
+                        type="button"
+                        onClick={() => {
+                          if (entry.channel) {
+                            void stepToChannel(api, liveChannel, entry.channel);
+                          }
+                        }}
+                        disabled={!connected || !entry.channel}
+                      >
+                        <span>{entry.alpha_tag || "—"}</span>
+                        <span>{entry.frequency.toFixed(4)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </aside>
+          </div>
+        ) : mode === "device" ? (
+          <div className="mvp-layout mvp-layout--single">
+            <div className="mvp-main">
+              <ConfigModeView />
             </div>
           </div>
-
-          <aside className="mvp-side" aria-label="Recent hits">
-            <section className="mvp-hitLog">
-              <div className="mvp-hitLogHeader">
-                <div>
-                  <p className="mvp-hitLogTitle">Recent hits</p>
-                  <p className="mvp-hitLogSubtitle">Last 5</p>
-                </div>
+        ) : (
+          <div className="mvp-layout mvp-layout--single">
+            <div className="mvp-main">
+              <div className="mode-placeholder">
+                <h2>Channel Editing</h2>
+                <p>Channel and bank management will live here.</p>
               </div>
-              {activityLog.length === 0 ? (
-                <div className="mvp-hitLogEmpty">No hits yet.</div>
-              ) : (
-                <div className="mvp-hitLogTable">
-                  <div className="mvp-hitLogRow mvp-hitLogRow--head">
-                    <span>Alpha tag</span>
-                    <span>Frequency</span>
-                  </div>
-                  {activityLog.map((entry) => (
-                    <button
-                      key={entry.id}
-                      className="mvp-hitLogRow"
-                      type="button"
-                      onClick={() => {
-                        if (entry.channel) {
-                          void stepToChannel(api, liveChannel, entry.channel);
-                        }
-                      }}
-                      disabled={!connected || !entry.channel}
-                    >
-                      <span>{entry.alpha_tag || "—"}</span>
-                      <span>{entry.frequency.toFixed(4)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </section>
-          </aside>
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <ActivityLog isOpen={showActivityLog} onClose={() => setShowActivityLog(false)} />

@@ -281,6 +281,34 @@
   color: var(--color-text);
 }
 
+.mvp-actionButton--ghost {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.mvp-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 16px;
+}
+
+.mvp-tab {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mvp-tab.is-active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.2);
+}
+
 .mvp-actionButton--lockoutTemp {
   border-color: #f59e0b;
   color: #f59e0b;
@@ -335,6 +363,218 @@
 
 .status-label {
   font-weight: 600;
+}
+
+.mvp-layout--single {
+  grid-template-columns: 1fr;
+}
+
+.mode-placeholder {
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-card);
+}
+
+.mode-placeholder h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.mode-placeholder p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.config-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.config-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.config-subtitle {
+  margin: 2px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.config-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.config-card {
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--color-card);
+}
+
+.config-card h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.config-card--span {
+  grid-column: 1 / -1;
+}
+
+.config-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.config-row--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.config-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.config-slider input[type="range"] {
+  flex: 1;
+}
+
+.config-row--muted {
+  color: var(--color-muted);
+}
+
+.config-select {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.config-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-text);
+  padding: 4px 0;
+}
+
+.config-group {
+  display: grid;
+  gap: 8px;
+}
+
+.config-group--grid {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.config-table {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.config-tableHeader,
+.config-tableRow {
+  display: grid;
+  grid-template-columns: 70px 1fr 1fr 70px;
+  gap: 8px;
+  align-items: center;
+}
+
+.config-tableHeader {
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.config-tableRow input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-text);
+}
+
+.config-label {
+  font-weight: 600;
+}
+
+.config-value {
+  color: var(--color-text);
+}
+
+.config-note {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.locked-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.locked-selectAll {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.locked-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.locked-item {
+  margin: 0;
+}
+
+.locked-itemLabel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-text);
+}
+
+.locked-text {
+  letter-spacing: 0.02em;
 }
 
 .volume-indicator {
