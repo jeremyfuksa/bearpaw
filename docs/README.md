@@ -6,17 +6,19 @@
 
 ## Quick Navigation
 
-### 📋 Planning Documents
-
-- **[BACKEND_TODO.md](./BACKEND_TODO.md)** - Backend development task list
-- **[FRONTEND_TODO.md](./FRONTEND_TODO.md)** - Frontend development task list
-- **[INTEGRATION_TODO.md](./INTEGRATION_TODO.md)** - Integration & shared task list
-
 ### 📖 Technical Specifications
 
 - **[BACKEND_SPEC.md](./BACKEND_SPEC.md)** - Backend architecture & implementation spec
 - **[FRONTEND_SPEC.md](./FRONTEND_SPEC.md)** - Frontend architecture & implementation spec
 - **[API_SPEC.md](./API_SPEC.md)** - API contract specification (REST + WebSocket)
+- **[SCANNER_PROTOCOL_REFERENCE.md](./SCANNER_PROTOCOL_REFERENCE.md)** - Protocol reference and commands
+
+### 🗂️ Archive (Non-Daily)
+
+- **[BACKEND_TODO.md](./archive/BACKEND_TODO.md)** - Backend development task list
+- **[FRONTEND_TODO.md](./archive/FRONTEND_TODO.md)** - Frontend development task list
+- **[INTEGRATION_TODO.md](./archive/INTEGRATION_TODO.md)** - Integration & shared task list
+- **[ROADMAP.md](./archive/ROADMAP.md)** - Milestones and phase plan
 
 ---
 
@@ -82,8 +84,7 @@ The Scanner Bridge is a **two-silo system** designed for independent development
 
 **Start here:**
 1. Read [BACKEND_SPEC.md](./BACKEND_SPEC.md)
-2. Review [BACKEND_TODO.md](./BACKEND_TODO.md)
-3. Review [API_SPEC.md](./API_SPEC.md) (the contract you'll implement)
+2. Review [API_SPEC.md](./API_SPEC.md) (the contract you'll implement)
 
 ---
 
@@ -106,8 +107,7 @@ The Scanner Bridge is a **two-silo system** designed for independent development
 
 **Start here:**
 1. Read [FRONTEND_SPEC.md](./FRONTEND_SPEC.md)
-2. Review [FRONTEND_TODO.md](./FRONTEND_TODO.md)
-3. Review [API_SPEC.md](./API_SPEC.md) (the contract you'll consume)
+2. Review [API_SPEC.md](./API_SPEC.md) (the contract you'll consume)
 
 ---
 
@@ -121,7 +121,7 @@ The Scanner Bridge is a **two-silo system** designed for independent development
 
 **Start here:**
 1. Read [API_SPEC.md](./API_SPEC.md)
-2. Review [INTEGRATION_TODO.md](./INTEGRATION_TODO.md)
+2. Review [WEBSOCKET_SCHEMA.md](./WEBSOCKET_SCHEMA.md)
 
 ---
 
@@ -183,6 +183,7 @@ The **API specification** ([API_SPEC.md](./API_SPEC.md)) is the critical interfa
 | `/frequency` | POST | Tune to specific frequency |
 | `/memory/channels` | GET | Get channel list (shadow state) |
 | `/memory/sync` | POST | Start full memory sync |
+| `/memory/export/bc125at_ss` | GET | Download full BC125AT memory file |
 
 ### WebSocket Message Types
 
@@ -277,7 +278,7 @@ open docs/BACKEND_SPEC.md
 open docs/API_SPEC.md
 
 # 2. Check the todo list
-open docs/BACKEND_TODO.md
+open docs/archive/BACKEND_TODO.md
 
 # 3. Set up environment
 cd backend/
@@ -299,7 +300,7 @@ open docs/FRONTEND_SPEC.md
 open docs/API_SPEC.md
 
 # 2. Check the todo list
-open docs/FRONTEND_TODO.md
+open docs/archive/FRONTEND_TODO.md
 
 # 3. Set up environment
 cd frontend/
@@ -322,7 +323,7 @@ npm run dev
 ```bash
 # 1. Read the API spec
 open docs/API_SPEC.md
-open docs/INTEGRATION_TODO.md
+open docs/archive/INTEGRATION_TODO.md
 
 # 2. Ensure both silos are functional
 cd backend/ && python -m scanner_bridge &
@@ -413,9 +414,11 @@ cd frontend/ && npm run dev &
 uniden/
 ├── docs/                      # ← YOU ARE HERE
 │   ├── README.md              # This file
-│   ├── BACKEND_TODO.md        # Backend task list
-│   ├── FRONTEND_TODO.md       # Frontend task list
-│   ├── INTEGRATION_TODO.md    # Integration task list
+│   ├── archive/               # Non-daily docs
+│   │   ├── BACKEND_TODO.md     # Backend task list
+│   │   ├── FRONTEND_TODO.md    # Frontend task list
+│   │   ├── INTEGRATION_TODO.md # Integration task list
+│   │   └── ROADMAP.md          # Milestones
 │   ├── BACKEND_SPEC.md        # Backend technical spec
 │   ├── FRONTEND_SPEC.md       # Frontend technical spec
 │   └── API_SPEC.md            # API contract spec

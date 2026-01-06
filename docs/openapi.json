@@ -333,6 +333,24 @@
           }
         }
       }
+    },
+    "/api/v1/memory/export/bc125at_ss": {
+      "get": {
+        "summary": "Export Bc125At Ss File",
+        "operationId": "export_bc125at_ss_file_api_v1_memory_export_bc125at_ss_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

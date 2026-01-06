@@ -566,6 +566,11 @@ Channel 201-300: Bank 4 (Amateur Radio)
 **Response:** `ChannelDataModel` JSON or HTTP 404
 **Source:** Shadow state
 
+#### GET /api/v1/memory/export/bc125at_ss
+**Purpose:** Download full BC125AT memory in Uniden `.bc125at_ss` format
+**Response:** `text/plain` file download
+**Notes:** Reads programming settings + all 500 channels; unavailable during an active sync
+
 #### GET /api/v1/health
 **Purpose:** Health check
 **Response:** `{"status": "ok"}`
@@ -824,6 +829,7 @@ EPG\r
 | `/api/v1/memory/channels/{id}` | GET | Single channel | `ChannelDataModel` |
 | `/api/v1/memory/sync` | POST | Sync memory | `{"task_id": "..."}` |
 | `/api/v1/memory/sync/cancel` | POST | Cancel sync | `{"status": "..."}` |
+| `/api/v1/memory/export/bc125at_ss` | GET | Export full memory | `.bc125at_ss` file |
 | `/ws` | WebSocket | Live updates | State/event/progress |
 
 ---
