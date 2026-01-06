@@ -23,6 +23,7 @@ class BC125ATDriver(ScannerDriver):
         self.last_error: Optional[str] = None
         self._last_volume: int = 0
         self._last_volume_poll: float = 0.0
+        self._last_squelch: int = 0
         self._logged_status: bool = False
 
         self._logger = logging.getLogger(__name__)
@@ -183,6 +184,197 @@ class BC125ATDriver(ScannerDriver):
             self.last_error = response.strip() or "volume_failed"
             self._logger.warning("Set volume failed: %s", self.last_error)
         return ok
+
+    async def get_squelch(self) -> int:
+        await self._enter_program_mode()
+        try:
+            response = await self._send("SQL", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        parts = [part.strip() for part in response.split(",") if part.strip() != ""]
+        if parts and parts[0].isalpha():
+            parts = parts[1:]
+        if not parts:
+            return self._last_squelch
+        try:
+            value = int(parts[0])
+        except ValueError:
+            self._logger.debug("Invalid SQL response: %s", response)
+            return self._last_squelch
+        self._last_squelch = value
+        return value
+
+    async def set_squelch(self, level: int) -> bool:
+        if not 0 <= level <= 15:
+            raise ValueError("squelch_out_of_range")
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"SQL,{level}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        ok = self._is_ok_response(response)
+        if not ok and response.strip().upper().startswith("SQL,"):
+            ok = True
+        if ok:
+            self._last_squelch = level
+            self.last_error = None
+        else:
+            self.last_error = response.strip() or "squelch_failed"
+            self._logger.warning("Set squelch failed: %s", self.last_error)
+        return ok
+
+    async def get_firmware_version(self) -> str:
+        response = await self._send("VER", PRIORITY_CONTROL)
+        parts = self._parse_command_parts(response, "VER")
+        return ",".join(parts).strip()
+
+    async def get_backlight(self) -> str:
+        return await self._get_backlight(assume_program_mode=False)
+
+    async def set_backlight(self, event: str) -> bool:
+        if event not in {"AO", "AF", "KY", "SQ", "KS"}:
+            raise ValueError("backlight_invalid")
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"BLT,{event}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_battery_charge_time(self) -> int:
+        return await self._get_battery_charge_time(assume_program_mode=False)
+
+    async def set_battery_charge_time(self, charge_time: int) -> bool:
+        if not 1 <= charge_time <= 16:
+            raise ValueError("battery_charge_time_out_of_range")
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"BSV,{charge_time}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_key_beep_settings(self) -> tuple[int, bool]:
+        return await self._get_key_beep_settings(assume_program_mode=False)
+
+    async def set_key_beep_settings(self, level: int, lock: bool) -> bool:
+        if level != 99 and not 0 <= level <= 15:
+            raise ValueError("beep_level_out_of_range")
+        lock_value = "1" if lock else "0"
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"KBP,{level},{lock_value}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_priority_mode(self) -> int:
+        return await self._get_priority_mode(assume_program_mode=False)
+
+    async def set_priority_mode(self, mode: int) -> bool:
+        if mode not in (0, 1, 2, 3):
+            raise ValueError("priority_mode_invalid")
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"PRI,{mode}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_search_settings(self) -> tuple[int, bool]:
+        return await self._get_search_settings(assume_program_mode=False)
+
+    async def set_search_settings(self, delay: int, code_search: bool) -> bool:
+        if delay not in (-10, -5, 0, 1, 2, 3, 4, 5):
+            raise ValueError("search_delay_invalid")
+        code_value = "1" if code_search else "0"
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"SCO,{delay},{code_value}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_close_call_settings(self) -> tuple[int, bool, bool, list[bool], bool]:
+        return await self._get_close_call_settings(assume_program_mode=False)
+
+    async def set_close_call_settings(
+        self,
+        mode: int,
+        alert_beep: bool,
+        alert_light: bool,
+        band: list[bool],
+        lockout: bool,
+    ) -> bool:
+        if mode not in (0, 1, 2):
+            raise ValueError("close_call_mode_invalid")
+        if len(band) != 5:
+            raise ValueError("close_call_band_invalid")
+        band_value = "".join("1" if value else "0" for value in band)
+        alert_beep_value = "1" if alert_beep else "0"
+        alert_light_value = "1" if alert_light else "0"
+        lockout_value = "1" if lockout else "0"
+        await self._enter_program_mode()
+        try:
+            response = await self._send(
+                f"CLC,{mode},{alert_beep_value},{alert_light_value},{band_value},{lockout_value}",
+                PRIORITY_BACKGROUND,
+            )
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_service_search_groups(self) -> list[bool]:
+        return await self._get_group_flags("SSG", 10, assume_program_mode=False)
+
+    async def set_service_search_groups(self, groups: list[bool]) -> bool:
+        return await self._set_group_flags("SSG", groups)
+
+    async def get_custom_search_groups(self) -> list[bool]:
+        return await self._get_group_flags("CSG", 10, assume_program_mode=False)
+
+    async def set_custom_search_groups(self, groups: list[bool]) -> bool:
+        return await self._set_group_flags("CSG", groups)
+
+    async def get_custom_search_range(self, index: int) -> tuple[float, float]:
+        return await self._get_custom_search_range(index, assume_program_mode=False)
+
+    async def set_custom_search_range(self, index: int, lower: float, upper: float) -> bool:
+        if not 1 <= index <= 10:
+            raise ValueError("search_range_invalid")
+        lower_raw = int(round(lower * 10000))
+        upper_raw = int(round(upper * 10000))
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"CSP,{index},{lower_raw},{upper_raw}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_weather_priority(self) -> bool:
+        return await self._get_weather_priority(assume_program_mode=False)
+
+    async def set_weather_priority(self, priority: bool) -> bool:
+        value = "1" if priority else "0"
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"WXS,{value}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def get_contrast(self) -> int:
+        return await self._get_contrast(assume_program_mode=False)
+
+    async def set_contrast(self, level: int) -> bool:
+        if not 1 <= level <= 15:
+            raise ValueError("contrast_out_of_range")
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"CNT,{level}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
 
     async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
         if not assume_program_mode:
@@ -409,6 +601,39 @@ class BC125ATDriver(ScannerDriver):
         if not self._is_ok_response(response):
             raise ValueError(f"SCG set failed: {response}")
 
+    async def get_settings_snapshot(self) -> dict[str, object]:
+        await self._enter_program_mode()
+        try:
+            backlight = await self._get_backlight(assume_program_mode=True)
+            battery = await self._get_battery_charge_time(assume_program_mode=True)
+            key_beep = await self._get_key_beep_settings(assume_program_mode=True)
+            priority = await self._get_priority_mode(assume_program_mode=True)
+            search = await self._get_search_settings(assume_program_mode=True)
+            close_call = await self._get_close_call_settings(assume_program_mode=True)
+            service_search = await self._get_group_flags("SSG", 10, assume_program_mode=True)
+            custom_search = await self._get_group_flags("CSG", 10, assume_program_mode=True)
+            custom_ranges = [
+                await self._get_custom_search_range(index, assume_program_mode=True)
+                for index in range(1, 11)
+            ]
+            weather = await self._get_weather_priority(assume_program_mode=True)
+            contrast = await self._get_contrast(assume_program_mode=True)
+        finally:
+            await self._exit_program_mode()
+        return {
+            "backlight": backlight,
+            "battery": battery,
+            "key_beep": key_beep,
+            "priority": priority,
+            "search": search,
+            "close_call": close_call,
+            "service_search": service_search,
+            "custom_search": custom_search,
+            "custom_search_ranges": custom_ranges,
+            "weather": weather,
+            "contrast": contrast,
+        }
+
     def _parse_channel_response(self, index: int, response: str) -> ChannelData:
         parts = [part.strip() for part in response.split(",")]
         if parts and parts[0] == "CIN":
@@ -499,3 +724,153 @@ class BC125ATDriver(ScannerDriver):
         future = self._scheduler.enqueue(raw, priority)
         response = await future
         return response
+
+    def _parse_command_parts(self, response: str, command: str) -> list[str]:
+        parts = [part.strip() for part in response.split(",")]
+        if parts and parts[0].upper() == command:
+            parts = parts[1:]
+        return parts
+
+    async def _get_backlight(self, assume_program_mode: bool) -> str:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("BLT", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "BLT")
+        return parts[0] if parts else ""
+
+    async def _get_battery_charge_time(self, assume_program_mode: bool) -> int:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("BSV", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "BSV")
+        return int(parts[0]) if parts and parts[0].isdigit() else 0
+
+    async def _get_key_beep_settings(self, assume_program_mode: bool) -> tuple[int, bool]:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("KBP", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "KBP")
+        level = int(parts[0]) if parts and parts[0].lstrip("-").isdigit() else 0
+        lock = parts[1] == "1" if len(parts) > 1 else False
+        return level, lock
+
+    async def _get_priority_mode(self, assume_program_mode: bool) -> int:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("PRI", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "PRI")
+        return int(parts[0]) if parts and parts[0].isdigit() else 0
+
+    async def _get_search_settings(self, assume_program_mode: bool) -> tuple[int, bool]:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("SCO", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "SCO")
+        delay = int(parts[0]) if parts and parts[0].lstrip("-").isdigit() else 0
+        code_search = parts[1] == "1" if len(parts) > 1 else False
+        return delay, code_search
+
+    async def _get_close_call_settings(
+        self, assume_program_mode: bool
+    ) -> tuple[int, bool, bool, list[bool], bool]:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("CLC", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "CLC")
+        mode = int(parts[0]) if parts and parts[0].isdigit() else 0
+        alert_beep = parts[1] == "1" if len(parts) > 1 else False
+        alert_light = parts[2] == "1" if len(parts) > 2 else False
+        band_raw = parts[3] if len(parts) > 3 else "00000"
+        band = [char == "1" for char in band_raw.ljust(5, "0")[:5]]
+        lockout = parts[4] == "1" if len(parts) > 4 else False
+        return mode, alert_beep, alert_light, band, lockout
+
+    async def _get_group_flags(self, command: str, length: int, assume_program_mode: bool) -> list[bool]:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send(command, PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, command)
+        flags = parts[0] if parts else ""
+        if len(flags) != length:
+            raise ValueError(f"Invalid {command} response: {response}")
+        return [ch == "0" for ch in flags]
+
+    async def _set_group_flags(self, command: str, groups: list[bool]) -> bool:
+        if len(groups) != 10:
+            raise ValueError("group_length_invalid")
+        flags = "".join("0" if enabled else "1" for enabled in groups)
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"{command},{flags}", PRIORITY_BACKGROUND)
+        finally:
+            await self._exit_program_mode()
+        return self._is_ok_response(response)
+
+    async def _get_custom_search_range(
+        self, index: int, assume_program_mode: bool
+    ) -> tuple[float, float]:
+        if not 1 <= index <= 10:
+            raise ValueError("search_range_invalid")
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send(f"CSP,{index}", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "CSP")
+        if parts and parts[0].isdigit():
+            parts = parts[1:]
+        lower_raw = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 0
+        upper_raw = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        return lower_raw / 10000.0, upper_raw / 10000.0
+
+    async def _get_weather_priority(self, assume_program_mode: bool) -> bool:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("WXS", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "WXS")
+        return parts[0] == "1" if parts else False
+
+    async def _get_contrast(self, assume_program_mode: bool) -> int:
+        if not assume_program_mode:
+            await self._enter_program_mode()
+        try:
+            response = await self._send("CNT", PRIORITY_BACKGROUND)
+        finally:
+            if not assume_program_mode:
+                await self._exit_program_mode()
+        parts = self._parse_command_parts(response, "CNT")
+        return int(parts[0]) if parts and parts[0].isdigit() else 0

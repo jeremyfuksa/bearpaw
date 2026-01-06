@@ -12,16 +12,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from scanner_bridge.config import AppConfig
 from scanner_bridge.discovery import discover_devices
 from scanner_bridge.models import (
+    BanksModel,
     ChannelDataModel,
+    ChannelLockoutClearRequest,
+    CloseCallSettings,
+    ConfigSnapshot,
+    ContrastSettings,
+    CustomSearchRange,
+    CustomSearchSettings,
     DeviceInfo,
     DeviceInfoModel,
     ErrorResponse,
-    BanksModel,
+    FirmwareInfo,
+    KeyBeepSettings,
     KeyRequest,
-    LockoutRequest,
+    BacklightSettings,
+    BatterySettings,
     LiveState,
     LiveStateModel,
+    LockoutRequest,
+    PrioritySettings,
+    SearchSettings,
+    ServiceSearchSettings,
+    SquelchRequest,
     VolumeRequest,
+    WeatherSettings,
 )
 from scanner_bridge.protocol import BC125ATDriver, SR30CDriver
 from scanner_bridge.scheduler import CommandScheduler, PRIORITY_BACKGROUND, PRIORITY_TELEMETRY
@@ -104,6 +119,12 @@ def create_app(
             code=500,
         )
         return JSONResponse(status_code=500, content=payload.model_dump())
+
+    async def call_or_unsupported(action, detail: str):
+        try:
+            return await action()
+        except NotImplementedError as exc:
+            raise HTTPException(status_code=400, detail=detail) from exc
 
     def require_driver(runtime: RuntimeState) -> object:
         if not runtime.driver or not runtime.scheduler or not runtime.transport:
@@ -461,14 +482,23 @@ def create_app(
         return {"cleared": cleared_list, "failed": failed_list}
 
     @app.post("/api/v1/lockouts/channels/clear")
-    async def clear_channel_lockouts() -> dict:
+    async def clear_channel_lockouts(request: ChannelLockoutClearRequest) -> dict:
         runtime: RuntimeState = app.state.runtime
         driver = require_driver(runtime)
         setter = getattr(driver, "set_channel_lockout", None)
         if not callable(setter):
             raise HTTPException(status_code=400, detail="lockout_unsupported")
         channels = runtime.state_store.get_shadow_channels()
-        locked_ids = sorted([chan.index for chan in channels.values() if chan.lockout])
+        if request.channels:
+            locked_ids = sorted(
+                [
+                    chan_id
+                    for chan_id in request.channels
+                    if channels.get(chan_id) and channels[chan_id].lockout
+                ]
+            )
+        else:
+            locked_ids = sorted([chan.index for chan in channels.values() if chan.lockout])
         cleared_list: list[int] = []
         failed_list: list[int] = []
         for channel_id in locked_ids:
@@ -540,6 +570,398 @@ def create_app(
             detail = getattr(driver, "last_error", None) or "volume_failed"
             logger.warning("Volume command failed: %s", detail)
             raise HTTPException(status_code=500, detail=detail)
+        return {"status": "ok"}
+
+    @app.get("/api/v1/squelch")
+    async def get_squelch() -> Dict[str, int]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        get_squelch = getattr(driver, "get_squelch", None)
+        if not callable(get_squelch):
+            raise HTTPException(status_code=400, detail="squelch_unsupported")
+        try:
+            level = await get_squelch()
+        except Exception as exc:
+            logger.warning("Get squelch failed: %s", exc)
+            raise HTTPException(status_code=500, detail="squelch_failed") from exc
+        return {"level": level}
+
+    @app.post("/api/v1/squelch")
+    async def set_squelch(request: SquelchRequest) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        set_squelch = getattr(driver, "set_squelch", None)
+        if not callable(set_squelch):
+            raise HTTPException(status_code=400, detail="squelch_unsupported")
+        try:
+            ok = await set_squelch(request.level)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            detail = getattr(driver, "last_error", None) or "squelch_failed"
+            logger.warning("Squelch command failed: %s", detail)
+            raise HTTPException(status_code=500, detail=detail)
+        return {"status": "ok"}
+
+    @app.get("/api/v1/config", response_model=ConfigSnapshot)
+    async def get_config_snapshot() -> ConfigSnapshot:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_settings_snapshot", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="config_unsupported")
+        firmware_getter = getattr(driver, "get_firmware_version", None)
+        firmware = None
+        if callable(firmware_getter):
+            try:
+                firmware = await call_or_unsupported(firmware_getter, "firmware_unsupported")
+            except Exception as exc:
+                logger.warning("Failed to read firmware: %s", exc)
+        settings = await call_or_unsupported(getter, "config_unsupported")
+        return ConfigSnapshot(
+            firmware=firmware,
+            backlight=BacklightSettings(event=settings.get("backlight", "")),
+            battery=BatterySettings(charge_time=settings.get("battery", 0)),
+            key_beep=KeyBeepSettings(
+                level=settings.get("key_beep", (0, False))[0],
+                lock=settings.get("key_beep", (0, False))[1],
+            ),
+            priority=PrioritySettings(mode=settings.get("priority", 0)),
+            search=SearchSettings(
+                delay=settings.get("search", (0, False))[0],
+                code_search=settings.get("search", (0, False))[1],
+            ),
+            close_call=CloseCallSettings(
+                mode=settings.get("close_call", (0, False, False, [False] * 5, False))[0],
+                alert_beep=settings.get("close_call", (0, False, False, [False] * 5, False))[1],
+                alert_light=settings.get("close_call", (0, False, False, [False] * 5, False))[2],
+                band=settings.get("close_call", (0, False, False, [False] * 5, False))[3],
+                lockout=settings.get("close_call", (0, False, False, [False] * 5, False))[4],
+            ),
+            service_search=ServiceSearchSettings(groups=settings.get("service_search", [])),
+            custom_search=CustomSearchSettings(groups=settings.get("custom_search", [])),
+            custom_search_ranges=[
+                CustomSearchRange(index=idx + 1, lower=vals[0], upper=vals[1])
+                for idx, vals in enumerate(settings.get("custom_search_ranges", []))
+            ],
+            weather=WeatherSettings(priority=settings.get("weather", False)),
+            contrast=ContrastSettings(level=settings.get("contrast", 0)),
+        )
+
+    @app.get("/api/v1/settings/firmware", response_model=FirmwareInfo)
+    async def get_firmware() -> FirmwareInfo:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_firmware_version", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="firmware_unsupported")
+        firmware = await call_or_unsupported(getter, "firmware_unsupported")
+        return FirmwareInfo(firmware=firmware)
+
+    @app.get("/api/v1/settings/backlight", response_model=BacklightSettings)
+    async def get_backlight() -> BacklightSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_backlight", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="backlight_unsupported")
+        event = await call_or_unsupported(getter, "backlight_unsupported")
+        return BacklightSettings(event=event)
+
+    @app.post("/api/v1/settings/backlight")
+    async def set_backlight(request: BacklightSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_backlight", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="backlight_unsupported")
+        try:
+            ok = await call_or_unsupported(lambda: setter(request.event), "backlight_unsupported")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="backlight_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/battery", response_model=BatterySettings)
+    async def get_battery_charge_time() -> BatterySettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_battery_charge_time", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="battery_unsupported")
+        value = await call_or_unsupported(getter, "battery_unsupported")
+        return BatterySettings(charge_time=value)
+
+    @app.post("/api/v1/settings/battery")
+    async def set_battery_charge_time(request: BatterySettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_battery_charge_time", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="battery_unsupported")
+        try:
+            ok = await call_or_unsupported(
+                lambda: setter(request.charge_time), "battery_unsupported"
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="battery_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/key-beep", response_model=KeyBeepSettings)
+    async def get_key_beep() -> KeyBeepSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_key_beep_settings", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="key_beep_unsupported")
+        level, lock = await call_or_unsupported(getter, "key_beep_unsupported")
+        return KeyBeepSettings(level=level, lock=lock)
+
+    @app.post("/api/v1/settings/key-beep")
+    async def set_key_beep(request: KeyBeepSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_key_beep_settings", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="key_beep_unsupported")
+        try:
+            ok = await call_or_unsupported(
+                lambda: setter(request.level, request.lock), "key_beep_unsupported"
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="key_beep_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/priority", response_model=PrioritySettings)
+    async def get_priority_mode() -> PrioritySettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_priority_mode", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="priority_unsupported")
+        mode = await call_or_unsupported(getter, "priority_unsupported")
+        return PrioritySettings(mode=mode)
+
+    @app.post("/api/v1/settings/priority")
+    async def set_priority_mode(request: PrioritySettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_priority_mode", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="priority_unsupported")
+        try:
+            ok = await call_or_unsupported(lambda: setter(request.mode), "priority_unsupported")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="priority_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/search", response_model=SearchSettings)
+    async def get_search_settings() -> SearchSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_search_settings", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="search_unsupported")
+        delay, code_search = await call_or_unsupported(getter, "search_unsupported")
+        return SearchSettings(delay=delay, code_search=code_search)
+
+    @app.post("/api/v1/settings/search")
+    async def set_search_settings(request: SearchSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_search_settings", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="search_unsupported")
+        try:
+            ok = await call_or_unsupported(
+                lambda: setter(request.delay, request.code_search), "search_unsupported"
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="search_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/close-call", response_model=CloseCallSettings)
+    async def get_close_call_settings() -> CloseCallSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_close_call_settings", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="close_call_unsupported")
+        mode, alert_beep, alert_light, band, lockout = await call_or_unsupported(
+            getter, "close_call_unsupported"
+        )
+        return CloseCallSettings(
+            mode=mode,
+            alert_beep=alert_beep,
+            alert_light=alert_light,
+            band=band,
+            lockout=lockout,
+        )
+
+    @app.post("/api/v1/settings/close-call")
+    async def set_close_call_settings(request: CloseCallSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_close_call_settings", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="close_call_unsupported")
+        try:
+            ok = await call_or_unsupported(
+                lambda: setter(
+                    request.mode,
+                    request.alert_beep,
+                    request.alert_light,
+                    request.band,
+                    request.lockout,
+                ),
+                "close_call_unsupported",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="close_call_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/service-search", response_model=ServiceSearchSettings)
+    async def get_service_search() -> ServiceSearchSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_service_search_groups", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="service_search_unsupported")
+        groups = await call_or_unsupported(getter, "service_search_unsupported")
+        return ServiceSearchSettings(groups=groups)
+
+    @app.post("/api/v1/settings/service-search")
+    async def set_service_search(request: ServiceSearchSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_service_search_groups", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="service_search_unsupported")
+        try:
+            ok = await call_or_unsupported(
+                lambda: setter(request.groups), "service_search_unsupported"
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="service_search_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/custom-search", response_model=CustomSearchSettings)
+    async def get_custom_search() -> CustomSearchSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_custom_search_groups", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="custom_search_unsupported")
+        groups = await call_or_unsupported(getter, "custom_search_unsupported")
+        return CustomSearchSettings(groups=groups)
+
+    @app.post("/api/v1/settings/custom-search")
+    async def set_custom_search(request: CustomSearchSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_custom_search_groups", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="custom_search_unsupported")
+        try:
+            ok = await call_or_unsupported(
+                lambda: setter(request.groups), "custom_search_unsupported"
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="custom_search_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/custom-search/ranges/{index}", response_model=CustomSearchRange)
+    async def get_custom_search_range(index: int) -> CustomSearchRange:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_custom_search_range", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="custom_search_range_unsupported")
+        lower, upper = await call_or_unsupported(
+            lambda: getter(index), "custom_search_range_unsupported"
+        )
+        return CustomSearchRange(index=index, lower=lower, upper=upper)
+
+    @app.post("/api/v1/settings/custom-search/ranges/{index}")
+    async def set_custom_search_range(index: int, request: CustomSearchRange) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_custom_search_range", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="custom_search_range_unsupported")
+        try:
+            ok = await call_or_unsupported(
+                lambda: setter(index, request.lower, request.upper),
+                "custom_search_range_unsupported",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="custom_search_range_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/weather", response_model=WeatherSettings)
+    async def get_weather_settings() -> WeatherSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_weather_priority", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="weather_unsupported")
+        priority = await call_or_unsupported(getter, "weather_unsupported")
+        return WeatherSettings(priority=priority)
+
+    @app.post("/api/v1/settings/weather")
+    async def set_weather_settings(request: WeatherSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_weather_priority", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="weather_unsupported")
+        ok = await call_or_unsupported(
+            lambda: setter(request.priority), "weather_unsupported"
+        )
+        if not ok:
+            raise HTTPException(status_code=500, detail="weather_failed")
+        return {"status": "ok"}
+
+    @app.get("/api/v1/settings/contrast", response_model=ContrastSettings)
+    async def get_contrast() -> ContrastSettings:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        getter = getattr(driver, "get_contrast", None)
+        if not callable(getter):
+            raise HTTPException(status_code=400, detail="contrast_unsupported")
+        level = await call_or_unsupported(getter, "contrast_unsupported")
+        return ContrastSettings(level=level)
+
+    @app.post("/api/v1/settings/contrast")
+    async def set_contrast(request: ContrastSettings) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        setter = getattr(driver, "set_contrast", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="contrast_unsupported")
+        try:
+            ok = await call_or_unsupported(lambda: setter(request.level), "contrast_unsupported")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not ok:
+            raise HTTPException(status_code=500, detail="contrast_failed")
         return {"status": "ok"}
 
     @app.get("/api/v1/memory/channels", response_model=list[ChannelDataModel])

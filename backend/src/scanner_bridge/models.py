@@ -123,7 +123,86 @@ class VolumeRequest(BaseModel):
     volume: int
 
 
+class SquelchRequest(BaseModel):
+    level: int
+
+
 class LockoutRequest(BaseModel):
     mode: str = "temporary"
     channel: Optional[int] = None
     frequency: Optional[float] = None
+
+
+class ChannelLockoutClearRequest(BaseModel):
+    channels: list[int] = Field(default_factory=list)
+
+
+class BacklightSettings(BaseModel):
+    event: str
+
+
+class BatterySettings(BaseModel):
+    charge_time: int
+
+
+class KeyBeepSettings(BaseModel):
+    level: int
+    lock: bool
+
+
+class PrioritySettings(BaseModel):
+    mode: int
+
+
+class SearchSettings(BaseModel):
+    delay: int
+    code_search: bool
+
+
+class CloseCallSettings(BaseModel):
+    mode: int
+    alert_beep: bool
+    alert_light: bool
+    band: list[bool]
+    lockout: bool
+
+
+class ServiceSearchSettings(BaseModel):
+    groups: list[bool]
+
+
+class CustomSearchSettings(BaseModel):
+    groups: list[bool]
+
+
+class CustomSearchRange(BaseModel):
+    index: int
+    lower: float
+    upper: float
+
+
+class WeatherSettings(BaseModel):
+    priority: bool
+
+
+class ContrastSettings(BaseModel):
+    level: int
+
+
+class FirmwareInfo(BaseModel):
+    firmware: str
+
+
+class ConfigSnapshot(BaseModel):
+    firmware: Optional[str] = None
+    backlight: Optional[BacklightSettings] = None
+    battery: Optional[BatterySettings] = None
+    key_beep: Optional[KeyBeepSettings] = None
+    priority: Optional[PrioritySettings] = None
+    search: Optional[SearchSettings] = None
+    close_call: Optional[CloseCallSettings] = None
+    service_search: Optional[ServiceSearchSettings] = None
+    custom_search: Optional[CustomSearchSettings] = None
+    custom_search_ranges: list[CustomSearchRange] = Field(default_factory=list)
+    weather: Optional[WeatherSettings] = None
+    contrast: Optional[ContrastSettings] = None

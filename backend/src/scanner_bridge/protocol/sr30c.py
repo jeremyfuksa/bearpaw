@@ -235,6 +235,88 @@ class SR30CDriver(ScannerDriver):
         if not self._is_ok_response(response):
             raise ValueError(f"SCG set failed: {response}")
 
+    async def get_firmware_version(self) -> str:
+        raise NotImplementedError
+
+    async def get_backlight(self) -> str:
+        raise NotImplementedError
+
+    async def set_backlight(self, event: str) -> bool:
+        raise NotImplementedError
+
+    async def get_battery_charge_time(self) -> int:
+        raise NotImplementedError
+
+    async def set_battery_charge_time(self, charge_time: int) -> bool:
+        raise NotImplementedError
+
+    async def get_key_beep_settings(self) -> tuple[int, bool]:
+        raise NotImplementedError
+
+    async def set_key_beep_settings(self, level: int, lock: bool) -> bool:
+        raise NotImplementedError
+
+    async def get_priority_mode(self) -> int:
+        raise NotImplementedError
+
+    async def set_priority_mode(self, mode: int) -> bool:
+        raise NotImplementedError
+
+    async def get_search_settings(self) -> tuple[int, bool]:
+        raise NotImplementedError
+
+    async def set_search_settings(self, delay: int, code_search: bool) -> bool:
+        raise NotImplementedError
+
+    async def get_close_call_settings(self) -> tuple[int, bool, bool, list[bool], bool]:
+        raise NotImplementedError
+
+    async def set_close_call_settings(
+        self,
+        mode: int,
+        alert_beep: bool,
+        alert_light: bool,
+        band: list[bool],
+        lockout: bool,
+    ) -> bool:
+        raise NotImplementedError
+
+    async def get_service_search_groups(self) -> list[bool]:
+        raise NotImplementedError
+
+    async def set_service_search_groups(self, groups: list[bool]) -> bool:
+        raise NotImplementedError
+
+    async def get_custom_search_groups(self) -> list[bool]:
+        raise NotImplementedError
+
+    async def set_custom_search_groups(self, groups: list[bool]) -> bool:
+        raise NotImplementedError
+
+    async def get_custom_search_range(self, index: int) -> tuple[float, float]:
+        raise NotImplementedError
+
+    async def set_custom_search_range(self, index: int, lower: float, upper: float) -> bool:
+        raise NotImplementedError
+
+    async def get_weather_priority(self) -> bool:
+        raise NotImplementedError
+
+    async def set_weather_priority(self, priority: bool) -> bool:
+        raise NotImplementedError
+
+    async def get_contrast(self) -> int:
+        raise NotImplementedError
+
+    async def set_contrast(self, level: int) -> bool:
+        raise NotImplementedError
+
+    async def get_squelch(self) -> int:
+        raise NotImplementedError
+
+    async def set_squelch(self, level: int) -> bool:
+        raise NotImplementedError
+
     @staticmethod
     def _is_ok_response(response: str) -> bool:
         value = response.strip().upper()

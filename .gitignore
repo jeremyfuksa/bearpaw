@@ -16,3 +16,5 @@ backend/.venv/
 # Local runtime artifacts
 backend/scanner.db
 backend/now_scanning.txt
+docs/manual.pdf
+docs/op-spec.pdf
