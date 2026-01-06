@@ -107,6 +107,11 @@ class UsbTransport:
     def _execute(self, cmd: str) -> str:
         if not self._device or not self._out_ep or not self._in_ep:
             raise ConnectionError("USB device not open")
+        if not self._is_device_present():
+            self._device = None
+            self._out_ep = None
+            self._in_ep = None
+            raise ConnectionError("USB device not open")
         payload = cmd if cmd.endswith("\r") else cmd + "\r"
         self._out_ep.write(payload.encode("ascii"), timeout=int(self.timeout * 1000))
         return self._read_response()
@@ -136,6 +141,12 @@ class UsbTransport:
                 idVendor=self.vid, idProduct=self.pid, serial_number=self.serial_number
             )
         return usb.core.find(idVendor=self.vid, idProduct=self.pid)
+
+    def _is_device_present(self) -> bool:
+        try:
+            return self._find_device() is not None
+        except Exception:
+            return False
 
     def _setup_cdc_control(self) -> None:
         if not self._device:

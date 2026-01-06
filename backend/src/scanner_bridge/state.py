@@ -59,6 +59,7 @@ class StateStore:
                 rssi=0,
                 mode="SCAN",
                 channel=None,
+                alpha_tag=None,
                 volume=0,
                 battery=None,
                 stale=True,

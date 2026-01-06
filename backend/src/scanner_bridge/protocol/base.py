@@ -28,8 +28,14 @@ class ScannerDriver(ABC):
         """Direct frequency tune."""
 
     @abstractmethod
-    async def read_channel(self, index: int) -> ChannelData:
+    async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
         """Read channel memory (requires PRG mode)."""
+
+    async def begin_memory_sync(self) -> None:
+        """Prepare device for bulk memory reads."""
+
+    async def end_memory_sync(self) -> None:
+        """Finalize device after bulk memory reads."""
 
     @abstractmethod
     async def detect_model(self) -> str:

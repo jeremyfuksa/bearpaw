@@ -23,7 +23,12 @@ class DeviceConfig(BaseModel):
 class ApiConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
-    cors_origins: List[str] = Field(default_factory=list)
+    cors_origins: List[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
 
 
 class PollingConfig(BaseModel):

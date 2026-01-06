@@ -24,6 +24,7 @@ class DeviceInfo:
     serial_number: Optional[str]
     description: Optional[str]
     firmware: Optional[str] = None
+    connection_status: str = "connecting"
 
 
 @dataclass
@@ -35,6 +36,7 @@ class LiveState:
     rssi: int
     mode: str
     channel: Optional[int]
+    alpha_tag: Optional[str]
     volume: int
     battery: Optional[int]
     stale: bool = False
@@ -68,6 +70,7 @@ class DeviceInfoModel(BaseModel):
     serial_number: Optional[str]
     description: Optional[str]
     firmware: Optional[str] = None
+    connection_status: str = "connecting"
 
     model_config = {"from_attributes": True}
 
@@ -80,6 +83,7 @@ class LiveStateModel(BaseModel):
     rssi: int
     mode: str
     channel: Optional[int]
+    alpha_tag: Optional[str] = None
     volume: int
     battery: Optional[int]
     stale: bool = False
