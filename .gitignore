@@ -12,3 +12,7 @@ backend/.venv/
 
 # OS files
 .DS_Store
+
+# Local runtime artifacts
+backend/scanner.db
+backend/now_scanning.txt
