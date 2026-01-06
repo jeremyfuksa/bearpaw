@@ -362,6 +362,8 @@ def create_app(
         driver = require_driver(runtime)
         if runtime.sync_task:
             return {"status": "already_running", "task_id": runtime.sync_task.task_id}
+        if runtime.state_store.has_shadow_channels() and not runtime.state_store.is_shadow_dirty():
+            return {"status": "already_synced"}
         task = MemorySyncTask(driver, runtime.state_store, runtime.ws_manager)
         runtime.sync_task = task
         asyncio.create_task(_run_sync(app, task))
