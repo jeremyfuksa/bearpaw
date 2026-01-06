@@ -100,9 +100,11 @@ class UsbTransport:
                 continue
             try:
                 response = self._execute(cmd)
-                future.set_result(response)
+                if not future.cancelled() and not future.done():
+                    future.set_result(response)
             except Exception as exc:
-                future.set_exception(exc)
+                if not future.cancelled() and not future.done():
+                    future.set_exception(exc)
 
     def _execute(self, cmd: str) -> str:
         if not self._device or not self._out_ep or not self._in_ep:

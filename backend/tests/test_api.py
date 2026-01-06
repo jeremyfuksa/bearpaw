@@ -37,9 +37,6 @@ class StubDriver:
     async def send_key(self, key_code: str):
         return True
 
-    async def set_frequency(self, freq_mhz: float, modulation: str = "AUTO"):
-        return True
-
     async def read_channel(self, index: int):
         raise NotImplementedError
 

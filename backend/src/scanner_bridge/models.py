@@ -115,10 +115,15 @@ class BanksModel(BaseModel):
     banks: list[bool]
 
 
-class FrequencyRequest(BaseModel):
-    frequency: float
-    modulation: str = "AUTO"
-
-
 class KeyRequest(BaseModel):
     key: str
+
+
+class VolumeRequest(BaseModel):
+    volume: int
+
+
+class LockoutRequest(BaseModel):
+    mode: str = "temporary"
+    channel: Optional[int] = None
+    frequency: Optional[float] = None

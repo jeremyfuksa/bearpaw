@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useAPI } from "../api/useApi";
 import { useStore } from "../store/useStore";
+import { stepToChannel } from "../utils/channelNavigation";
 
 interface CurrentBankViewProps {
   onBrowseAll: () => void;
@@ -22,6 +23,7 @@ export function CurrentBankView({ onBrowseAll }: CurrentBankViewProps) {
     if (!liveState?.channel) return null;
     return channels.find((channel) => channel.index === liveState.channel) ?? null;
   }, [channels, liveState]);
+  const liveChannel = liveState?.channel ?? null;
 
   const currentBank = currentChannel?.bank ?? null;
   const bankChannels = useMemo(() => {
@@ -63,7 +65,9 @@ export function CurrentBankView({ onBrowseAll }: CurrentBankViewProps) {
                   key={channel.index}
                   className={`bank-channel${channel.index === liveState?.channel ? " active" : ""}`}
                   type="button"
-                  onClick={() => api.setFrequency(channel.frequency)}
+                  onClick={() => {
+                    void stepToChannel(api, liveChannel, channel.index);
+                  }}
                   disabled={!connected}
                   aria-label={`Channel ${channel.index}: ${channel.frequency.toFixed(4)} MHz, ${
                     channel.alpha_tag || "no name"

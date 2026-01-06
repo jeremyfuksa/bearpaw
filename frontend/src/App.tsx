@@ -1,89 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAPI } from "./api/useApi";
 import "./App.css";
-import { byPrefixAndName } from "./icons/fontAwesome";
+import { ActivityLog } from "./components/ActivityLog";
+import { ConnectionStatus } from "./components/ConnectionStatus";
+import { NotificationCenter } from "./components/NotificationCenter";
+import { PrimaryControls } from "./components/PrimaryControls";
+import { ShortcutsHelp } from "./components/ShortcutsHelp";
+import { VirtualDisplay } from "./components/VirtualDisplay";
+import { VolumeIndicator } from "./components/VolumeIndicator";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useNotifications } from "./hooks/useNotifications";
 import { useStore } from "./store/useStore";
+import { stepToChannel } from "./utils/channelNavigation";
 import { useWebSocket } from "./websocket/useWebSocket";
 import type { EventMessage, ProgressMessage, StateUpdateMessage } from "./types";
-
-function formatFrequency(value: number | undefined) {
-  if (!value || value <= 0) return null;
-  return value.toFixed(4);
-}
-
-function rssiToPercent(value: number | undefined) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
-  if (value >= 0 && value <= 100) return value;
-  if (value > 100) return 100;
-
-  const clamped = Math.max(-120, Math.min(0, value));
-  return Math.round(((clamped + 120) / 120) * 100);
-}
-
-function percentToBars(percent: number) {
-  if (percent >= 80) return 4;
-  if (percent >= 60) return 3;
-  if (percent >= 40) return 2;
-  if (percent >= 20) return 1;
-  return 0;
-}
-
-function isMeaningfulAlphaTag(value: string | null | undefined): boolean {
-  if (!value) return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  return trimmed !== "0" && trimmed !== "127";
-}
-
-function SignalIcon({ bars }: { bars: number }) {
-  const normalizedBars = Math.max(0, Math.min(4, Math.floor(bars)));
-  const inactiveOpacity = 0.2;
-
-  return (
-    <svg
-      className="mvp-signalSvg"
-      aria-label={`Signal strength: ${normalizedBars} of 4`}
-      viewBox="0 0 640 640"
-      role="img"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M216 384C202.7 384 192 394.7 192 408L192 520C192 533.3 202.7 544 216 544C229.3 544 240 533.3 240 520L240 408C240 394.7 229.3 384 216 384z"
-        fill="currentColor"
-        opacity={normalizedBars >= 1 ? 1 : inactiveOpacity}
-      />
-      <path
-        d="M344 312C344 298.7 333.3 288 320 288C306.7 288 296 298.7 296 312L296 520C296 533.3 306.7 544 320 544C333.3 544 344 533.3 344 520L344 312z"
-        fill="currentColor"
-        opacity={normalizedBars >= 2 ? 1 : inactiveOpacity}
-      />
-      <path
-        d="M424 192C410.7 192 400 202.7 400 216L400 520C400 533.3 410.7 544 424 544C437.3 544 448 533.3 448 520L448 216C448 202.7 437.3 192 424 192z"
-        fill="currentColor"
-        opacity={normalizedBars >= 3 ? 1 : inactiveOpacity}
-      />
-      <path
-        d="M552 120C552 106.7 541.3 96 528 96C514.7 96 504 106.7 504 120L504 520C504 533.3 514.7 544 528 544C541.3 544 552 533.3 552 520L552 120z"
-        fill="currentColor"
-        opacity={normalizedBars >= 4 ? 1 : inactiveOpacity}
-      />
-    </svg>
-  );
-}
-
-function downloadTextFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
 
 function App() {
   const api = useAPI();
@@ -98,15 +29,54 @@ function App() {
   const deviceInfo = useStore((state) => state.deviceInfo);
   const channels = useStore((state) => state.channels);
   const activityLog = useStore((state) => state.activityLog);
+  const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
+  const liveChannel = useStore((state) => state.liveState?.channel);
 
+  const { notifications, addNotification, removeNotification } = useNotifications();
+
+  const [showActivityLog, setShowActivityLog] = useState(false);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [toggleBusy, setToggleBusy] = useState(false);
   const [banks, setBanks] = useState<boolean[]>(() => Array.from({ length: 10 }, () => true));
   const [banksBusy, setBanksBusy] = useState(false);
-  const [exportBusy, setExportBusy] = useState(false);
+  const [temporaryLockoutChannels, setTemporaryLockoutChannels] = useState<number[]>([]);
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
   const lastHitOpenRef = useRef(false);
-  const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
+  const lockoutTimerRef = useRef<number | null>(null);
+
+  const notifyError = useCallback(
+    (fallback: string, error: unknown) => {
+      const message = error instanceof Error && error.message ? error.message : fallback;
+      addNotification({
+        type: "error",
+        message: message === fallback ? fallback : `${fallback}: ${message}`,
+        duration: 5000,
+      });
+    },
+    [addNotification]
+  );
+
+  const openShortcuts = useCallback(() => setShowShortcutsHelp(true), []);
+  const openActivity = useCallback(() => setShowActivityLog(true), []);
+  const closeOverlays = useCallback(() => {
+    setShowShortcutsHelp(false);
+    setShowActivityLog(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (lockoutFlashTimerRef.current !== null) {
+        window.clearTimeout(lockoutFlashTimerRef.current);
+      }
+    };
+  }, []);
+
+  useKeyboardShortcuts({
+    openShortcuts,
+    openActivityLog: openActivity,
+    closeOverlays,
+  });
 
   useEffect(() => {
     setConnected(connected);
@@ -181,6 +151,15 @@ function App() {
         updateLiveState(status);
         setDeviceInfo(info);
         setChannels(channelData);
+        try {
+          const lockouts = await api.getLockouts({ includeFrequencies: false });
+          if (!active) return;
+          setTemporaryLockoutChannels(lockouts.temporary_channels.map((entry) => entry.channel));
+        } catch (error) {
+          if (active) {
+            console.warn("Failed to load initial lockouts", error);
+          }
+        }
       } catch (error) {
         if (!active) return;
         console.warn("Failed to load initial scanner data", error);
@@ -246,20 +225,34 @@ function App() {
     };
   }, [api, setDeviceInfo]);
 
-  const getAlphaTag = useCallback(
-    (channelIndex: number | null | undefined): string | null => {
-      if (!channelIndex) return null;
-      const channel = channels.find((ch) => ch.index === channelIndex);
-      if (!channel || !isMeaningfulAlphaTag(channel.alpha_tag)) return null;
-      return channel.alpha_tag;
-    },
-    [channels]
-  );
-
   const deviceConnection = deviceInfo?.connection_status;
   const deviceConnected = deviceConnection === "connected";
-  const deviceConnecting = deviceConnection === "connecting";
   const deviceDisconnected = deviceConnection === "disconnected";
+
+  useEffect(() => {
+    if (!deviceConnected) return;
+    let active = true;
+
+    const refreshLockouts = async () => {
+      try {
+        const lockouts = await api.getLockouts({ includeFrequencies: false });
+        if (!active) return;
+        setTemporaryLockoutChannels(lockouts.temporary_channels.map((entry) => entry.channel));
+      } catch (error) {
+        if (active) {
+          console.warn("Failed to refresh lockouts", error);
+        }
+      }
+    };
+
+    refreshLockouts();
+    const interval = window.setInterval(refreshLockouts, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [api, deviceConnected]);
 
   useEffect(() => {
     if (!deviceConnected) return;
@@ -286,74 +279,211 @@ function App() {
     };
   }, [api, deviceConnected]);
 
+  const [scanOverrideUntil, setScanOverrideUntil] = useState<number | null>(null);
   const normalizedMode = (liveState?.mode ?? "").toString().trim().toUpperCase();
   const isHold = normalizedMode === "HOLD";
-  const isDirect = normalizedMode === "DIRECT";
-  const isScanMode = normalizedMode === "SCAN";
-  const isSquelchOpen = Boolean(liveState?.squelch_open);
-  const isListening = isSquelchOpen || isHold || isDirect;
-  const isStarting = !liveState;
-  const showScanning = isScanMode && !isSquelchOpen;
-  const frequencyText = formatFrequency(liveState?.frequency);
-  const liveAlphaTag = isMeaningfulAlphaTag(liveState?.alpha_tag) ? liveState?.alpha_tag : null;
-  const alphaTag = liveAlphaTag || getAlphaTag(liveState?.channel);
+  const isScanOverrideActive =
+    scanOverrideUntil !== null && Date.now() < scanOverrideUntil;
   const isDeviceDisconnected = deviceDisconnected || Boolean(liveState?.stale);
-  const displayText = isDeviceDisconnected
-    ? "--"
-    : isStarting
-    ? "Starting..."
-    : showScanning
-    ? "Scanning..."
-    : isListening
-    ? alphaTag || frequencyText || "No Signal"
-    : "Scanning...";
-  const signalBars = percentToBars(rssiToPercent(isSquelchOpen ? liveState?.rssi : 0));
+  const lockoutFlashTimerRef = useRef<number | null>(null);
+  const [lockoutFlash, setLockoutFlash] = useState<"temp" | "perm" | null>(null);
 
-  const statusText = useMemo(() => {
-    const model = deviceInfo?.model || "Device";
-    if (deviceDisconnected || liveState?.stale) return `${model} Disconnected`;
-    if (deviceConnecting) return `${model} Connecting`;
-    if (deviceConnected) return `${model} Connected`;
-    if (connecting) return `${model} Connecting`;
-    if (connected) return `${model} Connected`;
-    return `${model} Disconnected`;
-  }, [
-    connected,
-    connecting,
-    deviceConnected,
-    deviceConnecting,
-    deviceDisconnected,
-    deviceInfo?.model,
-    liveState?.stale,
-  ]);
-
-  const statusDotState = deviceDisconnected || liveState?.stale
-    ? "disconnected"
-    : deviceConnecting
-    ? "connecting"
-    : deviceConnected
-    ? "connected"
-    : connected
-    ? "connected"
-    : connecting
-    ? "connecting"
-    : "disconnected";
+  const triggerLockoutFlash = useCallback((kind: "temp" | "perm") => {
+    setLockoutFlash(kind);
+    if (lockoutFlashTimerRef.current !== null) {
+      window.clearTimeout(lockoutFlashTimerRef.current);
+    }
+    lockoutFlashTimerRef.current = window.setTimeout(() => {
+      setLockoutFlash(null);
+      lockoutFlashTimerRef.current = null;
+    }, 900);
+  }, []);
 
   const handleToggle = useCallback(async () => {
     if (!deviceConnected || toggleBusy) return;
     setToggleBusy(true);
     try {
       if (isHold) {
+        setScanOverrideUntil(Date.now() + 1200);
         await api.sendScan();
       } else {
         await api.sendHold();
       }
     } catch (error) {
       console.warn("Failed to toggle scan/hold", error);
+      notifyError("Failed to toggle scan/hold", error);
     } finally {
       setToggleBusy(false);
     }
-  }, [api, deviceConnected, isHold, toggleBusy]);
+  }, [api, deviceConnected, isHold, notifyError, toggleBusy]);
+
+  const triggerTemporaryLockout = useCallback(async () => {
+    if (!deviceConnected) return;
+    try {
+      const frequency = liveState?.frequency;
+      if (!frequency) {
+        notifyError("No active frequency for lockout", new Error("missing_frequency"));
+        return;
+      }
+      const result = await api.toggleTemporaryLockout({
+        frequency,
+        channel: liveState?.channel ?? undefined,
+      });
+      if (result.channel) {
+        setTemporaryLockoutChannels((prev) =>
+          result.locked
+            ? prev.includes(result.channel!)
+              ? prev
+              : [...prev, result.channel!]
+            : prev.filter((channelId) => channelId !== result.channel)
+        );
+      }
+      triggerLockoutFlash("temp");
+      const lockoutChannel = result.channel ?? liveState?.channel;
+      addNotification({
+        type: "info",
+        message: result.locked
+          ? lockoutChannel
+            ? `Temporary lockout enabled for CH ${lockoutChannel}`
+            : "Temporary lockout enabled"
+          : lockoutChannel
+            ? `Temporary lockout cleared for CH ${lockoutChannel}`
+            : "Temporary lockout cleared",
+        duration: 2500,
+      });
+      if ((liveState?.mode ?? "").toString().trim().toUpperCase() === "HOLD") {
+        window.setTimeout(() => {
+          api.sendScan().catch((error) => {
+            console.warn("Failed to resume scan after temporary lockout", error);
+          });
+        }, 1000);
+      }
+    } catch (error) {
+      console.warn("Failed to toggle lockout", error);
+      notifyError("Failed to toggle lockout", error);
+    }
+  }, [
+    addNotification,
+    api,
+    deviceConnected,
+    liveState?.frequency,
+    liveState?.channel,
+    notifyError,
+  ]);
+
+  const triggerPermanentLockout = useCallback(async () => {
+    if (!deviceConnected) return;
+    try {
+      const channelId = liveState?.channel ?? null;
+      if (!channelId) {
+        notifyError("No channel selected for lockout", new Error("missing_channel"));
+        return;
+      }
+      const updated = await api.togglePermanentLockout(channelId);
+      setChannels(channels.map((channel) => (channel.index === updated.index ? updated : channel)));
+      setTemporaryLockoutChannels((prev) => prev.filter((channel) => channel !== updated.index));
+      triggerLockoutFlash("perm");
+      addNotification({
+        type: "info",
+        message: `Permanent lockout ${updated.lockout ? "enabled" : "cleared"} for CH ${updated.index}`,
+        duration: 2500,
+      });
+      if ((liveState?.mode ?? "").toString().trim().toUpperCase() === "HOLD") {
+        window.setTimeout(() => {
+          api.sendScan().catch((error) => {
+            console.warn("Failed to resume scan after permanent lockout", error);
+          });
+        }, 1000);
+      }
+    } catch (error) {
+      console.warn("Failed to toggle lockout", error);
+      notifyError("Failed to toggle lockout", error);
+    }
+  }, [addNotification, api, channels, deviceConnected, liveState?.channel, notifyError, setChannels]);
+
+  const handleLockout = useCallback(
+    (clickCount: number) => {
+      if (lockoutTimerRef.current !== null) {
+        window.clearTimeout(lockoutTimerRef.current);
+        lockoutTimerRef.current = null;
+      }
+      if (clickCount >= 2) {
+        void triggerPermanentLockout();
+        return;
+      }
+      lockoutTimerRef.current = window.setTimeout(() => {
+        lockoutTimerRef.current = null;
+        void triggerTemporaryLockout();
+      }, 500);
+    },
+    [triggerPermanentLockout, triggerTemporaryLockout]
+  );
+
+  const handleClearTemporaryLockouts = useCallback(async () => {
+    if (!deviceConnected) return;
+    try {
+      const result = await api.clearTemporaryLockouts();
+      addNotification({
+        type: result.failed.length > 0 ? "warning" : "info",
+        message:
+          result.failed.length > 0
+            ? `Cleared ${result.cleared.length} temp lockouts, ${result.failed.length} failed`
+            : `Cleared ${result.cleared.length} temp lockouts`,
+        duration: 2500,
+      });
+    } catch (error) {
+      console.warn("Failed to clear temporary lockouts", error);
+      notifyError("Failed to clear temporary lockouts", error);
+    }
+  }, [addNotification, api, deviceConnected, notifyError]);
+
+  const handleClearGlobalLockouts = useCallback(async () => {
+    if (!deviceConnected) return;
+    try {
+      const result = await api.clearGlobalLockouts();
+      if (result.cleared.length > 0) {
+        setTemporaryLockoutChannels((prev) =>
+          prev.filter((channelId) => !result.cleared.includes(channelId))
+        );
+      }
+      addNotification({
+        type: result.failed.length > 0 ? "warning" : "info",
+        message:
+          result.failed.length > 0
+            ? `Cleared ${result.cleared.length} global lockouts, ${result.failed.length} failed`
+            : `Cleared ${result.cleared.length} global lockouts`,
+        duration: 2500,
+      });
+    } catch (error) {
+      console.warn("Failed to clear global lockouts", error);
+      notifyError("Failed to clear global lockouts", error);
+    }
+  }, [addNotification, api, deviceConnected, notifyError]);
+
+  const handleClearChannelLockouts = useCallback(async () => {
+    if (!deviceConnected) return;
+    try {
+      const result = await api.clearChannelLockouts();
+      if (result.cleared.length > 0) {
+        setChannels(
+          channels.map((channel) =>
+            result.cleared.includes(channel.index) ? { ...channel, lockout: false } : channel
+          )
+        );
+      }
+      addNotification({
+        type: result.failed.length > 0 ? "warning" : "info",
+        message:
+          result.failed.length > 0
+            ? `Cleared ${result.cleared.length} channel lockouts, ${result.failed.length} failed`
+            : `Cleared ${result.cleared.length} channel lockouts`,
+        duration: 2500,
+      });
+    } catch (error) {
+      console.warn("Failed to clear channel lockouts", error);
+      notifyError("Failed to clear channel lockouts", error);
+    }
+  }, [addNotification, api, channels, deviceConnected, notifyError, setChannels]);
 
   const handleBankToggle = useCallback(
     async (index: number) => {
@@ -368,27 +498,14 @@ function App() {
         }
       } catch (error) {
         console.warn("Failed to update banks", error);
+        notifyError("Failed to update banks", error);
         setBanks((prev) => prev.map((active, idx) => (idx === index ? !active : active)));
       } finally {
         setBanksBusy(false);
       }
     },
-    [api, banks, banksBusy]
+    [api, banks, banksBusy, notifyError]
   );
-
-  const handleExport = useCallback(async () => {
-    if (!deviceConnected || exportBusy || syncInProgressRef.current) return;
-    setExportBusy(true);
-    try {
-      const payload = await api.exportBc125atSs();
-      const model = deviceInfo?.model?.trim() || "scanner";
-      downloadTextFile(payload, `${model}.bc125at_ss`);
-    } catch (error) {
-      console.warn("Failed to export scanner memory", error);
-    } finally {
-      setExportBusy(false);
-    }
-  }, [api, deviceConnected, deviceInfo?.model, exportBusy]);
 
   return (
     <div className="mvp">
@@ -400,43 +517,72 @@ function App() {
           <div className="mvp-main">
             <header className="mvp-header">
               <div className="mvp-headerLeft">
-                <span className={`mvp-statusDot mvp-statusDot--${statusDotState}`} aria-hidden="true" />
-                <p className="mvp-statusText">
-                  {statusText}
-                </p>
+                <ConnectionStatus />
+                <VolumeIndicator />
               </div>
               <div className="mvp-headerActions">
                 <button
-                  className="mvp-exportButton"
-                  onClick={handleExport}
-                  disabled={(!deviceConnected && !connected) || exportBusy || syncInProgressRef.current}
+                  className="mvp-actionButton"
+                  onClick={() => setShowShortcutsHelp(true)}
+                  aria-label="Open keyboard shortcuts"
                 >
-                  Read
+                  ?
                 </button>
                 <button
-                  className={`mvp-holdToggle${isHold ? " mvp-holdToggle--active" : ""}`}
-                  onClick={handleToggle}
+                  className={`mvp-actionButton${
+                    lockoutFlash === "perm"
+                      ? " mvp-actionButton--lockoutPerm"
+                      : lockoutFlash === "temp"
+                        ? " mvp-actionButton--lockoutTemp"
+                        : ""
+                  }`}
+                  onClick={(event) => handleLockout(event.detail)}
                   disabled={(!deviceConnected && !connected) || toggleBusy}
+                  title="Click: temporary lockout. Double-click: permanent lockout."
+                  aria-label="Lockout (click temporary, double-click permanent)"
+                  aria-pressed={Boolean(lockoutFlash)}
                 >
-                  {isHold ? "Scan" : "Hold"}
+                  L/O
                 </button>
+                <button
+                  className="mvp-actionButton"
+                  onClick={handleClearTemporaryLockouts}
+                  disabled={!deviceConnected}
+                  title="Clear temporary lockouts"
+                  aria-label="Clear temporary lockouts"
+                >
+                  CLR TL/O
+                </button>
+                <button
+                  className="mvp-actionButton"
+                  onClick={handleClearGlobalLockouts}
+                  disabled={!deviceConnected}
+                  title="Clear global lockouts"
+                  aria-label="Clear global lockouts"
+                >
+                  CLR L/O
+                </button>
+                <button
+                  className="mvp-actionButton"
+                  onClick={handleClearChannelLockouts}
+                  disabled={!deviceConnected}
+                  title="Clear channel lockouts"
+                  aria-label="Clear channel lockouts"
+                >
+                  CLR CH
+                </button>
+                <PrimaryControls
+                  isHolding={isHold}
+                  onToggle={handleToggle}
+                  disabled={(!deviceConnected && !connected) || toggleBusy}
+                />
               </div>
             </header>
 
-            <div className="mvp-display" role="status" aria-label="Scanner display">
-              <div className="mvp-displayRow">
-                <p className="mvp-displayText">{displayText}</p>
-                <div className="mvp-displayIcon" aria-hidden="true">
-                  {isDeviceDisconnected ? (
-                    <FontAwesomeIcon icon={byPrefixAndName.fab["usb"]} className="mvp-icon" />
-                  ) : isStarting || showScanning ? (
-                    <FontAwesomeIcon icon={byPrefixAndName.fas["rotate"]} spin className="mvp-icon" />
-                  ) : (
-                    <SignalIcon bars={signalBars} />
-                  )}
-                </div>
-              </div>
-            </div>
+            <VirtualDisplay
+              temporaryLockoutChannels={temporaryLockoutChannels}
+              scanOverrideActive={isScanOverrideActive}
+            />
 
             <div className="mvp-bankControls" aria-label="Bank controls">
               {banks.map((active, index) => (
@@ -456,8 +602,10 @@ function App() {
           <aside className="mvp-side" aria-label="Recent hits">
             <section className="mvp-hitLog">
               <div className="mvp-hitLogHeader">
-                <p className="mvp-hitLogTitle">Recent hits</p>
-                <p className="mvp-hitLogSubtitle">Last 5</p>
+                <div>
+                  <p className="mvp-hitLogTitle">Recent hits</p>
+                  <p className="mvp-hitLogSubtitle">Last 5</p>
+                </div>
               </div>
               {activityLog.length === 0 ? (
                 <div className="mvp-hitLogEmpty">No hits yet.</div>
@@ -468,18 +616,31 @@ function App() {
                     <span>Frequency</span>
                   </div>
                   {activityLog.map((entry) => (
-                    <div key={entry.id} className="mvp-hitLogRow">
+                    <button
+                      key={entry.id}
+                      className="mvp-hitLogRow"
+                      type="button"
+                      onClick={() => {
+                        if (entry.channel) {
+                          void stepToChannel(api, liveChannel, entry.channel);
+                        }
+                      }}
+                      disabled={!connected || !entry.channel}
+                    >
                       <span>{entry.alpha_tag || "—"}</span>
                       <span>{entry.frequency.toFixed(4)}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
             </section>
           </aside>
         </div>
-
       </div>
+
+      <ActivityLog isOpen={showActivityLog} onClose={() => setShowActivityLog(false)} />
+      <ShortcutsHelp isOpen={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
+      <NotificationCenter notifications={notifications} onDismiss={removeNotification} />
     </div>
   );
 }

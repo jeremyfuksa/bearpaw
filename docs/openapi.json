@@ -73,6 +73,60 @@
         }
       }
     },
+    "/api/v1/banks": {
+      "get": {
+        "summary": "Get Banks",
+        "operationId": "get_banks_api_v1_banks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BanksModel"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set Banks",
+        "operationId": "set_banks_api_v1_banks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BanksModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BanksModel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/commands/hold": {
       "post": {
         "summary": "Hold Command",
@@ -159,15 +213,198 @@
         }
       }
     },
-    "/api/v1/frequency": {
+    "/api/v1/commands/lockout": {
       "post": {
-        "summary": "Set Frequency",
-        "operationId": "set_frequency_api_v1_frequency_post",
+        "summary": "Toggle Lockout",
+        "operationId": "toggle_lockout_api_v1_commands_lockout_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FrequencyRequest"
+                "$ref": "#/components/schemas/LockoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Toggle Lockout Api V1 Commands Lockout Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockouts/temporary/clear": {
+      "post": {
+        "summary": "Clear Temporary Lockouts",
+        "operationId": "clear_temporary_lockouts_api_v1_lockouts_temporary_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Clear Temporary Lockouts Api V1 Lockouts Temporary Clear Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockouts/clear": {
+      "post": {
+        "summary": "Clear Global Lockouts",
+        "operationId": "clear_global_lockouts_api_v1_lockouts_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Clear Global Lockouts Api V1 Lockouts Clear Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockouts/channels/clear": {
+      "post": {
+        "summary": "Clear Channel Lockouts",
+        "operationId": "clear_channel_lockouts_api_v1_lockouts_channels_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Clear Channel Lockouts Api V1 Lockouts Channels Clear Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockouts": {
+      "get": {
+        "summary": "List Lockouts",
+        "operationId": "list_lockouts_api_v1_lockouts_get",
+        "parameters": [
+          {
+            "name": "include_frequencies",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Frequencies"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Lockouts Api V1 Lockouts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockouts/{frequency}": {
+      "get": {
+        "summary": "Get Lockout Status",
+        "operationId": "get_lockout_status_api_v1_lockouts__frequency__get",
+        "parameters": [
+          {
+            "name": "frequency",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "title": "Frequency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Lockout Status Api V1 Lockouts  Frequency  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/volume": {
+      "post": {
+        "summary": "Set Volume",
+        "operationId": "set_volume_api_v1_volume_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolumeRequest"
               }
             }
           },
@@ -183,7 +420,7 @@
                     "type": "string"
                   },
                   "type": "object",
-                  "title": "Response Set Frequency Api V1 Frequency Post"
+                  "title": "Response Set Volume Api V1 Volume Post"
                 }
               }
             }
@@ -342,9 +579,76 @@
           "200": {
             "description": "Successful Response",
             "content": {
-              "text/plain": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debug/glg": {
+      "get": {
+        "summary": "Debug Glg",
+        "operationId": "debug_glg_api_v1_debug_glg_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Debug Glg Api V1 Debug Glg Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debug/scg": {
+      "get": {
+        "summary": "Debug Scg",
+        "operationId": "debug_scg_api_v1_debug_scg_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Debug Scg Api V1 Debug Scg Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debug/glf": {
+      "get": {
+        "summary": "Debug Glf",
+        "operationId": "debug_glf_api_v1_debug_glf_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": "object",
+                  "title": "Response Debug Glf Api V1 Debug Glf Get"
                 }
               }
             }
@@ -355,6 +659,22 @@
   },
   "components": {
     "schemas": {
+      "BanksModel": {
+        "properties": {
+          "banks": {
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array",
+            "title": "Banks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "banks"
+        ],
+        "title": "BanksModel"
+      },
       "ChannelDataModel": {
         "properties": {
           "index": {
@@ -493,6 +813,11 @@
               }
             ],
             "title": "Firmware"
+          },
+          "connection_status": {
+            "type": "string",
+            "title": "Connection Status",
+            "default": "connecting"
           }
         },
         "type": "object",
@@ -529,24 +854,6 @@
           "message"
         ],
         "title": "ErrorResponse"
-      },
-      "FrequencyRequest": {
-        "properties": {
-          "frequency": {
-            "type": "number",
-            "title": "Frequency"
-          },
-          "modulation": {
-            "type": "string",
-            "title": "Modulation",
-            "default": "AUTO"
-          }
-        },
-        "type": "object",
-        "required": [
-          "frequency"
-        ],
-        "title": "FrequencyRequest"
       },
       "HTTPValidationError": {
         "properties": {
@@ -611,6 +918,17 @@
             ],
             "title": "Channel"
           },
+          "alpha_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alpha Tag"
+          },
           "volume": {
             "type": "integer",
             "title": "Volume"
@@ -646,6 +964,39 @@
         ],
         "title": "LiveStateModel"
       },
+      "LockoutRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "temporary"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          }
+        },
+        "type": "object",
+        "title": "LockoutRequest"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -678,6 +1029,19 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VolumeRequest": {
+        "properties": {
+          "volume": {
+            "type": "integer",
+            "title": "Volume"
+          }
+        },
+        "type": "object",
+        "required": [
+          "volume"
+        ],
+        "title": "VolumeRequest"
       }
     }
   }

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { useAPI } from "../api/useApi";
 import { useStore } from "../store/useStore";
+import { stepToChannel } from "../utils/channelNavigation";
 
 interface ActivityLogProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ function formatTimestamp(ts: number) {
 export function ActivityLog({ isOpen, onClose }: ActivityLogProps) {
   const entries = useStore((state) => state.activityLog);
   const connected = useStore((state) => state.connected);
+  const liveChannel = useStore((state) => state.liveState?.channel);
   const api = useAPI();
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -84,8 +86,12 @@ export function ActivityLog({ isOpen, onClose }: ActivityLogProps) {
                 key={entry.id}
                 className="activity-entry"
                 type="button"
-                onClick={() => api.setFrequency(entry.frequency)}
-                disabled={!connected}
+                onClick={() => {
+                  if (entry.channel) {
+                    void stepToChannel(api, liveChannel, entry.channel);
+                  }
+                }}
+                disabled={!connected || !entry.channel}
               >
                 <span className="time">{formatTimestamp(entry.timestamp)}</span>
                 <span className="freq">{entry.frequency.toFixed(4)} MHz</span>

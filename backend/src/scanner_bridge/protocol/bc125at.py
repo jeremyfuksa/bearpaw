@@ -21,6 +21,9 @@ class BC125ATDriver(ScannerDriver):
         self._mode = "SCAN"
         self._pre_program_mode: Optional[str] = None
         self.last_error: Optional[str] = None
+        self._last_volume: int = 0
+        self._last_volume_poll: float = 0.0
+        self._logged_status: bool = False
 
         self._logger = logging.getLogger(__name__)
 
@@ -32,8 +35,12 @@ class BC125ATDriver(ScannerDriver):
 
     async def get_status(self) -> LiveState:
         response = await self._send("STS", PRIORITY_TELEMETRY)
+        if not self._logged_status:
+            self._logger.info("STS response: %s", response)
+            self._logged_status = True
         fields = self.parse_key_value_pairs(response)
         if not fields or "FRQ" not in fields or "SQL" not in fields:
+            await self._refresh_volume()
             response = await self._send("GLG", PRIORITY_TELEMETRY)
             return self._parse_glg_status(response)
         frequency = float(fields.get("FRQ", "0"))
@@ -41,7 +48,14 @@ class BC125ATDriver(ScannerDriver):
         squelch_open = fields.get("SQL", "1") == "0"
         rssi = int(fields.get("RSSI", "0"))
         channel = int(fields.get("CH", "0")) if fields.get("CH") else None
-        volume = int(fields.get("VOL", "0"))
+        if "VOL" in fields:
+            try:
+                self._last_volume = int(fields["VOL"])
+            except ValueError:
+                self._logger.warning("Invalid VOL value: %s", fields["VOL"])
+        else:
+            await self._refresh_volume()
+        volume = self._last_volume
         battery = int(fields.get("BAT", "0")) if fields.get("BAT") else None
         return LiveState(
             timestamp=time.time(),
@@ -96,9 +110,29 @@ class BC125ATDriver(ScannerDriver):
             mode=self._mode,
             channel=channel,
             alpha_tag=alpha_tag,
-            volume=0,
+            volume=self._last_volume,
             battery=None,
         )
+
+    async def _refresh_volume(self) -> None:
+        now = time.time()
+        if now - self._last_volume_poll < 5.0:
+            return
+        self._last_volume_poll = now
+        try:
+            response = await self._send("VOL", PRIORITY_BACKGROUND)
+        except Exception as exc:
+            self._logger.debug("VOL poll failed: %s", exc)
+            return
+        parts = [part.strip() for part in response.split(",") if part.strip() != ""]
+        if parts and parts[0].isalpha():
+            parts = parts[1:]
+        if not parts:
+            return
+        try:
+            self._last_volume = int(parts[0])
+        except ValueError:
+            self._logger.debug("Invalid VOL response: %s", response)
 
     async def send_hold(self) -> bool:
         response = await self._send("KEY,H,P", PRIORITY_CONTROL)
@@ -125,6 +159,9 @@ class BC125ATDriver(ScannerDriver):
     async def send_key(self, key_code: str) -> bool:
         response = await self._send(f"KEY,{key_code},P", PRIORITY_CONTROL)
         ok = self._is_ok_response(response)
+        if not ok:
+            response = await self._send(f"KEY,{key_code}", PRIORITY_CONTROL)
+            ok = self._is_ok_response(response)
         if ok:
             self.last_error = None
         else:
@@ -132,17 +169,19 @@ class BC125ATDriver(ScannerDriver):
             self._logger.warning("Key command failed (%s): %s", key_code, self.last_error)
         return ok
 
-    async def set_frequency(self, freq_mhz: float, modulation: str = "AUTO") -> bool:
-        response = await self._send(
-            f"DO,{freq_mhz:.4f},{modulation}", PRIORITY_CONTROL
-        )
+    async def set_volume(self, volume: int) -> bool:
+        if not 0 <= volume <= 15:
+            raise ValueError("volume_out_of_range")
+        response = await self._send(f"VOL,{volume}", PRIORITY_CONTROL)
         ok = self._is_ok_response(response)
+        if not ok and response.strip().upper().startswith("VOL,"):
+            ok = True
         if ok:
-            self._mode = "DIRECT"
+            self._last_volume = volume
             self.last_error = None
         else:
-            self.last_error = response.strip() or "frequency_failed"
-            self._logger.warning("Set frequency failed: %s", self.last_error)
+            self.last_error = response.strip() or "volume_failed"
+            self._logger.warning("Set volume failed: %s", self.last_error)
         return ok
 
     async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
@@ -164,6 +203,168 @@ class BC125ATDriver(ScannerDriver):
         response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
         await self._exit_program_mode()
         return response
+
+    async def toggle_channel_lockout(self, index: int) -> ChannelData:
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
+            parts = [part.strip() for part in response.split(",")]
+            if parts and parts[0] == "CIN":
+                parts = parts[1:]
+            if parts and parts[0].isdigit():
+                parts = parts[1:]
+            while len(parts) < 7:
+                parts.append("")
+            name, freq, mod, tone, delay, lockout, priority = parts[:7]
+            lockout_value = "0" if lockout == "1" else "1"
+            write_command = (
+                f"CIN,{index},{name},{freq},{mod},{tone},{delay},{lockout_value},{priority}"
+            )
+            write_response = await self._send(write_command, PRIORITY_BACKGROUND)
+            if not self._is_ok_response(write_response) and "OK" not in write_response.upper():
+                raise ValueError(write_response.strip() or "lockout_failed")
+            response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
+            return self._parse_channel_response(index, response)
+        finally:
+            await self._exit_program_mode()
+
+    async def set_channel_lockout(self, index: int, locked: bool) -> ChannelData:
+        await self._enter_program_mode()
+        try:
+            response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
+            parts = [part.strip() for part in response.split(",")]
+            if parts and parts[0] == "CIN":
+                parts = parts[1:]
+            if parts and parts[0].isdigit():
+                parts = parts[1:]
+            while len(parts) < 7:
+                parts.append("")
+            name, freq, mod, tone, delay, lockout, priority = parts[:7]
+            lockout_value = "1" if locked else "0"
+            write_command = (
+                f"CIN,{index},{name},{freq},{mod},{tone},{delay},{lockout_value},{priority}"
+            )
+            write_response = await self._send(write_command, PRIORITY_BACKGROUND)
+            if not self._is_ok_response(write_response) and "OK" not in write_response.upper():
+                raise ValueError(write_response.strip() or "lockout_failed")
+            response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
+            return self._parse_channel_response(index, response)
+        finally:
+            await self._exit_program_mode()
+
+    async def toggle_frequency_lockout(self, frequency_raw: int) -> bool:
+        await self._enter_program_mode()
+        try:
+            locked = await self._is_frequency_locked(frequency_raw)
+            command = "ULF" if locked else "LOF"
+            response = await self._send(f"{command},{frequency_raw}", PRIORITY_BACKGROUND)
+            if not self._is_ok_response(response) and "OK" not in response.upper():
+                raise ValueError(response.strip() or "lockout_failed")
+            result = await self._is_frequency_locked(frequency_raw)
+            self._logger.info(
+                "Frequency lockout %s %s -> %s (response=%s)",
+                command,
+                frequency_raw,
+                "locked" if result else "unlocked",
+                response.strip(),
+            )
+            return result
+        finally:
+            await self._exit_program_mode()
+
+    async def _is_frequency_locked(self, frequency_raw: int) -> bool:
+        locked = await self.get_frequency_lockouts()
+        return frequency_raw in locked
+
+    async def get_frequency_lockouts(self) -> list[int]:
+        await self._enter_program_mode()
+        try:
+            return await self._read_glf_list()
+        finally:
+            await self._exit_program_mode()
+
+    async def set_frequency_lockout(self, frequency_raw: int, locked: bool) -> bool:
+        await self._enter_program_mode()
+        try:
+            command = "LOF" if locked else "ULF"
+            response = await self._send(f"{command},{frequency_raw}", PRIORITY_BACKGROUND)
+            if not self._is_ok_response(response) and "OK" not in response.upper():
+                raise ValueError(response.strip() or "lockout_failed")
+            return True
+        finally:
+            await self._exit_program_mode()
+
+    async def debug_glf_sequence(self, limit: int = 20) -> list[str]:
+        await self._enter_program_mode()
+        try:
+            responses: list[str] = []
+            response = await self._send("GLF,***", PRIORITY_BACKGROUND)
+            responses.append(f"GLF,*** => {response}")
+            next_key = self._parse_glf_response(response)
+            if next_key is None:
+                while len(responses) < limit:
+                    response = await self._send("GLF", PRIORITY_BACKGROUND)
+                    responses.append(f"GLF => {response}")
+                    next_key = self._parse_glf_response(response)
+                    if next_key is None:
+                        break
+            else:
+                while len(responses) < limit:
+                    response = await self._send(f"GLF,{next_key}", PRIORITY_BACKGROUND)
+                    responses.append(f"GLF,{next_key} => {response}")
+                    next_key = self._parse_glf_response(response)
+                    if next_key is None:
+                        break
+            self._logger.info("GLF debug responses: %s", responses)
+            return responses
+        finally:
+            await self._exit_program_mode()
+
+    @staticmethod
+    def _parse_glf_response(response: str) -> Optional[int]:
+        lines = [line.strip() for line in response.splitlines() if line.strip()]
+        if not lines:
+            return None
+        for line in lines:
+            parts = [part.strip() for part in line.split(",")]
+            if parts and parts[0].upper() == "GLF":
+                parts = parts[1:]
+            if not parts:
+                continue
+            value = parts[0]
+            if value == "-1":
+                return None
+            if value.upper() == "OK":
+                continue
+            try:
+                return int(value)
+            except ValueError:
+                continue
+        return None
+
+    async def _read_glf_list(self) -> list[int]:
+        response = await self._send("GLF,***", PRIORITY_BACKGROUND)
+        first = self._parse_glf_response(response)
+        if first is None:
+            return await self._read_glf_list_no_params()
+        locked = [first]
+        while True:
+            response = await self._send(f"GLF,{locked[-1]}", PRIORITY_BACKGROUND)
+            next_key = self._parse_glf_response(response)
+            if next_key is None:
+                break
+            locked.append(next_key)
+        return locked
+
+    async def _read_glf_list_no_params(self) -> list[int]:
+        locked: list[int] = []
+        while True:
+            response = await self._send("GLF", PRIORITY_BACKGROUND)
+            next_key = self._parse_glf_response(response)
+            if next_key is None:
+                break
+            locked.append(next_key)
+        return locked
 
     async def send_program_command(self, command: str) -> str:
         return await self._send(command, PRIORITY_BACKGROUND)
@@ -253,18 +454,15 @@ class BC125ATDriver(ScannerDriver):
             modulation = parts[2] if len(parts) > 2 and parts[2] else "FM"
             remaining = parts[3:]
             if len(remaining) > 0 and remaining[0] != "":
-                lockout = remaining[0] == "1"
+                tone = parse_float(remaining[0])
             if len(remaining) > 1 and remaining[1] != "":
                 delay = int(remaining[1])
             if len(remaining) > 2 and remaining[2] != "":
-                priority = remaining[2] == "1"
+                lockout = remaining[2] == "1"
             if len(remaining) > 3 and remaining[3] != "":
-                if len(remaining) > 4:
-                    tone = parse_float(remaining[3])
-                    if remaining[4] != "":
-                        bank = int(remaining[4])
-                else:
-                    bank = int(remaining[3])
+                priority = remaining[3] == "1"
+            if len(remaining) > 4 and remaining[4] != "":
+                bank = int(remaining[4])
         else:
             if len(parts) > 0:
                 freq_value = parse_frequency(parts[0])

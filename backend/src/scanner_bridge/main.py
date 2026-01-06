@@ -17,6 +17,23 @@ from scanner_bridge.config import AppConfig, load_config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("scanner_bridge")
 
+_NOISY_LOG_MARKERS = (
+    "GET /api/v1/status",
+    "GET /api/v1/device/info",
+    "WebSocket /ws",
+)
+
+
+class _AccessLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not any(marker in message for marker in _NOISY_LOG_MARKERS)
+
+
+def _install_access_log_filters() -> None:
+    logging.getLogger("uvicorn.access").addFilter(_AccessLogFilter())
+    logging.getLogger("uvicorn.error").addFilter(_AccessLogFilter())
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scanner Bridge backend")
@@ -134,6 +151,7 @@ def run_server(
 ) -> None:
     if daemon:
         _daemonize(pid_file, log_file)
+    _install_access_log_filters()
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
     _install_signal_handlers(server, app, config_path)
@@ -153,6 +171,7 @@ def main() -> None:
         sys.exit(2)
 
     app = create_app(config, port_override=args.port)
+    _install_access_log_filters()
     if args.foreground:
         asyncio.run(run_foreground(app, config.api.host, config.api.port))
         return

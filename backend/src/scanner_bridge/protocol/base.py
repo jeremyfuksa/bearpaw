@@ -24,10 +24,6 @@ class ScannerDriver(ABC):
         """Simulate keypress."""
 
     @abstractmethod
-    async def set_frequency(self, freq_mhz: float, modulation: str = "AUTO") -> bool:
-        """Direct frequency tune."""
-
-    @abstractmethod
     async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
         """Read channel memory (requires PRG mode)."""
 
@@ -49,10 +45,34 @@ class ScannerDriver(ABC):
         """Set enabled/disabled scan banks (True = enabled)."""
         raise NotImplementedError
 
+    async def set_volume(self, volume: int) -> bool:
+        """Set volume level (device-specific)."""
+        raise NotImplementedError
+
+    async def toggle_channel_lockout(self, index: int) -> ChannelData:
+        """Toggle lockout for a specific memory channel."""
+        raise NotImplementedError
+
+    async def set_channel_lockout(self, index: int, locked: bool) -> ChannelData:
+        """Set lockout state for a specific memory channel."""
+        raise NotImplementedError
+
+    async def toggle_frequency_lockout(self, frequency_raw: int) -> bool:
+        """Toggle temporary lockout for a frequency. Returns True if locked."""
+        raise NotImplementedError
+
+    async def get_frequency_lockouts(self) -> list[int]:
+        """Return list of globally locked frequencies (raw values)."""
+        raise NotImplementedError
+
+    async def set_frequency_lockout(self, frequency_raw: int, locked: bool) -> bool:
+        """Set global frequency lockout state. Returns True on success."""
+        raise NotImplementedError
+
     @staticmethod
     def parse_key_value_pairs(payload: str) -> Dict[str, str]:
         fields: Dict[str, str] = {}
-        for line in payload.split("\r"):
+        for line in payload.splitlines():
             line = line.strip()
             if not line or "," not in line:
                 continue
