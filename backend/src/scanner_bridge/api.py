@@ -1113,7 +1113,7 @@ async def _poll_status(app: FastAPI) -> None:
     failures = 0
     while True:
         try:
-            if runtime.scheduler.has_high_priority():
+            if runtime.scheduler.has_high_priority() or getattr(runtime.driver, "in_program_mode", False):
                 await asyncio.sleep(0.01)
                 continue
             state = await runtime.driver.get_status()

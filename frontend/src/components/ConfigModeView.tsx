@@ -1,63 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ConnectionStatus } from "./ConnectionStatus";
 import { useAPI } from "../api/useApi";
 import { useStore } from "../store/useStore";
 import { useNotifications } from "../hooks/useNotifications";
 import type { CloseCallSettings, CustomSearchRange } from "../types";
 
-const backlightOptions = [
-  { value: "AO", label: "Always On" },
-  { value: "AF", label: "Always Off" },
-  { value: "KY", label: "Keypress" },
-  { value: "SQ", label: "Squelch" },
-  { value: "KS", label: "Key + Squelch" },
-];
-
-const priorityOptions = [
-  { value: 0, label: "Off" },
-  { value: 1, label: "On" },
-  { value: 2, label: "Plus" },
-  { value: 3, label: "DND" },
-];
-
-const searchDelayOptions = [
-  { value: -10, label: "-10" },
-  { value: -5, label: "-5" },
-  { value: 0, label: "0" },
-  { value: 1, label: "1" },
-  { value: 2, label: "2" },
-  { value: 3, label: "3" },
-  { value: 4, label: "4" },
-  { value: 5, label: "5" },
-];
-
-const closeCallModeOptions = [
-  { value: 0, label: "Off" },
-  { value: 1, label: "Priority" },
-  { value: 2, label: "DND" },
-];
-
-const closeCallBandLabels = [
-  "VHF Low",
-  "Air",
-  "VHF High 1",
-  "VHF High 2",
-  "UHF",
-];
-
-const serviceSearchLabels = [
-  "Police",
-  "Fire/Emergency",
-  "Ham",
-  "Marine",
-  "Railroad",
-  "Civil Air",
-  "Military Air",
-  "CB",
-  "FRS/GMRS/MURS",
-  "Racing",
-];
+// New category components
+import { DeviceStatusHeader } from "./config/DeviceStatusHeader";
+import { CategoryNav } from "./config/CategoryNav";
+import { LockedChannelsCategory } from "./config/LockedChannelsCategory";
+import { AudioCategory } from "./config/AudioCategory";
+import { DisplayCategory } from "./config/DisplayCategory";
+import { PowerKeysCategory } from "./config/PowerKeysCategory";
+import { PriorityWeatherCategory } from "./config/PriorityWeatherCategory";
+import { SearchCategory } from "./config/SearchCategory";
+import { CloseCallCategory } from "./config/CloseCallCategory";
+import { ServiceSearchCategory } from "./config/ServiceSearchCategory";
+import { CustomSearchCategory } from "./config/CustomSearchCategory";
 
 const defaultCloseCallBand = [false, false, false, false, false];
 
@@ -104,6 +63,27 @@ export function ConfigModeView() {
   const [weatherPriority, setWeatherPriority] = useState(false);
   const [contrast, setContrast] = useState(10);
 
+  // Category navigation state
+  const [activeCategory, setActiveCategory] = useState<string>(() => {
+    return localStorage.getItem('config-active-category') || 'locked-channels';
+  });
+  const [isMobileView, setIsMobileView] = useState(false);
+
+  // Persist active category
+  useEffect(() => {
+    localStorage.setItem('config-active-category', activeCategory);
+  }, [activeCategory]);
+
+  // Detect mobile view
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileView(window.innerWidth <= 768);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const lockedChannels = useMemo(
     () => channels.filter((channel) => channel.lockout),
     [channels]
@@ -113,6 +93,11 @@ export function ConfigModeView() {
     lockedChannels.every((channel) => selectedChannels.includes(channel.index));
   const anySelected = selectedChannels.length > 0;
   const selectAllRef = useRef<HTMLInputElement | null>(null);
+  const liveModeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    liveModeRef.current = liveState?.mode ?? null;
+  }, [liveState?.mode]);
 
   const handleClearSelected = async () => {
     if (selectedChannels.length === 0) return;
@@ -177,6 +162,7 @@ export function ConfigModeView() {
     if (!connected) return;
     let active = true;
     const loadConfig = async () => {
+      const preMode = (liveModeRef.current ?? "").toString().trim().toUpperCase();
       try {
         const [config, squelch] = await Promise.all([api.getConfig(), api.getSquelch()]);
         if (!active) return;
@@ -195,10 +181,15 @@ export function ConfigModeView() {
         setCloseCallLockout(config.close_call?.lockout ?? false);
         setServiceSearchGroups(config.service_search?.groups ?? Array(10).fill(false));
         setCustomSearchGroups(config.custom_search?.groups ?? Array(10).fill(false));
-        setCustomSearchRanges(config.custom_search_ranges?.length ? config.custom_search_ranges : buildDefaultRanges());
+        setCustomSearchRanges(
+          config.custom_search_ranges?.length ? config.custom_search_ranges : buildDefaultRanges()
+        );
         setWeatherPriority(config.weather?.priority ?? false);
         setContrast(config.contrast?.level ?? 10);
         setSquelchLevel(squelch.level);
+        if (preMode === "SCAN") {
+          await api.sendScan();
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Request failed";
         addNotification({
@@ -214,170 +205,354 @@ export function ConfigModeView() {
     };
   }, [addNotification, api, connected]);
 
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error ? error.message : "Request failed";
+
   const commitVolume = async (value: number) => {
+    let setSucceeded = true;
     try {
       await api.setVolume(value);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set volume: ${message}`,
         duration: 2500,
       });
     }
+    if (!setSucceeded && typeof liveState?.volume === "number") {
+      setVolumeLevel(liveState.volume);
+    }
   };
 
   const commitSquelch = async (value: number) => {
+    let setSucceeded = true;
     try {
       await api.setSquelch(value);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set squelch: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const squelch = await api.getSquelch();
+      setSquelchLevel(squelch.level);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh squelch: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitBacklight = async (value: string) => {
+    let setSucceeded = true;
     try {
       await api.setBacklight(value);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set backlight: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const backlightSettings = await api.getBacklight();
+      setBacklight(backlightSettings.event ?? "AO");
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh backlight: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitBatteryChargeTime = async (value: number) => {
+    let setSucceeded = true;
     try {
       await api.setBatterySettings(value);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set battery charge time: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const batterySettings = await api.getBatterySettings();
+      setBatteryChargeTime(batterySettings.charge_time ?? 1);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh battery charge time: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitKeyBeep = async (level: number, lock: boolean) => {
+    let setSucceeded = true;
     try {
       await api.setKeyBeepSettings(level, lock);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set key beep: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const keyBeepSettings = await api.getKeyBeepSettings();
+      setKeyBeepLevel(keyBeepSettings.level ?? 0);
+      setKeyLock(keyBeepSettings.lock ?? false);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh key beep: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitPriority = async (mode: number) => {
+    let setSucceeded = true;
     try {
       await api.setPrioritySettings(mode);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set priority: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const prioritySettings = await api.getPrioritySettings();
+      setPriorityMode(prioritySettings.mode ?? 0);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh priority: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitSearchSettings = async (delay: number, codeSearch: boolean) => {
+    let setSucceeded = true;
     try {
       await api.setSearchSettings(delay, codeSearch);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set search settings: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const searchSettings = await api.getSearchSettings();
+      setSearchDelay(searchSettings.delay ?? 0);
+      setSearchCode(searchSettings.code_search ?? false);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh search settings: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitCloseCall = async (payload: CloseCallSettings) => {
+    let setSucceeded = true;
     try {
       await api.setCloseCallSettings(payload);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set Close Call: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const closeCallSettings = await api.getCloseCallSettings();
+      setCloseCallMode(closeCallSettings.mode ?? 0);
+      setCloseCallBeep(closeCallSettings.alert_beep ?? false);
+      setCloseCallLight(closeCallSettings.alert_light ?? false);
+      setCloseCallBand(closeCallSettings.band ?? defaultCloseCallBand);
+      setCloseCallLockout(closeCallSettings.lockout ?? false);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh Close Call: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitServiceSearchGroups = async (groups: boolean[]) => {
+    let setSucceeded = true;
     try {
       await api.setServiceSearchSettings(groups);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set service search: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const serviceSearchSettings = await api.getServiceSearchSettings();
+      setServiceSearchGroups(serviceSearchSettings.groups ?? Array(10).fill(false));
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh service search: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitCustomSearchGroups = async (groups: boolean[]) => {
+    let setSucceeded = true;
     try {
       await api.setCustomSearchSettings(groups);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set custom search: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const customSearchSettings = await api.getCustomSearchSettings();
+      setCustomSearchGroups(customSearchSettings.groups ?? Array(10).fill(false));
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh custom search: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitCustomRange = async (range: CustomSearchRange) => {
+    let setSucceeded = true;
     try {
       await api.setCustomSearchRange(range.index, range.lower, range.upper);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set custom range ${range.index}: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const updatedRange = await api.getCustomSearchRange(range.index);
+      setCustomSearchRanges((prev) =>
+        prev.map((item) => (item.index === range.index ? updatedRange : item))
+      );
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh custom range ${range.index}: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitWeather = async (priority: boolean) => {
+    let setSucceeded = true;
     try {
       await api.setWeatherSettings(priority);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set weather priority: ${message}`,
         duration: 2500,
       });
     }
+    try {
+      const weatherSettings = await api.getWeatherSettings();
+      setWeatherPriority(weatherSettings.priority ?? false);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh weather priority: ${message}`,
+        duration: 2500,
+      });
+    }
   };
 
   const commitContrast = async (value: number) => {
+    let setSucceeded = true;
     try {
       await api.setContrastSettings(value);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Request failed";
+      setSucceeded = false;
+      const message = getErrorMessage(error);
       addNotification({
         type: "error",
         message: `Failed to set contrast: ${message}`,
+        duration: 2500,
+      });
+    }
+    try {
+      const contrastSettings = await api.getContrastSettings();
+      setContrast(contrastSettings.level ?? 10);
+    } catch (error) {
+      if (!setSucceeded) return;
+      const message = getErrorMessage(error);
+      addNotification({
+        type: "warning",
+        message: `Failed to refresh contrast: ${message}`,
         duration: 2500,
       });
     }
@@ -448,427 +623,182 @@ export function ConfigModeView() {
     commitCustomRange(range);
   };
 
+  // Define categories for navigation
+  const categories = [
+    { id: 'locked-channels', label: 'Locked Channels' },
+    { id: 'audio', label: 'Audio' },
+    { id: 'display', label: 'Display' },
+    { id: 'power-keys', label: 'Power & Keys' },
+    { id: 'priority-weather', label: 'Priority & Weather' },
+    { id: 'search', label: 'Search' },
+  ];
+
+  const advancedCategories = [
+    { id: 'close-call', label: 'Close Call' },
+    { id: 'service-search', label: 'Service Search' },
+    { id: 'custom-search', label: 'Custom Search' },
+  ];
+
+  // Render active category content
+  const renderCategoryContent = () => {
+    switch (activeCategory) {
+      case 'locked-channels':
+        return (
+          <LockedChannelsCategory
+            channels={channels}
+            selectedChannels={selectedChannels}
+            connected={connected}
+            onToggleChannel={handleToggleChannel}
+            onSelectAll={handleSelectAll}
+            onClearSelected={handleClearSelected}
+          />
+        );
+
+      case 'audio':
+        return (
+          <AudioCategory
+            volumeLevel={volumeLevel}
+            squelchLevel={squelchLevel}
+            connected={connected}
+            onVolumeChange={setVolumeLevel}
+            onSquelchChange={setSquelchLevel}
+            onVolumeCommit={commitVolume}
+            onSquelchCommit={commitSquelch}
+          />
+        );
+
+      case 'display':
+        return (
+          <DisplayCategory
+            backlight={backlight}
+            contrast={contrast}
+            connected={connected}
+            onBacklightChange={(value) => {
+              setBacklight(value);
+              commitBacklight(value);
+            }}
+            onContrastChange={setContrast}
+            onContrastCommit={commitContrast}
+          />
+        );
+
+      case 'power-keys':
+        return (
+          <PowerKeysCategory
+            keyBeepLevel={keyBeepLevel}
+            keyLock={keyLock}
+            batteryChargeTime={batteryChargeTime}
+            connected={connected}
+            onKeyBeepChange={(value) => {
+              setKeyBeepLevel(value);
+              commitKeyBeep(value, keyLock);
+            }}
+            onKeyLockChange={(value) => {
+              setKeyLock(value);
+              commitKeyBeep(keyBeepLevel, value);
+            }}
+            onBatteryChargeChange={setBatteryChargeTime}
+            onBatteryChargeCommit={commitBatteryChargeTime}
+          />
+        );
+
+      case 'priority-weather':
+        return (
+          <PriorityWeatherCategory
+            priorityMode={priorityMode}
+            weatherPriority={weatherPriority}
+            connected={connected}
+            onPriorityChange={(value) => {
+              setPriorityMode(value);
+              commitPriority(value);
+            }}
+            onWeatherPriorityChange={(value) => {
+              setWeatherPriority(value);
+              commitWeather(value);
+            }}
+          />
+        );
+
+      case 'search':
+        return (
+          <SearchCategory
+            searchDelay={searchDelay}
+            searchCode={searchCode}
+            connected={connected}
+            onSearchDelayChange={(value) => {
+              setSearchDelay(value);
+              commitSearchSettings(value, searchCode);
+            }}
+            onSearchCodeChange={(value) => {
+              setSearchCode(value);
+              commitSearchSettings(searchDelay, value);
+            }}
+          />
+        );
+
+      case 'close-call':
+        return (
+          <CloseCallCategory
+            closeCallMode={closeCallMode}
+            closeCallBand={closeCallBand}
+            closeCallBeep={closeCallBeep}
+            closeCallLight={closeCallLight}
+            closeCallLockout={closeCallLockout}
+            connected={connected}
+            onModeChange={handleCloseCallModeChange}
+            onBandToggle={handleCloseCallBandToggle}
+            onAlertToggle={handleCloseCallToggle}
+          />
+        );
+
+      case 'service-search':
+        return (
+          <ServiceSearchCategory
+            serviceSearchGroups={serviceSearchGroups}
+            connected={connected}
+            onToggle={handleServiceSearchToggle}
+          />
+        );
+
+      case 'custom-search':
+        return (
+          <CustomSearchCategory
+            customSearchGroups={customSearchGroups}
+            customSearchRanges={customSearchRanges}
+            connected={connected}
+            onGroupToggle={handleCustomSearchToggle}
+            onRangeChange={handleCustomRangeChange}
+            onRangeCommit={handleCustomRangeCommit}
+          />
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <section className="config-view" aria-label="Scanner configuration">
-      <div className="config-grid">
-        <div className="config-card">
-          <h3>Device</h3>
-          <ConnectionStatus />
-          <div className="config-row">
-            <span className="config-label">Model</span>
-            <span className="config-value">{deviceInfo?.model || "—"}</span>
-          </div>
-          <div className="config-row">
-            <span className="config-label">Firmware</span>
-            <span className="config-value">{firmware || "—"}</span>
-          </div>
-          <div className="config-row">
-            <span className="config-label">Mode</span>
-            <span className="config-value">{liveState?.mode || "—"}</span>
-          </div>
-          <div className="config-row">
-            <span className="config-label">Squelch</span>
-            <span className="config-value">
-              {liveState ? (liveState.squelch_open ? "Open" : "Closed") : "—"}
-            </span>
-          </div>
-        </div>
+      <DeviceStatusHeader
+        deviceInfo={deviceInfo}
+        firmware={firmware}
+        liveState={liveState}
+      />
 
-        <div className="config-card">
-          <h3>Audio</h3>
-          <div className="config-row config-row--stack">
-            <span className="config-label">Volume</span>
-            <div className="config-slider">
-              <input
-                type="range"
-                min={0}
-                max={15}
-                value={volumeLevel}
-                onChange={(event) => setVolumeLevel(Number(event.target.value))}
-                onMouseUp={(event) => commitVolume(Number((event.target as HTMLInputElement).value))}
-                onTouchEnd={(event) => commitVolume(Number((event.target as HTMLInputElement).value))}
-                disabled={!connected}
-              />
-              <span className="config-value">{volumeLevel}</span>
-            </div>
-          </div>
-          <div className="config-row config-row--stack">
-            <span className="config-label">Squelch</span>
-            <div className="config-slider">
-              <input
-                type="range"
-                min={0}
-                max={15}
-                value={squelchLevel}
-                onChange={(event) => setSquelchLevel(Number(event.target.value))}
-                onMouseUp={(event) => commitSquelch(Number((event.target as HTMLInputElement).value))}
-                onTouchEnd={(event) => commitSquelch(Number((event.target as HTMLInputElement).value))}
-                disabled={!connected}
-              />
-              <span className="config-value">{squelchLevel}</span>
-            </div>
-          </div>
-        </div>
+      <div className="config-layout">
+        <CategoryNav
+          categories={categories}
+          advancedCategories={advancedCategories}
+          activeCategory={activeCategory}
+          onCategoryChange={setActiveCategory}
+          isMobile={isMobileView}
+        />
 
-        <div className="config-card">
-          <h3>Locked Channels</h3>
-          <p className="config-note">Select channels to unlock.</p>
-          {lockedChannels.length === 0 ? (
-            <p className="config-note">No locked channels.</p>
-          ) : (
-            <div className="locked-list">
-              <label className="locked-selectAll">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={handleSelectAll}
-                  disabled={!connected}
-                  ref={selectAllRef}
-                />
-                <span>Select all</span>
-              </label>
-              <ul className="locked-items" role="list">
-                {lockedChannels.map((channel) => (
-                  <li key={channel.index} className="locked-item">
-                    <label className="locked-itemLabel">
-                      <input
-                        type="checkbox"
-                        checked={selectedChannels.includes(channel.index)}
-                        onChange={() => handleToggleChannel(channel.index)}
-                        disabled={!connected}
-                      />
-                      <span className="locked-text">
-                        {channel.frequency.toFixed(4)} {channel.alpha_tag || "—"}
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div className="config-actions">
-            <button
-              className="mvp-actionButton"
-              type="button"
-              disabled={!connected || selectedChannels.length === 0}
-              onClick={handleClearSelected}
-            >
-              Clear Selected Channels
-            </button>
-          </div>
-        </div>
-
-        <div className="config-card config-card--span">
-          <h3>Display</h3>
-          <div className="config-row">
-            <span className="config-label">Backlight</span>
-            <select
-              className="config-select"
-              value={backlight}
-              onChange={(event) => {
-                const value = event.target.value;
-                setBacklight(value);
-                commitBacklight(value);
-              }}
-              disabled={!connected}
-            >
-              {backlightOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="config-row">
-            <span className="config-label">Contrast</span>
-            <div className="config-slider">
-              <input
-                type="range"
-                min={1}
-                max={15}
-                value={contrast}
-                onChange={(event) => setContrast(Number(event.target.value))}
-                onMouseUp={(event) => commitContrast(Number((event.target as HTMLInputElement).value))}
-                onTouchEnd={(event) => commitContrast(Number((event.target as HTMLInputElement).value))}
-                disabled={!connected}
-              />
-              <span className="config-value">{contrast}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="config-card">
-          <h3>Keys & Power</h3>
-          <div className="config-row">
-            <span className="config-label">Beep Level</span>
-            <select
-              className="config-select"
-              value={keyBeepLevel}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                setKeyBeepLevel(value);
-                commitKeyBeep(value, keyLock);
-              }}
-              disabled={!connected}
-            >
-              <option value={0}>Auto</option>
-              {Array.from({ length: 15 }, (_, index) => (
-                <option key={index + 1} value={index + 1}>
-                  {index + 1}
-                </option>
-              ))}
-              <option value={99}>Off</option>
-            </select>
-          </div>
-          <label className="config-toggle">
-            <input
-              type="checkbox"
-              checked={keyLock}
-              onChange={(event) => {
-                const value = event.target.checked;
-                setKeyLock(value);
-                commitKeyBeep(keyBeepLevel, value);
-              }}
-              disabled={!connected}
-            />
-            <span>Key Lock</span>
-          </label>
-          <div className="config-row">
-            <span className="config-label">Battery Charge</span>
-            <div className="config-slider">
-              <input
-                type="range"
-                min={1}
-                max={16}
-                value={batteryChargeTime}
-                onChange={(event) => setBatteryChargeTime(Number(event.target.value))}
-                onMouseUp={(event) =>
-                  commitBatteryChargeTime(Number((event.target as HTMLInputElement).value))
-                }
-                onTouchEnd={(event) =>
-                  commitBatteryChargeTime(Number((event.target as HTMLInputElement).value))
-                }
-                disabled={!connected}
-              />
-              <span className="config-value">{batteryChargeTime}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="config-card">
-          <h3>Priority & Weather</h3>
-          <div className="config-row">
-            <span className="config-label">Priority Mode</span>
-            <select
-              className="config-select"
-              value={priorityMode}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                setPriorityMode(value);
-                commitPriority(value);
-              }}
-              disabled={!connected}
-            >
-              {priorityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="config-toggle">
-            <input
-              type="checkbox"
-              checked={weatherPriority}
-              onChange={(event) => {
-                const value = event.target.checked;
-                setWeatherPriority(value);
-                commitWeather(value);
-              }}
-              disabled={!connected}
-            />
-            <span>Weather Alert Priority</span>
-          </label>
-        </div>
-
-        <div className="config-card">
-          <h3>Search</h3>
-          <div className="config-row">
-            <span className="config-label">Search Delay</span>
-            <select
-              className="config-select"
-              value={searchDelay}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                setSearchDelay(value);
-                commitSearchSettings(value, searchCode);
-              }}
-              disabled={!connected}
-            >
-              {searchDelayOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <label className="config-toggle">
-            <input
-              type="checkbox"
-              checked={searchCode}
-              onChange={(event) => {
-                const value = event.target.checked;
-                setSearchCode(value);
-                commitSearchSettings(searchDelay, value);
-              }}
-              disabled={!connected}
-            />
-            <span>CTCSS/DCS Search</span>
-          </label>
-        </div>
-
-        <div className="config-card config-card--span">
-          <h3>Close Call</h3>
-          <div className="config-row">
-            <span className="config-label">Mode</span>
-            <select
-              className="config-select"
-              value={closeCallMode}
-              onChange={(event) => handleCloseCallModeChange(Number(event.target.value))}
-              disabled={!connected}
-            >
-              {closeCallModeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="config-group">
-            {closeCallBandLabels.map((label, index) => (
-              <label key={label} className="config-toggle">
-                <input
-                  type="checkbox"
-                  checked={closeCallBand[index] ?? false}
-                  onChange={() => handleCloseCallBandToggle(index)}
-                  disabled={!connected}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
-          <div className="config-group">
-            <label className="config-toggle">
-              <input
-                type="checkbox"
-                checked={closeCallBeep}
-                onChange={(event) => handleCloseCallToggle("alert_beep", event.target.checked)}
-                disabled={!connected}
-              />
-              <span>Alert Beep</span>
-            </label>
-            <label className="config-toggle">
-              <input
-                type="checkbox"
-                checked={closeCallLight}
-                onChange={(event) => handleCloseCallToggle("alert_light", event.target.checked)}
-                disabled={!connected}
-              />
-              <span>Alert Light</span>
-            </label>
-            <label className="config-toggle">
-              <input
-                type="checkbox"
-                checked={closeCallLockout}
-                onChange={(event) => handleCloseCallToggle("lockout", event.target.checked)}
-                disabled={!connected}
-              />
-              <span>Lockout Hits While Scanning</span>
-            </label>
-          </div>
-        </div>
-
-        <div className="config-card">
-          <h3>Service Search</h3>
-          <div className="config-group">
-            {serviceSearchLabels.map((label, index) => (
-              <label key={label} className="config-toggle">
-                <input
-                  type="checkbox"
-                  checked={serviceSearchGroups[index] ?? false}
-                  onChange={() => handleServiceSearchToggle(index)}
-                  disabled={!connected}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="config-card">
-          <h3>Custom Search Groups</h3>
-          <div className="config-group config-group--grid">
-            {customSearchGroups.map((enabled, index) => (
-              <label key={`custom-group-${index + 1}`} className="config-toggle">
-                <input
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={() => handleCustomSearchToggle(index)}
-                  disabled={!connected}
-                />
-                <span>Range {index + 1}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="config-card config-card--span">
-          <h3>Custom Search Ranges</h3>
-          <div className="config-table">
-            <div className="config-tableHeader">
-              <span>Range</span>
-              <span>Lower (MHz)</span>
-              <span>Upper (MHz)</span>
-              <span></span>
-            </div>
-            {customSearchRanges.map((range) => (
-              <div key={`range-${range.index}`} className="config-tableRow">
-                <span>#{range.index}</span>
-                <input
-                  type="number"
-                  min={25}
-                  max={512}
-                  step={0.0001}
-                  value={Number.isFinite(range.lower) ? range.lower : 0}
-                  onChange={(event) =>
-                    handleCustomRangeChange(range.index, "lower", Number(event.target.value))
-                  }
-                  disabled={!connected}
-                />
-                <input
-                  type="number"
-                  min={25}
-                  max={512}
-                  step={0.0001}
-                  value={Number.isFinite(range.upper) ? range.upper : 0}
-                  onChange={(event) =>
-                    handleCustomRangeChange(range.index, "upper", Number(event.target.value))
-                  }
-                  disabled={!connected}
-                />
-                <button
-                  type="button"
-                  className="mvp-actionButton mvp-actionButton--ghost"
-                  onClick={() => handleCustomRangeCommit(range.index)}
-                  disabled={!connected}
-                >
-                  Set
-                </button>
-              </div>
-            ))}
-          </div>
+        <div className="config-content-pane">
+          <div className="category-content">{renderCategoryContent()}</div>
         </div>
       </div>
     </section>
   );
 }
+

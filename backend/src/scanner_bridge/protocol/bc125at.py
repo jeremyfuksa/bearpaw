@@ -20,6 +20,7 @@ class BC125ATDriver(ScannerDriver):
         self._scheduler = scheduler
         self._mode = "SCAN"
         self._pre_program_mode: Optional[str] = None
+        self._in_program_mode = False
         self.last_error: Optional[str] = None
         self._last_volume: int = 0
         self._last_volume_poll: float = 0.0
@@ -562,6 +563,7 @@ class BC125ATDriver(ScannerDriver):
         return await self._send(command, PRIORITY_BACKGROUND)
 
     async def _enter_program_mode(self) -> None:
+        self._in_program_mode = True
         self._pre_program_mode = self._mode
         if self._mode == "SCAN":
             await self._send("KEY,H,P", PRIORITY_CONTROL)
@@ -569,11 +571,18 @@ class BC125ATDriver(ScannerDriver):
         await self._send("PRG", PRIORITY_BACKGROUND)
 
     async def _exit_program_mode(self) -> None:
-        await self._send("EPG", PRIORITY_BACKGROUND)
-        if self._pre_program_mode == "SCAN":
-            await self._send("KEY,S,P", PRIORITY_CONTROL)
-        self._mode = self._pre_program_mode or self._mode
-        self._pre_program_mode = None
+        try:
+            await self._send("EPG", PRIORITY_BACKGROUND)
+            if self._pre_program_mode == "SCAN":
+                await self._send("KEY,S,P", PRIORITY_CONTROL)
+            self._mode = self._pre_program_mode or self._mode
+            self._pre_program_mode = None
+        finally:
+            self._in_program_mode = False
+
+    @property
+    def in_program_mode(self) -> bool:
+        return self._in_program_mode
 
     async def get_banks(self) -> list[bool]:
         await self._enter_program_mode()
@@ -819,6 +828,9 @@ class BC125ATDriver(ScannerDriver):
                 await self._exit_program_mode()
         parts = self._parse_command_parts(response, command)
         flags = parts[0] if parts else ""
+        if flags.upper() == "NG":
+            self._logger.warning("%s unsupported response: %s", command, response)
+            return [False] * length
         if len(flags) != length:
             raise ValueError(f"Invalid {command} response: {response}")
         return [ch == "0" for ch in flags]
