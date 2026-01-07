@@ -60,40 +60,42 @@ export function CategoryNav({
       <div>
         {categories.map(renderNavItem)}
 
-        <div className="category-nav-section">
-          <button
-            className="category-nav-section-header"
-            onClick={() => setAdvancedExpanded(!advancedExpanded)}
-            aria-expanded={advancedExpanded}
-            aria-controls="advanced-categories"
-          >
-            <span>Advanced</span>
-            <svg
-              className={`category-nav-section-chevron ${advancedExpanded ? 'category-nav-section-chevron--expanded' : ''}`}
-              viewBox="0 0 12 12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+        {advancedCategories.length > 0 && (
+          <div className="category-nav-section">
+            <button
+              className="category-nav-section-header"
+              onClick={() => setAdvancedExpanded(!advancedExpanded)}
+              aria-expanded={advancedExpanded}
+              aria-controls="advanced-categories"
             >
-              <polyline points="2,4 6,8 10,4" />
-            </svg>
-          </button>
-          <div
-            id="advanced-categories"
-            className="category-nav-section-items"
-            style={{
-              height: advancedExpanded ? advancedContentRef.current?.scrollHeight : 0,
-            }}
-            aria-hidden={!advancedExpanded}
-          >
-            <div ref={advancedContentRef}>
-              {advancedCategories.map(renderNavItem)}
+              <span>Advanced</span>
+              <svg
+                className={`category-nav-section-chevron ${advancedExpanded ? 'category-nav-section-chevron--expanded' : ''}`}
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="2,4 6,8 10,4" />
+              </svg>
+            </button>
+            <div
+              id="advanced-categories"
+              className="category-nav-section-items"
+              style={{
+                height: advancedExpanded ? advancedContentRef.current?.scrollHeight : 0,
+              }}
+              aria-hidden={!advancedExpanded}
+            >
+              <div ref={advancedContentRef}>
+                {advancedCategories.map(renderNavItem)}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </nav>
   );

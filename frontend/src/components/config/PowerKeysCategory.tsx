@@ -53,7 +53,7 @@ export function PowerKeysCategory({
       </label>
 
       <div className="config-row">
-        <span className="config-label">Battery Charge</span>
+        <span className="config-label">Battery Saver (hrs)</span>
         <div className="config-slider">
           <input
             type="range"
