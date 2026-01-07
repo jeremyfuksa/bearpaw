@@ -1,6 +1,12 @@
 import { create } from "zustand";
 
-import type { ActivityLogEntry, ChannelData, DeviceInfo, LiveState } from "../types";
+import type {
+  ActivityLogEntry,
+  ChannelData,
+  ChannelDraft,
+  DeviceInfo,
+  LiveState,
+} from "../types";
 
 interface Preferences {
   theme: "night" | "field";
@@ -17,6 +23,8 @@ interface AppState {
   activityLog: ActivityLogEntry[];
   preferences: Preferences;
   lastSequence: number;
+  memoryDrafts: Record<number, ChannelDraft>;
+  memoryEditingIndex: number | null;
 
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
   setDeviceInfo: (info: DeviceInfo | null) => void;
@@ -26,6 +34,8 @@ interface AppState {
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
+  setMemoryEditingIndex: (index: number | null) => void;
+  setMemoryDraft: (index: number, draft: ChannelDraft) => void;
 }
 
 const defaultPreferences: Preferences = {
@@ -43,6 +53,8 @@ export const useStore = create<AppState>((set) => ({
   activityLog: [],
   preferences: defaultPreferences,
   lastSequence: 0,
+  memoryDrafts: {},
+  memoryEditingIndex: null,
 
   updateLiveState: (state, sequence) =>
     set((prev) => {
@@ -75,5 +87,14 @@ export const useStore = create<AppState>((set) => ({
   updatePreferences: (prefs) =>
     set((prev) => ({
       preferences: { ...prev.preferences, ...prefs },
+    })),
+
+  setMemoryEditingIndex: (index) => set({ memoryEditingIndex: index }),
+  setMemoryDraft: (index, draft) =>
+    set((prev) => ({
+      memoryDrafts: {
+        ...prev.memoryDrafts,
+        [index]: draft,
+      },
     })),
 }));

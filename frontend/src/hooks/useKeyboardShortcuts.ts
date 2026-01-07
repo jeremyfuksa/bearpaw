@@ -6,6 +6,7 @@ import { useStore } from "../store/useStore";
 interface ShortcutHandlers {
   openShortcuts: () => void;
   openActivityLog: () => void;
+  openMemoryBrowser: () => void;
   closeOverlays: () => void;
 }
 
@@ -50,6 +51,10 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         case "?":
           event.preventDefault();
           handlers.openShortcuts();
+          break;
+        case "m":
+          event.preventDefault();
+          handlers.openMemoryBrowser();
           break;
         case "arrowup":
           event.preventDefault();

@@ -5,6 +5,10 @@ import "./App.css";
 import { ActivityLog } from "./components/ActivityLog";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { ConfigModeView } from "./components/ConfigModeView";
+import { SessionStatsWidget } from "./components/dashboard/SessionStatsWidget";
+import { BusiestChannelsWidget } from "./components/dashboard/BusiestChannelsWidget";
+import { ActivityHeatmapWidget } from "./components/dashboard/ActivityHeatmapWidget";
+import { MemoryBrowserView } from "./components/MemoryBrowserView";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { PrimaryControls } from "./components/PrimaryControls";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
@@ -14,8 +18,12 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useNotifications } from "./hooks/useNotifications";
 import { useStore } from "./store/useStore";
 import { stepToChannel } from "./utils/channelNavigation";
+import { formatRelativeTime } from "./utils/timeFormat";
 import { useWebSocket } from "./websocket/useWebSocket";
 import type { EventMessage, ProgressMessage, StateUpdateMessage } from "./types";
+import type { BusiestChannel, HeatmapCell, SessionStats } from "./components/dashboard/types";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 function App() {
   const api = useAPI();
@@ -42,6 +50,14 @@ function App() {
   const [banks, setBanks] = useState<boolean[]>(() => Array.from({ length: 10 }, () => true));
   const [banksBusy, setBanksBusy] = useState(false);
   const [temporaryLockoutChannels, setTemporaryLockoutChannels] = useState<number[]>([]);
+  const [activityLogDisplayTime, setActivityLogDisplayTime] = useState(() => Date.now() / 1000);
+
+  // Dashboard state
+  const [busiestChannels, setBusiestChannels] = useState<BusiestChannel[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HeatmapCell[]>([]);
+  const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
   const lastHitOpenRef = useRef(false);
@@ -61,6 +77,7 @@ function App() {
 
   const openShortcuts = useCallback(() => setShowShortcutsHelp(true), []);
   const openActivity = useCallback(() => setShowActivityLog(true), []);
+  const openMemoryBrowser = useCallback(() => setMode("channels"), []);
   const closeOverlays = useCallback(() => {
     setShowShortcutsHelp(false);
     setShowActivityLog(false);
@@ -77,8 +94,61 @@ function App() {
   useKeyboardShortcuts({
     openShortcuts,
     openActivityLog: openActivity,
+    openMemoryBrowser,
     closeOverlays,
   });
+
+  // Snapshot time when activity log changes (new hit arrives)
+  useEffect(() => {
+    if (activityLog.length > 0) {
+      setActivityLogDisplayTime(Date.now() / 1000);
+    }
+  }, [activityLog]);
+
+  // Fetch analytics data for dashboard
+  useEffect(() => {
+    if (mode !== 'scan') return;
+
+    const fetchAnalytics = async () => {
+      try {
+        setDashboardLoading(true);
+
+        const [channelsRes, heatmapRes, statsRes] = await Promise.all([
+          fetch(`${API_BASE}/analytics/busiest-channels?limit=5&hours=24`),
+          fetch(`${API_BASE}/analytics/hourly-heatmap?days=7`),
+          fetch(`${API_BASE}/analytics/session-stats`),
+        ]);
+
+        if (channelsRes.ok) {
+          const data = await channelsRes.json();
+          setBusiestChannels(data.channels || []);
+        }
+
+        if (heatmapRes.ok) {
+          const data = await heatmapRes.json();
+          setHeatmapData(data.heatmap || []);
+        }
+
+        if (statsRes.ok) {
+          const data = await statsRes.json();
+          setSessionStats(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch analytics data:', error);
+      } finally {
+        setDashboardLoading(false);
+      }
+    };
+
+    fetchAnalytics();
+
+    // Refresh data periodically
+    const interval = setInterval(() => {
+      fetchAnalytics();
+    }, 5000); // 5 seconds
+
+    return () => clearInterval(interval);
+  }, [mode]);
 
   useEffect(() => {
     setConnected(connected);
@@ -94,11 +164,7 @@ function App() {
       if (typeof squelchOpen === "boolean") {
         lastHitOpenRef.current = squelchOpen;
       }
-      if (
-        isNewHit &&
-        payload.data.frequency &&
-        (payload.data.alpha_tag || payload.data.channel)
-      ) {
+      if (isNewHit && payload.data.frequency) {
         addActivityLogEntry({
           id: `${payload.timestamp}-${payload.sequence}`,
           timestamp: payload.timestamp,
@@ -479,119 +545,134 @@ function App() {
           </button>
         </div>
 
-        {mode === "scan" ? (
-          <div className="mvp-layout">
-            <div className="mvp-main">
-              <header className="mvp-header">
-                <div className="mvp-headerLeft">
-                  <ConnectionStatus />
-                  <VolumeIndicator />
-                </div>
-                <div className="mvp-headerActions">
+        <div className="mvp-content">
+          {mode === "scan" ? (
+            <div className="scan-layout">
+              <div className="scan-layout__scanner">
+                <header className="mvp-header">
+                  <div className="mvp-headerLeft">
+                    <ConnectionStatus />
+                    <VolumeIndicator />
+                  </div>
+                  <div className="mvp-headerActions">
+                    <button
+                      className="mvp-actionButton"
+                      onClick={() => setShowShortcutsHelp(true)}
+                      aria-label="Open keyboard shortcuts"
+                    >
+                      ?
+                    </button>
                   <button
-                    className="mvp-actionButton"
-                    onClick={() => setShowShortcutsHelp(true)}
-                    aria-label="Open keyboard shortcuts"
+                    className={`mvp-actionButton${
+                      lockoutFlash === "perm"
+                        ? " mvp-actionButton--lockoutPerm"
+                        : lockoutFlash === "temp"
+                          ? " mvp-actionButton--lockoutTemp"
+                          : ""
+                    }`}
+                    onClick={(event) => handleLockout(event.detail)}
+                    disabled={(!deviceConnected && !connected) || toggleBusy}
+                    title="Click: temporary lockout. Double-click: permanent lockout."
+                    aria-label="Lockout (click temporary, double-click permanent)"
+                    aria-pressed={Boolean(lockoutFlash)}
                   >
-                    ?
+                    L/O
                   </button>
-                <button
-                  className={`mvp-actionButton${
-                    lockoutFlash === "perm"
-                      ? " mvp-actionButton--lockoutPerm"
-                      : lockoutFlash === "temp"
-                        ? " mvp-actionButton--lockoutTemp"
-                        : ""
-                  }`}
-                  onClick={(event) => handleLockout(event.detail)}
-                  disabled={(!deviceConnected && !connected) || toggleBusy}
-                  title="Click: temporary lockout. Double-click: permanent lockout."
-                  aria-label="Lockout (click temporary, double-click permanent)"
-                  aria-pressed={Boolean(lockoutFlash)}
-                >
-                  L/O
-                </button>
-                <PrimaryControls
-                  isHolding={isHold}
-                  onToggle={handleToggle}
-                  disabled={(!deviceConnected && !connected) || toggleBusy}
+                  <PrimaryControls
+                    isHolding={isHold}
+                    onToggle={handleToggle}
+                    disabled={(!deviceConnected && !connected) || toggleBusy}
+                  />
+                  </div>
+                </header>
+
+                <VirtualDisplay
+                  temporaryLockoutChannels={temporaryLockoutChannels}
+                  scanOverrideActive={isScanOverrideActive}
                 />
+
+                <div className="mvp-bankControls" aria-label="Bank controls">
+                  {banks.map((active, index) => (
+                    <button
+                      key={`bank-${index + 1}`}
+                      className={`mvp-bankToggle${active ? " mvp-bankToggle--active" : ""}`}
+                      type="button"
+                      onClick={() => handleBankToggle(index)}
+                      disabled={banksBusy || (!deviceConnected && !connected)}
+                    >
+                      {index + 1}
+                    </button>
+                  ))}
                 </div>
-              </header>
 
-              <VirtualDisplay
-                temporaryLockoutChannels={temporaryLockoutChannels}
-                scanOverrideActive={isScanOverrideActive}
-              />
-
-              <div className="mvp-bankControls" aria-label="Bank controls">
-                {banks.map((active, index) => (
-                  <button
-                    key={`bank-${index + 1}`}
-                    className={`mvp-bankToggle${active ? " mvp-bankToggle--active" : ""}`}
-                    type="button"
-                    onClick={() => handleBankToggle(index)}
-                    disabled={banksBusy || (!deviceConnected && !connected)}
-                  >
-                    {index + 1}
-                  </button>
-                ))}
+                <SessionStatsWidget stats={sessionStats} loading={dashboardLoading} />
               </div>
-            </div>
 
-            <aside className="mvp-side" aria-label="Recent hits">
-              <section className="mvp-hitLog">
-                <div className="mvp-hitLogHeader">
-                  <div>
-                    <p className="mvp-hitLogTitle">Recent hits</p>
-                    <p className="mvp-hitLogSubtitle">Last 5</p>
-                  </div>
-                </div>
-                {activityLog.length === 0 ? (
-                  <div className="mvp-hitLogEmpty">No hits yet.</div>
-                ) : (
-                  <div className="mvp-hitLogTable">
-                    <div className="mvp-hitLogRow mvp-hitLogRow--head">
-                      <span>Alpha tag</span>
-                      <span>Frequency</span>
+              <aside className="scan-layout__hits" aria-label="Recent hits">
+                <section className="mvp-hitLog">
+                  <div className="mvp-hitLogHeader">
+                    <div>
+                      <p className="mvp-hitLogTitle">Recent Hits</p>
                     </div>
-                    {activityLog.map((entry) => (
-                      <button
-                        key={entry.id}
-                        className="mvp-hitLogRow"
-                        type="button"
-                        onClick={() => {
-                          if (entry.channel) {
-                            void stepToChannel(api, liveChannel, entry.channel);
-                          }
-                        }}
-                        disabled={!connected || !entry.channel}
-                      >
-                        <span>{entry.alpha_tag || "—"}</span>
-                        <span>{entry.frequency.toFixed(4)}</span>
-                      </button>
-                    ))}
                   </div>
-                )}
-              </section>
-            </aside>
-          </div>
-        ) : mode === "device" ? (
-          <div className="mvp-layout mvp-layout--single">
-            <div className="mvp-main">
-              <ConfigModeView />
-            </div>
-          </div>
-        ) : (
-          <div className="mvp-layout mvp-layout--single">
-            <div className="mvp-main">
-              <div className="mode-placeholder">
-                <h2>Channel Editing</h2>
-                <p>Channel and bank management will live here.</p>
+                  {activityLog.length === 0 ? (
+                    <div className="dashboard-empty">No hits yet</div>
+                  ) : (
+                    <table className="recent-hits-table">
+                      <thead className="visually-hidden">
+                        <tr>
+                          <th>Tag</th>
+                          <th>Frequency</th>
+                          <th>Last Seen</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityLog.map((entry) => (
+                          <tr
+                            key={entry.id}
+                            className={entry.channel ? 'clickable' : ''}
+                            onClick={() => {
+                              if (entry.channel) {
+                                void stepToChannel(api, liveChannel, entry.channel);
+                              }
+                            }}
+                          >
+                            <td>{entry.alpha_tag || '—'}</td>
+                            <td>{entry.frequency.toFixed(4)}</td>
+                            <td>{formatRelativeTime(entry.timestamp, activityLogDisplayTime)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </section>
+              </aside>
+
+              <div className="scan-layout__busiest">
+                <BusiestChannelsWidget
+                  channels={busiestChannels}
+                  loading={dashboardLoading}
+                />
+              </div>
+
+              <div className="scan-layout__heatmap">
+                <ActivityHeatmapWidget heatmap={heatmapData} loading={dashboardLoading} />
               </div>
             </div>
-          </div>
-        )}
+          ) : mode === "device" ? (
+            <div className="mvp-layout mvp-layout--single">
+              <div className="mvp-main">
+                <ConfigModeView />
+              </div>
+            </div>
+          ) : (
+            <div className="mvp-layout mvp-layout--single">
+              <div className="mvp-main">
+                <MemoryBrowserView />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <ActivityLog isOpen={showActivityLog} onClose={() => setShowActivityLog(false)} />
