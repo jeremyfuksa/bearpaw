@@ -9,11 +9,7 @@ import type { CloseCallSettings, CustomSearchRange } from "../types";
 import { DeviceStatusHeader } from "./config/DeviceStatusHeader";
 import { CategoryNav } from "./config/CategoryNav";
 import { LockedChannelsCategory } from "./config/LockedChannelsCategory";
-import { AudioCategory } from "./config/AudioCategory";
-import { DisplayCategory } from "./config/DisplayCategory";
-import { PowerKeysCategory } from "./config/PowerKeysCategory";
-import { PriorityWeatherCategory } from "./config/PriorityWeatherCategory";
-import { SearchCategory } from "./config/SearchCategory";
+import { DeviceConfigCategory } from "./config/DeviceConfigCategory";
 import { CloseCallCategory } from "./config/CloseCallCategory";
 import { ServiceSearchCategory } from "./config/ServiceSearchCategory";
 import { CustomSearchCategory } from "./config/CustomSearchCategory";
@@ -626,14 +622,7 @@ export function ConfigModeView() {
   // Define categories for navigation
   const categories = [
     { id: 'locked-channels', label: 'Locked Channels' },
-    { id: 'audio', label: 'Audio' },
-    { id: 'display', label: 'Display' },
-    { id: 'power-keys', label: 'Power & Keys' },
-    { id: 'priority-weather', label: 'Priority & Weather' },
-    { id: 'search', label: 'Search' },
-  ];
-
-  const advancedCategories = [
+    { id: 'device-config', label: 'Device Config' },
     { id: 'close-call', label: 'Close Call' },
     { id: 'service-search', label: 'Service Search' },
     { id: 'custom-search', label: 'Custom Search' },
@@ -654,41 +643,26 @@ export function ConfigModeView() {
           />
         );
 
-      case 'audio':
+      case 'device-config':
         return (
-          <AudioCategory
+          <DeviceConfigCategory
             volumeLevel={volumeLevel}
             squelchLevel={squelchLevel}
-            connected={connected}
             onVolumeChange={setVolumeLevel}
             onSquelchChange={setSquelchLevel}
             onVolumeCommit={commitVolume}
             onSquelchCommit={commitSquelch}
-          />
-        );
-
-      case 'display':
-        return (
-          <DisplayCategory
             backlight={backlight}
             contrast={contrast}
-            connected={connected}
             onBacklightChange={(value) => {
               setBacklight(value);
               commitBacklight(value);
             }}
             onContrastChange={setContrast}
             onContrastCommit={commitContrast}
-          />
-        );
-
-      case 'power-keys':
-        return (
-          <PowerKeysCategory
             keyBeepLevel={keyBeepLevel}
             keyLock={keyLock}
             batteryChargeTime={batteryChargeTime}
-            connected={connected}
             onKeyBeepChange={(value) => {
               setKeyBeepLevel(value);
               commitKeyBeep(value, keyLock);
@@ -699,15 +673,8 @@ export function ConfigModeView() {
             }}
             onBatteryChargeChange={setBatteryChargeTime}
             onBatteryChargeCommit={commitBatteryChargeTime}
-          />
-        );
-
-      case 'priority-weather':
-        return (
-          <PriorityWeatherCategory
             priorityMode={priorityMode}
             weatherPriority={weatherPriority}
-            connected={connected}
             onPriorityChange={(value) => {
               setPriorityMode(value);
               commitPriority(value);
@@ -716,15 +683,8 @@ export function ConfigModeView() {
               setWeatherPriority(value);
               commitWeather(value);
             }}
-          />
-        );
-
-      case 'search':
-        return (
-          <SearchCategory
             searchDelay={searchDelay}
             searchCode={searchCode}
-            connected={connected}
             onSearchDelayChange={(value) => {
               setSearchDelay(value);
               commitSearchSettings(value, searchCode);
@@ -733,6 +693,7 @@ export function ConfigModeView() {
               setSearchCode(value);
               commitSearchSettings(searchDelay, value);
             }}
+            connected={connected}
           />
         );
 
@@ -788,7 +749,7 @@ export function ConfigModeView() {
       <div className="config-layout">
         <CategoryNav
           categories={categories}
-          advancedCategories={advancedCategories}
+          advancedCategories={[]}
           activeCategory={activeCategory}
           onCategoryChange={setActiveCategory}
           isMobile={isMobileView}
