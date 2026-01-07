@@ -21,7 +21,3 @@ docs/op-spec.pdf
 backend/analytics.db
 backend/analytics.db-wal
 backend/analytics.db-shm
-
-# Local runtime artifacts
-backend/scanner.db
-backend/now_scanning.txt
