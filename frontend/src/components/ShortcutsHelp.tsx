@@ -38,6 +38,10 @@ export function ShortcutsHelp({ isOpen, onClose }: ShortcutsHelpProps) {
             <dd>Copy current frequency</dd>
           </div>
           <div>
+            <dt>Ctrl/Cmd + M</dt>
+            <dd>Open channels tab</dd>
+          </div>
+          <div>
             <dt>Shift + Ctrl/Cmd + L</dt>
             <dd>Open activity log</dd>
           </div>

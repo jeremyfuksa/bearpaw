@@ -26,6 +26,17 @@ export interface ChannelData {
   bank: number;
 }
 
+export interface ChannelDraft {
+  frequency: string;
+  alpha_tag: string;
+  modulation: string;
+  tone_squelch: string;
+  delay: string;
+  lockout: boolean;
+  priority: boolean;
+  comments: string;
+}
+
 export interface DeviceInfo {
   model: string;
   firmware?: string | null;
