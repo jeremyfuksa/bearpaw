@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -49,6 +50,7 @@ from scanner_bridge.exporters.text_exporter import TextFileExporter
 from scanner_bridge.exporters.json_stream import JsonEventStream
 from scanner_bridge.exporters.mqtt import MqttExporter
 from scanner_bridge.exporters.bc125at_ss import export_bc125at_ss
+from scanner_bridge.analytics.database import AnalyticsDatabase
 
 logger = logging.getLogger("scanner_bridge")
 
@@ -62,6 +64,7 @@ class RuntimeState:
     state_store: StateStore
     ws_manager: WebSocketManager
     device_info: DeviceInfo
+    session_id: str
     poller_task: Optional[asyncio.Task] = None
     sync_task: Optional[MemorySyncTask] = None
     heartbeat_task: Optional[asyncio.Task] = None
@@ -69,6 +72,7 @@ class RuntimeState:
     text_exporter: Optional[TextFileExporter] = None
     json_exporter: Optional[JsonEventStream] = None
     mqtt_exporter: Optional[MqttExporter] = None
+    analytics_db: Optional[object] = None
 
 
 def create_app(
@@ -248,6 +252,12 @@ def create_app(
                 config.exporters.mqtt.retain,
             )
 
+        session_id = str(uuid.uuid4())
+        analytics_db = None
+        if config.analytics.enabled:
+            analytics_db = AnalyticsDatabase(config.analytics.db_path)
+            await analytics_db.initialize()
+
         runtime = RuntimeState(
             config=config,
             transport=transport,
@@ -256,10 +266,12 @@ def create_app(
             state_store=state_store,
             ws_manager=ws_manager,
             device_info=device_info,
+            session_id=session_id,
             heartbeat_task=heartbeat_task,
             text_exporter=text_exporter,
             json_exporter=json_exporter,
             mqtt_exporter=mqtt_exporter,
+            analytics_db=analytics_db,
         )
         app.state.runtime = runtime
         if runtime.driver and runtime.transport:
@@ -286,6 +298,8 @@ def create_app(
             runtime.transport.disconnect()
         if runtime.mqtt_exporter:
             runtime.mqtt_exporter.close()
+        if runtime.analytics_db:
+            await runtime.analytics_db.close()
 
     if startup_enabled:
         app.add_event_handler("startup", startup)
@@ -1045,6 +1059,65 @@ def create_app(
         responses = await debugger()
         return {"responses": responses}
 
+    @app.get("/api/v1/analytics/busiest-channels")
+    async def get_busiest_channels(limit: int = 10, hours: float = 24.0) -> Dict:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.analytics_db:
+            raise HTTPException(status_code=503, detail="Analytics not enabled")
+        min_duration = runtime.config.analytics.min_hit_duration
+        channels = await runtime.analytics_db.get_busiest_channels(limit, hours, min_duration)
+        return {
+            "channels": [
+                {
+                    "rank": ch.rank,
+                    "frequency": ch.frequency,
+                    "alpha_tag": ch.alpha_tag,
+                    "channel": ch.channel,
+                    "hit_count": ch.hit_count,
+                    "avg_duration": ch.avg_duration,
+                    "last_seen": ch.last_seen,
+                }
+                for ch in channels
+            ]
+        }
+
+    @app.get("/api/v1/analytics/hourly-heatmap")
+    async def get_hourly_heatmap(days: int = 7) -> Dict:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.analytics_db:
+            raise HTTPException(status_code=503, detail="Analytics not enabled")
+        min_duration = runtime.config.analytics.min_hit_duration
+        heatmap = await runtime.analytics_db.get_hourly_heatmap(days, min_duration)
+        return {
+            "heatmap": [
+                {"hour": cell.hour, "day": cell.day, "count": cell.count}
+                for cell in heatmap
+            ]
+        }
+
+    @app.get("/api/v1/analytics/session-stats")
+    async def get_session_stats() -> Dict:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.analytics_db:
+            raise HTTPException(status_code=503, detail="Analytics not enabled")
+        min_duration = runtime.config.analytics.min_hit_duration
+        stats = await runtime.analytics_db.get_session_stats(runtime.session_id, min_duration)
+        return {
+            "total_hits": stats.total_hits,
+            "avg_rssi": stats.avg_rssi,
+            "active_time_seconds": stats.active_time_seconds,
+            "unique_channels": stats.unique_channels,
+        }
+
+    @app.post("/api/v1/analytics/cleanup")
+    async def cleanup_analytics(retention_days: Optional[int] = None) -> Dict:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.analytics_db:
+            raise HTTPException(status_code=503, detail="Analytics not enabled")
+        days = retention_days if retention_days is not None else runtime.config.analytics.retention_days
+        deleted = await runtime.analytics_db.cleanup_old_data(days)
+        return {"deleted_records": deleted}
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         runtime: RuntimeState = app.state.runtime
@@ -1174,6 +1247,23 @@ async def _poll_status(app: FastAPI) -> None:
                             "events/scan_hit",
                             {"timestamp": state.timestamp, "frequency": state.frequency, "channel": state.channel},
                         )
+                    if runtime.analytics_db:
+                        asyncio.create_task(runtime.analytics_db.record_hit_start(
+                            timestamp=state.timestamp,
+                            frequency=state.frequency,
+                            channel=state.channel,
+                            alpha_tag=state.alpha_tag,
+                            modulation=state.modulation,
+                            rssi=state.rssi,
+                            mode=state.mode,
+                            session_id=runtime.session_id,
+                        ))
+                if changes.get("squelch_open") is False:
+                    if runtime.analytics_db:
+                        asyncio.create_task(runtime.analytics_db.record_hit_end(
+                            frequency=state.frequency,
+                            timestamp=state.timestamp,
+                        ))
                 if runtime.text_exporter and runtime.text_exporter.should_update(changes):
                     runtime.text_exporter.write(state)
             failures = 0
