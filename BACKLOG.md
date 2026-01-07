@@ -1,31 +1,12 @@
 # Feature Backlog
 
-This document tracks features that are **coded but not wired** into the MVP. These are nice-to-have enhancements that go beyond the core scanning workflow defined in `docs/UI_WORKFLOW.md`.
+This document tracks features that are **coded but not wired** into the MVP, or planned enhancements that go beyond the core scanning workflow defined in `docs/UI_WORKFLOW.md`.
 
 ---
 
 ## High Priority Enhancements
 
-### 1. Activity Log Component
-**Status:** Complete, not rendered
-**Location:** `frontend/src/components/ActivityLog.tsx`
-**Effort:** ~30 minutes
-
-**Description:**
-Fully implemented component that shows recent scan hits with timestamps, frequencies, and alpha tags.
-
-**What's Needed:**
-- Import and render in `App.tsx`
-- Add open/close state management
-- Wire to scan_hit events to populate log
-- Add UI button or keyboard shortcut to open
-
-**Value:**
-Users can review what they've missed and track scanning patterns.
-
----
-
-### 2. Memory Browser Panel
+### 1. Memory Browser Panel
 **Status:** Complete, not rendered
 **Location:** `frontend/src/components/MemoryBrowserPanel.tsx`
 **Effort:** ~30 minutes
@@ -37,31 +18,14 @@ Fully implemented component for browsing all 500 channels with filtering by bank
 - Import and render in `App.tsx`
 - Add open/close state management
 - Wire to keyboard shortcut (useKeyboardShortcuts already has handler defined)
+- Add priority/lockout badges (⭐ for priority, 🚫 for locked out)
 
 **Value:**
 Users can browse, search, and manage scanner memory without official software.
 
 ---
 
-### 3. Direct Tune Modal
-**Status:** Complete, not rendered
-**Location:** `frontend/src/components/DirectTuneModal.tsx`
-**Effort:** ~20 minutes
-
-**Description:**
-Fully implemented modal for manual frequency entry with validation.
-
-**What's Needed:**
-- Import and render in `App.tsx`
-- Add open/close state management
-- Wire to keyboard shortcut (Ctrl+F already defined in useKeyboardShortcuts)
-
-**Value:**
-Users can quickly tune to specific frequencies without navigating memory banks.
-
----
-
-### 4. Current Bank View
+### 2. Current Bank View
 **Status:** Complete, not rendered
 **Location:** `frontend/src/components/CurrentBankView.tsx`
 **Effort:** ~20 minutes
@@ -79,70 +43,9 @@ Quick overview of channels being scanned in the active bank.
 
 ---
 
-### 5. Keyboard Shortcuts System
-**Status:** Complete, not used
-**Location:** `frontend/src/hooks/useKeyboardShortcuts.ts`
-**Effort:** ~1 hour
-
-**Description:**
-Comprehensive keyboard shortcut system with handlers for:
-- Ctrl+F: Direct tune
-- Ctrl+?: Shortcuts help
-- Up/Down: Channel navigation (partially wired)
-- Space: Scan/Hold toggle
-- H: Hold
-- S: Scan
-
-**What's Needed:**
-- Import hook in `App.tsx`
-- Pass handler functions for modals/panels
-- Enable all shortcuts
-
-**Value:**
-Power users can control scanner without mouse/touch.
-
----
-
 ## Medium Priority Enhancements
 
-### 6. Notification Center
-**Status:** Complete, not rendered
-**Location:** `frontend/src/components/NotificationCenter.tsx`, `frontend/src/hooks/useNotifications.ts`
-**Effort:** ~30 minutes
-
-**Description:**
-Toast notification system for errors, success messages, and warnings.
-
-**What's Needed:**
-- Import and use `useNotifications` hook in `App.tsx`
-- Render `NotificationCenter` component
-- Show notifications for API errors, sync completion, etc.
-- Wire to WebSocket error messages
-
-**Value:**
-Better user feedback for background operations and errors.
-
----
-
-### 7. Shortcuts Help Modal
-**Status:** Complete, not rendered
-**Location:** `frontend/src/components/ShortcutsHelp.tsx`
-**Effort:** ~15 minutes
-
-**Description:**
-Modal displaying all available keyboard shortcuts.
-
-**What's Needed:**
-- Import and render in `App.tsx`
-- Add open/close state management
-- Wire to Ctrl+? keyboard shortcut
-
-**Value:**
-Improves discoverability of keyboard shortcuts.
-
----
-
-### 8. Preferences System
+### 3. Preferences System
 **Status:** Store ready, no UI
 **Location:** `frontend/src/store/useStore.ts` (lines 5-9, 31-35)
 **Effort:** ~2 hours
@@ -165,95 +68,9 @@ Users can customize appearance and behavior to their preferences.
 
 ---
 
-### 9. Enhanced Display Components
-**Status:** Complete, duplicated in App.tsx
-**Effort:** ~1 hour
-
-Replace inline implementations with dedicated components:
-
-**9.1 Virtual Display**
-`frontend/src/components/VirtualDisplay.tsx`
-More feature-rich than current inline display with better alpha tag support.
-
-**9.2 Primary Controls**
-`frontend/src/components/PrimaryControls.tsx`
-Dedicated Scan/Hold button component.
-
-**9.3 Connection Status**
-`frontend/src/components/ConnectionStatus.tsx`
-Dedicated connection indicator.
-
-**Value:**
-Cleaner code, better maintainability, consistent styling.
-
----
-
-### 10. Volume Indicator
-**Status:** Complete, not rendered
-**Location:** `frontend/src/components/VolumeIndicator.tsx`
-**Effort:** ~15 minutes
-
-**Description:**
-Visual volume level indicator (data already available in `LiveState.volume`).
-
-**What's Needed:**
-- Import and render in header area
-- Style to match existing UI
-
-**Value:**
-Visual feedback for scanner volume level.
-
----
-
-## API Enhancements
-
-### 11. Memory Sync Cancel
-**Status:** Backend endpoint exists, no frontend method
-**Location:** Backend: `api.py:322`, Frontend: needs client method
-**Effort:** ~30 minutes
-
-**What's Needed:**
-- Add `cancelMemorySync()` to `frontend/src/api/client.ts`
-- Add cancel button to sync progress UI
-- Handle cancellation response
-
-**Value:**
-Users can cancel long-running memory sync operations.
-
----
-
-### 12. Individual Channel Retrieval
-**Status:** Backend endpoint exists, no frontend method
-**Location:** Backend: `GET /api/v1/memory/channels/{channel_id}`
-**Effort:** ~20 minutes
-
-**What's Needed:**
-- Add `getChannel(channelId: number)` to `frontend/src/api/client.ts`
-- Use for on-demand channel detail views
-
-**Value:**
-Fetch individual channel details without loading all 500 channels.
-
----
-
-### 13. Health Check Endpoint
-**Status:** Backend endpoint exists, no frontend use
-**Location:** Backend: `GET /api/v1/health`
-**Effort:** ~30 minutes
-
-**What's Needed:**
-- Add `getHealth()` to API client
-- Use in connection monitoring/diagnostics
-- Display in settings/diagnostics panel
-
-**Value:**
-Better connection diagnostics and troubleshooting.
-
----
-
 ## Advanced Features
 
-### 14. Channel Management
+### 4. Channel Management
 **Status:** Data available, no UI
 **Effort:** ~4 hours
 
@@ -271,66 +88,108 @@ Edit scanner memory without official software.
 
 ---
 
-### 15. Additional Data Display
-**Status:** Data available in backend, not displayed
-**Effort:** ~1 hour
+## Implementation Priorities
 
-Display additional device/channel information:
+### Phase 1: Upcoming Tab Features (1 hour)
+1. Memory Browser Panel (30 min + badge indicators)
+2. Current Bank View (20 min)
 
-**Device Info:**
-- Firmware version
-- Port/VID/PID/Serial (for debugging)
+### Phase 2: User Preferences (2 hours)
+1. Preferences System UI (2 hours)
+   - Theme switcher
+   - Display mode toggle
+   - Accessibility options
+   - Persist to localStorage
 
-**Channel Data:**
-- Priority flag
-- Lockout status (used in filter, not displayed)
-- Delay setting
-- Tone squelch frequency
-
-**LiveState:**
-- Battery level (for handheld scanners)
-
-**What's Needed:**
-- Add to device info panel
-- Add to channel detail views
-- Add battery indicator to header
-
-**Value:**
-Complete information for advanced users and debugging.
+### Phase 3: Advanced Features (4+ hours)
+1. Channel Management (4 hours)
+   - Channel editor modal
+   - Edit properties (frequency, modulation, alpha tag, delay, lockout, priority, tone squelch, bank)
+   - Backend write endpoints
+   - Validation and error handling
 
 ---
 
-## Implementation Priorities
+## Completed Features
 
-### Phase 1: Quick Wins (2-3 hours)
-1. Activity Log (30 min)
-2. Memory Browser (30 min)
-3. Direct Tune Modal (20 min)
-4. Shortcuts Help (15 min)
-5. Keyboard Shortcuts (1 hour)
+The following features have been implemented and wired into the app:
+- ✅ Activity Log Component
+- ✅ Keyboard Shortcuts System
+- ✅ Notification Center
+- ✅ Shortcuts Help Modal
+- ✅ Enhanced Display Components (VirtualDisplay, PrimaryControls, ConnectionStatus)
+- ✅ Volume Indicator
+- ✅ Individual Channel Retrieval API
 
-### Phase 2: User Experience (3-4 hours)
-1. Notification Center (30 min)
-2. Current Bank View (20 min)
-3. Volume Indicator (15 min)
-4. Memory Sync Cancel (30 min)
-5. Preferences System (2 hours)
+## Removed from Backlog
 
-### Phase 3: Polish (2-3 hours)
-1. Enhanced Display Components (1 hour)
-2. Additional Data Display (1 hour)
-3. Health Check Integration (30 min)
-4. Individual Channel Retrieval (20 min)
+The following items were removed as unnecessary or low priority:
+- ❌ Direct Tune Modal (not possible with current hardware protocol)
+- ❌ Memory Sync Cancel (sync is virtually immediate)
+- ❌ Health Check Endpoint (connection status LED is sufficient)
+- ❌ Additional Data Display (modulation already shown in scan display, other fields too niche)
 
-### Phase 4: Advanced (4+ hours)
-1. Channel Management (4 hours)
+---
+
+## Deployment & Distribution
+
+### 5. Hybrid Backend Management (Service Mode)
+**Status:** Not implemented
+**Effort:** ~8-12 hours
+
+**Description:**
+Allow users to choose between two backend operation modes:
+- **Simple Mode** (default): Backend starts with Electron app, stops when app closes, minimizes to system tray
+- **Service Mode**: Backend installs as system service (launchd/systemd/Windows Service), runs continuously in background even when app is closed
+
+**What's Needed:**
+
+**Backend (Python):**
+- Add `service.py` module with platform-specific service installation
+  - macOS: LaunchAgent plist generation and launchctl integration
+  - Linux: systemd user service generation
+  - Windows: NSSM or pywin32 service wrapper
+- CLI commands: `install-service`, `uninstall-service`, `service-status`
+- Service detection on startup (check if already running)
+- Health check endpoint for backend detection
+
+**Electron:**
+- Backend manager class to handle lifecycle
+  - Check if backend already running (service mode)
+  - Start backend as child process if not (simple mode)
+  - System tray icon with status indicator
+  - Minimize to tray instead of closing window
+  - Stop backend only in simple mode on quit
+- IPC handlers for service management commands
+- Prevent backend stop when in service mode
+
+**Frontend:**
+- Service settings UI in config/advanced settings
+  - Display current mode (Simple vs Service)
+  - One-click install/uninstall buttons
+  - Service status indicators (installed, running)
+  - Clear explanation of each mode
+
+**Value:**
+- **Flexibility**: Works for casual users (simple) and power users (service)
+- **Multi-client**: Backend always accessible when in service mode
+- **Persistent**: Service mode survives reboots, allows other apps to connect anytime
+- **Server-like deployment**: Install backend on one machine, access from multiple clients
+- **Easy migration path**: Start simple, upgrade to service when needed
+
+**Implementation Notes:**
+- Backend code doesn't need changes - already supports multiple clients
+- Purely packaging/deployment enhancement
+- Service installation may require admin privileges on some platforms
+- Consider separate installers: "Scanner Bridge Server" (backend only) + "Scanner Bridge UI" (frontend only)
 
 ---
 
 ## Notes
 
-- All components are production-ready and tested
-- Most require only wiring (import, render, state management)
-- No new backend work needed for Phase 1-3
-- Phase 4 requires new backend endpoints for write operations
-- Estimated total effort: ~15-20 hours for all features
+- Remaining components are production-ready and tested
+- Phase 1 requires only wiring (import, render, state management)
+- Phase 2 requires UI implementation for existing store infrastructure
+- Phase 3 requires new backend write endpoints for channel editing
+- Estimated remaining effort: ~7 hours for all remaining features
+- Deployment enhancements (service mode) are independent of feature development

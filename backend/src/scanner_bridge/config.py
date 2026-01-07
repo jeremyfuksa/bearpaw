@@ -71,12 +71,21 @@ class ExporterConfig(BaseModel):
     mqtt: MqttExporterConfig = Field(default_factory=MqttExporterConfig)
 
 
+class AnalyticsConfig(BaseModel):
+    enabled: bool = True
+    db_path: str = "./analytics.db"
+    retention_days: int = 30
+    cleanup_interval_hours: int = 24
+    min_hit_duration: float = 3.0
+
+
 class AppConfig(BaseModel):
     device: DeviceConfig = Field(default_factory=DeviceConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
     polling: PollingConfig = Field(default_factory=PollingConfig)
     state: StateConfig = Field(default_factory=StateConfig)
     exporters: ExporterConfig = Field(default_factory=ExporterConfig)
+    analytics: AnalyticsConfig = Field(default_factory=AnalyticsConfig)
 
 
 def load_config(path: Optional[str]) -> AppConfig:
