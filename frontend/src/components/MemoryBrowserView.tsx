@@ -23,7 +23,7 @@ export function MemoryBrowserView() {
     return Math.min(10, Math.ceil(normalized / 50));
   };
 
-  const getDraft = (channel: ChannelData) =>
+  const getDraft = (channel: ChannelData): ChannelDraft =>
     memoryDrafts[channel.index] ?? {
       frequency: channel.frequency.toFixed(4),
       alpha_tag: channel.alpha_tag || "",
@@ -77,7 +77,7 @@ export function MemoryBrowserView() {
     <section
       className="memory-panel"
       aria-label="Memory browser"
-      onClick={() => setEditingIndex(null)}
+      onClick={() => setMemoryEditingIndex(null)}
     >
       <div className="panel-controls" onClick={(event) => event.stopPropagation()}>
         <div className="bank-tabs" role="tablist" aria-label="Channel banks">
