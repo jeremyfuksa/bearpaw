@@ -480,6 +480,53 @@
   padding: 4px 0;
 }
 
+.config-toggle input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.config-switch {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--color-border);
+  transition: background 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.config-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.config-toggle input[type="checkbox"]:checked + .config-switch {
+  background: var(--color-accent);
+}
+
+.config-toggle input[type="checkbox"]:checked + .config-switch::after {
+  transform: translateX(16px);
+}
+
+.config-toggle input[type="checkbox"]:focus-visible + .config-switch {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.config-toggle input[type="checkbox"]:disabled + .config-switch {
+  opacity: 0.5;
+}
+
 .config-group {
   display: grid;
   gap: 8px;
@@ -874,4 +921,234 @@
 
 .toast.info {
   border-color: #60a5fa;
+}
+
+/* ==========================================================================
+   Device Tab Redesign: Sidebar Navigation & Categories
+   ========================================================================== */
+
+/* Device Status Header */
+.device-status-header {
+  display: flex;
+  gap: 24px;
+  padding: 12px 20px;
+  background: var(--color-card);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.device-status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.device-status-label {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.device-status-value {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.device-status-item--connection {
+  margin-right: auto;
+}
+
+/* Sidebar + Content Layout */
+.config-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 0;
+  min-height: 500px;
+}
+
+.config-sidebar {
+  border-right: 1px solid var(--color-border);
+  padding: 16px 0;
+  background: var(--color-background);
+}
+
+.config-content-pane {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* Sidebar Navigation Items */
+.category-nav-item {
+  display: block;
+  width: 100%;
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.category-nav-item:hover {
+  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+  color: var(--color-text);
+}
+
+.category-nav-item--active {
+  color: var(--color-text);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.category-nav-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-accent);
+}
+
+/* Advanced Section Toggle */
+.category-nav-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.category-nav-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  width: 100%;
+  transition: color 0.15s ease;
+}
+
+.category-nav-section-header:hover {
+  color: var(--color-text);
+}
+
+.category-nav-section-chevron {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.2s ease;
+}
+
+.category-nav-section-chevron--expanded {
+  transform: rotate(180deg);
+}
+
+.category-nav-section-items {
+  overflow: hidden;
+  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Category Content Transitions */
+.category-content {
+  animation: category-fade-in 0.3s ease;
+}
+
+@keyframes category-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Category Section Styling */
+.category-section {
+  max-width: 800px;
+}
+
+.category-title {
+  margin: 0 0 20px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.category-subtitle {
+  margin: 24px 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Responsive: Mobile */
+@media (max-width: 768px) {
+  .config-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .config-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .config-sidebar-inner {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .category-nav-item {
+    white-space: nowrap;
+    padding: 8px 16px;
+    border-radius: 8px;
+  }
+
+  .category-nav-item--active::before {
+    display: none;
+  }
+
+  .category-nav-item--active {
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+  }
+
+  .category-nav-section {
+    display: none; /* Hide advanced section on mobile, show all items flat */
+  }
+
+  .device-status-header {
+    gap: 16px;
+    font-size: 12px;
+  }
+}
+
+/* Motion Preferences */
+@media (prefers-reduced-motion: reduce) {
+  .category-content {
+    animation: none;
+  }
+
+  .category-nav-section-chevron {
+    transition: none;
+  }
+
+  .category-nav-item {
+    transition: none;
+  }
 }

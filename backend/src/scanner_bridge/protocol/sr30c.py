@@ -20,6 +20,7 @@ class SR30CDriver(ScannerDriver):
         self._scheduler = scheduler
         self._mode = "SCAN"
         self._pre_program_mode: Optional[str] = None
+        self._in_program_mode = False
         self.last_error: Optional[str] = None
 
         self._logger = logging.getLogger(__name__)
@@ -196,6 +197,7 @@ class SR30CDriver(ScannerDriver):
         return response
 
     async def _enter_program_mode(self) -> None:
+        self._in_program_mode = True
         self._pre_program_mode = self._mode
         if self._mode == "SCAN":
             await self._send("KEY,H,P", PRIORITY_CONTROL)
@@ -203,11 +205,18 @@ class SR30CDriver(ScannerDriver):
         await self._send("PRG", PRIORITY_BACKGROUND)
 
     async def _exit_program_mode(self) -> None:
-        await self._send("EPG", PRIORITY_BACKGROUND)
-        if self._pre_program_mode == "SCAN":
-            await self._send("KEY,S,P", PRIORITY_CONTROL)
-        self._mode = self._pre_program_mode or self._mode
-        self._pre_program_mode = None
+        try:
+            await self._send("EPG", PRIORITY_BACKGROUND)
+            if self._pre_program_mode == "SCAN":
+                await self._send("KEY,S,P", PRIORITY_CONTROL)
+            self._mode = self._pre_program_mode or self._mode
+            self._pre_program_mode = None
+        finally:
+            self._in_program_mode = False
+
+    @property
+    def in_program_mode(self) -> bool:
+        return self._in_program_mode
 
     async def get_banks(self) -> list[bool]:
         await self._enter_program_mode()

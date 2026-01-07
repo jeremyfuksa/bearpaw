@@ -46,13 +46,24 @@ class UsbTransport:
         except Exception:
             pass
         cfg = self._device.get_active_configuration()
+
+        # Detach kernel driver from BOTH interfaces (macOS CDC drivers can hold both)
+        for interface_num in [0, self.data_interface]:
+            try:
+                if self._device.is_kernel_driver_active(interface_num):
+                    self._device.detach_kernel_driver(interface_num)
+            except Exception:
+                pass  # Interface might not exist or already detached
+
         intf = usb.util.find_descriptor(cfg, bInterfaceNumber=self.data_interface)
         if intf is None:
             raise ConnectionError("USB data interface not found")
         self._setup_cdc_control()
-        if self._device.is_kernel_driver_active(intf.bInterfaceNumber):
-            self._device.detach_kernel_driver(intf.bInterfaceNumber)
         usb.util.claim_interface(self._device, intf.bInterfaceNumber)
+
+        # Small delay after claiming interface for device to settle (macOS needs this)
+        time.sleep(0.1)
+
         self._out_ep = usb.util.find_descriptor(intf, bEndpointAddress=self.ep_out_addr)
         self._in_ep = usb.util.find_descriptor(intf, bEndpointAddress=self.ep_in_addr)
         if not self._out_ep or not self._in_ep:
