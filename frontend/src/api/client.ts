@@ -134,6 +134,13 @@ export class ScannerAPIClient {
     return this.request<ChannelData>(`/memory/channels/${index}`);
   }
 
+  async updateChannel(index: number, payload: Omit<ChannelData, "index">): Promise<ChannelData> {
+    return this.request<ChannelData>(`/memory/channels/${index}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
   async toggleTemporaryLockout(options?: {
     frequency?: number;
     channel?: number;
@@ -323,6 +330,11 @@ export class ScannerAPIClient {
   }
 
   async clearChannelLockouts(channels?: number[]): Promise<{ cleared: number[]; failed: number[] }> {
+    // If no channels specified, pass empty array but backend will interpret as "clear all"
+    // If explicitly passing empty array, reject to prevent accidental clear-all
+    if (channels && channels.length === 0) {
+      return { cleared: [], failed: [] };
+    }
     return this.request<{ cleared: number[]; failed: number[] }>(
       "/lockouts/channels/clear",
       {
@@ -332,9 +344,11 @@ export class ScannerAPIClient {
     );
   }
 
-  async syncMemory(): Promise<{ status?: string; task_id?: string }> {
+  async syncMemory(options?: { force?: boolean }): Promise<{ status?: string; task_id?: string }> {
+    const body = options?.force ? JSON.stringify({ force: true }) : undefined;
     return this.request<{ status?: string; task_id?: string }>("/memory/sync", {
       method: "POST",
+      body,
     });
   }
 
