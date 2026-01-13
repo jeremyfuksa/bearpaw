@@ -58,11 +58,14 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const setChannels = useStore((state) => state.setChannels);
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
+  const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>("Sync");
   const [pendingCategory, setPendingCategory] = useState<DeviceCategory | null>(null);
   const [pendingSyncRequested, setPendingSyncRequested] = useState(false);
   const [selectedChannels, setSelectedChannels] = useState<number[]>([]);
   const [isClearing, setIsClearing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [bankFilter, setBankFilter] = useState<number | "all">("all");
 
   // Device Config Settings
   const [squelch, setSquelch] = useState(2);
@@ -107,15 +110,27 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       .filter((ch): ch is NonNullable<typeof ch> => Boolean(ch));
   }, [channels, lockedChannelIds]);
 
+  const filteredLockedChannels = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return lockedChannels.filter((channel) => {
+      const matchesBank = bankFilter === "all" || channel.bank === bankFilter;
+      const matchesTerm =
+        term.length === 0 ||
+        channel.alpha_tag.toLowerCase().includes(term) ||
+        channel.frequency.toFixed(4).includes(term);
+      return matchesBank && matchesTerm;
+    });
+  }, [bankFilter, lockedChannels, searchTerm]);
+
   const allSelected =
-    lockedChannels.length > 0 &&
-    lockedChannels.every((channel) => selectedChannels.includes(channel.index));
+    filteredLockedChannels.length > 0 &&
+    filteredLockedChannels.every((channel) => selectedChannels.includes(channel.index));
 
   useEffect(() => {
     setSelectedChannels((prev) =>
-      prev.filter((id) => lockedChannels.some((channel) => channel.index === id)),
+      prev.filter((id) => filteredLockedChannels.some((channel) => channel.index === id)),
     );
-  }, [lockedChannels]);
+  }, [filteredLockedChannels]);
 
   useEffect(() => {
     if (selectedCategory !== "Locked Channels") return;
@@ -125,6 +140,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       .then((result) => {
         if (!active) return;
         setLockedChannelIds(result.channels ?? []);
+        setLockedFetchedAt(Date.now());
       })
       .catch((error) => {
         console.error("Failed to load lockouts", error);
@@ -267,15 +283,17 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     [lockedChannels],
   );
 
-  const handleUnlockSelected = useCallback(async () => {
-    if (selectedChannels.length === 0) {
+  const handleUnlockSelected = useCallback(async (targetIds?: number[]) => {
+    const targets = targetIds ?? selectedChannels;
+    if (targets.length === 0) {
       toast.info("Select channels to unlock");
       return;
     }
     setIsClearing(true);
     try {
-      const result = await api.clearChannelLockouts(selectedChannels);
-      const clearedSet = new Set(result.cleared);
+      const result = await api.clearChannelLockouts(targets);
+      const clearedIds = targets.length > 0 ? targets : result.cleared;
+      const clearedSet = new Set(clearedIds);
       setChannels((prev) =>
         prev.map((channel) =>
           clearedSet.has(channel.index) ? { ...channel, lockout: false } : channel,
@@ -283,7 +301,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       );
       setLockedChannelIds((prev) => prev.filter((id) => !clearedSet.has(id)));
       setSelectedChannels((prev) => prev.filter((id) => !clearedSet.has(id)));
-      toast.success(`${result.cleared.length} channels unlocked`);
+      toast.success(`${clearedIds.length} channel${clearedIds.length === 1 ? "" : "s"} unlocked`);
     } catch (error) {
       console.error("Failed to unlock channels", error);
       toast.error("Unable to unlock channels");
@@ -291,6 +309,31 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       setIsClearing(false);
     }
   }, [api, selectedChannels, setChannels]);
+
+  const handleUnlockAll = useCallback(async () => {
+    if (lockedChannelIds.length === 0) {
+      toast.info("No locked channels");
+      return;
+    }
+    setIsClearing(true);
+    try {
+      const result = await api.clearChannelLockouts();
+      const clearedSet = new Set(result.cleared);
+      setChannels((prev) =>
+        prev.map((channel) =>
+          clearedSet.has(channel.index) ? { ...channel, lockout: false } : channel,
+        ),
+      );
+      setLockedChannelIds((prev) => prev.filter((id) => !clearedSet.has(id)));
+      setSelectedChannels([]);
+      toast.success(`${result.cleared.length} channels unlocked`);
+    } catch (error) {
+      console.error("Failed to unlock channels", error);
+      toast.error("Unable to unlock channels");
+    } finally {
+      setIsClearing(false);
+    }
+  }, [api, lockedChannelIds.length, setChannels]);
 
   const handleStartSync = useCallback(() => {
     if (!onMemorySync) {
@@ -628,105 +671,143 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
         {/* Locked Channels */}
         {selectedCategory === "Locked Channels" && (
-          <div className="flex flex-col h-full max-w-5xl mx-auto">
-            {/* Header Bar */}
-            <div className="flex items-start justify-between mb-8 pb-6 border-b border-white/5">
-              <div>
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+          <div className="flex flex-col h-full max-w-5xl mx-auto gap-4">
+            <div className="flex flex-col gap-4 rounded-lg border border-white/5 bg-white/5 p-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
                   <span className="p-2 rounded bg-red-500/10 text-red-500 border border-red-500/20">
-                    <Lock className="w-5 h-5" />
+                    <Lock className="w-4 h-4" />
                   </span>
-                  Locked Signals
-                </h2>
-                <p className="text-sm text-white/50 mt-2 pl-1">
-                  {lockedChannels.length} frequencies permanently locked out
-                </p>
+                  <div>
+                    <div className="text-sm font-bold text-white">Locked Channels</div>
+                    <div className="text-xs text-white/50">
+                      {lockedChannelIds.length} locked • {filteredLockedChannels.length} shown
+                    </div>
+                  </div>
+                </div>
+                {lockedFetchedAt && (
+                  <div className="text-[10px] text-white/40">
+                    Synced {new Date(lockedFetchedAt).toLocaleTimeString()}
+                  </div>
+                )}
               </div>
 
-              <div className="flex gap-4 items-center">
-                <button
-                  onClick={() => toggleAllSelected(!allSelected)}
-                  className="text-xs font-medium text-white/50 hover:text-white transition-colors uppercase tracking-wider px-3 py-1.5"
-                >
-                  {allSelected ? "Deselect All" : "Select All"}
-                </button>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
+                    Total: {lockedChannelIds.length}
+                  </span>
+                  <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
+                    Selected: {selectedChannels.length}
+                  </span>
+                  {bankFilter !== "all" && (
+                    <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
+                      Bank {bankFilter}
+                    </span>
+                  )}
+                </div>
 
-                {selectedChannels.length > 0 && (
-                  <button
-                    onClick={handleUnlockSelected}
-                    disabled={isClearing}
-                    className="px-5 py-2 rounded bg-[#ef991f] hover:bg-[#d97706] text-black text-xs font-bold uppercase tracking-wider shadow-[0px_0px_15px_rgba(239,153,31,0.3)] hover:shadow-[0px_0px_20px_rgba(239,153,31,0.5)] transition-all flex items-center gap-2 disabled:opacity-50"
+                <div className="flex flex-wrap gap-3 items-center">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search frequency or tag"
+                    className="w-56 bg-black/30 border border-white/10 rounded px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-[#ef991f]"
+                  />
+                  <Select
+                    value={bankFilter === "all" ? "all" : String(bankFilter)}
+                    onValueChange={(val) => setBankFilter(val === "all" ? "all" : Number(val))}
                   >
-                    <Lock className="w-3 h-3" />
-                    Unlock ({selectedChannels.length})
-                  </button>
-                )}
+                    <SelectTrigger className="w-[120px] h-8 text-xs bg-black/20 border-white/10">
+                      <SelectValue placeholder="All Banks" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                      <SelectItem value="all">All Banks</SelectItem>
+                      {Array.from({ length: 10 }, (_, i) => i + 1).map((bank) => (
+                        <SelectItem key={bank} value={String(bank)}>
+                          Bank {bank}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2 ml-auto">
+                    <button
+                      onClick={() => toggleAllSelected(!allSelected)}
+                      className="px-3 py-2 text-xs font-medium text-white/70 bg-white/10 hover:bg-white/20 rounded border border-white/10 transition-colors"
+                    >
+                      {allSelected ? "Deselect" : "Select Page"}
+                    </button>
+                    <button
+                      onClick={handleUnlockSelected}
+                      disabled={selectedChannels.length === 0 || isClearing}
+                      className="px-3 py-2 text-xs font-bold text-black bg-[#ef991f] hover:bg-[#d97706] rounded border border-[#ef991f]/40 transition-colors disabled:opacity-50"
+                    >
+                      Unlock Selected ({selectedChannels.length || 0})
+                    </button>
+                    <button
+                      onClick={handleUnlockAll}
+                      disabled={lockedChannelIds.length === 0 || isClearing}
+                      className="px-3 py-2 text-xs font-bold text-black bg-white/20 hover:bg-white/30 rounded border border-white/20 transition-colors disabled:opacity-50"
+                    >
+                      Unlock All
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Signal Matrix Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto pr-2 pb-10">
-              {lockedChannels.map((channel) => (
-                <div
-                  key={channel.index}
-                  onClick={() => toggleSelection(channel.index)}
-                  className={cn(
-                    "relative p-4 rounded border transition-all duration-200 cursor-pointer group flex flex-col gap-1 overflow-hidden",
-                    selectedChannels.includes(channel.index)
-                      ? "bg-[#ef991f]/10 border-[#ef991f] shadow-[inset_0_0_20px_rgba(239,153,31,0.1)]"
-                      : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/10",
-                  )}
-                >
-                  {/* Status Light */}
-                  <div
-                    className={cn(
-                      "absolute top-3 right-3 w-1.5 h-1.5 rounded-full transition-colors shadow-[0_0_5px_currentColor]",
-                      selectedChannels.includes(channel.index)
-                        ? "bg-[#ef991f] text-[#ef991f]"
-                        : "bg-red-500/50 text-red-500",
-                    )}
-                  />
+            <div className="flex-1 rounded-lg border border-white/5 bg-black/10 overflow-hidden">
+              <div className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-[11px] font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2">
+                <div>Select</div>
+                <div className="text-center">CH</div>
+                <div>Freq (MHz)</div>
+                <div>Tag</div>
+                <div className="text-center">Bank</div>
+                <div className="text-center">Action</div>
+              </div>
 
-                  {/* Frequency */}
-                  <div
-                    className={cn(
-                      "font-mono text-xl font-bold tracking-tight transition-colors",
-                      selectedChannels.includes(channel.index)
-                        ? "text-[#ef991f]"
-                        : "text-white/90",
-                    )}
-                  >
-                    {channel.frequency.toFixed(4)}
-                  </div>
-
-                  {/* Label */}
-                  <div className="text-[10px] font-medium text-white/40 uppercase tracking-widest truncate group-hover:text-white/60 transition-colors">
-                    {channel.alpha_tag || `CH ${channel.index}`}
-                  </div>
-
-                  {/* Selection Corner Visual */}
-                  {selectedChannels.includes(channel.index) && (
-                    <div className="absolute bottom-0 right-0 p-1">
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 10 10"
-                        fill="none"
-                        className="text-[#ef991f]"
-                      >
-                        <path d="M10 0V10H0L10 0Z" fill="currentColor" opacity="0.5" />
-                      </svg>
+              <div className="divide-y divide-white/5 max-h-[520px] overflow-y-auto">
+                {filteredLockedChannels.map((channel) => {
+                  const isSelected = selectedChannels.includes(channel.index);
+                  return (
+                    <div
+                      key={channel.index}
+                      className={cn(
+                        "grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-sm",
+                        isSelected ? "bg-[#ef991f]/10" : "hover:bg-white/5",
+                      )}
+                    >
+                      <div className="flex justify-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelection(channel.index)}
+                          className="form-checkbox h-3.5 w-3.5 text-[#ef991f] bg-black/40 border-white/20 rounded"
+                        />
+                      </div>
+                      <div className="text-center text-xs text-white/70 font-mono">CH {channel.index}</div>
+                      <div className="text-xs font-mono text-white">{channel.frequency.toFixed(4)}</div>
+                      <div className="text-xs text-white/80 truncate">{channel.alpha_tag || "Untitled"}</div>
+                      <div className="text-center text-xs text-white/60">{channel.bank}</div>
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => handleUnlockSelected([channel.index])}
+                          className="px-2 py-1 text-[10px] font-bold text-black bg-[#ef991f] hover:bg-[#d97706] rounded border border-[#ef991f]/50 transition-colors"
+                        >
+                          Unlock
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                  );
+                })}
 
-              {lockedChannels.length === 0 && (
-                <div className="col-span-full py-20 flex flex-col items-center justify-center text-white/30 border border-dashed border-white/10 rounded-lg">
-                  <Lock className="w-8 h-8 mb-4 opacity-50" />
-                  <p className="text-sm">No locked frequencies</p>
-                </div>
-              )}
+                {filteredLockedChannels.length === 0 && (
+                  <div className="py-16 text-center text-white/40 text-sm">
+                    {lockedChannelIds.length === 0 ? "No locked channels" : "No matches"}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
