@@ -438,8 +438,16 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       try {
         await api.setKeyBeepSettings(level, false);
       } catch (error) {
-        console.error("Failed to set key beep", error);
-        toast.error("Failed to set key beep");
+        console.error("Failed to set key beep, retrying with AUTO", error);
+        try {
+          await api.setKeyBeepSettings(0, false);
+          setKeyBeepLevel(1);
+          setKeyBeepEnabled(true);
+          toast.warning("Key beep reset to Auto");
+        } catch (retryError) {
+          console.error("Failed to set key beep (retry)", retryError);
+          toast.error("Failed to set key beep");
+        }
       }
     },
     [api, keyBeepLevel],
@@ -453,8 +461,16 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       try {
         await api.setKeyBeepSettings(level, false);
       } catch (error) {
-        console.error("Failed to set key beep", error);
-        toast.error("Failed to set key beep");
+        console.error("Failed to set key beep level, retrying with AUTO", error);
+        try {
+          await api.setKeyBeepSettings(0, false);
+          setKeyBeepLevel(1);
+          setKeyBeepEnabled(true);
+          toast.warning("Key beep reset to Auto");
+        } catch (retryError) {
+          console.error("Failed to set key beep (retry)", retryError);
+          toast.error("Failed to set key beep");
+        }
       }
     },
     [api, keyBeepEnabled],
