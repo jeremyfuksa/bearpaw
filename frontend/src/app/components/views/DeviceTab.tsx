@@ -72,8 +72,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState("AO");
   const [contrast, setContrast] = useState(7);
-  const [keyBeepEnabled, setKeyBeepEnabled] = useState(true);
-  const [keyBeepLevel, setKeyBeepLevel] = useState<1 | 2>(1);
+  const [keyBeepMode, setKeyBeepMode] = useState<"auto" | "low" | "off">("low");
   const [priorityMode, setPriorityMode] = useState("off");
   const [weatherAlert, setWeatherAlert] = useState(false);
   const [keyBeepLock, setKeyBeepLock] = useState(false);
@@ -199,12 +198,11 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         // Map key beep level to UI values (1-15, 99=off)
         setKeyBeepLock(Boolean(keyBeepRes.lock));
         if (keyBeepRes.level === 99) {
-          setKeyBeepEnabled(false);
-          setKeyBeepLevel(1);
+          setKeyBeepMode("off");
+        } else if (keyBeepRes.level === 0) {
+          setKeyBeepMode("auto");
         } else {
-          setKeyBeepEnabled(true);
-          const level = (keyBeepRes.level === 2 ? 2 : 1) as 1 | 2;
-          setKeyBeepLevel(level);
+          setKeyBeepMode("low");
         }
 
         // Map priority mode to UI values
@@ -438,54 +436,47 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       const res = await api.getKeyBeepSettings();
       setKeyBeepLock(Boolean(res.lock));
       if (res.level === 99) {
-        setKeyBeepEnabled(false);
-        setKeyBeepLevel(1);
+        setKeyBeepMode("off");
+      } else if (res.level === 0) {
+        setKeyBeepMode("auto");
       } else {
-        setKeyBeepEnabled(true);
-        const level = Math.min(15, Math.max(1, res.level || 1));
-        setKeyBeepLevel(level);
+        setKeyBeepMode("low");
       }
+      return res;
     } catch (error) {
       console.error("Failed to refresh key beep", error);
+      return null;
     }
   }, [api]);
 
-  const handleKeyBeepEnabledChange = useCallback(
-    async (enabled: boolean) => {
-      setKeyBeepEnabled(enabled);
-      const level = enabled ? keyBeepLevel : 99;
-      const payload = { level, lock: keyBeepLock };
-      console.debug("Setting key beep", payload);
-      try {
-        await api.setKeyBeepSettings(level, keyBeepLock);
-      } catch (error) {
-        console.error("Failed to set key beep", { payload, error });
-        toast.error("Failed to set key beep");
-      } finally {
-        await refreshKeyBeep();
+  const applyKeyBeep = useCallback(
+    async (level: number) => {
+      const attempts = Array.from(new Set([level, 0, 99]));
+      for (const attempt of attempts) {
+        const payload = { level: attempt, lock: keyBeepLock };
+        console.debug("Setting key beep", payload);
+        try {
+          await api.setKeyBeepSettings(attempt, keyBeepLock);
+          const refreshed = await refreshKeyBeep();
+          if (refreshed) {
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to set key beep", { payload, error });
+        }
       }
+      toast.error("Failed to set key beep");
     },
-    [api, keyBeepLevel, keyBeepLock, refreshKeyBeep],
+    [api, keyBeepLock, refreshKeyBeep],
   );
 
-  const handleKeyBeepLevelChange = useCallback(
-    async (value: number[]) => {
-      const level = value[0];
-      const clamped = (level === 2 ? 2 : 1) as 1 | 2;
-      setKeyBeepLevel(clamped);
-      if (!keyBeepEnabled) return;
-      const payload = { level: clamped, lock: keyBeepLock };
-      console.debug("Setting key beep level", payload);
-      try {
-        await api.setKeyBeepSettings(clamped, keyBeepLock);
-      } catch (error) {
-        console.error("Failed to set key beep level", { payload, error });
-        toast.error("Failed to set key beep");
-      } finally {
-        await refreshKeyBeep();
-      }
+  const handleKeyBeepModeChange = useCallback(
+    async (value: "auto" | "low" | "off") => {
+      setKeyBeepMode(value);
+      const level = value === "off" ? 99 : value === "auto" ? 0 : 1;
+      await applyKeyBeep(level);
     },
-    [api, keyBeepEnabled, keyBeepLock, refreshKeyBeep],
+    [applyKeyBeep],
   );
 
   const handlePriorityModeChange = useCallback(async (value: string) => {
@@ -940,27 +931,16 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
                     <span className="text-xs font-medium text-white/70">Key Beep</span>
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        id="key-beep-enabled"
-                        className="scale-75 data-[state=checked]:bg-[#ef991f]"
-                        checked={keyBeepEnabled}
-                        onCheckedChange={(checked) => handleKeyBeepEnabledChange(checked)}
-                      />
-                      <Select
-                        value={String(keyBeepLevel)}
-                        disabled={!keyBeepEnabled}
-                        onValueChange={(val) => handleKeyBeepLevelChange([Number(val)])}
-                      >
-                        <SelectTrigger className="w-[120px] h-7 text-xs bg-black/20 border-white/10">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
-                          <SelectItem value="1">Level 1</SelectItem>
-                          <SelectItem value="2">Level 2</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <Select value={keyBeepMode} onValueChange={(val) => handleKeyBeepModeChange(val as "auto" | "low" | "off")}>
+                      <SelectTrigger className="w-[180px] h-7 text-xs bg-black/20 border-white/10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                        <SelectItem value="off">Off</SelectItem>
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="low">Level 1</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
