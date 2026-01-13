@@ -69,8 +69,8 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
   // Device Config Settings
   const [squelch, setSquelch] = useState(2);
-  const [batterySaver, setBatterySaver] = useState(0);
-  const [backlight, setBacklight] = useState("key_squelch");
+  const [batterySaver, setBatterySaver] = useState(1);
+  const [backlight, setBacklight] = useState("AO");
   const [contrast, setContrast] = useState(7);
   const [keyBeep, setKeyBeep] = useState("auto");
   const [priorityMode, setPriorityMode] = useState("off");
@@ -177,7 +177,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         ] = await Promise.all([
           api.getSquelch().catch(() => ({ level: 2 })),
           api.getBatterySettings().catch(() => ({ charge_time: 0 })),
-          api.getBacklight().catch(() => ({ event: "key_squelch" })),
+          api.getBacklight().catch(() => ({ event: "AO" })),
           api.getContrastSettings().catch(() => ({ level: 7 })),
           api.getKeyBeepSettings().catch(() => ({ level: 0, lock: false })),
           api.getPrioritySettings().catch(() => ({ mode: 0 })),
@@ -189,13 +189,14 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         if (!active) return;
 
         setSquelch(squelchRes.level);
-        setBatterySaver(batteryRes.charge_time);
-        setBacklight(backlightRes.event);
+        const batteryValue = Math.min(16, Math.max(1, batteryRes.charge_time || 1));
+        setBatterySaver(batteryValue);
+        setBacklight(backlightRes.event || "AO");
         setContrast(contrastRes.level);
 
         // Map key beep level to UI values
-        const keyBeepMap: Record<number, string> = { 0: "off", 1: "auto", 2: "level_1" };
-        setKeyBeep(keyBeepMap[keyBeepRes.level] || "auto");
+        const keyBeepMap: Record<number, string> = { 0: "auto", 99: "off" };
+        setKeyBeep(keyBeepMap[keyBeepRes.level] || "level_1");
 
         // Map priority mode to UI values
         const priorityMap: Record<number, string> = { 0: "off", 1: "on", 2: "plus" };
@@ -399,15 +400,18 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     }
   }, [api]);
 
-  const handleBacklightChange = useCallback(async (value: string) => {
-    setBacklight(value);
-    try {
-      await api.setBacklight(value);
-    } catch (error) {
-      console.error("Failed to set backlight", error);
-      toast.error("Failed to set backlight");
-    }
-  }, [api]);
+  const handleBacklightChange = useCallback(
+    async (value: string) => {
+      setBacklight(value);
+      try {
+        await api.setBacklight(value);
+      } catch (error) {
+        console.error("Failed to set backlight", error);
+        toast.error("Failed to set backlight");
+      }
+    },
+    [api],
+  );
 
   const handleContrastChange = useCallback(async (value: number[]) => {
     const level = value[0];
@@ -420,16 +424,19 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     }
   }, [api]);
 
-  const handleKeyBeepChange = useCallback(async (value: string) => {
-    setKeyBeep(value);
-    const levelMap: Record<string, number> = { "off": 0, "auto": 1, "level_1": 2 };
-    try {
-      await api.setKeyBeepSettings(levelMap[value] || 0, false);
-    } catch (error) {
-      console.error("Failed to set key beep", error);
-      toast.error("Failed to set key beep");
-    }
-  }, [api]);
+  const handleKeyBeepChange = useCallback(
+    async (value: string) => {
+      setKeyBeep(value);
+      const levelMap: Record<string, number> = { off: 99, auto: 0, level_1: 1 };
+      try {
+        await api.setKeyBeepSettings(levelMap[value] ?? 0, false);
+      } catch (error) {
+        console.error("Failed to set key beep", error);
+        toast.error("Failed to set key beep");
+      }
+    },
+    [api],
+  );
 
   const handlePriorityModeChange = useCallback(async (value: string) => {
     setPriorityMode(value);
@@ -844,9 +851,9 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="space-y-3 pt-2 border-t border-white/5">
                   <div className="flex justify-between text-xs font-medium text-white/70">
                     <span>Battery Saver</span>
-                    <span className="text-white">{batterySaver === 0 ? "Off" : `${batterySaver}h`}</span>
+                    <span className="text-white">{`${batterySaver}h`}</span>
                   </div>
-                  <Slider value={[batterySaver]} max={5} step={1} onValueChange={handleBatterySaverChange} />
+                  <Slider value={[batterySaver]} min={1} max={16} step={1} onValueChange={handleBatterySaverChange} />
                 </div>
               </div>
 
@@ -867,9 +874,11 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
-                        <SelectItem value="always_on">Always On</SelectItem>
-                        <SelectItem value="key_squelch">Key/Squelch</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
+                        <SelectItem value="AO">Always On</SelectItem>
+                        <SelectItem value="AF">Always Off</SelectItem>
+                        <SelectItem value="KY">Keypress</SelectItem>
+                        <SelectItem value="SQ">Squelch</SelectItem>
+                        <SelectItem value="KS">Key + Squelch</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -923,7 +932,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3">
                   <Switch
                     id="weather-alert"
-                    className="scale-75"
+                    className="scale-75 data-[state=checked]:bg-[#ef991f]"
                     checked={weatherAlert}
                     onCheckedChange={handleWeatherAlertChange}
                   />
@@ -991,6 +1000,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3 pt-2">
                   <Switch
                     id="cc-lockout"
+                    className="data-[state=checked]:bg-[#ef991f]"
                     checked={closeCallLockout}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("lockout", checked)}
                   />
@@ -1009,6 +1019,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3">
                   <Switch
                     id="cc-beep"
+                    className="data-[state=checked]:bg-[#ef991f]"
                     checked={closeCallBeep}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("alert_beep", checked)}
                   />
@@ -1023,6 +1034,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3">
                   <Switch
                     id="cc-light"
+                    className="data-[state=checked]:bg-[#ef991f]"
                     checked={closeCallLight}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("alert_light", checked)}
                   />
@@ -1049,6 +1061,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     </label>
                     <Switch
                       id={`band-${band}`}
+                      className="data-[state=checked]:bg-[#ef991f]"
                       checked={closeCallBands[index]}
                       onCheckedChange={() => handleCloseCallBandToggle(index)}
                     />
@@ -1083,6 +1096,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     </label>
                     <Switch
                       id={`service-${service}`}
+                      className="data-[state=checked]:bg-[#ef991f]"
                       checked={serviceSearchGroups[index]}
                       onCheckedChange={() => handleServiceSearchToggle(index)}
                     />
