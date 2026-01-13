@@ -105,6 +105,17 @@ class ChannelDataModel(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ChannelUpdateModel(BaseModel):
+    frequency: float
+    modulation: str
+    alpha_tag: str
+    delay: int
+    lockout: bool
+    priority: bool
+    tone_squelch: Optional[float] = None
+    bank: int
+
+
 class ErrorResponse(BaseModel):
     error: str
     message: str

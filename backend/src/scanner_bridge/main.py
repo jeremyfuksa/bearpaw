@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import logging
 import os
 import signal
@@ -14,12 +15,14 @@ from scanner_bridge.api import create_app
 from scanner_bridge.config import AppConfig, load_config
 
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("scanner_bridge")
 
 _NOISY_LOG_MARKERS = (
     "GET /api/v1/status",
     "GET /api/v1/device/info",
+    "GET /api/v1/lockouts",
+    "OPTIONS /api/v1/",
     "WebSocket /ws",
 )
 
@@ -41,6 +44,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", help="Serial port override")
     parser.add_argument("--api-host", help="API host override")
     parser.add_argument("--api-port", type=int, help="API port override")
+    parser.add_argument(
+        "--log-level",
+        default="info",
+        choices=["debug", "info", "warning", "error", "critical"],
+        help="Logging level (default: info)",
+    )
     parser.add_argument("--foreground", action="store_true", help="Run in foreground")
     parser.add_argument("--daemon", action="store_true", help="Run as daemon")
     parser.add_argument("--pid-file", default="/var/run/scanner-bridge.pid")
@@ -87,8 +96,14 @@ async def _foreground_status(app) -> None:
         await asyncio.sleep(0.5)
 
 
-async def run_foreground(app, host: str, port: int) -> None:
-    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+async def run_foreground(app, host: str, port: int, log_level: str) -> None:
+    log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+    log_config["formatters"]["access"][
+        "fmt"
+    ] = '%(levelprefix)s "%(request_line)s" %(status_code)s'
+    config = uvicorn.Config(
+        app, host=host, port=port, log_level=log_level, log_config=log_config
+    )
     server = uvicorn.Server(config)
     server_task = asyncio.create_task(server.serve())
     status_task = asyncio.create_task(_foreground_status(app))
@@ -148,11 +163,18 @@ def run_server(
     pid_file: str,
     log_file: str,
     config_path: Optional[str],
+    log_level: str,
 ) -> None:
     if daemon:
         _daemonize(pid_file, log_file)
     _install_access_log_filters()
-    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+    log_config["formatters"]["access"][
+        "fmt"
+    ] = '%(levelprefix)s "%(request_line)s" %(status_code)s'
+    config = uvicorn.Config(
+        app, host=host, port=port, log_level=log_level, log_config=log_config
+    )
     server = uvicorn.Server(config)
     _install_signal_handlers(server, app, config_path)
     asyncio.run(server.serve())
@@ -160,6 +182,7 @@ def run_server(
 
 def main() -> None:
     args = parse_args()
+    logging.getLogger().setLevel(args.log_level.upper())
     config = load_config(args.config)
     if args.api_host:
         config.api.host = args.api_host
@@ -173,7 +196,7 @@ def main() -> None:
     app = create_app(config, port_override=args.port)
     _install_access_log_filters()
     if args.foreground:
-        asyncio.run(run_foreground(app, config.api.host, config.api.port))
+        asyncio.run(run_foreground(app, config.api.host, config.api.port, args.log_level))
         return
     run_server(
         app,
@@ -183,6 +206,7 @@ def main() -> None:
         args.pid_file,
         args.log_file,
         args.config,
+        args.log_level,
     )
 
 

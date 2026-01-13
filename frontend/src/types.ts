@@ -90,6 +90,8 @@ export interface ActivityLogEntry {
   channel?: number | null;
   alpha_tag?: string | null;
   type: "hit" | "hold" | "manual";
+  rssi?: number;
+  hasAudio?: boolean;
 }
 
 export interface LockoutsResponse {

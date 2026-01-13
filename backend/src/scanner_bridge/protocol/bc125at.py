@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Optional
 
@@ -38,7 +39,7 @@ class BC125ATDriver(ScannerDriver):
     async def get_status(self) -> LiveState:
         response = await self._send("STS", PRIORITY_TELEMETRY)
         if not self._logged_status:
-            self._logger.info("STS response: %s", response)
+            self._logger.debug("STS response: %s", response)
             self._logged_status = True
         fields = self.parse_key_value_pairs(response)
         if not fields or "FRQ" not in fields or "SQL" not in fields:
@@ -385,6 +386,88 @@ class BC125ATDriver(ScannerDriver):
             await self._exit_program_mode()
         return self._parse_channel_response(index, response)
 
+    async def set_channel(self, channel: ChannelData) -> ChannelData:
+        def sanitize_tag(value: str) -> str:
+            return value.replace(",", " ").strip()[:16]
+
+        def looks_like_frequency(value: str) -> bool:
+            if not value:
+                return False
+            if "." in value:
+                return True
+            return value.isdigit() and int(value) >= 10000
+
+        def format_frequency(value: float, template: str) -> str:
+            if "." in template:
+                return f"{value:.4f}"
+            raw = int(round(value * 10000))
+            width = max(8, len(template)) if template.isdigit() else 8
+            return str(raw).zfill(width)
+
+        def format_tone_value(value: Optional[float]) -> str:
+            if value is None:
+                return "0"
+            if float(value).is_integer():
+                return str(int(value))
+            return str(value)
+
+        modulation = (channel.modulation or "AUTO").upper()
+        alpha_tag = sanitize_tag(channel.alpha_tag or "")
+        tone_value = "" if channel.tone_squelch is None else str(channel.tone_squelch)
+        delay_value = str(channel.delay)
+        lockout_value = "1" if channel.lockout else "0"
+        priority_value = "1" if channel.priority else "0"
+        bank_value = str(channel.bank)
+
+        await self._enter_program_mode()
+        try:
+            raw = await self._send(f"CIN,{channel.index}", PRIORITY_BACKGROUND)
+            parts = [part.strip() for part in raw.split(",")]
+            if parts and parts[0] == "CIN":
+                parts = parts[1:]
+            if parts and parts[0].isdigit():
+                parts = parts[1:]
+
+            if not parts:
+                raise ValueError("channel_read_failed")
+
+            has_bank = len(parts) >= 8 and parts[-1].isdigit() and int(parts[-1]) <= 10
+            template_freq = parts[1] if len(parts) > 1 and looks_like_frequency(parts[1]) else parts[0]
+            tone_value = format_tone_value(channel.tone_squelch)
+
+            values = [
+                alpha_tag,
+                format_frequency(channel.frequency, template_freq),
+                modulation,
+                tone_value,
+                delay_value,
+                lockout_value,
+                priority_value,
+            ]
+            if has_bank:
+                values.append(bank_value)
+
+            write_command = f"CIN,{channel.index}," + ",".join(values)
+            self._logger.info("CIN write: %s", write_command)
+            write_response = await self._send(write_command, PRIORITY_BACKGROUND)
+            self._logger.info("CIN write response: %s", write_response.strip())
+            if not self._is_ok_response(write_response) and "OK" not in write_response.upper():
+                raise ValueError(write_response.strip() or "channel_write_failed")
+
+            response = await self._send(f"CIN,{channel.index}", PRIORITY_BACKGROUND)
+            self._logger.info("CIN readback: %s", response.strip())
+            updated = self._parse_channel_response(channel.index, response)
+            if updated.priority != channel.priority or updated.lockout != channel.lockout:
+                await asyncio.sleep(0.2)
+                response = await self._send(f"CIN,{channel.index}", PRIORITY_BACKGROUND)
+                self._logger.info("CIN readback retry: %s", response.strip())
+                updated = self._parse_channel_response(channel.index, response)
+            if updated.priority != channel.priority or updated.lockout != channel.lockout:
+                raise ValueError("channel_write_mismatch")
+            return updated
+        finally:
+            await self._exit_program_mode()
+
     async def begin_memory_sync(self) -> None:
         await self._enter_program_mode()
 
@@ -682,21 +765,59 @@ class BC125ATDriver(ScannerDriver):
         tone = None
         bank = 0
 
-        if len(parts) >= 2 and looks_like_frequency(parts[1]) and not looks_like_frequency(parts[0]):
+        modes = {"FM", "AM", "NFM", "AUTO"}
+        mod_index = next((idx for idx, value in enumerate(parts) if value.upper() in modes), None)
+        format_kind = "name-first" if (
+            len(parts) >= 2 and looks_like_frequency(parts[1]) and not looks_like_frequency(parts[0])
+        ) else "freq-mod-tag"
+        if format_kind == "freq-mod-tag" and mod_index == 2 and len(parts) > 1:
+            if looks_like_frequency(parts[0]) and looks_like_frequency(parts[1]):
+                format_kind = "freq-tone-mod-tag"
+
+        if format_kind == "name-first":
             alpha_tag = parts[0]
             freq_value = parse_frequency(parts[1])
             modulation = parts[2] if len(parts) > 2 and parts[2] else "FM"
             remaining = parts[3:]
-            if len(remaining) > 0 and remaining[0] != "":
-                tone = parse_float(remaining[0])
-            if len(remaining) > 1 and remaining[1] != "":
-                delay = int(remaining[1])
-            if len(remaining) > 2 and remaining[2] != "":
-                lockout = remaining[2] == "1"
-            if len(remaining) > 3 and remaining[3] != "":
-                priority = remaining[3] == "1"
-            if len(remaining) > 4 and remaining[4] != "":
-                bank = int(remaining[4])
+            if len(remaining) >= 4:
+                if remaining[0] != "":
+                    tone = parse_float(remaining[0])
+                if remaining[1] != "":
+                    delay = int(remaining[1])
+                if remaining[2] != "":
+                    lockout = remaining[2] == "1"
+                if remaining[3] != "":
+                    priority = remaining[3] == "1"
+                if len(remaining) > 4 and remaining[4] != "":
+                    bank = int(remaining[4])
+            elif len(remaining) >= 3:
+                if remaining[0] != "":
+                    delay = int(remaining[0])
+                if remaining[1] != "":
+                    lockout = remaining[1] == "1"
+                if remaining[2] != "":
+                    priority = remaining[2] == "1"
+                if len(remaining) > 3 and remaining[3] != "":
+                    bank = int(remaining[3])
+        elif format_kind == "freq-tone-mod-tag":
+            if len(parts) > 0:
+                freq_value = parse_frequency(parts[0])
+            if len(parts) > 1 and parts[1]:
+                tone = parse_float(parts[1])
+            modulation = parts[2] if len(parts) > 2 and parts[2] else "FM"
+            alpha_tag = ""
+            offset = 3
+            if len(parts) > 3 and parts[3] and not parts[3].isdigit():
+                alpha_tag = parts[3]
+                offset = 4
+            if len(parts) > offset and parts[offset]:
+                lockout = parts[offset] == "1"
+            if len(parts) > offset + 1 and parts[offset + 1]:
+                delay = int(parts[offset + 1])
+            if len(parts) > offset + 2 and parts[offset + 2]:
+                priority = parts[offset + 2] == "1"
+            if len(parts) > offset + 3 and parts[offset + 3]:
+                bank = int(parts[offset + 3])
         else:
             if len(parts) > 0:
                 freq_value = parse_frequency(parts[0])
@@ -709,7 +830,11 @@ class BC125ATDriver(ScannerDriver):
             if len(parts) > 5 and parts[5]:
                 priority = parts[5] == "1"
             if len(parts) > 6 and parts[6]:
-                tone = parse_float(parts[6])
+                tail_value = parts[6]
+                if tail_value.isdigit() and int(tail_value) <= 10:
+                    bank = int(tail_value)
+                else:
+                    tone = parse_float(tail_value)
             if len(parts) > 7 and parts[7]:
                 bank = int(parts[7])
         return ChannelData(

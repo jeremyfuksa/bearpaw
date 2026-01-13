@@ -21,3 +21,9 @@ docs/op-spec.pdf
 backend/analytics.db
 backend/analytics.db-wal
 backend/analytics.db-shm
+bearpaw-figma/
+bearpaw-refactor/
+
+node_modules/
+dist/
+frontend-old/

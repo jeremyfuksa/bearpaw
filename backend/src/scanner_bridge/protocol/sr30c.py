@@ -95,6 +95,9 @@ class SR30CDriver(ScannerDriver):
             await self._exit_program_mode()
         return self._parse_channel_response(index, response)
 
+    async def set_channel(self, channel: ChannelData) -> ChannelData:
+        raise NotImplementedError
+
     async def begin_memory_sync(self) -> None:
         await self._enter_program_mode()
 
