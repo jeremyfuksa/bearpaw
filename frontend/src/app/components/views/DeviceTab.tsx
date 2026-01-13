@@ -203,7 +203,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
           setKeyBeepLevel(1);
         } else {
           setKeyBeepEnabled(true);
-          const level = Math.min(15, Math.max(1, keyBeepRes.level || 1));
+          const level = Math.min(2, Math.max(1, keyBeepRes.level || 1));
           setKeyBeepLevel(level);
         }
 
@@ -471,12 +471,13 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const handleKeyBeepLevelChange = useCallback(
     async (value: number[]) => {
       const level = value[0];
-      setKeyBeepLevel(level);
+      const clamped = Math.min(2, Math.max(1, level));
+      setKeyBeepLevel(clamped);
       if (!keyBeepEnabled) return;
-      const payload = { level, lock: keyBeepLock };
+      const payload = { level: clamped, lock: keyBeepLock };
       console.debug("Setting key beep level", payload);
       try {
-        await api.setKeyBeepSettings(level, keyBeepLock);
+        await api.setKeyBeepSettings(clamped, keyBeepLock);
       } catch (error) {
         console.error("Failed to set key beep level", { payload, error });
         toast.error("Failed to set key beep");
@@ -950,14 +951,14 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                         <Slider
                           value={[keyBeepLevel]}
                           min={1}
-                          max={15}
+                          max={2}
                           step={1}
                           className="w-[120px]"
                           disabled={!keyBeepEnabled}
                           onValueChange={handleKeyBeepLevelChange}
                         />
                         <span className="text-xs text-white/70 w-8 text-right">
-                          {keyBeepEnabled ? keyBeepLevel : "Off"}
+                          {keyBeepEnabled ? `L${keyBeepLevel}` : "Off"}
                         </span>
                       </div>
                     </div>
