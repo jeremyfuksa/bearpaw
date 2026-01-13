@@ -73,7 +73,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const [backlight, setBacklight] = useState("AO");
   const [contrast, setContrast] = useState(7);
   const [keyBeepEnabled, setKeyBeepEnabled] = useState(true);
-  const [keyBeepLevel, setKeyBeepLevel] = useState(1);
+  const [keyBeepLevel, setKeyBeepLevel] = useState<1 | 2>(1);
   const [priorityMode, setPriorityMode] = useState("off");
   const [weatherAlert, setWeatherAlert] = useState(false);
   const [keyBeepLock, setKeyBeepLock] = useState(false);
@@ -203,7 +203,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
           setKeyBeepLevel(1);
         } else {
           setKeyBeepEnabled(true);
-          const level = Math.min(2, Math.max(1, keyBeepRes.level || 1));
+          const level = (keyBeepRes.level === 2 ? 2 : 1) as 1 | 2;
           setKeyBeepLevel(level);
         }
 
@@ -471,7 +471,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const handleKeyBeepLevelChange = useCallback(
     async (value: number[]) => {
       const level = value[0];
-      const clamped = Math.min(2, Math.max(1, level));
+      const clamped = (level === 2 ? 2 : 1) as 1 | 2;
       setKeyBeepLevel(clamped);
       if (!keyBeepEnabled) return;
       const payload = { level: clamped, lock: keyBeepLock };
@@ -947,20 +947,19 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                         checked={keyBeepEnabled}
                         onCheckedChange={(checked) => handleKeyBeepEnabledChange(checked)}
                       />
-                      <div className="flex items-center gap-2">
-                        <Slider
-                          value={[keyBeepLevel]}
-                          min={1}
-                          max={2}
-                          step={1}
-                          className="w-[120px]"
-                          disabled={!keyBeepEnabled}
-                          onValueChange={handleKeyBeepLevelChange}
-                        />
-                        <span className="text-xs text-white/70 w-8 text-right">
-                          {keyBeepEnabled ? `L${keyBeepLevel}` : "Off"}
-                        </span>
-                      </div>
+                      <Select
+                        value={String(keyBeepLevel)}
+                        disabled={!keyBeepEnabled}
+                        onValueChange={(val) => handleKeyBeepLevelChange([Number(val)])}
+                      >
+                        <SelectTrigger className="w-[120px] h-7 text-xs bg-black/20 border-white/10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                          <SelectItem value="1">Level 1</SelectItem>
+                          <SelectItem value="2">Level 2</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
