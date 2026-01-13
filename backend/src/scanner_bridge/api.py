@@ -9,13 +9,18 @@ from typing import Dict, Optional
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from scanner_bridge.config import AppConfig
 from scanner_bridge.discovery import discover_devices
 from scanner_bridge.models import (
+    BacklightSettings,
     BanksModel,
+    BatterySettings,
+    ChannelData,
     ChannelDataModel,
     ChannelLockoutClearRequest,
+    ChannelUpdateModel,
     CloseCallSettings,
     ConfigSnapshot,
     ContrastSettings,
@@ -27,8 +32,6 @@ from scanner_bridge.models import (
     FirmwareInfo,
     KeyBeepSettings,
     KeyRequest,
-    BacklightSettings,
-    BatterySettings,
     LiveState,
     LiveStateModel,
     LockoutRequest,
@@ -53,6 +56,15 @@ from scanner_bridge.exporters.bc125at_ss import export_bc125at_ss
 from scanner_bridge.analytics.database import AnalyticsDatabase
 
 logger = logging.getLogger("scanner_bridge")
+
+_NOISY_PATHS = {
+    "/api/v1/status",
+    "/api/v1/device/info",
+    "/api/v1/lockouts",
+    "/api/v1/analytics/busiest-channels",
+    "/api/v1/analytics/hourly-heatmap",
+    "/api/v1/analytics/session-stats",
+}
 
 
 @dataclass
@@ -96,10 +108,15 @@ def create_app(
         start = asyncio.get_running_loop().time()
         response = await call_next(request)
         duration_ms = (asyncio.get_running_loop().time() - start) * 1000
+        path = request.url.path
+        if request.method == "OPTIONS":
+            return response
+        if path in _NOISY_PATHS or path.startswith("/api/v1/analytics/"):
+            return response
         logger.info(
             "%s %s %s %.1fms",
             request.method,
-            request.url.path,
+            path,
             response.status_code,
             duration_ms,
         )
@@ -503,7 +520,7 @@ def create_app(
         if not callable(setter):
             raise HTTPException(status_code=400, detail="lockout_unsupported")
         channels = runtime.state_store.get_shadow_channels()
-        if request.channels:
+        if request.channels is not None and len(request.channels) > 0:
             locked_ids = sorted(
                 [
                     chan_id
@@ -992,14 +1009,55 @@ def create_app(
             raise HTTPException(status_code=404, detail="not_found")
         return ChannelDataModel.model_validate(channel)
 
-    @app.post("/api/v1/memory/sync")
-    async def memory_sync() -> Dict[str, str]:
+    @app.put("/api/v1/memory/channels/{channel_id}", response_model=ChannelDataModel)
+    async def update_channel(channel_id: int, request: ChannelUpdateModel) -> ChannelDataModel:
         runtime: RuntimeState = app.state.runtime
         driver = require_driver(runtime)
+        if channel_id < 1 or channel_id > 500:
+            raise HTTPException(status_code=400, detail="channel_out_of_range")
+        if request.delay < 0 or request.delay > 30:
+            raise HTTPException(status_code=400, detail="delay_out_of_range")
+        if request.bank < 0 or request.bank > 10:
+            raise HTTPException(status_code=400, detail="bank_out_of_range")
+        if len(request.alpha_tag) > 16:
+            raise HTTPException(status_code=400, detail="alpha_tag_too_long")
+        setter = getattr(driver, "set_channel", None)
+        if not callable(setter):
+            raise HTTPException(status_code=400, detail="channel_write_unsupported")
+        payload = ChannelData(
+            index=channel_id,
+            frequency=request.frequency,
+            modulation=request.modulation,
+            alpha_tag=request.alpha_tag,
+            delay=request.delay,
+            lockout=request.lockout,
+            priority=request.priority,
+            tone_squelch=request.tone_squelch,
+            bank=request.bank,
+        )
+        try:
+            updated = await call_or_unsupported(
+                lambda: setter(payload), "channel_write_unsupported"
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        runtime.state_store.set_shadow_channel(updated)
+        runtime.state_store.save_shadow()
+        return ChannelDataModel.model_validate(updated)
+
+    class MemorySyncRequest(BaseModel):
+        force: bool = False
+
+    @app.post("/api/v1/memory/sync")
+    async def memory_sync(
+        request: Optional[MemorySyncRequest] = None, force: bool = False
+    ) -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        if request and request.force:
+            force = True
         if runtime.sync_task:
             return {"status": "already_running", "task_id": runtime.sync_task.task_id}
-        if runtime.state_store.has_shadow_channels() and not runtime.state_store.is_shadow_dirty():
-            return {"status": "already_synced"}
         task = MemorySyncTask(driver, runtime.state_store, runtime.ws_manager)
         runtime.sync_task = task
         asyncio.create_task(_run_sync(app, task))
