@@ -27,6 +27,10 @@ class ScannerDriver(ABC):
     async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
         """Read channel memory (requires PRG mode)."""
 
+    @abstractmethod
+    async def set_channel(self, channel: ChannelData) -> ChannelData:
+        """Write channel memory (requires PRG mode)."""
+
     async def begin_memory_sync(self) -> None:
         """Prepare device for bulk memory reads."""
 
