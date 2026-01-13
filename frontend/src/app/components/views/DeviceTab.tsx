@@ -454,21 +454,15 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     async (enabled: boolean) => {
       setKeyBeepEnabled(enabled);
       const level = enabled ? keyBeepLevel : 99;
+      const payload = { level, lock: keyBeepLock };
+      console.debug("Setting key beep", payload);
       try {
         await api.setKeyBeepSettings(level, keyBeepLock);
-        await refreshKeyBeep();
       } catch (error) {
-        console.error("Failed to set key beep, retrying with AUTO", error);
-        try {
-          await api.setKeyBeepSettings(0, keyBeepLock);
-          setKeyBeepLevel(1);
-          setKeyBeepEnabled(true);
-          await refreshKeyBeep();
-          toast.warning("Key beep reset to Auto");
-        } catch (retryError) {
-          console.error("Failed to set key beep (retry)", retryError);
-          toast.error("Failed to set key beep");
-        }
+        console.error("Failed to set key beep", { payload, error });
+        toast.error("Failed to set key beep");
+      } finally {
+        await refreshKeyBeep();
       }
     },
     [api, keyBeepLevel, keyBeepLock, refreshKeyBeep],
@@ -479,21 +473,15 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       const level = value[0];
       setKeyBeepLevel(level);
       if (!keyBeepEnabled) return;
+      const payload = { level, lock: keyBeepLock };
+      console.debug("Setting key beep level", payload);
       try {
         await api.setKeyBeepSettings(level, keyBeepLock);
-        await refreshKeyBeep();
       } catch (error) {
-        console.error("Failed to set key beep level, retrying with AUTO", error);
-        try {
-          await api.setKeyBeepSettings(0, keyBeepLock);
-          setKeyBeepLevel(1);
-          setKeyBeepEnabled(true);
-          await refreshKeyBeep();
-          toast.warning("Key beep reset to Auto");
-        } catch (retryError) {
-          console.error("Failed to set key beep (retry)", retryError);
-          toast.error("Failed to set key beep");
-        }
+        console.error("Failed to set key beep level", { payload, error });
+        toast.error("Failed to set key beep");
+      } finally {
+        await refreshKeyBeep();
       }
     },
     [api, keyBeepEnabled, keyBeepLock, refreshKeyBeep],
