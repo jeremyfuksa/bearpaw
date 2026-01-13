@@ -72,7 +72,8 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState("AO");
   const [contrast, setContrast] = useState(7);
-  const [keyBeep, setKeyBeep] = useState("auto");
+  const [keyBeepEnabled, setKeyBeepEnabled] = useState(true);
+  const [keyBeepLevel, setKeyBeepLevel] = useState(1);
   const [priorityMode, setPriorityMode] = useState("off");
   const [weatherAlert, setWeatherAlert] = useState(false);
 
@@ -194,14 +195,15 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         setBacklight(backlightRes.event || "AO");
         setContrast(contrastRes.level);
 
-        // Map key beep level to UI values (0-15, 99=off)
-        let keyBeepValue = "auto";
+        // Map key beep level to UI values (1-15, 99=off)
         if (keyBeepRes.level === 99) {
-          keyBeepValue = "off";
-        } else if (keyBeepRes.level >= 1 && keyBeepRes.level <= 15) {
-          keyBeepValue = String(keyBeepRes.level);
+          setKeyBeepEnabled(false);
+          setKeyBeepLevel(1);
+        } else {
+          setKeyBeepEnabled(true);
+          const level = Math.min(15, Math.max(1, keyBeepRes.level || 1));
+          setKeyBeepLevel(level);
         }
-        setKeyBeep(keyBeepValue);
 
         // Map priority mode to UI values
         const priorityMap: Record<number, string> = { 0: "off", 1: "on", 2: "plus" };
@@ -429,13 +431,10 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     }
   }, [api]);
 
-  const handleKeyBeepChange = useCallback(
-    async (value: string) => {
-      setKeyBeep(value);
-      let level = 0;
-      if (value === "off") level = 99;
-      else if (value === "auto") level = 0;
-      else level = Number(value) || 0;
+  const handleKeyBeepEnabledChange = useCallback(
+    async (enabled: boolean) => {
+      setKeyBeepEnabled(enabled);
+      const level = enabled ? keyBeepLevel : 99;
       try {
         await api.setKeyBeepSettings(level, false);
       } catch (error) {
@@ -443,7 +442,22 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         toast.error("Failed to set key beep");
       }
     },
-    [api],
+    [api, keyBeepLevel],
+  );
+
+  const handleKeyBeepLevelChange = useCallback(
+    async (value: number[]) => {
+      const level = value[0];
+      setKeyBeepLevel(level);
+      if (!keyBeepEnabled) return;
+      try {
+        await api.setKeyBeepSettings(level, false);
+      } catch (error) {
+        console.error("Failed to set key beep", error);
+        toast.error("Failed to set key beep");
+      }
+    },
+    [api, keyBeepEnabled],
   );
 
   const handlePriorityModeChange = useCallback(async (value: string) => {
@@ -898,20 +912,28 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
                     <span className="text-xs font-medium text-white/70">Key Beep</span>
-                    <Select value={keyBeep} onValueChange={handleKeyBeepChange}>
-                      <SelectTrigger className="w-[140px] h-7 text-xs bg-black/20 border-white/10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
-                        <SelectItem value="auto">Auto</SelectItem>
-                        {Array.from({ length: 15 }, (_, i) => (
-                          <SelectItem key={i + 1} value={String(i + 1)}>
-                            Level {i + 1}
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="off">Off</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        id="key-beep-enabled"
+                        className="scale-75 data-[state=checked]:bg-[#ef991f]"
+                        checked={keyBeepEnabled}
+                        onCheckedChange={(checked) => handleKeyBeepEnabledChange(checked)}
+                      />
+                      <div className="flex items-center gap-2">
+                        <Slider
+                          value={[keyBeepLevel]}
+                          min={1}
+                          max={15}
+                          step={1}
+                          className="w-[120px]"
+                          disabled={!keyBeepEnabled}
+                          onValueChange={handleKeyBeepLevelChange}
+                        />
+                        <span className="text-xs text-white/70 w-8 text-right">
+                          {keyBeepEnabled ? keyBeepLevel : "Off"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
