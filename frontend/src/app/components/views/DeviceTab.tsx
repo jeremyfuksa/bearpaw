@@ -57,6 +57,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const channels = useStore((state) => state.channels) ?? [];
   const setChannels = useStore((state) => state.setChannels);
 
+  const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>("Sync");
   const [pendingCategory, setPendingCategory] = useState<DeviceCategory | null>(null);
   const [pendingSyncRequested, setPendingSyncRequested] = useState(false);
@@ -98,10 +99,13 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     { id: 10, enabled: false, label: "Range 10", start: "0.0000", end: "0.0000" },
   ]);
 
-  const lockedChannels = useMemo(
-    () => channels.filter((channel) => channel.lockout),
-    [channels],
-  );
+  const lockedChannels = useMemo(() => {
+    if (!lockedChannelIds.length) return [];
+    const channelMap = new Map(channels.map((ch) => [ch.index, ch]));
+    return lockedChannelIds
+      .map((id) => channelMap.get(id))
+      .filter((ch): ch is NonNullable<typeof ch> => Boolean(ch));
+  }, [channels, lockedChannelIds]);
 
   const allSelected =
     lockedChannels.length > 0 &&
@@ -112,6 +116,23 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       prev.filter((id) => lockedChannels.some((channel) => channel.index === id)),
     );
   }, [lockedChannels]);
+
+  useEffect(() => {
+    if (selectedCategory !== "Locked Channels") return;
+    let active = true;
+    api
+      .getLockouts({ includeFrequencies: false })
+      .then((result) => {
+        if (!active) return;
+        setLockedChannelIds(result.channels ?? []);
+      })
+      .catch((error) => {
+        console.error("Failed to load lockouts", error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, selectedCategory]);
 
   const programModeSettingsLoaded = useRef(false);
 
@@ -260,6 +281,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
           clearedSet.has(channel.index) ? { ...channel, lockout: false } : channel,
         ),
       );
+      setLockedChannelIds((prev) => prev.filter((id) => !clearedSet.has(id)));
       setSelectedChannels((prev) => prev.filter((id) => !clearedSet.has(id)));
       toast.success(`${result.cleared.length} channels unlocked`);
     } catch (error) {
