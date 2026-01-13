@@ -194,9 +194,14 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         setBacklight(backlightRes.event || "AO");
         setContrast(contrastRes.level);
 
-        // Map key beep level to UI values
-        const keyBeepMap: Record<number, string> = { 0: "auto", 99: "off" };
-        setKeyBeep(keyBeepMap[keyBeepRes.level] || "level_1");
+        // Map key beep level to UI values (0-15, 99=off)
+        let keyBeepValue = "auto";
+        if (keyBeepRes.level === 99) {
+          keyBeepValue = "off";
+        } else if (keyBeepRes.level >= 1 && keyBeepRes.level <= 15) {
+          keyBeepValue = String(keyBeepRes.level);
+        }
+        setKeyBeep(keyBeepValue);
 
         // Map priority mode to UI values
         const priorityMap: Record<number, string> = { 0: "off", 1: "on", 2: "plus" };
@@ -427,9 +432,12 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const handleKeyBeepChange = useCallback(
     async (value: string) => {
       setKeyBeep(value);
-      const levelMap: Record<string, number> = { off: 99, auto: 0, level_1: 1 };
+      let level = 0;
+      if (value === "off") level = 99;
+      else if (value === "auto") level = 0;
+      else level = Number(value) || 0;
       try {
-        await api.setKeyBeepSettings(levelMap[value] ?? 0, false);
+        await api.setKeyBeepSettings(level, false);
       } catch (error) {
         console.error("Failed to set key beep", error);
         toast.error("Failed to set key beep");
@@ -896,7 +904,11 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       </SelectTrigger>
                       <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
                         <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="level_1">Level 1</SelectItem>
+                        {Array.from({ length: 15 }, (_, i) => (
+                          <SelectItem key={i + 1} value={String(i + 1)}>
+                            Level {i + 1}
+                          </SelectItem>
+                        ))}
                         <SelectItem value="off">Off</SelectItem>
                       </SelectContent>
                     </Select>
