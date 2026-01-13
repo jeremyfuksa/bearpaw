@@ -76,6 +76,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const [keyBeepLevel, setKeyBeepLevel] = useState(1);
   const [priorityMode, setPriorityMode] = useState("off");
   const [weatherAlert, setWeatherAlert] = useState(false);
+  const [keyBeepLock, setKeyBeepLock] = useState(false);
 
   // Close Call Settings
   const [closeCallMode, setCloseCallMode] = useState("off");
@@ -196,6 +197,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         setContrast(contrastRes.level);
 
         // Map key beep level to UI values (1-15, 99=off)
+        setKeyBeepLock(Boolean(keyBeepRes.lock));
         if (keyBeepRes.level === 99) {
           setKeyBeepEnabled(false);
           setKeyBeepLevel(1);
@@ -431,18 +433,37 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     }
   }, [api]);
 
+  const refreshKeyBeep = useCallback(async () => {
+    try {
+      const res = await api.getKeyBeepSettings();
+      setKeyBeepLock(Boolean(res.lock));
+      if (res.level === 99) {
+        setKeyBeepEnabled(false);
+        setKeyBeepLevel(1);
+      } else {
+        setKeyBeepEnabled(true);
+        const level = Math.min(15, Math.max(1, res.level || 1));
+        setKeyBeepLevel(level);
+      }
+    } catch (error) {
+      console.error("Failed to refresh key beep", error);
+    }
+  }, [api]);
+
   const handleKeyBeepEnabledChange = useCallback(
     async (enabled: boolean) => {
       setKeyBeepEnabled(enabled);
       const level = enabled ? keyBeepLevel : 99;
       try {
-        await api.setKeyBeepSettings(level, false);
+        await api.setKeyBeepSettings(level, keyBeepLock);
+        await refreshKeyBeep();
       } catch (error) {
         console.error("Failed to set key beep, retrying with AUTO", error);
         try {
-          await api.setKeyBeepSettings(0, false);
+          await api.setKeyBeepSettings(0, keyBeepLock);
           setKeyBeepLevel(1);
           setKeyBeepEnabled(true);
+          await refreshKeyBeep();
           toast.warning("Key beep reset to Auto");
         } catch (retryError) {
           console.error("Failed to set key beep (retry)", retryError);
@@ -450,7 +471,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         }
       }
     },
-    [api, keyBeepLevel],
+    [api, keyBeepLevel, keyBeepLock, refreshKeyBeep],
   );
 
   const handleKeyBeepLevelChange = useCallback(
@@ -459,13 +480,15 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       setKeyBeepLevel(level);
       if (!keyBeepEnabled) return;
       try {
-        await api.setKeyBeepSettings(level, false);
+        await api.setKeyBeepSettings(level, keyBeepLock);
+        await refreshKeyBeep();
       } catch (error) {
         console.error("Failed to set key beep level, retrying with AUTO", error);
         try {
-          await api.setKeyBeepSettings(0, false);
+          await api.setKeyBeepSettings(0, keyBeepLock);
           setKeyBeepLevel(1);
           setKeyBeepEnabled(true);
+          await refreshKeyBeep();
           toast.warning("Key beep reset to Auto");
         } catch (retryError) {
           console.error("Failed to set key beep (retry)", retryError);
@@ -473,7 +496,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
         }
       }
     },
-    [api, keyBeepEnabled],
+    [api, keyBeepEnabled, keyBeepLock, refreshKeyBeep],
   );
 
   const handlePriorityModeChange = useCallback(async (value: string) => {
