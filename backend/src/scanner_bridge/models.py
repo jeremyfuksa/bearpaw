@@ -148,6 +148,10 @@ class ChannelLockoutClearRequest(BaseModel):
     channels: list[int] = Field(default_factory=list)
 
 
+class SquelchSettings(BaseModel):
+    level: int
+
+
 class BacklightSettings(BaseModel):
     event: str
 
@@ -206,6 +210,7 @@ class FirmwareInfo(BaseModel):
 
 class ConfigSnapshot(BaseModel):
     firmware: Optional[str] = None
+    squelch: Optional[SquelchSettings] = None
     backlight: Optional[BacklightSettings] = None
     battery: Optional[BatterySettings] = None
     key_beep: Optional[KeyBeepSettings] = None

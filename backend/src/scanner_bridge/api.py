@@ -39,6 +39,7 @@ from scanner_bridge.models import (
     SearchSettings,
     ServiceSearchSettings,
     SquelchRequest,
+    SquelchSettings,
     VolumeRequest,
     WeatherSettings,
 )
@@ -236,6 +237,16 @@ def create_app(
             driver = SR30CDriver(scheduler) if "SR30C" in model else BC125ATDriver(scheduler)
             device_info.model = model.strip()
             device_info.connection_status = "connected"
+
+            # Fetch firmware version if supported
+            firmware_getter = getattr(driver, "get_firmware_version", None)
+            if callable(firmware_getter):
+                try:
+                    firmware = await firmware_getter()
+                    device_info.firmware = firmware
+                except Exception as exc:
+                    logger.warning("Failed to read firmware during startup: %s", exc)
+                    device_info.firmware = None
 
         persistence = build_persistence(config.state.persistence, config.state.db_path)
         state_store = StateStore(persistence)
@@ -651,6 +662,7 @@ def create_app(
         settings = await call_or_unsupported(getter, "config_unsupported")
         return ConfigSnapshot(
             firmware=firmware,
+            squelch=SquelchSettings(level=settings.get("squelch", 0)),
             backlight=BacklightSettings(event=settings.get("backlight", "")),
             battery=BatterySettings(charge_time=settings.get("battery", 0)),
             key_beep=KeyBeepSettings(
@@ -688,6 +700,61 @@ def create_app(
             raise HTTPException(status_code=400, detail="firmware_unsupported")
         firmware = await call_or_unsupported(getter, "firmware_unsupported")
         return FirmwareInfo(firmware=firmware)
+
+    @app.get("/api/v1/settings/all", response_model=ConfigSnapshot)
+    async def get_all_settings() -> ConfigSnapshot:
+        """Bulk endpoint that reads all device settings in a single program mode session."""
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+
+        # Get firmware (doesn't require program mode)
+        firmware_getter = getattr(driver, "get_firmware_version", None)
+        firmware = None
+        if callable(firmware_getter):
+            try:
+                firmware = await call_or_unsupported(firmware_getter, "firmware_unsupported")
+            except Exception as exc:
+                logger.warning("Failed to read firmware: %s", exc)
+
+        # Get all settings using existing snapshot method
+        # (enters program mode once and reads all settings including squelch)
+        snapshot_getter = getattr(driver, "get_settings_snapshot", None)
+        if not callable(snapshot_getter):
+            raise HTTPException(status_code=400, detail="settings_snapshot_unsupported")
+
+        settings = await call_or_unsupported(snapshot_getter, "config_unsupported")
+
+        # Build the config snapshot
+        return ConfigSnapshot(
+            firmware=firmware,
+            squelch=SquelchSettings(level=settings.get("squelch", 0)),
+            backlight=BacklightSettings(event=settings.get("backlight", "")),
+            battery=BatterySettings(charge_time=settings.get("battery", 0)),
+            key_beep=KeyBeepSettings(
+                level=settings.get("key_beep", (0, False))[0],
+                lock=settings.get("key_beep", (0, False))[1],
+            ),
+            priority=PrioritySettings(mode=settings.get("priority", 0)),
+            search=SearchSettings(
+                delay=settings.get("search", (0, False))[0],
+                code_search=settings.get("search", (0, False))[1],
+            ),
+            close_call=CloseCallSettings(
+                mode=settings.get("close_call", (0, False, False, [False] * 5, False))[0],
+                alert_beep=settings.get("close_call", (0, False, False, [False] * 5, False))[1],
+                alert_light=settings.get("close_call", (0, False, False, [False] * 5, False))[2],
+                band=settings.get("close_call", (0, False, False, [False] * 5, False))[3],
+                lockout=settings.get("close_call", (0, False, False, [False] * 5, False))[4],
+            ),
+            service_search=ServiceSearchSettings(groups=settings.get("service_search", [])),
+            custom_search=CustomSearchSettings(groups=settings.get("custom_search", [])),
+            custom_search_ranges=[
+                CustomSearchRange(index=idx + 1, lower=vals[0], upper=vals[1])
+                for idx, vals in enumerate(settings.get("custom_search_ranges", []))
+            ],
+            weather=WeatherSettings(priority=settings.get("weather", False)),
+            contrast=ContrastSettings(level=settings.get("contrast", 0)),
+        )
 
     @app.get("/api/v1/settings/backlight", response_model=BacklightSettings)
     async def get_backlight() -> BacklightSettings:
