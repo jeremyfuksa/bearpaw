@@ -21,6 +21,7 @@ class BC125ATDriver(ScannerDriver):
         self._scheduler = scheduler
         self._mode = "SCAN"
         self._pre_program_mode: Optional[str] = None
+        self._program_mode_forced_hold = False  # Track if we forced HOLD for program mode
         self._in_program_mode = False
         self.last_error: Optional[str] = None
         self._last_volume: int = 0
@@ -188,11 +189,16 @@ class BC125ATDriver(ScannerDriver):
         return ok
 
     async def get_squelch(self) -> int:
-        await self._enter_program_mode()
+        return await self._get_squelch(assume_program_mode=False)
+
+    async def _get_squelch(self, assume_program_mode: bool) -> int:
+        if not assume_program_mode:
+            await self._enter_program_mode()
         try:
             response = await self._send("SQL", PRIORITY_BACKGROUND)
         finally:
-            await self._exit_program_mode()
+            if not assume_program_mode:
+                await self._exit_program_mode()
         parts = [part.strip() for part in response.split(",") if part.strip() != ""]
         if parts and parts[0].isalpha():
             parts = parts[1:]
@@ -318,13 +324,16 @@ class BC125ATDriver(ScannerDriver):
         lockout_value = "1" if lockout else "0"
         await self._enter_program_mode()
         try:
-            response = await self._send(
-                f"CLC,{mode},{alert_beep_value},{alert_light_value},{band_value},{lockout_value}",
-                PRIORITY_BACKGROUND,
-            )
+            command = f"CLC,{mode},{alert_beep_value},{alert_light_value},{band_value},{lockout_value}"
+            self._logger.debug("Setting close call: %s", command)
+            response = await self._send(command, PRIORITY_BACKGROUND)
+            self._logger.debug("Close call response: %s", response)
         finally:
             await self._exit_program_mode()
-        return self._is_ok_response(response)
+        is_ok = self._is_ok_response(response)
+        if not is_ok:
+            self._logger.warning("Close call set failed. Command: %s, Response: %s", command, response)
+        return is_ok
 
     async def get_service_search_groups(self) -> list[bool]:
         return await self._get_group_flags("SSG", 10, assume_program_mode=False)
@@ -651,15 +660,24 @@ class BC125ATDriver(ScannerDriver):
         if self._mode == "SCAN":
             await self._send("KEY,H,P", PRIORITY_CONTROL)
             self._mode = "HOLD"
+            self._program_mode_forced_hold = True
+        else:
+            self._program_mode_forced_hold = False
         await self._send("PRG", PRIORITY_BACKGROUND)
 
     async def _exit_program_mode(self) -> None:
         try:
             await self._send("EPG", PRIORITY_BACKGROUND)
-            if self._pre_program_mode == "SCAN":
-                await self._send("KEY,S,P", PRIORITY_CONTROL)
-            self._mode = self._pre_program_mode or self._mode
+            # Only restore pre-program mode if we forced HOLD and mode hasn't changed
+            # If user sent hold/scan command during program mode, respect that
+            if self._program_mode_forced_hold and self._mode == "HOLD":
+                # Mode is still HOLD (what we forced), safe to restore
+                if self._pre_program_mode == "SCAN":
+                    await self._send("KEY,S,P", PRIORITY_CONTROL)
+                self._mode = self._pre_program_mode
+            # If mode changed from HOLD during program mode, user command takes precedence
             self._pre_program_mode = None
+            self._program_mode_forced_hold = False
         finally:
             self._in_program_mode = False
 
@@ -696,6 +714,7 @@ class BC125ATDriver(ScannerDriver):
     async def get_settings_snapshot(self) -> dict[str, object]:
         await self._enter_program_mode()
         try:
+            squelch = await self._get_squelch(assume_program_mode=True)
             backlight = await self._get_backlight(assume_program_mode=True)
             battery = await self._get_battery_charge_time(assume_program_mode=True)
             key_beep = await self._get_key_beep_settings(assume_program_mode=True)
@@ -713,6 +732,7 @@ class BC125ATDriver(ScannerDriver):
         finally:
             await self._exit_program_mode()
         return {
+            "squelch": squelch,
             "backlight": backlight,
             "battery": battery,
             "key_beep": key_beep,

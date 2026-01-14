@@ -188,6 +188,10 @@ export class ScannerAPIClient {
     return this.request<ConfigSnapshot>("/config");
   }
 
+  async getAllSettings(): Promise<ConfigSnapshot> {
+    return this.request<ConfigSnapshot>("/settings/all");
+  }
+
   async getBacklight(): Promise<BacklightSettings> {
     return this.request<BacklightSettings>("/settings/backlight");
   }

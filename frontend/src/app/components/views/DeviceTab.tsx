@@ -153,128 +153,95 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
   const programModeSettingsLoaded = useRef(false);
 
-  // Fetch program-mode settings only when user navigates to a program-mode category
+  // Load all device settings once on mount (single program mode session)
   useEffect(() => {
-    if (!["Device Config", "Close Call", "Service Search"].includes(selectedCategory)) {
-      return;
-    }
     if (programModeSettingsLoaded.current) {
       return;
     }
 
     let active = true;
-    const loadSettings = async () => {
+    const loadAllSettings = async () => {
       try {
-        const [
-          squelchRes,
-          batteryRes,
-          backlightRes,
-          contrastRes,
-          keyBeepRes,
-          priorityRes,
-          weatherRes,
-          closeCallRes,
-          serviceSearchRes,
-        ] = await Promise.all([
-          api.getSquelch().catch(() => ({ level: 2 })),
-          api.getBatterySettings().catch(() => ({ charge_time: 0 })),
-          api.getBacklight().catch(() => ({ event: "AO" })),
-          api.getContrastSettings().catch(() => ({ level: 7 })),
-          api.getKeyBeepSettings().catch(() => ({ level: 0, lock: false })),
-          api.getPrioritySettings().catch(() => ({ mode: 0 })),
-          api.getWeatherSettings().catch(() => ({ priority: false })),
-          api.getCloseCallSettings().catch(() => ({ mode: 0, alert_beep: false, alert_light: false, band: [false, false, false, false, false], lockout: false })),
-          api.getServiceSearchSettings().catch(() => ({ groups: Array(8).fill(false) })),
-        ]);
+        const settings = await api.getAllSettings();
 
         if (!active) return;
 
-        setSquelch(squelchRes.level);
-        const batteryValue = Math.min(16, Math.max(1, batteryRes.charge_time || 1));
-        setBatterySaver(batteryValue);
-        setBacklight(backlightRes.event || "AO");
-        setContrast(contrastRes.level);
-
-        // Map key beep level to UI values (1-15, 99=off)
-        setKeyBeepLock(Boolean(keyBeepRes.lock));
-        if (keyBeepRes.level === 99) {
-          setKeyBeepMode("off");
-        } else if (keyBeepRes.level === 0) {
-          setKeyBeepMode("auto");
-        } else {
-          setKeyBeepMode("low");
+        // Populate device config settings
+        if (settings.squelch) {
+          setSquelch(settings.squelch.level);
+        }
+        if (settings.battery) {
+          const batteryValue = Math.min(16, Math.max(1, settings.battery.charge_time || 1));
+          setBatterySaver(batteryValue);
+        }
+        if (settings.backlight) {
+          setBacklight(settings.backlight.event || "AO");
+        }
+        if (settings.contrast) {
+          setContrast(settings.contrast.level);
+        }
+        if (settings.key_beep) {
+          setKeyBeepLock(Boolean(settings.key_beep.lock));
+          if (settings.key_beep.level === 99) {
+            setKeyBeepMode("off");
+          } else if (settings.key_beep.level === 0) {
+            setKeyBeepMode("auto");
+          } else {
+            setKeyBeepMode("low");
+          }
+        }
+        if (settings.priority) {
+          const priorityMap: Record<number, string> = { 0: "off", 1: "on", 2: "plus" };
+          setPriorityMode(priorityMap[settings.priority.mode] || "off");
+        }
+        if (settings.weather) {
+          setWeatherAlert(settings.weather.priority);
         }
 
-        // Map priority mode to UI values
-        const priorityMap: Record<number, string> = { 0: "off", 1: "on", 2: "plus" };
-        setPriorityMode(priorityMap[priorityRes.mode] || "off");
+        // Populate close call settings
+        if (settings.close_call) {
+          const closeCallModeMap: Record<number, string> = { 0: "off", 1: "cc_dnd", 2: "cc_priority" };
+          setCloseCallMode(closeCallModeMap[settings.close_call.mode] || "off");
+          setCloseCallLockout(settings.close_call.lockout);
+          setCloseCallBeep(settings.close_call.alert_beep);
+          setCloseCallLight(settings.close_call.alert_light);
+          setCloseCallBands(settings.close_call.band);
+        }
 
-        setWeatherAlert(weatherRes.priority);
+        // Populate service search settings
+        if (settings.service_search) {
+          setServiceSearchGroups(settings.service_search.groups);
+        }
 
-        // Map close call mode to UI values
-        const closeCallModeMap: Record<number, string> = { 0: "off", 1: "cc_dnd", 2: "cc_priority" };
-        setCloseCallMode(closeCallModeMap[closeCallRes.mode] || "off");
-        setCloseCallLockout(closeCallRes.lockout);
-        setCloseCallBeep(closeCallRes.alert_beep);
-        setCloseCallLight(closeCallRes.alert_light);
-        setCloseCallBands(closeCallRes.band);
+        // Populate custom search settings and ranges
+        if (settings.custom_search && settings.custom_search_ranges) {
+          const defaultLabels = [
+            "VHF Low", "Civil Air", "VHF High", "UHF Air", "UHF",
+            "800 MHz", "Range 7", "Range 8", "Range 9", "Range 10"
+          ];
 
-        setServiceSearchGroups(serviceSearchRes.groups);
+          setSearchRanges(settings.custom_search_ranges.map((r, idx) => ({
+            id: r.index,
+            enabled: settings.custom_search?.groups[idx] || false,
+            label: defaultLabels[idx] || `Range ${r.index}`,
+            start: r.lower.toFixed(4),
+            end: r.upper.toFixed(4),
+          })));
+        }
+
         programModeSettingsLoaded.current = true;
       } catch (error) {
-        console.error("Failed to load settings", error);
+        console.error("Failed to load all settings", error);
+        toast.error("Failed to load device settings");
       }
     };
 
-    loadSettings();
+    loadAllSettings();
 
     return () => {
       active = false;
     };
-  }, [api, selectedCategory]);
-
-  // Load custom search settings AND ranges only when Custom Search category is selected
-  // This enters program mode, so we only do it when user explicitly navigates to this section
-  useEffect(() => {
-    if (selectedCategory !== "Custom Search") return;
-
-    let active = true;
-    const loadCustomSearch = async () => {
-      try {
-        // Load both enabled groups and ranges (both require program mode)
-        const [customSearchRes, ...ranges] = await Promise.all([
-          api.getCustomSearchSettings().catch(() => ({ groups: Array(10).fill(false) })),
-          ...Array.from({ length: 10 }, (_, i) =>
-            api.getCustomSearchRange(i + 1).catch(() => ({ index: i + 1, lower: 0, upper: 0 }))
-          ),
-        ]);
-
-        if (!active) return;
-
-        // Default labels for custom search ranges
-        const defaultLabels = [
-          "VHF Low", "Civil Air", "VHF High", "UHF Air", "UHF",
-          "800 MHz", "Range 7", "Range 8", "Range 9", "Range 10"
-        ];
-
-        setSearchRanges(ranges.map((r, idx) => ({
-          id: r.index,
-          enabled: customSearchRes.groups[idx] || false,
-          label: defaultLabels[idx] || `Range ${r.index}`,
-          start: r.lower.toFixed(4),
-          end: r.upper.toFixed(4),
-        })));
-      } catch (error) {
-        console.error("Failed to load custom search settings", error);
-      }
-    };
-
-    loadCustomSearch();
-
-    return () => {
-      active = false;
-    };
-  }, [selectedCategory, api]);
+  }, [api]);
 
   const toggleSelection = useCallback((channelId: number) => {
     setSelectedChannels((prev) =>
@@ -354,16 +321,18 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
   const handleCategoryClick = useCallback(
     (category: DeviceCategory) => {
-      if (category === "Sync") {
-        setSelectedCategory(category);
+      // Only require memory sync for "Locked Channels" (needs channel data)
+      // Device config settings are loaded via getAllSettings() on mount
+      if (category === "Locked Channels" && channels.length === 0) {
+        setPendingCategory(category);
+        setPendingSyncRequested(true);
+        setSelectedCategory("Sync");
+        handleStartSync();
         return;
       }
-      setPendingCategory(category);
-      setPendingSyncRequested(true);
-      setSelectedCategory("Sync");
-      handleStartSync();
+      setSelectedCategory(category);
     },
-    [handleStartSync],
+    [channels.length, handleStartSync],
   );
 
   useEffect(() => {
@@ -561,6 +530,8 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     } catch (error) {
       console.error("Failed to toggle close call band", error);
       toast.error("Failed to toggle close call band");
+      // Revert the optimistic update
+      setCloseCallBands(closeCallBands);
     }
   }, [api, closeCallMode, closeCallBeep, closeCallLight, closeCallBands, closeCallLockout]);
 
@@ -1043,11 +1014,15 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     id="cc-lockout"
                     className="data-[state=checked]:bg-[#ef991f]"
                     checked={closeCallLockout}
+                    disabled={closeCallMode === "off"}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("lockout", checked)}
                   />
                   <label
                     htmlFor="cc-lockout"
-                    className="text-xs font-medium text-white/70 cursor-pointer"
+                    className={cn(
+                      "text-xs font-medium cursor-pointer",
+                      closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                    )}
                   >
                     Lockout Hits While Scanning
                   </label>
@@ -1062,11 +1037,15 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     id="cc-beep"
                     className="data-[state=checked]:bg-[#ef991f]"
                     checked={closeCallBeep}
+                    disabled={closeCallMode === "off"}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("alert_beep", checked)}
                   />
                   <label
                     htmlFor="cc-beep"
-                    className="text-xs font-medium text-white/70 cursor-pointer"
+                    className={cn(
+                      "text-xs font-medium cursor-pointer",
+                      closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                    )}
                   >
                     Alert Beep
                   </label>
@@ -1077,11 +1056,15 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     id="cc-light"
                     className="data-[state=checked]:bg-[#ef991f]"
                     checked={closeCallLight}
+                    disabled={closeCallMode === "off"}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("alert_light", checked)}
                   />
                   <label
                     htmlFor="cc-light"
-                    className="text-xs font-medium text-white/70 cursor-pointer"
+                    className={cn(
+                      "text-xs font-medium cursor-pointer",
+                      closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                    )}
                   >
                     Alert Light
                   </label>
@@ -1096,7 +1079,10 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                   <div key={band} className="flex items-center justify-between">
                     <label
                       htmlFor={`band-${band}`}
-                      className="text-xs font-medium text-white/70 cursor-pointer"
+                      className={cn(
+                        "text-xs font-medium cursor-pointer",
+                        closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                      )}
                     >
                       {band}
                     </label>
@@ -1104,6 +1090,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       id={`band-${band}`}
                       className="data-[state=checked]:bg-[#ef991f]"
                       checked={closeCallBands[index]}
+                      disabled={closeCallMode === "off"}
                       onCheckedChange={() => handleCloseCallBandToggle(index)}
                     />
                   </div>

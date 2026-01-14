@@ -20,6 +20,7 @@ class SR30CDriver(ScannerDriver):
         self._scheduler = scheduler
         self._mode = "SCAN"
         self._pre_program_mode: Optional[str] = None
+        self._program_mode_forced_hold = False
         self._in_program_mode = False
         self.last_error: Optional[str] = None
 
@@ -205,15 +206,21 @@ class SR30CDriver(ScannerDriver):
         if self._mode == "SCAN":
             await self._send("KEY,H,P", PRIORITY_CONTROL)
             self._mode = "HOLD"
+            self._program_mode_forced_hold = True
+        else:
+            self._program_mode_forced_hold = False
         await self._send("PRG", PRIORITY_BACKGROUND)
 
     async def _exit_program_mode(self) -> None:
         try:
             await self._send("EPG", PRIORITY_BACKGROUND)
-            if self._pre_program_mode == "SCAN":
-                await self._send("KEY,S,P", PRIORITY_CONTROL)
-            self._mode = self._pre_program_mode or self._mode
+            # Only restore mode if we forced HOLD and mode hasn't changed
+            if self._program_mode_forced_hold and self._mode == "HOLD":
+                if self._pre_program_mode == "SCAN":
+                    await self._send("KEY,S,P", PRIORITY_CONTROL)
+                self._mode = self._pre_program_mode or self._mode
             self._pre_program_mode = None
+            self._program_mode_forced_hold = False
         finally:
             self._in_program_mode = False
 

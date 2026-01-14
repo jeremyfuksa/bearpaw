@@ -108,6 +108,10 @@ export interface BatterySettings {
   charge_time: number;
 }
 
+export interface SquelchSettings {
+  level: number;
+}
+
 export interface KeyBeepSettings {
   level: number;
   lock: boolean;
@@ -154,6 +158,7 @@ export interface ContrastSettings {
 
 export interface ConfigSnapshot {
   firmware?: string | null;
+  squelch?: SquelchSettings | null;
   backlight?: BacklightSettings | null;
   battery?: BatterySettings | null;
   key_beep?: KeyBeepSettings | null;
