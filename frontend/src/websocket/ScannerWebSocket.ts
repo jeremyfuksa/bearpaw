@@ -87,13 +87,19 @@ export class ScannerWebSocket {
     this.shouldReconnect = false;
     if (!this.ws) return;
 
-    if (this.ws.readyState === WebSocket.CONNECTING) {
-      const pending = this.ws;
-      pending.onopen = () => pending.close();
+    const ws = this.ws;
+    this.ws = undefined;
+
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+
+    if (ws.readyState === WebSocket.CONNECTING) {
+      ws.onopen = () => ws.close();
       return;
     }
 
-    this.ws.close();
-    this.ws = undefined;
+    ws.close();
   }
 }

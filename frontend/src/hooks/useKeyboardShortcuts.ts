@@ -40,14 +40,21 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           }
           break;
         }
-        case "l":
+        case "l": {
           event.preventDefault();
           if (event.shiftKey) {
             handlers.openActivityLog();
           } else {
-            api.toggleTemporaryLockout();
+            const liveState = useStore.getState().liveState;
+            if (liveState?.frequency || liveState?.channel) {
+              api.toggleTemporaryLockout({
+                frequency: liveState.frequency,
+                channel: liveState.channel,
+              });
+            }
           }
           break;
+        }
         case "?":
           event.preventDefault();
           handlers.openShortcuts();

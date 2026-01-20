@@ -78,7 +78,7 @@ function formatDuration(totalSeconds?: number) {
 }
 
 function normalizeSignal(value?: number) {
-  if (!value) return 0;
+  if (value === undefined || value === null) return 0;
   if (value <= 5) return Math.round(value);
   return Math.min(5, Math.round(value / 20));
 }
@@ -219,7 +219,7 @@ export default function App() {
           }
         }
       } catch (error) {
-        if (active) return;
+        if (!active) return;
         console.warn("Failed to load initial scanner data", error);
       }
     };
@@ -377,7 +377,7 @@ export default function App() {
       return "disconnected";
     if (connecting) return "connecting";
     return "connected";
-  }, [connected, connecting, deviceInfo, liveState?.stale]);
+  }, [connected, connecting, deviceInfo, liveState]);
 
   const getScannerMode = () => {
     const normalized = (liveState?.mode ?? "").toString().trim().toUpperCase();

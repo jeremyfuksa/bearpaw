@@ -428,7 +428,13 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
           await api.setKeyBeepSettings(attempt, keyBeepLock);
           const refreshed = await refreshKeyBeep();
           if (refreshed) {
-            return;
+            if (
+              (level === 99 && refreshed.level === 99) ||
+              (level === 0 && refreshed.level === 0) ||
+              (level > 0 && level < 99 && refreshed.level > 0 && refreshed.level < 99)
+            ) {
+              return;
+            }
           }
         } catch (error) {
           console.error("Failed to set key beep", { payload, error });
@@ -563,17 +569,29 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   }, [api, searchRanges]);
 
   const updateRange = useCallback(async (id: number, field: "start" | "end" | "label", value: string) => {
+    if (field === "start" || field === "end") {
+      const num = parseFloat(value);
+      if (isNaN(num) || num < 0) {
+        return;
+      }
+    }
+    
     const newRanges = searchRanges.map((r) =>
       r.id === id ? { ...r, [field]: value } : r
     );
     setSearchRanges(newRanges);
-
-    // Update backend if start or end changed
+    
     if (field === "start" || field === "end") {
       const range = newRanges.find(r => r.id === id);
       if (range) {
         try {
-          await api.setCustomSearchRange(id, parseFloat(range.start), parseFloat(range.end));
+          const startVal = parseFloat(range.start);
+          const endVal = parseFloat(range.end);
+          if (isNaN(startVal) || isNaN(endVal)) {
+            console.error("Invalid frequency range");
+            return;
+          }
+          await api.setCustomSearchRange(id, startVal, endVal);
         } catch (error) {
           console.error("Failed to update search range", error);
           toast.error("Failed to update search range");

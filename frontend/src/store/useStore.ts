@@ -71,7 +71,10 @@ export const useStore = create<AppState>((set) => ({
         return prev;
       }
 
-      if (!prev.liveState && (state.frequency === undefined || state.modulation === undefined)) {
+      const requiredFields = ['frequency', 'modulation'] as const;
+      const hasRequired = prev.liveState || requiredFields.every(f => f in state);
+      
+      if (!hasRequired) {
         return prev;
       }
 
