@@ -3,7 +3,9 @@ import sys
 import time
 import unittest
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from scanner_bridge.models import ChannelData, LiveState
 from scanner_bridge.state import StateStore
@@ -27,8 +29,10 @@ class StateStoreTests(unittest.TestCase):
             rssi=75,
             mode="SCAN",
             channel=1,
+            alpha_tag="TEST",
             volume=10,
             battery=100,
+            stale=False,
         )
         changes = store.update_live_state(state1)
         self.assertIn("frequency", changes)
@@ -41,11 +45,15 @@ class StateStoreTests(unittest.TestCase):
             rssi=60,
             mode="SCAN",
             channel=1,
+            alpha_tag="TEST",
             volume=10,
             battery=100,
+            stale=False,
         )
         changes = store.update_live_state(state2)
-        self.assertEqual(changes, {"squelch_open": False, "rssi": 60, "timestamp": now + 1})
+        self.assertEqual(
+            changes, {"squelch_open": False, "rssi": 60, "timestamp": now + 1}
+        )
 
     def test_mark_live_state_stale(self) -> None:
         store = StateStore()
@@ -57,8 +65,10 @@ class StateStoreTests(unittest.TestCase):
             rssi=75,
             mode="SCAN",
             channel=1,
+            alpha_tag="TEST",
             volume=10,
             battery=100,
+            stale=False,
         )
         store.update_live_state(state)
         changes = store.mark_live_state_stale()

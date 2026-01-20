@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -52,10 +53,14 @@ class CommandScheduler:
             future.set_result("OK")
             return future
         self._sequence += 1
-        cmd = Command(priority=priority, sequence=self._sequence, raw=raw, future=future)
+        cmd = Command(
+            priority=priority, sequence=self._sequence, raw=raw, future=future
+        )
         self._pending_raw.add(raw)
         if priority == PRIORITY_CONTROL:
-            self._pending_counts[PRIORITY_CONTROL] = self._pending_counts.get(PRIORITY_CONTROL, 0) + 1
+            self._pending_counts[PRIORITY_CONTROL] = (
+                self._pending_counts.get(PRIORITY_CONTROL, 0) + 1
+            )
         self._queue.put_nowait(cmd)
         return future
 
@@ -70,10 +75,9 @@ class CommandScheduler:
             if cmd.future.cancelled():
                 continue
             try:
-                response = await asyncio.wrap_future(self._transport.send_command(cmd.raw))
+                response = await asyncio.wrap_future(
+                    self._transport.send_command(cmd.raw)
+                )
                 cmd.future.set_result(response)
             except Exception as exc:
                 cmd.future.set_exception(exc)
-
-
-import contextlib  # noqa: E402 - used in stop

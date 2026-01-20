@@ -57,14 +57,16 @@ class AnalyticsDatabase:
         self._write_queue: asyncio.Queue = asyncio.Queue()
         self._writer_task: Optional[asyncio.Task] = None
         self._open_hits: dict[float, int] = {}  # frequency -> hit_id mapping
+        self._open_hits_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Initialize database connection and create schema."""
         self._conn = sqlite3.connect(
-            self.db_path, check_same_thread=False, isolation_level=None
+            self.db_path, check_same_thread=False, isolation_level=None, timeout=10.0
         )
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         await self._create_schema()
         self._writer_task = asyncio.create_task(self._batch_writer())
 
@@ -252,7 +254,9 @@ class AnalyticsDatabase:
                     ),
                 )
                 # Track open hit by frequency
-                self._open_hits[hit.frequency] = cursor.lastrowid
+                rowid = int(cursor.lastrowid) if cursor.lastrowid else 0
+                # Use direct dict access since this is synchronous
+                self._open_hits[hit.frequency] = rowid
 
             elif operation == "end_hit":
                 frequency, end_timestamp = data
@@ -323,11 +327,17 @@ class AnalyticsDatabase:
 
         return results
 
-    async def get_hourly_heatmap(self, days: int = 7, min_duration: float = 3.0) -> list[HeatmapCell]:
+    async def get_hourly_heatmap(
+        self, days: int = 7, min_duration: float = 3.0
+    ) -> list[HeatmapCell]:
         """Get hourly hit counts for heatmap visualization."""
-        return await asyncio.to_thread(self._get_hourly_heatmap_sync, days, min_duration)
+        return await asyncio.to_thread(
+            self._get_hourly_heatmap_sync, days, min_duration
+        )
 
-    def _get_hourly_heatmap_sync(self, days: int, min_duration: float) -> list[HeatmapCell]:
+    def _get_hourly_heatmap_sync(
+        self, days: int, min_duration: float
+    ) -> list[HeatmapCell]:
         """Synchronous heatmap query."""
         if not self._conn:
             return []
@@ -349,13 +359,22 @@ class AnalyticsDatabase:
             (cutoff, min_duration),
         )
 
-        return [HeatmapCell(hour=row[0], day=row[1], count=row[2]) for row in cursor.fetchall()]
+        return [
+            HeatmapCell(hour=row[0], day=row[1], count=row[2])
+            for row in cursor.fetchall()
+        ]
 
-    async def get_session_stats(self, session_id: str, min_duration: float = 3.0) -> SessionStats:
+    async def get_session_stats(
+        self, session_id: str, min_duration: float = 3.0
+    ) -> SessionStats:
         """Get statistics for the current session."""
-        return await asyncio.to_thread(self._get_session_stats_sync, session_id, min_duration)
+        return await asyncio.to_thread(
+            self._get_session_stats_sync, session_id, min_duration
+        )
 
-    def _get_session_stats_sync(self, session_id: str, min_duration: float) -> SessionStats:
+    def _get_session_stats_sync(
+        self, session_id: str, min_duration: float
+    ) -> SessionStats:
         """Synchronous session stats query."""
         if not self._conn:
             return SessionStats(

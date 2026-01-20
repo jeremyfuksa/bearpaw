@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Dict, Optional
 
 from scanner_bridge.models import ChannelData, LiveState, ShadowState
 from scanner_bridge.persistence import JsonPersistence, SQLitePersistence
+
+logger = logging.getLogger(__name__)
 
 
 class StateStore:
@@ -19,12 +22,18 @@ class StateStore:
     def load_shadow(self) -> None:
         if not self._persistence:
             return
-        self._shadow_state = self._persistence.load()
+        try:
+            self._shadow_state = self._persistence.load()
+        except Exception as exc:
+            logger.warning("Failed to load shadow state: %s", exc)
 
     def save_shadow(self) -> None:
         if not self._persistence:
             return
-        self._persistence.save(self._shadow_state)
+        try:
+            self._persistence.save(self._shadow_state)
+        except Exception as exc:
+            logger.warning("Failed to save shadow state: %s", exc)
 
     def update_live_state(self, state: LiveState) -> Dict[str, object]:
         with self._lock:

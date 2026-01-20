@@ -48,7 +48,10 @@ class WebSocketManager:
                 last_pong = self._last_pong.get(websocket, 0)
                 if last_ping and last_pong < last_ping and now - last_ping > 10:
                     self.disconnect(websocket)
-                    await websocket.close(code=1001)
+                    try:
+                        await websocket.close(code=1001)
+                    except Exception:
+                        pass
                     continue
                 try:
                     await websocket.send_json({"type": "ping"})
