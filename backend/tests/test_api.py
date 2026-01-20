@@ -5,7 +5,9 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+)
 
 from scanner_bridge.api import RuntimeState, create_app
 from scanner_bridge.config import AppConfig
@@ -24,8 +26,10 @@ class StubDriver:
             rssi=75,
             mode="SCAN",
             channel=1,
+            alpha_tag="TEST",
             volume=10,
             battery=100,
+            stale=False,
         )
 
     async def send_hold(self):
@@ -44,6 +48,20 @@ class StubDriver:
         return "BC125AT"
 
 
+class StubScheduler:
+    def has_high_priority(self):
+        return False
+
+
+class StubTransport:
+    def send_command(self, cmd: str):
+        from concurrent.futures import Future
+
+        future = Future()
+        future.set_result("OK")
+        return future
+
+
 class ApiTests(unittest.TestCase):
     def setUp(self) -> None:
         app = create_app(AppConfig(), startup_enabled=False)
@@ -57,8 +75,10 @@ class ApiTests(unittest.TestCase):
                 rssi=75,
                 mode="SCAN",
                 channel=1,
+                alpha_tag="TEST",
                 volume=10,
                 battery=100,
+                stale=False,
             )
         )
         state_store.set_shadow_state(
@@ -78,8 +98,8 @@ class ApiTests(unittest.TestCase):
         )
         app.state.runtime = RuntimeState(
             config=AppConfig(),
-            transport=None,
-            scheduler=None,
+            transport=StubTransport(),
+            scheduler=StubScheduler(),
             driver=StubDriver(),
             state_store=state_store,
             ws_manager=WebSocketManager(),
@@ -91,6 +111,7 @@ class ApiTests(unittest.TestCase):
                 serial_number=None,
                 description="Uniden Scanner",
             ),
+            session_id="test-session",
         )
         self.client = TestClient(app)
 

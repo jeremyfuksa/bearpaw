@@ -113,7 +113,7 @@ class JsonPersistence:
     def load(self) -> ShadowState:
         if not os.path.exists(self._path):
             return ShadowState()
-        with open(self._path, "r", encoding="ascii") as handle:
+        with open(self._path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         channels: Dict[int, ChannelData] = {}
         for key, data in payload.get("channels", {}).items():
@@ -158,7 +158,7 @@ class JsonPersistence:
         os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(prefix="shadow-", suffix=".json")
         try:
-            with os.fdopen(fd, "w", encoding="ascii") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2, sort_keys=True)
             os.replace(tmp_path, self._path)
         finally:

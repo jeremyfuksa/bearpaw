@@ -34,7 +34,12 @@ class SerialTransport:
             ) from exc
         except OSError as exc:
             self._release_lock()
-            raise ConnectionError(f"Failed to open serial port {self.port_name}") from exc
+            raise ConnectionError(
+                f"Failed to open serial port {self.port_name}"
+            ) from exc
+        except Exception:
+            self._release_lock()
+            raise
         self._running.set()
         self._thread = threading.Thread(target=self._worker_loop, daemon=True)
         self._thread.start()
@@ -121,8 +126,13 @@ class SerialTransport:
         path = self._lock_path()
         try:
             fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
-        except FileExistsError as exc:
-            raise RuntimeError(f"Serial port already locked: {path}") from exc
+        except FileExistsError:
+            stat = os.stat(path)
+            if time.time() - stat.st_mtime > 300:
+                os.unlink(path)
+                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+            else:
+                raise RuntimeError(f"Serial port already locked: {path}")
         self._lock_fd = fd
 
     def _release_lock(self) -> None:

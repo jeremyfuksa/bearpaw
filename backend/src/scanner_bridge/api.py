@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.responses import JSONResponse
@@ -44,7 +44,11 @@ from scanner_bridge.models import (
     WeatherSettings,
 )
 from scanner_bridge.protocol import BC125ATDriver, SR30CDriver
-from scanner_bridge.scheduler import CommandScheduler, PRIORITY_BACKGROUND, PRIORITY_TELEMETRY
+from scanner_bridge.scheduler import (
+    CommandScheduler,
+    PRIORITY_BACKGROUND,
+    PRIORITY_TELEMETRY,
+)
 from scanner_bridge.state import StateStore, build_persistence
 from scanner_bridge.sync import MemorySyncTask
 from scanner_bridge.transport import SerialTransport
@@ -57,6 +61,18 @@ from scanner_bridge.exporters.bc125at_ss import export_bc125at_ss
 from scanner_bridge.analytics.database import AnalyticsDatabase
 
 logger = logging.getLogger("scanner_bridge")
+
+
+def _safe_create_task(coro):
+    """Create a task with error logging to prevent silent failures."""
+    task = asyncio.create_task(coro)
+    task.add_done_callback(
+        lambda t: logger.exception("Background task failed: %s", t.exception())
+        if t.exception()
+        else None
+    )
+    return task
+
 
 _NOISY_PATHS = {
     "/api/v1/status",
@@ -71,7 +87,7 @@ _NOISY_PATHS = {
 @dataclass
 class RuntimeState:
     config: AppConfig
-    transport: Optional[SerialTransport]
+    transport: Optional[Union[SerialTransport, UsbTransport]]
     scheduler: Optional[CommandScheduler]
     driver: Optional[object]
     state_store: StateStore
@@ -233,8 +249,12 @@ def create_app(
             await scheduler.start()
 
             model = await asyncio.wrap_future(transport.send_command("MDL"))
-            model = model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
-            driver = SR30CDriver(scheduler) if "SR30C" in model else BC125ATDriver(scheduler)
+            model = (
+                model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
+            )
+            driver = (
+                SR30CDriver(scheduler) if "SR30C" in model else BC125ATDriver(scheduler)
+            )
             device_info.model = model.strip()
             device_info.connection_status = "connected"
 
@@ -307,7 +327,9 @@ def create_app(
         if (
             config.device.transport == "usb"
             or isinstance(runtime.transport, UsbTransport)
-            or (runtime.transport is None and config.device.transport in ("usb", "auto"))
+            or (
+                runtime.transport is None and config.device.transport in ("usb", "auto")
+            )
         ):
             runtime.reconnect_task = asyncio.create_task(_monitor_usb(app))
 
@@ -333,7 +355,11 @@ def create_app(
         app.add_event_handler("startup", startup)
         app.add_event_handler("shutdown", shutdown)
 
-    @app.get("/api/v1/status", response_model=LiveStateModel, responses={503: {"model": ErrorResponse}})
+    @app.get(
+        "/api/v1/status",
+        response_model=LiveStateModel,
+        responses={503: {"model": ErrorResponse}},
+    )
     async def get_status() -> LiveStateModel:
         runtime: RuntimeState = app.state.runtime
         return LiveStateModel.model_validate(runtime.state_store.get_live_state())
@@ -401,7 +427,7 @@ def create_app(
         runtime: RuntimeState = app.state.runtime
         driver = require_driver(runtime)
         mode = request.mode.lower()
-        logger.info("Lockout request mode=%s channel=%s frequency=%s", mode, request.channel, request.frequency)
+        logger.info("Lockout request mode=%s", mode)
 
         async def _resume_scan_with_retry() -> None:
             await asyncio.sleep(1.0)
@@ -423,6 +449,7 @@ def create_app(
                 return
             if (status.mode or "").upper() != "SCAN":
                 logger.warning("Auto-resume scan failed after retries: %s", status.mode)
+
         if mode == "temporary":
             live_state = runtime.state_store.get_live_state()
             channel_id = request.channel or live_state.channel
@@ -441,7 +468,9 @@ def create_app(
                 else:
                     updated = await set_lock(channel_id, True)
                     runtime.state_store.set_shadow_channel(updated)
-                    runtime.state_store.toggle_temporary_lockout(channel_id, updated.frequency)
+                    runtime.state_store.toggle_temporary_lockout(
+                        channel_id, updated.frequency
+                    )
                     locked = True
             except Exception as exc:
                 detail = str(exc) or "lockout_failed"
@@ -471,7 +500,10 @@ def create_app(
             runtime.state_store.set_shadow_channel(updated)
             runtime.state_store.clear_temporary_lockout(updated.index)
             asyncio.create_task(_resume_scan_with_retry())
-            return {"mode": "permanent", "channel": ChannelDataModel.model_validate(updated)}
+            return {
+                "mode": "permanent",
+                "channel": ChannelDataModel.model_validate(updated),
+            }
         raise HTTPException(status_code=400, detail="invalid_lockout_mode")
 
     @app.post("/api/v1/lockouts/temporary/clear")
@@ -495,7 +527,9 @@ def create_app(
             except Exception as exc:
                 failed_list.append(channel_id)
                 runtime.state_store.toggle_temporary_lockout(channel_id, _frequency)
-                logger.warning("Failed to clear temporary lockout %s: %s", channel_id, exc)
+                logger.warning(
+                    "Failed to clear temporary lockout %s: %s", channel_id, exc
+                )
         return {"cleared": cleared_list, "failed": failed_list}
 
     @app.post("/api/v1/lockouts/clear")
@@ -540,7 +574,9 @@ def create_app(
                 ]
             )
         else:
-            locked_ids = sorted([chan.index for chan in channels.values() if chan.lockout])
+            locked_ids = sorted(
+                [chan.index for chan in channels.values() if chan.lockout]
+            )
         cleared_list: list[int] = []
         failed_list: list[int] = []
         for channel_id in locked_ids:
@@ -553,7 +589,9 @@ def create_app(
                     failed_list.append(channel_id)
             except Exception as exc:
                 failed_list.append(channel_id)
-                logger.warning("Failed to clear channel lockout %s: %s", channel_id, exc)
+                logger.warning(
+                    "Failed to clear channel lockout %s: %s", channel_id, exc
+                )
         return {"cleared": cleared_list, "failed": failed_list}
 
     @app.get("/api/v1/lockouts")
@@ -571,7 +609,9 @@ def create_app(
                 logger.warning("Failed to list lockouts: %s", exc)
                 raise HTTPException(status_code=500, detail="lockout_failed") from exc
         channels = runtime.state_store.get_shadow_channels()
-        locked_channels = sorted([chan.index for chan in channels.values() if chan.lockout])
+        locked_channels = sorted(
+            [chan.index for chan in channels.values() if chan.lockout]
+        )
         temporary_lockouts = runtime.state_store.get_temporary_lockouts()
         return {
             "frequencies": [value / 10000.0 for value in raw],
@@ -656,7 +696,9 @@ def create_app(
         firmware = None
         if callable(firmware_getter):
             try:
-                firmware = await call_or_unsupported(firmware_getter, "firmware_unsupported")
+                firmware = await call_or_unsupported(
+                    firmware_getter, "firmware_unsupported"
+                )
             except Exception as exc:
                 logger.warning("Failed to read firmware: %s", exc)
         settings = await call_or_unsupported(getter, "config_unsupported")
@@ -675,14 +717,28 @@ def create_app(
                 code_search=settings.get("search", (0, False))[1],
             ),
             close_call=CloseCallSettings(
-                mode=settings.get("close_call", (0, False, False, [False] * 5, False))[0],
-                alert_beep=settings.get("close_call", (0, False, False, [False] * 5, False))[1],
-                alert_light=settings.get("close_call", (0, False, False, [False] * 5, False))[2],
-                band=settings.get("close_call", (0, False, False, [False] * 5, False))[3],
-                lockout=settings.get("close_call", (0, False, False, [False] * 5, False))[4],
+                mode=settings.get("close_call", (0, False, False, [False] * 5, False))[
+                    0
+                ],
+                alert_beep=settings.get(
+                    "close_call", (0, False, False, [False] * 5, False)
+                )[1],
+                alert_light=settings.get(
+                    "close_call", (0, False, False, [False] * 5, False)
+                )[2],
+                band=settings.get("close_call", (0, False, False, [False] * 5, False))[
+                    3
+                ],
+                lockout=settings.get(
+                    "close_call", (0, False, False, [False] * 5, False)
+                )[4],
             ),
-            service_search=ServiceSearchSettings(groups=settings.get("service_search", [])),
-            custom_search=CustomSearchSettings(groups=settings.get("custom_search", [])),
+            service_search=ServiceSearchSettings(
+                groups=settings.get("service_search", [])
+            ),
+            custom_search=CustomSearchSettings(
+                groups=settings.get("custom_search", [])
+            ),
             custom_search_ranges=[
                 CustomSearchRange(index=idx + 1, lower=vals[0], upper=vals[1])
                 for idx, vals in enumerate(settings.get("custom_search_ranges", []))
@@ -712,7 +768,9 @@ def create_app(
         firmware = None
         if callable(firmware_getter):
             try:
-                firmware = await call_or_unsupported(firmware_getter, "firmware_unsupported")
+                firmware = await call_or_unsupported(
+                    firmware_getter, "firmware_unsupported"
+                )
             except Exception as exc:
                 logger.warning("Failed to read firmware: %s", exc)
 
@@ -740,14 +798,28 @@ def create_app(
                 code_search=settings.get("search", (0, False))[1],
             ),
             close_call=CloseCallSettings(
-                mode=settings.get("close_call", (0, False, False, [False] * 5, False))[0],
-                alert_beep=settings.get("close_call", (0, False, False, [False] * 5, False))[1],
-                alert_light=settings.get("close_call", (0, False, False, [False] * 5, False))[2],
-                band=settings.get("close_call", (0, False, False, [False] * 5, False))[3],
-                lockout=settings.get("close_call", (0, False, False, [False] * 5, False))[4],
+                mode=settings.get("close_call", (0, False, False, [False] * 5, False))[
+                    0
+                ],
+                alert_beep=settings.get(
+                    "close_call", (0, False, False, [False] * 5, False)
+                )[1],
+                alert_light=settings.get(
+                    "close_call", (0, False, False, [False] * 5, False)
+                )[2],
+                band=settings.get("close_call", (0, False, False, [False] * 5, False))[
+                    3
+                ],
+                lockout=settings.get(
+                    "close_call", (0, False, False, [False] * 5, False)
+                )[4],
             ),
-            service_search=ServiceSearchSettings(groups=settings.get("service_search", [])),
-            custom_search=CustomSearchSettings(groups=settings.get("custom_search", [])),
+            service_search=ServiceSearchSettings(
+                groups=settings.get("service_search", [])
+            ),
+            custom_search=CustomSearchSettings(
+                groups=settings.get("custom_search", [])
+            ),
             custom_search_ranges=[
                 CustomSearchRange(index=idx + 1, lower=vals[0], upper=vals[1])
                 for idx, vals in enumerate(settings.get("custom_search_ranges", []))
@@ -774,7 +846,9 @@ def create_app(
         if not callable(setter):
             raise HTTPException(status_code=400, detail="backlight_unsupported")
         try:
-            ok = await call_or_unsupported(lambda: setter(request.event), "backlight_unsupported")
+            ok = await call_or_unsupported(
+                lambda: setter(request.event), "backlight_unsupported"
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not ok:
@@ -853,7 +927,9 @@ def create_app(
         if not callable(setter):
             raise HTTPException(status_code=400, detail="priority_unsupported")
         try:
-            ok = await call_or_unsupported(lambda: setter(request.mode), "priority_unsupported")
+            ok = await call_or_unsupported(
+                lambda: setter(request.mode), "priority_unsupported"
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not ok:
@@ -983,25 +1059,34 @@ def create_app(
             raise HTTPException(status_code=500, detail="custom_search_failed")
         return {"status": "ok"}
 
-    @app.get("/api/v1/settings/custom-search/ranges/{index}", response_model=CustomSearchRange)
+    @app.get(
+        "/api/v1/settings/custom-search/ranges/{index}",
+        response_model=CustomSearchRange,
+    )
     async def get_custom_search_range(index: int) -> CustomSearchRange:
         runtime: RuntimeState = app.state.runtime
         driver = require_driver(runtime)
         getter = getattr(driver, "get_custom_search_range", None)
         if not callable(getter):
-            raise HTTPException(status_code=400, detail="custom_search_range_unsupported")
+            raise HTTPException(
+                status_code=400, detail="custom_search_range_unsupported"
+            )
         lower, upper = await call_or_unsupported(
             lambda: getter(index), "custom_search_range_unsupported"
         )
         return CustomSearchRange(index=index, lower=lower, upper=upper)
 
     @app.post("/api/v1/settings/custom-search/ranges/{index}")
-    async def set_custom_search_range(index: int, request: CustomSearchRange) -> Dict[str, str]:
+    async def set_custom_search_range(
+        index: int, request: CustomSearchRange
+    ) -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
         driver = require_driver(runtime)
         setter = getattr(driver, "set_custom_search_range", None)
         if not callable(setter):
-            raise HTTPException(status_code=400, detail="custom_search_range_unsupported")
+            raise HTTPException(
+                status_code=400, detail="custom_search_range_unsupported"
+            )
         try:
             ok = await call_or_unsupported(
                 lambda: setter(index, request.lower, request.upper),
@@ -1055,7 +1140,9 @@ def create_app(
         if not callable(setter):
             raise HTTPException(status_code=400, detail="contrast_unsupported")
         try:
-            ok = await call_or_unsupported(lambda: setter(request.level), "contrast_unsupported")
+            ok = await call_or_unsupported(
+                lambda: setter(request.level), "contrast_unsupported"
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not ok:
@@ -1077,7 +1164,9 @@ def create_app(
         return ChannelDataModel.model_validate(channel)
 
     @app.put("/api/v1/memory/channels/{channel_id}", response_model=ChannelDataModel)
-    async def update_channel(channel_id: int, request: ChannelUpdateModel) -> ChannelDataModel:
+    async def update_channel(
+        channel_id: int, request: ChannelUpdateModel
+    ) -> ChannelDataModel:
         runtime: RuntimeState = app.state.runtime
         driver = require_driver(runtime)
         if channel_id < 1 or channel_id > 500:
@@ -1190,7 +1279,9 @@ def create_app(
         if not runtime.analytics_db:
             raise HTTPException(status_code=503, detail="Analytics not enabled")
         min_duration = runtime.config.analytics.min_hit_duration
-        channels = await runtime.analytics_db.get_busiest_channels(limit, hours, min_duration)
+        channels = await runtime.analytics_db.get_busiest_channels(
+            limit, hours, min_duration
+        )
         return {
             "channels": [
                 {
@@ -1226,7 +1317,9 @@ def create_app(
         if not runtime.analytics_db:
             raise HTTPException(status_code=503, detail="Analytics not enabled")
         min_duration = runtime.config.analytics.min_hit_duration
-        stats = await runtime.analytics_db.get_session_stats(runtime.session_id, min_duration)
+        stats = await runtime.analytics_db.get_session_stats(
+            runtime.session_id, min_duration
+        )
         return {
             "total_hits": stats.total_hits,
             "avg_rssi": stats.avg_rssi,
@@ -1239,7 +1332,11 @@ def create_app(
         runtime: RuntimeState = app.state.runtime
         if not runtime.analytics_db:
             raise HTTPException(status_code=503, detail="Analytics not enabled")
-        days = retention_days if retention_days is not None else runtime.config.analytics.retention_days
+        days = (
+            retention_days
+            if retention_days is not None
+            else runtime.config.analytics.retention_days
+        )
         deleted = await runtime.analytics_db.cleanup_old_data(days)
         return {"deleted_records": deleted}
 
@@ -1295,8 +1392,14 @@ async def _monitor_usb(app: FastAPI) -> None:
                 await runtime.scheduler.start()
 
             model = await asyncio.wrap_future(runtime.transport.send_command("MDL"))
-            model = model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
-            runtime.driver = SR30CDriver(runtime.scheduler) if "SR30C" in model else BC125ATDriver(runtime.scheduler)
+            model = (
+                model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
+            )
+            runtime.driver = (
+                SR30CDriver(runtime.scheduler)
+                if "SR30C" in model
+                else BC125ATDriver(runtime.scheduler)
+            )
             runtime.device_info.model = model.strip()
             runtime.device_info.connection_status = "connected"
             if not runtime.poller_task or runtime.poller_task.done():
@@ -1311,7 +1414,9 @@ async def _poll_status(app: FastAPI) -> None:
     failures = 0
     while True:
         try:
-            if runtime.scheduler.has_high_priority() or getattr(runtime.driver, "in_program_mode", False):
+            if runtime.scheduler.has_high_priority() or getattr(
+                runtime.driver, "in_program_mode", False
+            ):
                 await asyncio.sleep(0.01)
                 continue
             state = await runtime.driver.get_status()
@@ -1349,7 +1454,9 @@ async def _poll_status(app: FastAPI) -> None:
                     }
                 )
                 if runtime.mqtt_exporter:
-                    runtime.mqtt_exporter.publish("state", {"timestamp": state.timestamp, **changes})
+                    runtime.mqtt_exporter.publish(
+                        "state", {"timestamp": state.timestamp, **changes}
+                    )
                 if changes.get("squelch_open") is True:
                     event_payload = {
                         "type": "event",
@@ -1370,26 +1477,36 @@ async def _poll_status(app: FastAPI) -> None:
                     if runtime.mqtt_exporter:
                         runtime.mqtt_exporter.publish(
                             "events/scan_hit",
-                            {"timestamp": state.timestamp, "frequency": state.frequency, "channel": state.channel},
+                            {
+                                "timestamp": state.timestamp,
+                                "frequency": state.frequency,
+                                "channel": state.channel,
+                            },
                         )
                     if runtime.analytics_db:
-                        asyncio.create_task(runtime.analytics_db.record_hit_start(
-                            timestamp=state.timestamp,
-                            frequency=state.frequency,
-                            channel=state.channel,
-                            alpha_tag=state.alpha_tag,
-                            modulation=state.modulation,
-                            rssi=state.rssi,
-                            mode=state.mode,
-                            session_id=runtime.session_id,
-                        ))
+                        _safe_create_task(
+                            runtime.analytics_db.record_hit_start(
+                                timestamp=state.timestamp,
+                                frequency=state.frequency,
+                                channel=state.channel,
+                                alpha_tag=state.alpha_tag,
+                                modulation=state.modulation,
+                                rssi=state.rssi,
+                                mode=state.mode,
+                                session_id=runtime.session_id,
+                            )
+                        )
                 if changes.get("squelch_open") is False:
                     if runtime.analytics_db:
-                        asyncio.create_task(runtime.analytics_db.record_hit_end(
-                            frequency=state.frequency,
-                            timestamp=state.timestamp,
-                        ))
-                if runtime.text_exporter and runtime.text_exporter.should_update(changes):
+                        _safe_create_task(
+                            runtime.analytics_db.record_hit_end(
+                                frequency=state.frequency,
+                                timestamp=state.timestamp,
+                            )
+                        )
+                if runtime.text_exporter and runtime.text_exporter.should_update(
+                    changes
+                ):
                     runtime.text_exporter.write(state)
             failures = 0
             if runtime.device_info.connection_status != "connected":
@@ -1400,9 +1517,11 @@ async def _poll_status(app: FastAPI) -> None:
                 runtime.device_info.connection_status = "connecting"
             if isinstance(exc, (ConnectionError, OSError)):
                 try:
-                    await asyncio.to_thread(
-                        runtime.transport.reconnect, runtime.config.polling.reconnect_backoff
-                    )
+                    if runtime.transport:
+                        await asyncio.to_thread(
+                            runtime.transport.reconnect,
+                            runtime.config.polling.reconnect_backoff,
+                        )
                 except Exception as reconnect_exc:
                     logger.warning("Reconnect failed: %s", reconnect_exc)
             if failures >= 3:
@@ -1417,5 +1536,7 @@ async def _poll_status(app: FastAPI) -> None:
                             "data": {"message": "Live state stale"},
                         }
                     )
-            logger.warning("Status poll failed: %s", exc)
+            logger.warning(
+                "Status poll failed: %s: %s", type(exc).__name__, exc, exc_info=True
+            )
         await asyncio.sleep(runtime.config.polling.sts_interval)

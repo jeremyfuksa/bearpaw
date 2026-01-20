@@ -120,14 +120,18 @@ class UsbTransport:
     def _execute(self, cmd: str) -> str:
         if not self._device or not self._out_ep or not self._in_ep:
             raise ConnectionError("USB device not open")
-        if not self._is_device_present():
-            self._device = None
-            self._out_ep = None
-            self._in_ep = None
-            raise ConnectionError("USB device not open")
         payload = cmd if cmd.endswith("\r") else cmd + "\r"
-        self._out_ep.write(payload.encode("ascii"), timeout=int(self.timeout * 1000))
-        return self._read_response()
+        try:
+            self._out_ep.write(
+                payload.encode("ascii"), timeout=int(self.timeout * 1000)
+            )
+            return self._read_response()
+        except Exception:
+            if not self._is_device_present():
+                self._device = None
+                self._out_ep = None
+                self._in_ep = None
+            raise ConnectionError("USB device not open")
 
     def _read_response(self) -> str:
         if not self._in_ep:
