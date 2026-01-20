@@ -27,6 +27,25 @@ function buildDraft(channel: ChannelData): ChannelDraft {
   };
 }
 
+function useDebounce<T extends (...args: any[]) => any>(callback: T, delay: number): T {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  return useMemo((...args: Parameters<T>) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      callbackRef.current(...args);
+    }, delay);
+  }, []) as T;
+}
+
 export function ChannelsTab() {
   const api = useAPI();
   const channels = useStore((state) => state.channels) ?? [];
@@ -107,13 +126,15 @@ export function ChannelsTab() {
     [api, channels, memoryDrafts, setChannels, setMemoryDraft],
   );
 
+  const debouncedCommitDraft = useDebounce(commitDraft, 500);
+
   useEffect(() => {
     const previous = previousEditingIndex.current;
     if (previous !== null && previous !== memoryEditingIndex) {
-      void commitDraft(previous);
+      void debouncedCommitDraft(previous);
     }
     previousEditingIndex.current = memoryEditingIndex;
-  }, [commitDraft, memoryEditingIndex]);
+  }, [debouncedCommitDraft, memoryEditingIndex]);
 
   useEffect(() => {
     if (memoryEditingIndex === null) return;

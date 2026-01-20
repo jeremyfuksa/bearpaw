@@ -334,8 +334,8 @@ export class ScannerAPIClient {
   }
 
   async clearChannelLockouts(channels?: number[]): Promise<{ cleared: number[]; failed: number[] }> {
-    // If no channels specified, pass empty array but backend will interpret as "clear all"
-    // If explicitly passing empty array, reject to prevent accidental clear-all
+    // If explicitly passing empty array, return early to prevent accidental clear-all
+    // Otherwise, pass empty array to backend which interprets as "clear all selected"
     if (channels && channels.length === 0) {
       return { cleared: [], failed: [] };
     }
@@ -349,10 +349,9 @@ export class ScannerAPIClient {
   }
 
   async syncMemory(options?: { force?: boolean }): Promise<{ status?: string; task_id?: string }> {
-    const body = options?.force ? JSON.stringify({ force: true }) : undefined;
     return this.request<{ status?: string; task_id?: string }>("/memory/sync", {
       method: "POST",
-      body,
+      body: options?.force ? JSON.stringify({ force: true }) : undefined,
     });
   }
 

@@ -27,3 +27,4 @@ bearpaw-refactor/
 node_modules/
 dist/
 frontend-old/
+backend/uv.lock
