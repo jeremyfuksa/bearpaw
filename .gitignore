@@ -28,3 +28,9 @@ node_modules/
 dist/
 frontend-old/
 backend/uv.lock
+
+# Tauri / Rust
+src-tauri/target/
+*.log
+*.rs.bk
+Cargo.lock

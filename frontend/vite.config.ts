@@ -32,11 +32,15 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      // Alias @ to the src directory
+      // Alias @ to src directory
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // Base path for Tauri (served from file:// protocol in production)
+  base: process.env.TAURI === 'true' ? './' : '/',
   server: {
+    port: 5173,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
@@ -47,5 +51,14 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    target: 'esnext',
+  },
+  // Environment variables
+  define: {
+    __TAURI__: process.env.TAURI === 'true',
   },
 })
