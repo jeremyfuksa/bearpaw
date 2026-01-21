@@ -179,6 +179,7 @@ export default function App() {
         api
           .getChannels()
           .then((channelData) => setChannels(channelData))
+          .then(() => api.sendScan())
           .catch((error) =>
             console.warn("Failed to refresh channels after sync", error),
           );
@@ -710,7 +711,7 @@ export default function App() {
                       className="flex justify-between items-center bg-white/5 rounded-lg p-4 mt-auto border border-white/5"
                     >
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">
+                        <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
                           Session Hits
                         </span>
                         <span className="text-2xl font-bold text-white">
@@ -719,7 +720,7 @@ export default function App() {
                       </div>
                       <div className="w-px h-8 bg-white/10" />
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">
+                        <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
                           Unique Channels
                         </span>
                         <span className="text-2xl font-bold text-white">
@@ -728,7 +729,7 @@ export default function App() {
                       </div>
                       <div className="w-px h-8 bg-white/10" />
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">
+                        <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
                           Active Time
                         </span>
                         <span className="text-2xl font-bold text-white">
@@ -770,7 +771,7 @@ export default function App() {
                           <span className="font-mono text-orange-400 group-hover:text-orange-300 w-[60px] text-right">
                             {hit.frequency}
                           </span>
-                          <span className="text-white/30 text-[10px] w-[45px] text-right whitespace-nowrap">
+                          <span className="text-white/30 text-xs w-[45px] text-right whitespace-nowrap">
                             {getRelativeTime(hit.time)}
                           </span>
                         </div>
@@ -800,7 +801,7 @@ export default function App() {
                             <div className="flex gap-0.5 h-2 items-end">
                               {formatSignalBars(hit.strength)}
                             </div>
-                            <span className="text-white/30 text-[10px] whitespace-nowrap">
+                            <span className="text-white/30 text-xs whitespace-nowrap">
                               {getRelativeTime(hit.time)}
                             </span>
                           </div>
@@ -815,7 +816,7 @@ export default function App() {
                   <div className="flex flex-col h-full w-[110px] gap-2">
                     <div className="flex flex-col justify-between flex-1 py-1">
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-white/40 font-medium uppercase">
+                        <span className="text-xs text-white/40 font-medium uppercase">
                           Hits
                         </span>
                         <span className="text-xl font-bold text-white/90">
@@ -823,7 +824,7 @@ export default function App() {
                         </span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-white/40 font-medium uppercase">
+                        <span className="text-xs text-white/40 font-medium uppercase">
                           Active
                         </span>
                         <span className="text-xl font-bold text-white/90">
@@ -831,7 +832,7 @@ export default function App() {
                         </span>
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-white/40 font-medium uppercase">
+                        <span className="text-xs text-white/40 font-medium uppercase">
                           Channels
                         </span>
                         <span className="text-xl font-bold text-white/90">
@@ -893,7 +894,7 @@ export default function App() {
                       <div className="flex-1 flex flex-col justify-center gap-[2px]">
                         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, row) => (
                           <div key={day} className="flex items-center gap-2">
-                            <span className="text-[9px] text-white/30 w-5 text-right font-mono uppercase">
+                            <span className="text-xs text-white/30 w-5 text-right font-mono uppercase">
                               {day}
                             </span>
                             <div className="flex-1 grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px]">
@@ -918,7 +919,7 @@ export default function App() {
                           </div>
                         ))}
                       </div>
-                      <div className="flex justify-between text-[10px] text-white/30 mt-1 pl-7">
+                      <div className="flex justify-between text-xs text-white/30 mt-1 pl-7">
                         <span>00</span>
                         <span>06</span>
                         <span>12</span>

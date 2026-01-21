@@ -37,7 +37,7 @@ export function TabNav({ currentTab, onTabChange }: TabNavProps) {
             )}
             <p
               className={cn(
-                "text-[12px] text-nowrap",
+                "text-sm text-nowrap",
                 isActive ? "font-bold" : "font-semibold"
               )}
             >
@@ -100,7 +100,7 @@ export function StatusHeader({
             <circle cx="4" cy="4" fill={statusColor} r="4" />
           </svg>
         </div>
-        <p className="font-sans font-normal text-[#f5ebe8] text-[10px] text-nowrap">
+        <p className="font-sans font-normal text-[#f5ebe8] text-xs text-nowrap">
           {statusText}
         </p>
       </div>
@@ -115,7 +115,7 @@ export function StatusHeader({
           )}
         >
            <div className={cn("size-1.5 rounded-full", isRecording ? "bg-red-500 animate-pulse shadow-[0_0_5px_rgba(239,68,68,0.8)]" : "bg-[#acbbcc]")} />
-           <p className={cn("font-medium text-[10px] text-nowrap", isRecording ? "text-red-400" : "text-[#acbbcc]")}>
+           <p className={cn("font-medium text-xs text-nowrap", isRecording ? "text-red-400" : "text-[#acbbcc]")}>
              REC
            </p>
         </button>
@@ -123,7 +123,7 @@ export function StatusHeader({
         <Popover>
           <PopoverTrigger asChild>
             <button className="bg-[#4c627d] hover:bg-[#5a738e] active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-[4px] py-[2px] rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0 cursor-pointer">
-              <p className="font-medium text-[#acbbcc] text-[10px] text-nowrap">
+              <p className="font-medium text-[#acbbcc] text-xs text-nowrap">
                 VOL {volume}
               </p>
             </button>
@@ -153,7 +153,7 @@ export function StatusHeader({
           }}
           className="bg-[#4c627d] hover:bg-[#5a738e] active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-[4px] py-[2px] rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0 cursor-pointer"
         >
-          <p className="font-medium text-[#acbbcc] text-[10px] text-nowrap">
+          <p className="font-medium text-[#acbbcc] text-xs text-nowrap">
             L/O
           </p>
         </button>
@@ -166,7 +166,7 @@ export function StatusHeader({
               : "bg-[#4c627d] hover:bg-[#5a738e] border-transparent shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)]"
           )}
         >
-          <p className={cn("font-medium text-[10px] text-nowrap", isHolding ? "text-[#ef991f]" : "text-[#acbbcc]")}>
+          <p className={cn("font-medium text-xs text-nowrap", isHolding ? "text-[#ef991f]" : "text-[#acbbcc]")}>
             HOLD
           </p>
         </button>
@@ -277,7 +277,7 @@ export function ScannerDisplay({
         )}>
           <p className={cn(
             "font-bold text-[rgba(28,31,39,0.9)] text-nowrap truncate max-w-[90%] transition-all duration-500",
-            variant === "hero" ? "text-[80px] leading-tight tracking-tight" : "text-[40px]"
+            variant === "hero" ? "text-6xl leading-tight tracking-tight" : "text-4xl"
           )}>
             {isScanning ? (
               <span className="animate-pulse">Scanning...</span>
@@ -302,7 +302,7 @@ export function ScannerDisplay({
         )}>
           <p className={cn(
             "font-normal text-[rgba(28,31,39,0.9)] text-nowrap transition-all duration-500",
-            variant === "hero" ? "text-[24px] opacity-90 font-medium" : "text-[20px]"
+            variant === "hero" ? "text-xl opacity-90 font-medium" : "text-lg"
           )}>
             {isScanning ? (
               <span className="opacity-50">Searching for signal...</span>
@@ -352,7 +352,7 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
           >
             <p
               className={cn(
-                "font-medium text-[10px]",
+                "font-medium text-xs",
                 isActive ? "text-[#ef991f]" : "text-[#acbbcc]"
               )}
             >

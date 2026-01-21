@@ -723,14 +723,14 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                   </div>
                 </div>
                 {lockedFetchedAt && (
-                  <div className="text-[10px] text-white/40">
+                  <div className="text-xs text-white/40">
                     Synced {new Date(lockedFetchedAt).toLocaleTimeString()}
                   </div>
                 )}
               </div>
 
               <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap gap-2 text-[11px]">
+                <div className="flex flex-wrap gap-2 text-xs">
                   <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
                     Total: {lockedChannelIds.length}
                   </span>
@@ -795,7 +795,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
             </div>
 
             <div className="flex-1 rounded-lg border border-white/5 bg-black/10 overflow-hidden">
-              <div className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-[11px] font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2">
+              <div className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-xs font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2">
                 <div>Select</div>
                 <div className="text-center">CH</div>
                 <div>Freq (MHz)</div>
@@ -830,7 +830,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       <div className="flex justify-center">
                         <button
                           onClick={() => handleUnlockSelected([channel.index])}
-                          className="px-2 py-1 text-[10px] font-bold text-black bg-[#ef991f] hover:bg-[#d97706] rounded border border-[#ef991f]/50 transition-colors"
+                          className="px-2 py-1 text-xs font-bold text-black bg-[#ef991f] hover:bg-[#d97706] rounded border border-[#ef991f]/50 transition-colors"
                         >
                           Unlock
                         </button>
@@ -1013,7 +1013,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-xs font-medium text-white/70">Mode</span>
-                    <span className="text-[10px] text-white/40">Operation mode</span>
+                    <span className="text-xs text-white/40">Operation mode</span>
                   </div>
                   <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
                     <SelectTrigger className="w-[180px] h-8 text-xs bg-white/5 border-white/10">
@@ -1158,7 +1158,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
           <div className="flex flex-col max-w-5xl mx-auto overflow-hidden gap-4">
             <div className="flex-1 h-full bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner">
               {/* Table Header */}
-              <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-[10px] font-bold text-white/30 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
+              <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-xs font-bold text-white/30 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
                 <div className="text-center">Active</div>
                 <div>Range</div>
                 <div>Label</div>
@@ -1187,7 +1187,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       />
                     </div>
 
-                    <div className="text-[10px] font-mono font-bold text-white/30 group-hover:text-white/50 pl-1">
+                    <div className="text-xs font-mono font-bold text-white/30 group-hover:text-white/50 pl-1">
                       R-{range.id}
                     </div>
 
@@ -1250,17 +1250,17 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     </div>
                     <div>
                       <h3 className="font-bold text-white text-sm">Bearpaw</h3>
-                      <div className="text-[10px] text-white/40">v2.4.0-beta</div>
+                      <div className="text-xs text-white/40">v2.4.0-beta</div>
                     </div>
                   </div>
                   <p className="text-xs text-white/60 leading-relaxed">
                     Community-developed control software for Uniden scanners.
                   </p>
                   <div className="flex gap-2 pt-2">
-                    <button className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-[10px] text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5">
+                    <button className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5">
                       <ExternalLink size={10} /> Website
                     </button>
-                    <button className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-[10px] text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5">
+                    <button className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5">
                       <Code size={10} /> Github
                     </button>
                   </div>
@@ -1276,7 +1276,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     </div>
                     <h3 className="text-xs font-bold text-white">Support Dev</h3>
                   </div>
-                  <p className="text-[10px] text-white/60 leading-relaxed">
+                  <p className="text-xs text-white/60 leading-relaxed">
                     Enjoying the app? A $10 donation helps keep updates coming!
                   </p>
                   <button className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded transition-colors shadow-lg shadow-orange-900/20">
