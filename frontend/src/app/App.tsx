@@ -653,7 +653,23 @@ export default function App() {
               className="flex flex-col gap-6 h-full relative"
               layout
             >
-              <div className="flex justify-end">
+              <div className="flex justify-between items-start">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsLogModalOpen(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white border border-white/20 rounded-lg hover:border-white/40 transition"
+                  >
+                    <FileText size={14} />
+                    <span>Log</span>
+                  </button>
+                  <button
+                    onClick={() => toast.info("Help is on the way")}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white border border-white/10 rounded-lg hover:border-white/40 transition"
+                  >
+                    <HelpCircle size={14} />
+                    <span>Help</span>
+                  </button>
+                </div>
                 <button
                   onClick={() => setDashboardMode(!isDashboardMode)}
                   className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white/50 hover:text-white transition-colors border border-white/5"
@@ -931,21 +947,7 @@ export default function App() {
                 )}
               </AnimatePresence>
 
-              <div className="flex items-center justify-end mt-auto gap-2">
-                <button
-                  onClick={() => setIsLogModalOpen(true)}
-                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white border border-white/20 rounded-lg hover:border-white/40 transition"
-                >
-                  Activity Log
-                </button>
-                <button
-                  onClick={() => toast.info("Help is on the way")}
-                  className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white border border-white/10 rounded-lg hover:border-white/40 transition"
-                >
-                  Help
-                </button>
-              </div>
-            </motion.div>
+              </motion.div>
           )}
 
           {currentTab === "Device" && (

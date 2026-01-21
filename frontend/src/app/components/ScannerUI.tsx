@@ -17,7 +17,7 @@ export function TabNav({ currentTab, onTabChange }: TabNavProps) {
   const tabs = ["Scan", "Device", "Channels"];
 
   return (
-    <div className="flex gap-[16px] items-start pb-px pt-0 px-0 relative shrink-0 w-full border-b border-[#1c1f26]">
+    <div className="flex gap-4 items-start pb-px pt-0 px-0 relative shrink-0 w-full border-b border-scanner-bg-dark">
       {tabs.map((tab) => {
         const isActive = currentTab === tab;
         return (
@@ -25,14 +25,14 @@ export function TabNav({ currentTab, onTabChange }: TabNavProps) {
             key={tab}
             onClick={() => onTabChange(tab)}
             className={cn(
-              "flex flex-col items-center justify-center px-[12px] py-[4px] relative shrink-0 transition-colors focus:outline-none",
-              isActive ? "text-white" : "text-[#f5ebe8] hover:text-white"
+              "flex flex-col items-center justify-center px-3 py-1 relative transition-colors focus:outline-none",
+              isActive ? "text-white" : "scanner-text-light hover:text-white"
             )}
           >
             {isActive && (
               <div
                 aria-hidden="true"
-                className="absolute border-b-[2px] border-[#d97706]/50 inset-0 pointer-events-none"
+                className="absolute border-b-2 border-brand-hover/50 inset-0 pointer-events-none"
               />
             )}
             <p
@@ -89,7 +89,7 @@ export function StatusHeader({
   return (
     <div className="flex items-center justify-between relative shrink-0 w-full">
       {/* Status LED & Text */}
-      <div className="flex gap-[8px] items-center relative shrink-0">
+      <div className="flex gap-2 items-center relative shrink-0">
         <div className="relative shrink-0 size-[8px]">
           <svg
             className="block size-full"
@@ -100,35 +100,35 @@ export function StatusHeader({
             <circle cx="4" cy="4" fill={statusColor} r="4" />
           </svg>
         </div>
-        <p className="font-sans font-normal text-[#f5ebe8] text-xs text-nowrap">
+        <p className="font-sans font-normal scanner-text-light text-xs text-nowrap">
           {statusText}
         </p>
       </div>
 
       {/* Buttons: REC, VOL, L/O, HOLD */}
-      <div className="flex gap-[10px] items-center relative shrink-0">
+      <div className="flex gap-2.5 items-center relative shrink-0">
         <button
           onClick={onRecordingToggle}
           className={cn(
-            "flex items-center justify-center px-[6px] py-[2px] rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none gap-1.5",
-            isRecording ? "bg-red-500/20 border border-red-500/50" : "bg-[#4c627d] hover:bg-[#5a738e]"
+            "flex items-center justify-center px-1.5 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none gap-1.5",
+            isRecording ? "bg-red-500/20 border-red-500/50" : "bg-scanner-default hover:bg-scanner-hover"
           )}
         >
-           <div className={cn("size-1.5 rounded-full", isRecording ? "bg-red-500 animate-pulse shadow-[0_0_5px_rgba(239,68,68,0.8)]" : "bg-[#acbbcc]")} />
-           <p className={cn("font-medium text-xs text-nowrap", isRecording ? "text-red-400" : "text-[#acbbcc]")}>
+           <div className={cn("size-1.5 rounded-full", isRecording ? "bg-red-500 animate-pulse shadow-glow" : "bg-scanner-text")} />
+           <p className={cn("font-medium text-xs text-nowrap", isRecording ? "text-red-400" : "scanner-text")}>
              REC
            </p>
         </button>
 
         <Popover>
           <PopoverTrigger asChild>
-            <button className="bg-[#4c627d] hover:bg-[#5a738e] active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-[4px] py-[2px] rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0 cursor-pointer">
-              <p className="font-medium text-[#acbbcc] text-xs text-nowrap">
+            <button className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer">
+              <p className="font-medium scanner-text text-xs text-nowrap">
                 VOL {volume}
               </p>
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-40 bg-[#1c1f26] border border-white/10 p-4" side="bottom" align="center">
+          <PopoverContent className="w-40 bg-neutral-950 border border-white/10 p-4" side="bottom" align="center">
              <div className="flex flex-col">
                <span className="sr-only">Volume {volume}</span>
                <Slider
@@ -151,22 +151,22 @@ export function StatusHeader({
                  onLockout("temporary");
              }
           }}
-          className="bg-[#4c627d] hover:bg-[#5a738e] active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-[4px] py-[2px] rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0 cursor-pointer"
+          className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer"
         >
-          <p className="font-medium text-[#acbbcc] text-xs text-nowrap">
+          <p className="font-medium scanner-text text-xs text-nowrap">
             L/O
           </p>
         </button>
         <button
           onClick={onHoldToggle}
           className={cn(
-            "flex items-center justify-center px-[4px] py-[2px] rounded-[2px] shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none border",
+            "flex items-center justify-center px-1 py-0.5 rounded-scanner-sm shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none border",
             isHolding 
-              ? "bg-[rgba(43,48,59,0.5)] border-[#ef991f]" 
-              : "bg-[#4c627d] hover:bg-[#5a738e] border-transparent shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)]"
+              ? "bg-scanner-bg-semiDark border-brand-primary" 
+              : "bg-scanner-default hover:bg-scanner-hover border-scanner-border shadow-button"
           )}
         >
-          <p className={cn("font-medium text-xs text-nowrap", isHolding ? "text-[#ef991f]" : "text-[#acbbcc]")}>
+          <p className={cn("font-medium text-xs text-nowrap", isHolding ? "text-brand-primary" : "scanner-text")}>
             HOLD
           </p>
         </button>
@@ -267,7 +267,7 @@ export function ScannerDisplay({
       style={bgStyle}
     >
       <div className={cn(
-        "flex flex-col gap-[8px] items-start px-[12px] py-[10px] relative w-full h-full",
+        "flex flex-col gap-2 items-start px-3 py-2.5 relative w-full h-full",
         variant === "hero" ? "justify-between py-8 px-8" : "justify-center"
       )}>
         {/* Main Row */}
@@ -297,7 +297,7 @@ export function ScannerDisplay({
 
         {/* Sub Row */}
         <div className={cn(
-          "flex gap-[8px] items-start w-full relative transition-all duration-500",
+          "flex gap-2 items-start w-full relative transition-all duration-500",
           variant === "hero" ? "border-t border-[rgba(43,48,59,0.3)] pt-4" : ""
         )}>
           <p className={cn(
@@ -314,10 +314,10 @@ export function ScannerDisplay({
       </div>
 
       {/* Shadow Overlay */}
-      <div className="absolute inset-[-1px] pointer-events-none shadow-[inset_4px_4px_4px_0px_#b06105]" />
+      <div className="absolute inset-[-1px] pointer-events-none shadow-inset" />
       <div
         aria-hidden="true"
-        className="absolute border border-[#1e2024] inset-[-1px] pointer-events-none rounded-[7px]"
+        className="absolute border border-scanner-border inset-[-1px] pointer-events-none rounded-scanner-display"
       />
     </div>
   );
@@ -334,7 +334,7 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
   const banks = Array.from({ length: 10 }, (_, i) => i + 1); // 1..10
 
   return (
-    <div className="flex gap-[1px] w-full justify-between">
+    <div className="flex gap-0.25 w-full justify-between">
       {banks.map((bank, index) => {
         const isActive = activeBanks[index];
         const label = bank === 10 ? "0" : bank.toString();
@@ -343,17 +343,17 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
           <button
             key={bank}
             onClick={() => onToggleBank(index)}
-            className={cn(
-              "flex items-center justify-center h-[24px] flex-1 min-w-0 mx-[2px] rounded-[2px] relative transition-all border",
-              isActive
-                ? "bg-[rgba(43,48,59,0.5)] border-[#ef991f]"
-                : "bg-[#4c627d] border-transparent shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)]"
-            )}
+             className={cn(
+               "flex items-center justify-center h-[24px] flex-1 min-w-0 mx-[2px] rounded-scanner-sm relative transition-all border",
+               isActive
+                 ? "bg-scanner-bg-semiDark border-brand-primary"
+                 : "bg-scanner-default border-scanner-border shadow-button"
+             )}
           >
             <p
               className={cn(
                 "font-medium text-xs",
-                isActive ? "text-[#ef991f]" : "text-[#acbbcc]"
+                isActive ? "text-brand-primary" : "scanner-text"
               )}
             >
               {label}

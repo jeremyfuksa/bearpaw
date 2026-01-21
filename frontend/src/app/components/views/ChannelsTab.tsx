@@ -188,7 +188,7 @@ export function ChannelsTab() {
     >
       {/* Side Nav: Banks */}
       <div className="w-[160px] flex flex-col gap-1 bg-black/20 rounded-lg p-2 border border-white/5 h-full overflow-y-auto shrink-0">
-        <h3 className="px-3 py-2 text-xs font-bold text-white/40 uppercase tracking-wider sticky top-0 bg-[#1c1f26]/90 backdrop-blur-sm z-10">
+        <h3 className="px-3 py-2 text-xs font-bold text-white/40 uppercase tracking-wider sticky top-0 bg-scanner-bg-dark/90 backdrop-blur-sm z-10">
           Bank Select
         </h3>
         {bankTabs.map((bank) => (
@@ -198,13 +198,13 @@ export function ChannelsTab() {
             className={cn(
               "flex items-center justify-between px-3 py-2 text-xs font-medium rounded transition-all",
               activeBank === bank
-                ? "bg-[#ef991f]/20 text-[#ef991f] shadow-[inset_0_0_10px_rgba(239,153,31,0.1)]"
+                ? "bg-brand-primary/20 text-brand-primary shadow-brand-inset"
                 : "text-white/60 hover:bg-white/5 hover:text-white",
             )}
           >
             <span>Bank {bank}</span>
             {activeBank === bank && (
-              <div className="w-1.5 h-1.5 rounded-full bg-[#ef991f] shadow-[0_0_5px_currentColor]" />
+              <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-glow" />
             )}
           </button>
         ))}
@@ -227,7 +227,7 @@ export function ChannelsTab() {
               <input
                 type="text"
                 placeholder="Search frequency or tag..."
-                className="w-full bg-black/40 border border-white/5 focus:border-[#ef991f]/50 rounded text-xs pl-8 pr-4 py-1.5 text-white placeholder:text-white/20 outline-none transition-colors"
+                className="w-full bg-black/40 border border-white/5 focus:border-brand-primary/50 rounded text-xs pl-8 pr-4 py-1.5 text-white placeholder:text-white/20 outline-none transition-colors"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -278,7 +278,7 @@ export function ChannelsTab() {
                     onClick={() => handleRowClick(channel.index)}
                     className={cn(
                       "grid grid-cols-[50px_90px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-1.5 text-xs border-b border-white/5 items-center group transition-colors cursor-pointer min-h-[36px]",
-                      isEditing ? "bg-[#ef991f]/10" : "hover:bg-white/5",
+                      isEditing ? "bg-brand-primary/10" : "hover:bg-white/5",
                       channel.lockout && "opacity-50 grayscale",
                     )}
                   >
@@ -289,7 +289,7 @@ export function ChannelsTab() {
                     {isEditing ? (
                       <>
                         <input
-                          className="bg-black/50 border border-[#ef991f] rounded px-1.5 py-0.5 text-[#ef991f] w-full outline-none font-mono font-bold"
+                          className="bg-black/50 border border-[#ef991f] rounded px-1.5 py-0.5 text-brand-primary w-full outline-none font-mono font-bold"
                           value={draft.frequency}
                           onChange={(e) => updateDraftField(channel.index, "frequency", e.target.value)}
                           autoFocus
@@ -325,7 +325,7 @@ export function ChannelsTab() {
                             type="checkbox"
                             checked={draft.lockout}
                             onChange={(e) => updateDraftField(channel.index, "lockout", e.target.checked)}
-                            className="accent-[#ef991f]"
+                            className="accent-brand-primary"
                           />
                         </div>
                         <div className="flex justify-center">
@@ -333,13 +333,13 @@ export function ChannelsTab() {
                             type="checkbox"
                             checked={draft.priority}
                             onChange={(e) => updateDraftField(channel.index, "priority", e.target.checked)}
-                            className="accent-[#ef991f]"
+                            className="accent-brand-primary"
                           />
                         </div>
                       </>
                     ) : (
                       <>
-                        <div className="font-mono font-bold text-[#ef991f] group-hover:text-[#ffb045] tracking-wide text-center">
+                        <div className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center">
                           {channel.frequency.toFixed(4)}
                         </div>
                         <div className="font-medium text-white/80 truncate pl-1">
@@ -365,7 +365,7 @@ export function ChannelsTab() {
                         </div>
                         <div className="flex justify-center">
                           {channel.priority ? (
-                            <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-[0_0_5px_orange]" />
+                            <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-glow" />
                           ) : (
                             <div className="w-1 h-1 rounded-full bg-white/5" />
                           )}
