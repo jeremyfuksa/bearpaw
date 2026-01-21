@@ -20,8 +20,6 @@ import {
   FileText,
   HelpCircle,
   Lock,
-  Maximize2,
-  Minimize2,
   Play,
   Radio,
   Signal,
@@ -29,6 +27,7 @@ import {
 } from "lucide-react";
 import { Slider } from "./components/ui/slider";
 import { Switch } from "./components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -119,6 +118,7 @@ export default function App() {
   const [banksBusy, setBanksBusy] = useState(false);
   const [toggleBusy, setToggleBusy] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [chartAnimate, setChartAnimate] = useState(false);
   const [busiestChannels, setBusiestChannels] = useState<{ alpha_tag: string; hit_count: number }[]>([]);
   const [hourlyHeatmap, setHourlyHeatmap] = useState<number[][]>([]);
   const [sessionStats, setSessionStats] = useState<
@@ -134,6 +134,7 @@ export default function App() {
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
   const lastHitOpenRef = useRef(false);
+  const analyticsLoadedRef = useRef(false);
 
   useEffect(() => {
     setConnected(connected);
@@ -264,6 +265,16 @@ export default function App() {
     };
   }, [api, channels.length, deviceInfo]);
 
+  useEffect(() => {
+    if (!isDashboardMode) {
+      setChartAnimate(false);
+      return;
+    }
+    setChartAnimate(true);
+    const timeout = window.setTimeout(() => setChartAnimate(false), 700);
+    return () => window.clearTimeout(timeout);
+  }, [isDashboardMode]);
+
   const handleMemorySync = useCallback(async () => {
     if (syncInProgressRef.current || isMemorySyncing) {
       return;
@@ -335,7 +346,9 @@ export default function App() {
     let active = true;
     const fetchAnalytics = async () => {
       try {
-        setDashboardLoading(true);
+        if (!analyticsLoadedRef.current) {
+          setDashboardLoading(true);
+        }
         const [channelsRes, statsRes, heatmapRes] = await Promise.all([
           fetch(`${API_BASE}/analytics/busiest-channels?limit=5&hours=24`),
           fetch(`${API_BASE}/analytics/session-stats`),
@@ -367,7 +380,10 @@ export default function App() {
       } catch (error) {
         console.error("Failed to fetch analytics data:", error);
       } finally {
-        if (active) setDashboardLoading(false);
+        if (active) {
+          setDashboardLoading(false);
+          analyticsLoadedRef.current = true;
+        }
       }
     };
     fetchAnalytics();
@@ -479,8 +495,8 @@ export default function App() {
         return;
       }
       const updated = await api.togglePermanentLockout(channelId);
-      setChannels((prev) =>
-        prev.map((channel) =>
+      setChannels(
+        channels.map((channel) =>
           channel.index === updated.index ? updated : channel,
         ),
       );
@@ -501,7 +517,7 @@ export default function App() {
       console.warn("Failed to toggle lockout", error);
       toast.error("Failed to toggle lockout");
     }
-  }, [api, connected, getScannerMode, liveState?.channel, setChannels]);
+  }, [api, channels, connected, getScannerMode, liveState?.channel, setChannels]);
 
   const handleLockout = useCallback(
     (type: "temporary" | "permanent") => {
@@ -593,7 +609,9 @@ export default function App() {
       const rssi = entry.rssi ?? "";
       return [timestamp, frequency, `"${tag.replace(/"/g, '""')}"`, channel, rssi].join(",");
     });
-    const blob = new Blob([header, ...rows].join("\n"), { type: "text/csv" });
+    const blob = new Blob([[header, ...rows].join("\n")], {
+      type: "text/csv",
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -644,7 +662,12 @@ export default function App() {
       />
 
       <div className="px-6 pt-4 pb-2">
-        <TabNav currentTab={currentTab} onTabChange={(tab) => setCurrentTab(tab as Tab)} />
+        <TabNav
+          currentTab={currentTab}
+          onTabChange={(tab) => setCurrentTab(tab as Tab)}
+          connectionStatus={getConnectionStatus()}
+          modelName={deviceInfo?.model || "BC125AT"}
+        />
       </div>
 
       <div className="flex-1 p-6 pt-2 overflow-hidden relative">
@@ -658,25 +681,6 @@ export default function App() {
               className="flex flex-col gap-6 h-full relative"
               layout
             >
-              <div className="flex justify-between items-start">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setIsLogModalOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white border border-white/20 rounded-lg hover:border-white/40 transition"
-                  >
-                    <FileText size={14} />
-                    <span>Log</span>
-                  </button>
-                </div>
-                <button
-                  onClick={() => setDashboardMode(!isDashboardMode)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-white/50 hover:text-white transition-colors border border-white/5"
-                >
-                  {isDashboardMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                  {isDashboardMode ? "Monitor" : "Dashboard"}
-                </button>
-              </div>
-
               <div
                 className={cn(
                   "flex gap-6 transition-all duration-500 ease-in-out",
@@ -692,8 +696,6 @@ export default function App() {
                   )}
                 >
                   <StatusHeader
-                    connectionStatus={getConnectionStatus()}
-                    modelName={deviceInfo?.model || "BC125AT"}
                     volume={liveState?.volume ?? 0}
                     onVolumeChange={handleVolumeChange}
                     isHolding={getScannerMode() === "HOLD"}
@@ -701,6 +703,8 @@ export default function App() {
                     onLockout={handleLockout}
                     isRecording={isRecording}
                     onRecordingToggle={handleRecordingToggle}
+                    isDashboardMode={isDashboardMode}
+                    onDashboardToggle={() => setDashboardMode(!isDashboardMode)}
                   />
                   <ScannerDisplay
                     mainText={mainText}
@@ -756,8 +760,31 @@ export default function App() {
 
                 {/* Recent Hits - Always Visible */}
                 <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-4 overflow-hidden flex flex-col">
-                  <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
-                    <Radio className="w-4 h-4 text-orange-500" /> Recent Hits
+                  <h3 className="font-bold text-sm mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Radio className="w-4 h-4 text-orange-500" />
+                      <span>Recent Hits</span>
+                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setIsLogModalOpen(true)}
+                          className="ml-auto inline-flex items-center justify-center rounded-scanner-sm border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:text-white hover:bg-white/10 hover:border-white/20 transition-colors"
+                          aria-label="Open hit log"
+                        >
+                          <FileText size={14} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        align="center"
+                        className="bg-neutral-950 border border-white/10 text-white"
+                        arrowClassName="bg-neutral-950 fill-neutral-950"
+                      >
+                        Log
+                      </TooltipContent>
+                    </Tooltip>
                   </h3>
                   <div className="flex-1 overflow-y-auto pr-1 space-y-2">
                     {recentHits.length === 0 ? (
@@ -862,13 +889,13 @@ export default function App() {
               <AnimatePresence>
                 {isDashboardMode && (
                   <motion.div
-                    initial={{ opacity: 0, height: 0, y: 20 }}
-                    animate={{ opacity: 1, height: 240, y: 0 }}
-                    exit={{ opacity: 0, height: 0, y: 20 }}
-                    className="flex gap-6 overflow-hidden"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    className="flex-1 min-h-0 flex gap-6 overflow-hidden"
                   >
                     {/* Busiest Channels */}
-                    <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
+                    <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
                       <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
                         <Signal className="w-4 h-4 text-blue-400" /> Busiest Channels
                       </h3>
@@ -888,7 +915,13 @@ export default function App() {
                               tick={{ fill: "#888", fontSize: 10 }}
                               interval={0}
                             />
-                            <Bar dataKey="hit_count" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                            <Bar
+                              dataKey="hit_count"
+                              fill="#3b82f6"
+                              radius={[4, 4, 0, 0]}
+                              isAnimationActive={chartAnimate}
+                              animationDuration={600}
+                            >
                               <LabelList
                                 dataKey="hit_count"
                                 position="insideTop"
@@ -901,7 +934,7 @@ export default function App() {
                     </div>
 
                     {/* Activity Heatmap */}
-                    <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
+                    <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
                       <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
                         <Clock className="w-4 h-4 text-green-400" /> Activity Heatmap
                       </h3>

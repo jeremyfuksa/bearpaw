@@ -76,7 +76,7 @@ class AnalyticsConfig(BaseModel):
     db_path: str = "./analytics.db"
     retention_days: int = 30
     cleanup_interval_hours: int = 24
-    min_hit_duration: float = 3.0
+    min_hit_duration: float = 1.0
 
 
 class AppConfig(BaseModel):

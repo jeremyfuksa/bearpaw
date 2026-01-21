@@ -1,7 +1,9 @@
 import React from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Slider } from "./ui/slider";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import svgPaths from "../../imports/svg-govmzsdb93";
 import usbSvgPaths from "../../imports/svg-4af8p5er03";
 import socketSvgPaths from "../../imports/svg-10gl6kikm0";
@@ -11,85 +13,68 @@ import socketSvgPaths from "../../imports/svg-10gl6kikm0";
 interface TabNavProps {
   currentTab: string;
   onTabChange: (tab: string) => void;
-}
-
-export function TabNav({ currentTab, onTabChange }: TabNavProps) {
-  const tabs = ["Scan", "Device", "Channels"];
-
-  return (
-    <div className="flex gap-4 items-start pb-px pt-0 px-0 relative shrink-0 w-full border-b border-scanner-bg-dark">
-      {tabs.map((tab) => {
-        const isActive = currentTab === tab;
-        return (
-          <button
-            key={tab}
-            onClick={() => onTabChange(tab)}
-            className={cn(
-              "flex flex-col items-center justify-center px-3 py-1 relative transition-colors focus:outline-none",
-              isActive ? "text-white" : "scanner-text-light hover:text-white"
-            )}
-          >
-            {isActive && (
-              <div
-                aria-hidden="true"
-                className="absolute border-b-2 border-brand-hover/50 inset-0 pointer-events-none"
-              />
-            )}
-            <p
-              className={cn(
-                "text-sm text-nowrap",
-                isActive ? "font-bold" : "font-semibold"
-              )}
-            >
-              {tab}
-            </p>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// --- Header / Status ---
-
-interface StatusHeaderProps {
   connectionStatus: "connected" | "connecting" | "disconnected";
   modelName?: string;
-  volume: number;
-  onVolumeChange: (volume: number) => void;
-  isHolding: boolean;
-  onHoldToggle: () => void;
-  onLockout: (type: "temporary" | "permanent") => void;
-  isRecording?: boolean;
-  onRecordingToggle?: () => void;
 }
 
-export function StatusHeader({
+function getStatusDisplay(
+  connectionStatus: "connected" | "connecting" | "disconnected",
+  modelName: string,
+) {
+  if (connectionStatus === "connecting") {
+    return { statusColor: "#F59E0B", statusText: "Connecting..." };
+  }
+  if (connectionStatus === "disconnected") {
+    return { statusColor: "#DC3A38", statusText: "Disconnected" };
+  }
+  return { statusColor: "#67E79E", statusText: modelName };
+}
+
+export function TabNav({
+  currentTab,
+  onTabChange,
   connectionStatus,
   modelName = "BC125AT",
-  volume,
-  onVolumeChange,
-  isHolding,
-  onHoldToggle,
-  onLockout,
-  isRecording = false,
-  onRecordingToggle,
-}: StatusHeaderProps) {
-  let statusColor = "#67E79E"; // Connected (Green)
-  let statusText = modelName;
-
-  if (connectionStatus === "connecting") {
-    statusColor = "#F59E0B"; // Amber
-    statusText = "Connecting...";
-  } else if (connectionStatus === "disconnected") {
-    statusColor = "#DC3A38"; // Red
-    statusText = "Disconnected";
-  }
+}: TabNavProps) {
+  const tabs = ["Scan", "Device", "Channels"];
+  const { statusColor, statusText } = getStatusDisplay(
+    connectionStatus,
+    modelName,
+  );
 
   return (
-    <div className="flex items-center justify-between relative shrink-0 w-full">
-      {/* Status LED & Text */}
-      <div className="flex gap-2 items-center relative shrink-0">
+    <div className="flex items-center justify-between pb-px pt-0 px-0 relative shrink-0 w-full border-b border-scanner-bg-dark">
+      <div className="flex gap-4 items-start">
+        {tabs.map((tab) => {
+          const isActive = currentTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => onTabChange(tab)}
+              className={cn(
+                "flex flex-col items-center justify-center px-3 py-1 relative transition-colors focus:outline-none",
+                isActive ? "text-white" : "scanner-text-light hover:text-white"
+              )}
+            >
+              {isActive && (
+                <div
+                  aria-hidden="true"
+                  className="absolute border-b-2 border-brand-hover/50 inset-0 pointer-events-none"
+                />
+              )}
+              <p
+                className={cn(
+                  "text-sm text-nowrap",
+                  isActive ? "font-bold" : "font-semibold"
+                )}
+              >
+                {tab}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-2 items-center justify-end">
         <div className="relative shrink-0 size-[8px]">
           <svg
             className="block size-full"
@@ -104,9 +89,63 @@ export function StatusHeader({
           {statusText}
         </p>
       </div>
+    </div>
+  );
+}
 
-      {/* Buttons: REC, VOL, L/O, HOLD */}
+// --- Header / Status ---
+
+interface StatusHeaderProps {
+  volume: number;
+  onVolumeChange: (volume: number) => void;
+  isHolding: boolean;
+  onHoldToggle: () => void;
+  onLockout: (type: "temporary" | "permanent") => void;
+  isRecording?: boolean;
+  onRecordingToggle?: () => void;
+  isDashboardMode: boolean;
+  onDashboardToggle: () => void;
+}
+
+export function StatusHeader({
+  volume,
+  onVolumeChange,
+  isHolding,
+  onHoldToggle,
+  onLockout,
+  isRecording = false,
+  onRecordingToggle,
+  isDashboardMode,
+  onDashboardToggle,
+}: StatusHeaderProps) {
+  return (
+    <div className="flex items-center justify-between relative shrink-0 w-full">
+      {/* Dashboard + Recording controls */}
       <div className="flex gap-2.5 items-center relative shrink-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onDashboardToggle}
+              className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer"
+              aria-pressed={isDashboardMode}
+              aria-label={isDashboardMode ? "Switch to monitor view" : "Switch to dashboard view"}
+            >
+              {isDashboardMode ? (
+                <Minimize2 className="size-3.5" />
+              ) : (
+                <Maximize2 className="size-3.5" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="center"
+            className="bg-neutral-950 border border-white/10 text-white"
+            arrowClassName="bg-neutral-950 fill-neutral-950"
+          >
+            {isDashboardMode ? "Monitor view" : "Dashboard view"}
+          </TooltipContent>
+        </Tooltip>
         <button
           onClick={onRecordingToggle}
           className={cn(
@@ -119,7 +158,10 @@ export function StatusHeader({
              REC
            </p>
         </button>
+      </div>
 
+      {/* Native scanner controls */}
+      <div className="flex gap-2.5 items-center relative shrink-0">
         <Popover>
           <PopoverTrigger asChild>
             <button className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer">
@@ -277,7 +319,7 @@ export function ScannerDisplay({
         )}>
           <p className={cn(
             "font-bold text-[rgba(28,31,39,0.9)] text-nowrap truncate max-w-[90%] transition-all duration-500",
-            variant === "hero" ? "text-6xl leading-tight tracking-tight" : "text-4xl"
+            variant === "hero" ? "text-4xl leading-tight tracking-tight" : "text-3xl"
           )}>
             {isScanning ? (
               <span className="animate-pulse">Scanning...</span>
