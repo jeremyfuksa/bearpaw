@@ -1,0 +1,207 @@
+name: Build Scanner Bridge
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      build_all:
+        description: 'Build for all platforms'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: darwin-aarch64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform: darwin-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Cache Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: backend/.venv
+          key: ${{ runner.os }}-python-${{ hashFiles('backend/requirements.txt') }}
+      
+      - name: Install Python dependencies
+        run: |
+          cd backend
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm install
+      
+      - name: Build Python sidecar
+        shell: bash
+        run: |
+          cd backend/packaging/tauri
+          chmod +x build.sh
+          if [[ "$OSTYPE" == "msys" ]]; then
+            powershell -File ./build.ps1
+          else
+            ./build.sh
+          fi
+      
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+      
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+      
+      - name: Build Tauri app
+        run: |
+          npm run tauri build --target ${{ matrix.target }}
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      
+      - name: Sign macOS app (if certificate available)
+        if: matrix.os == 'macos-latest' && secrets.APPLE_CERTIFICATE_PASSWORD != ''
+        run: |
+          # Sign the .app bundle
+          xcrun codesign --force --deep --sign "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/Scanner Bridge.app
+      
+      - name: Create DMG for macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Create DMG if not already created
+          if [ ! -f src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg ]; then
+            cd src-tauri/target/${{ matrix.target }}/release/bundle/macos/
+            ls -la
+          fi
+      
+      - name: Sign Windows installer (if certificate available)
+        if: matrix.os == 'windows-latest' && secrets.WIN_CERTIFICATE_THUMBPRINT != ''
+        run: |
+          # Sign the .msi installer
+          signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 \
+            /sha1 /f "src-tauri\target\${{ matrix.target }}\release\bundle\msi\*.msi"
+        env:
+          WIN_CERTIFICATE_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
+      
+      - name: Generate update signature
+        if: secrets.TAURI_PRIVATE_KEY != ''
+        run: |
+          npm run tauri signer generate src-tauri/target/${{ matrix.target }}/release/bundle/
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-bridge-${{ matrix.platform }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+          retention-days: 30
+  
+  create-release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      
+      - name: Generate latest.json
+        run: |
+          # Generate update manifest (you'll need to customize this)
+          node -e "
+            const version = '${{ github.ref_name }}'.replace('v', '');
+            const manifest = {
+              version: version,
+              notes: 'Automated release from CI',
+              pub_date: new Date().toISOString(),
+              platforms: {
+                'darwin-aarch64': { url: '', signature: '' },
+                'darwin-x86_64': { url: '', signature: '' },
+                'windows-x86_64': { url: '', signature: '' },
+                'linux-x86_64': { url: '', signature: '' }
+              }
+            };
+            console.log(JSON.stringify(manifest, null, 2));
+          " > latest.json
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-artifacts/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

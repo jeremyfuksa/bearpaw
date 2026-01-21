@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "Scanner Bridge",
+  "version": "1.0.0",
+  "identifier": "com.uniden.scanner-bridge",
+  "build": {
+    "beforeDevCommand": "cd frontend && npm run dev",
+    "beforeBuildCommand": "cd frontend && npm run build",
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Scanner Bridge",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Uniden Scanner Bridge",
+    "category": "Developer Tool",
+    "shortDescription": "Cross-platform scanner control and telemetry",
+    "longDescription": "Scanner Bridge provides real-time control and telemetry for Uniden analog scanners via a modern, cross-platform desktop application.",
+    "copyright": "Copyright © 2025 Uniden Scanner Bridge",
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  },
+  "plugins": {}
+}

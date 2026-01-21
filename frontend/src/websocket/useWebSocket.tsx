@@ -1,9 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ScannerWebSocket } from "./ScannerWebSocket";
 
-const defaultWsURL =
-  import.meta.env.VITE_WS_URL ||
-  `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
+// Detect if running in Tauri
+const isTauri = '__TAURI__' in window;
+
+// WebSocket URL configuration
+const defaultWsURL = isTauri
+  ? 'ws://localhost:8000/ws'  // Sidecar runs on localhost
+  : import.meta.env.VITE_WS_URL ||
+    `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
 
 interface WebSocketContextValue {
   ws: ScannerWebSocket;

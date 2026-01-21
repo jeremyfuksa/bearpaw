@@ -1,0 +1,30 @@
+{
+  "name": "scanner-bridge",
+  "version": "1.0.0",
+  "description": "Uniden Scanner Bridge - Cross-platform scanner control and telemetry",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "dev": "./scripts/dev.sh",
+    "dev:win": ".\\scripts\\dev.ps1",
+    "build": "./scripts/build-all.sh",
+    "build:win": ".\\scripts\\build-all.ps1"
+  },
+  "keywords": [
+    "scanner",
+    "uniden",
+    "radio",
+    "tauri",
+    "desktop-app"
+  ],
+  "author": "Scanner Bridge",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/YOUR_REPO.git"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

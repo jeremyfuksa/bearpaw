@@ -1,0 +1,53 @@
+# Default Scanner Bridge configuration for bundled distribution
+# This file is included with the Tauri app
+
+# Backend API configuration
+backend:
+  host: "127.0.0.1"
+  port: 8000
+  
+# Scanner device configuration
+scanner:
+  # Auto-detect connected scanner on startup
+  auto_detect: true
+  
+  # Specific device path (if auto_detect is false)
+  device_path: null
+  
+  # Model family (optional, auto-detected)
+  model: null
+  
+  # Connection timeout in seconds
+  timeout: 10
+
+# Logging configuration
+logging:
+  level: "INFO"
+  file: "scanner-bridge.log"
+  max_size_mb: 10
+  backup_count: 5
+
+# WebSocket configuration
+websocket:
+  enabled: true
+  heartbeat_interval: 30
+  reconnect_attempts: 5
+  
+# Memory sync configuration
+memory:
+  # Auto-sync scanner memory on startup
+  auto_sync: true
+  
+  # Progress update interval during sync
+  progress_interval: 100
+  
+  # Enable shadow state persistence
+  enable_shadow_state: true
+
+# USB permissions (for auto-setup guidance)
+usb:
+  # Show USB permission instructions on startup if needed
+  show_permission_help: true
+  
+  # Platform-specific permission check
+  check_on_startup: true
