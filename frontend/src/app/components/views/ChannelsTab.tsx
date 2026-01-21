@@ -136,27 +136,20 @@ export function ChannelsTab() {
     previousEditingIndex.current = memoryEditingIndex;
   }, [debouncedCommitDraft, memoryEditingIndex]);
 
-  useEffect(() => {
-    if (memoryEditingIndex === null) return;
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (containerRef.current && target && containerRef.current.contains(target)) {
-        return;
-      }
-      setMemoryEditingIndex(null);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMemoryEditingIndex(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [memoryEditingIndex, setMemoryEditingIndex]);
+     useEffect(() => {
+     if (memoryEditingIndex === null) return;
+     const handleClick = (event: MouseEvent) => {
+       const target = event.target as Node | null;
+       if (containerRef.current && target && containerRef.current.contains(target)) {
+         return;
+       }
+       setMemoryEditingIndex(null);
+     };
+     document.addEventListener("mousedown", handleClick);
+     return () => {
+       document.removeEventListener("mousedown", handleClick);
+     };
+   }, [memoryEditingIndex, setMemoryEditingIndex]);
 
   useEffect(() => {
     setMemoryEditingIndex(null);

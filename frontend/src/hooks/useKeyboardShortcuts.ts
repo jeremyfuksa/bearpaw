@@ -4,10 +4,8 @@ import { useAPI } from "../api/useApi";
 import { useStore } from "../store/useStore";
 
 interface ShortcutHandlers {
-  openShortcuts: () => void;
   openActivityLog: () => void;
   openMemoryBrowser: () => void;
-  closeOverlays: () => void;
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
