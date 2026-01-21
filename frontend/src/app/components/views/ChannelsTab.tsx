@@ -188,7 +188,7 @@ export function ChannelsTab() {
     >
       {/* Side Nav: Banks */}
       <div className="w-[160px] flex flex-col gap-1 bg-black/20 rounded-lg p-2 border border-white/5 h-full overflow-y-auto shrink-0">
-        <h3 className="px-3 py-2 text-[10px] font-bold text-white/40 uppercase tracking-wider sticky top-0 bg-[#1c1f26]/90 backdrop-blur-sm z-10">
+        <h3 className="px-3 py-2 text-xs font-bold text-white/40 uppercase tracking-wider sticky top-0 bg-[#1c1f26]/90 backdrop-blur-sm z-10">
           Bank Select
         </h3>
         {bankTabs.map((bank) => (
@@ -235,10 +235,10 @@ export function ChannelsTab() {
           </div>
 
           <div className="flex gap-2 shrink-0">
-            <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-[10px] font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white">
+            <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white">
               Import CSV
             </button>
-            <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-[10px] font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white">
+            <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white">
               Export CSV
             </button>
           </div>
@@ -254,7 +254,7 @@ export function ChannelsTab() {
             {["CH", "FREQ", "TAG", "MODE", "TONE", "DLY", "L/O", "PRIO"].map((h) => (
               <div
                 key={h}
-                className="text-[10px] font-bold text-white/30 uppercase tracking-wider select-none text-center first:text-left"
+                className="text-xs font-bold text-white/30 uppercase tracking-wider select-none text-center first:text-left"
               >
                 {h}
               </div>
@@ -282,7 +282,7 @@ export function ChannelsTab() {
                       channel.lockout && "opacity-50 grayscale",
                     )}
                   >
-                    <div className="font-mono text-white/30 text-[10px] pl-1">
+                    <div className="font-mono text-white/30 text-xs pl-1">
                       {channel.index}
                     </div>
 
@@ -346,14 +346,14 @@ export function ChannelsTab() {
                           {channel.alpha_tag || "—"}
                         </div>
                         <div className="flex justify-center">
-                          <span className="text-white/40 text-[9px] font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
+                          <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
                             {channel.modulation || "AUTO"}
                           </span>
                         </div>
-                        <div className="text-white/30 text-[10px] text-center">
+                        <div className="text-white/30 text-xs text-center">
                           {channel.tone_squelch ?? "—"}
                         </div>
-                        <div className="text-white/30 text-[10px] text-center">
+                        <div className="text-white/30 text-xs text-center">
                           {channel.delay}s
                         </div>
                         <div className="flex justify-center">

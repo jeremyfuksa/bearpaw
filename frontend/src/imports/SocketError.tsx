@@ -4,7 +4,7 @@ function Scan() {
   return (
     <div className="content-stretch flex flex-col items-center justify-center px-[12px] py-[4px] relative shrink-0" data-name="Scan">
       <div aria-hidden="true" className="absolute border-[0px_0px_2px] border-[rgba(217,119,6,0.5)] border-solid inset-0 pointer-events-none" />
-      <p className="font-['Inter:Bold',sans-serif] font-bold leading-[normal] not-italic relative shrink-0 text-[12px] text-nowrap text-white">Scan</p>
+      <p className="font-bold relative shrink-0 text-xs text-nowrap text-white">Scan</p>
     </div>
   );
 }
@@ -12,7 +12,7 @@ function Scan() {
 function Scan1() {
   return (
     <div className="content-stretch flex flex-col items-center justify-center px-[12px] py-[4px] relative shrink-0" data-name="Scan">
-      <p className="font-['Inter:Semi_Bold',sans-serif] font-semibold leading-[normal] not-italic relative shrink-0 text-[#f5ebe8] text-[12px] text-nowrap">Device</p>
+      <p className="font-semibold relative shrink-0 text-[#f5ebe8] text-xs text-nowrap">Device</p>
     </div>
   );
 }
@@ -20,7 +20,7 @@ function Scan1() {
 function Scan2() {
   return (
     <div className="content-stretch flex flex-col items-center justify-center px-[12px] py-[4px] relative shrink-0" data-name="Scan">
-      <p className="font-['Inter:Semi_Bold',sans-serif] font-semibold leading-[normal] not-italic relative shrink-0 text-[#f5ebe8] text-[12px] text-nowrap">Channels</p>
+      <p className="font-semibold relative shrink-0 text-[#f5ebe8] text-xs text-nowrap">Channels</p>
     </div>
   );
 }
@@ -44,7 +44,7 @@ function Status() {
           <circle cx="4" cy="4" fill="var(--fill-0, #DC3A38)" id="Status LED" r="4" />
         </svg>
       </div>
-      <p className="font-['Manrope:Regular',sans-serif] font-normal leading-[normal] relative shrink-0 text-[#f5ebe8] text-[10px] text-nowrap">Disconnected</p>
+      <p className="font-normal leading-[normal] relative shrink-0 text-[#f5ebe8] text-xs text-nowrap">Disconnected</p>
     </div>
   );
 }
@@ -52,7 +52,7 @@ function Status() {
 function Vol() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="VOL">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">VOL</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">VOL</p>
     </div>
   );
 }
@@ -60,7 +60,7 @@ function Vol() {
 function LO() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="L/O">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">L/O</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">L/O</p>
     </div>
   );
 }
@@ -68,7 +68,7 @@ function LO() {
 function Hold() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="HOLD">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">HOLD</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">HOLD</p>
     </div>
   );
 }
@@ -108,7 +108,7 @@ function MainContent() {
   return (
     <div className="content-stretch flex items-center justify-between pb-[4px] pt-0 px-0 relative shrink-0 w-full" data-name="Main Content">
       <div aria-hidden="true" className="absolute border-[0px_0px_1px] border-[rgba(43,48,59,0.7)] border-solid inset-0 pointer-events-none" />
-      <p className="font-['Manrope:Bold',sans-serif] font-bold leading-[normal] relative shrink-0 text-[24px] text-[rgba(28,31,39,0.9)] text-nowrap">Socket Error</p>
+      <p className="font-bold leading-[normal] relative shrink-0 text-2xl text-[rgba(28,31,39,0.9)] text-nowrap">Socket Error</p>
       <Status1 />
     </div>
   );
@@ -135,7 +135,7 @@ function Component() {
   return (
     <div className="bg-[rgba(43,48,59,0.5)] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shrink-0" data-name="1">
       <div aria-hidden="true" className="absolute border border-[#ef991f] border-solid inset-0 pointer-events-none rounded-[2px]" />
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#ef991f] text-[10px] text-nowrap">1</p>
+      <p className="font-medium relative shrink-0 text-[#ef991f] text-xs text-nowrap">1</p>
     </div>
   );
 }
@@ -144,7 +144,7 @@ function Component1() {
   return (
     <div className="bg-[rgba(43,48,59,0.5)] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shrink-0" data-name="2">
       <div aria-hidden="true" className="absolute border border-[#ef991f] border-solid inset-0 pointer-events-none rounded-[2px]" />
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#ef991f] text-[10px] text-nowrap">2</p>
+      <p className="font-medium relative shrink-0 text-[#ef991f] text-xs text-nowrap">2</p>
     </div>
   );
 }
@@ -153,7 +153,7 @@ function Component2() {
   return (
     <div className="bg-[rgba(43,48,59,0.5)] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shrink-0" data-name="3">
       <div aria-hidden="true" className="absolute border border-[#ef991f] border-solid inset-0 pointer-events-none rounded-[2px]" />
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#ef991f] text-[10px] text-nowrap">3</p>
+      <p className="font-medium relative shrink-0 text-[#ef991f] text-xs text-nowrap">3</p>
     </div>
   );
 }
@@ -161,7 +161,7 @@ function Component2() {
 function Component3() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="4">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">4</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">4</p>
     </div>
   );
 }
@@ -169,7 +169,7 @@ function Component3() {
 function Component4() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="5">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">5</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">5</p>
     </div>
   );
 }
@@ -177,7 +177,7 @@ function Component4() {
 function Component5() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="6">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">6</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">6</p>
     </div>
   );
 }
@@ -185,7 +185,7 @@ function Component5() {
 function Component6() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="7">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">7</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">7</p>
     </div>
   );
 }
@@ -193,7 +193,7 @@ function Component6() {
 function Component7() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="8">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">8</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">8</p>
     </div>
   );
 }
@@ -201,7 +201,7 @@ function Component7() {
 function Component8() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="9">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">9</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">9</p>
     </div>
   );
 }
@@ -209,7 +209,7 @@ function Component8() {
 function Component9() {
   return (
     <div className="bg-[#4c627d] content-stretch flex items-center justify-center px-[4px] py-[2px] relative rounded-[2px] shadow-[1px_1px_0px_0px_rgba(0,0,0,0.25)] shrink-0" data-name="10">
-      <p className="font-['Inter:Medium',sans-serif] font-medium leading-[normal] not-italic relative shrink-0 text-[#acbbcc] text-[10px] text-nowrap">0</p>
+      <p className="font-medium relative shrink-0 text-[#acbbcc] text-xs text-nowrap">0</p>
     </div>
   );
 }
@@ -252,7 +252,7 @@ function ScanControl() {
 function Subhead() {
   return (
     <div className="h-[17px] relative shrink-0 w-full" data-name="Subhead">
-      <p className="absolute font-['Inter:Bold',sans-serif] font-bold leading-[normal] left-0 not-italic text-[#f5ebe8] text-[14px] text-nowrap top-0">Recent Hits</p>
+      <p className="absolute font-bold leading-[normal] left-0 not-italic text-[#f5ebe8] text-base text-nowrap top-0">Recent Hits</p>
     </div>
   );
 }
