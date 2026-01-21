@@ -628,7 +628,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
             className={cn(
               "text-left px-3 py-2 rounded text-xs font-medium transition-colors",
               selectedCategory === cat
-                ? "bg-[#d97706]/20 text-[#d97706]"
+                ? "bg-brand-hover/20 text-brand-hover"
                 : "text-white/60 hover:bg-white/5 hover:text-white",
             )}
           >
@@ -643,7 +643,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
           className={cn(
             "text-left px-3 py-2 rounded text-xs font-medium transition-colors mt-auto border-t border-white/10 pt-3",
             selectedCategory === "Preferences"
-              ? "bg-[#d97706]/20 text-[#d97706]"
+              ? "bg-brand-hover/20 text-brand-hover"
               : "text-white/60 hover:bg-white/5 hover:text-white",
           )}
         >
@@ -669,7 +669,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
           <div className="max-w-3xl space-y-6">
             <div className="bg-white/5 rounded-lg border border-white/10 p-6 space-y-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded bg-[#ef991f]/10 text-[#ef991f] border border-[#ef991f]/20">
+                <div className="p-2 rounded bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
                   <RefreshCcw className={cn("w-4 h-4", isMemorySyncing && "animate-spin")} />
                 </div>
                 <div>
@@ -695,7 +695,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <button
                   onClick={() => handleStartSync()}
                   disabled={!onMemorySync}
-                  className="px-4 py-2 rounded bg-[#ef991f] hover:bg-[#d97706] text-black text-xs font-bold uppercase tracking-wider shadow-[0px_0px_15px_rgba(239,153,31,0.3)] hover:shadow-[0px_0px_20px_rgba(239,153,31,0.5)] transition-all flex items-center gap-2 disabled:opacity-50"
+                  className="px-4 py-2 rounded bg-brand-primary hover:bg-brand-hover text-black text-xs font-bold uppercase tracking-wider shadow-brand hover:shadow-brand-lg transition-all flex items-center gap-2 disabled:opacity-50"
                 >
                   <RefreshCcw className={cn("w-3 h-3", isMemorySyncing && "animate-spin")} />
                   {isMemorySyncing ? "Syncing..." : "Start Sync"}
@@ -750,7 +750,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search frequency or tag"
-                    className="w-56 bg-black/30 border border-white/10 rounded px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-[#ef991f]"
+                    className="w-56 bg-black/30 border border-white/10 rounded px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-brand-primary"
                   />
                   <Select
                     value={bankFilter === "all" ? "all" : String(bankFilter)}
@@ -759,7 +759,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     <SelectTrigger className="w-[120px] h-8 text-xs bg-black/20 border-white/10">
                       <SelectValue placeholder="All Banks" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                    <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
                       <SelectItem value="all">All Banks</SelectItem>
                       {Array.from({ length: 10 }, (_, i) => i + 1).map((bank) => (
                         <SelectItem key={bank} value={String(bank)}>
@@ -778,7 +778,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     <button
                       onClick={handleUnlockSelected}
                       disabled={selectedChannels.length === 0 || isClearing}
-                      className="px-3 py-2 text-xs font-bold text-black bg-[#ef991f] hover:bg-[#d97706] rounded border border-[#ef991f]/40 transition-colors disabled:opacity-50"
+                      className="px-3 py-2 text-xs font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/40 transition-colors disabled:opacity-50"
                     >
                       Unlock Selected ({selectedChannels.length || 0})
                     </button>
@@ -812,7 +812,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       key={channel.index}
                       className={cn(
                         "grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-sm",
-                        isSelected ? "bg-[#ef991f]/10" : "hover:bg-white/5",
+                        isSelected ? "bg-brand-primary/10" : "hover:bg-white/5",
                       )}
                     >
                       <div className="flex justify-center">
@@ -820,7 +820,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => toggleSelection(channel.index)}
-                          className="form-checkbox h-3.5 w-3.5 text-[#ef991f] bg-black/40 border-white/20 rounded"
+                          className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
                         />
                       </div>
                       <div className="text-center text-xs text-white/70 font-mono">CH {channel.index}</div>
@@ -830,7 +830,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       <div className="flex justify-center">
                         <button
                           onClick={() => handleUnlockSelected([channel.index])}
-                          className="px-2 py-1 text-xs font-bold text-black bg-[#ef991f] hover:bg-[#d97706] rounded border border-[#ef991f]/50 transition-colors"
+                          className="px-2 py-1 text-xs font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/50 transition-colors"
                         >
                           Unlock
                         </button>
@@ -856,7 +856,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
               {/* Audio Control */}
               <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-orange-500/20 rounded text-orange-400">
+                  <div className="p-1.5 bg-brand-primary/20 rounded text-orange-400">
                     <Radio size={16} />
                   </div>
                   <h3 className="font-bold text-white">Audio & Power</h3>
@@ -903,7 +903,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       <SelectTrigger className="w-[140px] h-7 text-xs bg-black/20 border-white/10">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
                         <SelectItem value="AO">Always On</SelectItem>
                         <SelectItem value="AF">Always Off</SelectItem>
                         <SelectItem value="KY">Keypress</SelectItem>
@@ -924,7 +924,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       <SelectTrigger className="w-[180px] h-7 text-xs bg-black/20 border-white/10">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
                         <SelectItem value="off">Off</SelectItem>
                         <SelectItem value="auto">Auto</SelectItem>
                         <SelectItem value="low">Level 1</SelectItem>
@@ -951,7 +951,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     <SelectTrigger className="w-[140px] h-7 text-xs bg-black/20 border-white/10">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                    <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="on">On</SelectItem>
                       <SelectItem value="plus">Plus</SelectItem>
@@ -962,7 +962,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3">
                   <Switch
                     id="weather-alert"
-                    className="scale-75 data-[state=checked]:bg-[#ef991f]"
+                    className="scale-75 data-[state=checked]:bg-brand-primary"
                     checked={weatherAlert}
                     onCheckedChange={handleWeatherAlertChange}
                   />
@@ -1019,7 +1019,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     <SelectTrigger className="w-[180px] h-8 text-xs bg-white/5 border-white/10">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                    <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="cc_dnd">CC DND</SelectItem>
                       <SelectItem value="cc_priority">CC Priority</SelectItem>
@@ -1030,7 +1030,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3 pt-2">
                   <Switch
                     id="cc-lockout"
-                    className="data-[state=checked]:bg-[#ef991f]"
+                    className="data-[state=checked]:bg-brand-primary"
                     checked={closeCallLockout}
                     disabled={closeCallMode === "off"}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("lockout", checked)}
@@ -1053,7 +1053,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3">
                   <Switch
                     id="cc-beep"
-                    className="data-[state=checked]:bg-[#ef991f]"
+                    className="data-[state=checked]:bg-brand-primary"
                     checked={closeCallBeep}
                     disabled={closeCallMode === "off"}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("alert_beep", checked)}
@@ -1072,7 +1072,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="flex items-center gap-3">
                   <Switch
                     id="cc-light"
-                    className="data-[state=checked]:bg-[#ef991f]"
+                    className="data-[state=checked]:bg-brand-primary"
                     checked={closeCallLight}
                     disabled={closeCallMode === "off"}
                     onCheckedChange={(checked) => handleCloseCallSettingChange("alert_light", checked)}
@@ -1106,7 +1106,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     </label>
                     <Switch
                       id={`band-${band}`}
-                      className="data-[state=checked]:bg-[#ef991f]"
+                      className="data-[state=checked]:bg-brand-primary"
                       checked={closeCallBands[index]}
                       disabled={closeCallMode === "off"}
                       onCheckedChange={() => handleCloseCallBandToggle(index)}
@@ -1142,7 +1142,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     </label>
                     <Switch
                       id={`service-${service}`}
-                      className="data-[state=checked]:bg-[#ef991f]"
+                      className="data-[state=checked]:bg-brand-primary"
                       checked={serviceSearchGroups[index]}
                       onCheckedChange={() => handleServiceSearchToggle(index)}
                     />
@@ -1173,7 +1173,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     key={range.id}
                     className={cn(
                       "flex-1 grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 items-center border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors group min-h-[36px]",
-                      range.enabled && "bg-[#ef991f]/5",
+                      range.enabled && "bg-brand-primary/5",
                     )}
                   >
                     <div className="flex justify-center">
@@ -1181,7 +1181,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                         checked={range.enabled}
                         onCheckedChange={() => toggleRange(range.id)}
                         className={cn(
-                          "scale-[0.6] data-[state=checked]:bg-[#ef991f]",
+                          "scale-[0.6] data-[state=checked]:bg-brand-primary",
                           !range.enabled && "opacity-50",
                         )}
                       />
@@ -1209,9 +1209,9 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                         value={range.start}
                         onChange={(e) => updateRange(range.id, "start", e.target.value)}
                         className={cn(
-                          "w-full bg-transparent border-b border-transparent focus:border-[#ef991f] text-xs font-mono font-bold text-center outline-none transition-all py-0",
+                          "w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0",
                           range.enabled
-                            ? "text-[#ef991f] group-hover:text-[#ffb045]"
+                            ? "text-brand-primary group-hover:text-brand-light"
                             : "text-white/30 group-hover:border-white/10",
                         )}
                       />
@@ -1223,9 +1223,9 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                         value={range.end}
                         onChange={(e) => updateRange(range.id, "end", e.target.value)}
                         className={cn(
-                          "w-full bg-transparent border-b border-transparent focus:border-[#ef991f] text-xs font-mono font-bold text-center outline-none transition-all py-0",
+                          "w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0",
                           range.enabled
-                            ? "text-[#ef991f] group-hover:text-[#ffb045]"
+                            ? "text-brand-primary group-hover:text-brand-light"
                             : "text-white/30 group-hover:border-white/10",
                         )}
                       />
@@ -1245,7 +1245,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
               <div className="space-y-3">
                 <div className="bg-white/5 rounded-lg border border-white/5 p-4 space-y-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-8 h-8 rounded bg-[#ef991f] flex items-center justify-center text-black font-bold text-xs shadow-lg shadow-orange-500/20">
+                    <div className="w-8 h-8 rounded bg-brand-primary flex items-center justify-center text-black font-bold text-xs shadow-lg shadow-brand-primary/20">
                       BP
                     </div>
                     <div>
@@ -1271,7 +1271,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                 <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 to-orange-900/10" />
                 <div className="relative p-4 space-y-3 border border-orange-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-orange-500/20 rounded-full">
+                    <div className="p-1.5 bg-brand-primary/20 rounded-full">
                       <Coffee className="w-3.5 h-3.5 text-orange-400" />
                     </div>
                     <h3 className="text-xs font-bold text-white">Support Dev</h3>
@@ -1279,7 +1279,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                   <p className="text-xs text-white/60 leading-relaxed">
                     Enjoying the app? A $10 donation helps keep updates coming!
                   </p>
-                  <button className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded transition-colors shadow-lg shadow-orange-900/20">
+                  <button className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded transition-colors shadow-lg shadow-brand-hover/20">
                     <Heart className="w-3 h-3 fill-white/20" />
                     Donate $10
                   </button>
@@ -1294,7 +1294,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                   <h2 className="text-2xl font-bold text-white">Application Settings</h2>
                   <p className="text-sm text-white/50">Manage your workspace preferences</p>
                 </div>
-                <button className="text-xs text-[#ef991f] hover:text-[#ffb045] font-medium transition-colors">
+                <button className="text-xs text-brand-primary hover:text-brand-light font-medium transition-colors">
                   Reset to Defaults
                 </button>
               </div>
@@ -1356,7 +1356,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       <SelectTrigger className="w-full bg-white/5 border-white/10 text-xs">
                         <SelectValue placeholder="Select device" />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
                         <SelectItem value="default">System Default</SelectItem>
                         <SelectItem value="speakers">Speakers (Realtek Audio)</SelectItem>
                         <SelectItem value="headphones">Headphones (USB Audio)</SelectItem>
@@ -1408,7 +1408,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       <SelectTrigger className="w-[140px] bg-white/5 border-white/10 text-white h-8 text-xs">
                         <SelectValue placeholder="Select retention" />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1a1a1a] border-white/10 text-white">
+                      <SelectContent className="bg-gray-900 border-white/10 text-white">
                         <SelectItem value="forever">Keep Forever</SelectItem>
                         <SelectItem value="30days">30 Days</SelectItem>
                         <SelectItem value="90days">90 Days</SelectItem>
