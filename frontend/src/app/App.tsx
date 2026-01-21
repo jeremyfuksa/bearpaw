@@ -40,6 +40,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useAPI } from "../api/useApi";
 import { useStore } from "../store/useStore";
 import { useWebSocket } from "../websocket/useWebSocket";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { stepToChannel } from "../utils/channelNavigation";
 import type {
   ActivityLogEntry,
@@ -86,6 +87,10 @@ function normalizeSignal(value?: number) {
 const defaultCloseCallBand = [false, false, false, false, false];
 
 export default function App() {
+  useKeyboardShortcuts({
+    openActivityLog: () => setIsLogModalOpen(true),
+    openMemoryBrowser: () => console.log("Memory browser not implemented"),
+  });
   const api = useAPI();
   const { ws, connected, connecting } = useWebSocket();
 
@@ -662,13 +667,6 @@ export default function App() {
                     <FileText size={14} />
                     <span>Log</span>
                   </button>
-                  <button
-                    onClick={() => toast.info("Help is on the way")}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white border border-white/10 rounded-lg hover:border-white/40 transition"
-                  >
-                    <HelpCircle size={14} />
-                    <span>Help</span>
-                  </button>
                 </div>
                 <button
                   onClick={() => setDashboardMode(!isDashboardMode)}
@@ -972,12 +970,12 @@ export default function App() {
                 onClick={() => setIsLogModalOpen(false)}
                 className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
               >
-                Close
-              </button>
+                 Close
+               </button>
+             </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
+      </div>
+    );
+  }
