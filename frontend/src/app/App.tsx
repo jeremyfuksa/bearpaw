@@ -110,6 +110,8 @@ export default function App() {
   const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
   const setDashboardMode = useStore((state) => state.setDashboardMode);
   const setRecording = useStore((state) => state.setRecording);
+  const preferences = useStore((state) => state.preferences);
+  const updatePreferences = useStore((state) => state.updatePreferences);
 
   const [currentTab, setCurrentTab] = useState<Tab>("Scan");
   const [banks, setBanks] = useState<boolean[]>(() =>
@@ -155,7 +157,7 @@ export default function App() {
           lastHitOpenRef.current = true;
         } else if (!squelchOpen && lastHitOpenRef.current) {
           const duration = payload.timestamp - (squelchOpenStartTimeRef.current || payload.timestamp);
-          if (duration >= 2 && squelchOpenStartTimeRef.current !== null) {
+          if (duration >= preferences.hitMinDuration && squelchOpenStartTimeRef.current !== null) {
             const entry: ActivityLogEntry = {
               id: `${squelchOpenStartTimeRef.current}-${payload.sequence}`,
               timestamp: squelchOpenStartTimeRef.current,
@@ -165,6 +167,8 @@ export default function App() {
               type: "hit",
               rssi: liveState?.rssi,
               hasAudio: isRecording,
+              duration,
+              ended_at: payload.timestamp,
             };
             addActivityLogEntry(entry);
             addToFullActivityLog(entry);
