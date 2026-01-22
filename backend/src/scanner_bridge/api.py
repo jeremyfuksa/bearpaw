@@ -1392,12 +1392,12 @@ def create_app(
         return {"key": key, "value": request["value"]}
 
     @app.put("/api/v1/preferences")
-    async def set_preferences(request: Dict[str, Any]) -> Dict[str, Any]:
+    async def set_preferences(request: Dict[str, Any]) -> Response[Dict[str, Any]]:
         runtime: RuntimeState = app.state.runtime
         if not runtime.preferences_store:
             raise HTTPException(status_code=503, detail="preferences_not_configured")
         runtime.preferences_store.set_multiple(request)
-        return runtime.preferences_store.get_all()
+        return Response(content=runtime.preferences_store.get_all())
 
     @app.post("/api/v1/preferences/reset")
     async def reset_preferences() -> Dict[str, Any]:
