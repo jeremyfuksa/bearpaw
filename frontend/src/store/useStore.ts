@@ -12,6 +12,7 @@ interface Preferences {
   theme: "night" | "field";
   displayMode: "frequency" | "alpha";
   reducedMotion: boolean;
+  hitMinDuration: number;
 }
 
 interface AppState {
@@ -48,6 +49,7 @@ const defaultPreferences: Preferences = {
   theme: "night",
   displayMode: "frequency",
   reducedMotion: false,
+  hitMinDuration: 2,
 };
 
 export const useStore = create<AppState>((set) => ({

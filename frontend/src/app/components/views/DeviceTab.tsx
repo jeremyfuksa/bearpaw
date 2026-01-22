@@ -27,6 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 type DeviceCategory =
   | "Sync"
@@ -56,6 +63,8 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const liveState = useStore((state) => state.liveState);
   const channels = useStore((state) => state.channels) ?? [];
   const setChannels = useStore((state) => state.setChannels);
+  const preferences = useStore((state) => state.preferences);
+  const updatePreferences = useStore((state) => state.updatePreferences);
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
@@ -1337,6 +1346,33 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       </p>
                     </div>
                     <Switch defaultChecked />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-medium text-white">
+                        Hit Minimum Duration
+                      </label>
+                      <p className="text-xs text-white/40">
+                        Minimum seconds a transmission must last to be logged as a hit
+                      </p>
+                    </div>
+                    <Select
+                      value={String(preferences.hitMinDuration)}
+                      onValueChange={(value) => updatePreferences({ hitMinDuration: Number.parseInt(value, 10) })}
+                      className="w-[140px] h-8 text-xs bg-black/20 border-white/10"
+                    >
+                      <SelectTrigger className="w-[140px] h-8 text-xs bg-black/20 border-white/10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
+                        {[0.5, 1, 2, 3, 5, 10].map((duration) => (
+                          <SelectItem key={duration} value={String(duration)}>
+                            {duration}s
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="h-px bg-white/5" />
                   <div className="flex items-center justify-between">
