@@ -58,7 +58,6 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const setChannels = useStore((state) => state.setChannels);
   const preferences = useStore((state) => state.preferences);
   const updatePreferences = useStore((state) => state.updatePreferences);
-  const isDashboardMode = useStore((state) => state.isDashboardMode);
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
@@ -69,6 +68,23 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const [isClearing, setIsClearing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [bankFilter, setBankFilter] = useState<number | "all">("all");
+
+  const handlePreferenceChange = useCallback(async (key: string, value: any) => {
+    const backendKey = key === "startInDashboardMode" ? "start_dashboard_mode"
+      : key === "hitMinDuration" ? "hit_min_duration"
+      : key;
+    updatePreferences({ [key]: value } as any);
+    try {
+      await fetch(`/api/v1/preferences`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [backendKey]: value }),
+      });
+    } catch (error) {
+      console.error("Failed to save preference", error);
+      toast.error("Failed to save preference");
+    }
+  }, [updatePreferences]);
 
   // Device Config Settings
   const [squelch, setSquelch] = useState(2);
@@ -1354,7 +1370,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     <div className="flex items-center gap-3">
                       <Slider
                         value={[preferences.hitMinDuration]}
-                        onValueChange={(values) => updatePreferences({ hitMinDuration: values[0] })}
+                        onValueChange={(values) => handlePreferenceChange("hitMinDuration", values[0])}
                         min={0.5}
                         max={10}
                         step={0.5}
@@ -1376,8 +1392,8 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                        </p>
                      </div>
                      <Switch
-                       checked={isDashboardMode}
-                       onCheckedChange={(checked) => updatePreferences({ isDashboardMode: checked })}
+                       checked={preferences.startInDashboardMode}
+                       onCheckedChange={(checked) => handlePreferenceChange("startInDashboardMode", checked)}
                      />
                    </div>
                   <div className="h-px bg-white/5" />
