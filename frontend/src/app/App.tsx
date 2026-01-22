@@ -149,9 +149,12 @@ export default function App() {
   useEffect(() => {
     const loadPreferences = async () => {
       try {
+        console.log("[Preferences] Loading preferences from backend...");
         const response = await fetch(`${API_BASE}/preferences`);
+        console.log("[Preferences] Response status:", response.status);
         if (response.ok) {
           const prefs = await response.json();
+          console.log("[Preferences] Loaded from backend:", prefs);
           const frontendPrefs: Partial<Parameters<typeof preferences>[0]> = {
             theme: prefs.theme === "field" ? "field" : "night",
             displayMode: prefs.displayMode || "frequency",
@@ -165,7 +168,9 @@ export default function App() {
             audioOutputDevice: prefs.audio_output_device || "default",
             recordingsPath: prefs.recordings_path || "./recordings",
           };
+          console.log("[Preferences] Setting in store:", frontendPrefs);
           setPreferences(frontendPrefs as any);
+          console.log("[Preferences] Current store preferences after set:", useStore.getState().preferences);
         }
       } catch (error) {
         console.warn("Failed to load preferences from backend", error);
