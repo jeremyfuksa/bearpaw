@@ -1257,10 +1257,16 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                     Community-developed control software for Uniden scanners.
                   </p>
                   <div className="flex gap-2 pt-2">
-                    <button className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5">
+                    <button
+                      onClick={() => window.open('https://bearpaw-scanner.github.io', '_blank', 'noopener,noreferrer')}
+                      className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
+                    >
                       <ExternalLink size={10} /> Website
                     </button>
-                    <button className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5">
+                    <button
+                      onClick={() => window.open('https://github.com/bearpaw-scanner', '_blank', 'noopener,noreferrer')}
+                      className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
+                    >
                       <Code size={10} /> Github
                     </button>
                   </div>
@@ -1279,7 +1285,10 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                   <p className="text-xs text-white/60 leading-relaxed">
                     Enjoying the app? A $10 donation helps keep updates coming!
                   </p>
-                  <button className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded transition-colors shadow-lg shadow-brand-hover/20">
+                  <button
+                    onClick={() => window.open('https://github.com/sponsors/bearpaw-scanner', '_blank', 'noopener,noreferrer')}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
+                  >
                     <Heart className="w-3 h-3 fill-white/20" />
                     Donate $10
                   </button>
@@ -1294,7 +1303,20 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                   <h2 className="text-2xl font-bold text-white">Application Settings</h2>
                   <p className="text-sm text-white/50">Manage your workspace preferences</p>
                 </div>
-                <button className="text-xs text-brand-primary hover:text-brand-light font-medium transition-colors">
+                <button
+                  onClick={() => {
+                    if (window.confirm('Reset all preferences to default values? This cannot be undone.')) {
+                      fetch('/api/v1/preferences/reset', { method: 'POST' })
+                        .then(r => r.json())
+                        .then(() => {
+                          toast.success('Preferences reset to defaults');
+                          window.location.reload();
+                        })
+                        .catch(() => toast.error('Failed to reset preferences'));
+                    }
+                  }}
+                  className="text-xs text-brand-primary hover:text-brand-light font-medium transition-colors"
+                >
                   Reset to Defaults
                 </button>
               </div>

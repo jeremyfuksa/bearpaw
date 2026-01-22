@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -59,6 +62,7 @@ from scanner_bridge.exporters.json_stream import JsonEventStream
 from scanner_bridge.exporters.mqtt import MqttExporter
 from scanner_bridge.exporters.bc125at_ss import export_bc125at_ss
 from scanner_bridge.analytics.database import AnalyticsDatabase
+from scanner_bridge.preferences import PreferencesStore
 
 logger = logging.getLogger("scanner_bridge")
 
@@ -102,6 +106,7 @@ class RuntimeState:
     json_exporter: Optional[JsonEventStream] = None
     mqtt_exporter: Optional[MqttExporter] = None
     analytics_db: Optional[object] = None
+    preferences_store: Optional[PreferencesStore] = None
 
 
 def create_app(
@@ -306,6 +311,8 @@ def create_app(
             analytics_db = AnalyticsDatabase(config.analytics.db_path)
             await analytics_db.initialize()
 
+        preferences_store = PreferencesStore(config.state.db_path)
+
         runtime = RuntimeState(
             config=config,
             transport=transport,
@@ -320,6 +327,24 @@ def create_app(
             json_exporter=json_exporter,
             mqtt_exporter=mqtt_exporter,
             analytics_db=analytics_db,
+            preferences_store=preferences_store,
+        )
+
+        runtime = RuntimeState(
+            config=config,
+            transport=transport,
+            scheduler=scheduler,
+            driver=driver,
+            state_store=state_store,
+            ws_manager=ws_manager,
+            device_info=device_info,
+            session_id=session_id,
+            heartbeat_task=heartbeat_task,
+            text_exporter=text_exporter,
+            json_exporter=json_exporter,
+            mqtt_exporter=mqtt_exporter,
+            analytics_db=analytics_db,
+            preferences_store=preferences_store,
         )
         app.state.runtime = runtime
         if runtime.driver and runtime.transport:
@@ -1242,6 +1267,145 @@ def create_app(
         headers = {"Content-Disposition": "attachment; filename=scanner.bc125at_ss"}
         return Response(content=payload, media_type="text/plain", headers=headers)
 
+    @app.get("/api/v1/memory/export/csv")
+    async def export_csv() -> Response:
+        runtime: RuntimeState = app.state.runtime
+        channels = runtime.state_store.get_shadow_channels()
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(
+            [
+                "Index",
+                "Frequency",
+                "Modulation",
+                "Alpha Tag",
+                "Delay",
+                "Lockout",
+                "Priority",
+                "CTCSS/DCS",
+                "Bank",
+            ]
+        )
+        for idx, ch in sorted(channels.items()):
+            writer.writerow(
+                [
+                    idx,
+                    ch.frequency,
+                    ch.modulation,
+                    ch.alpha_tag,
+                    ch.delay,
+                    ch.lockout,
+                    ch.priority,
+                    ch.tone_squelch if ch.tone_squelch else "",
+                    ch.bank,
+                ]
+            )
+        headers = {"Content-Disposition": "attachment; filename=channels.csv"}
+        return Response(
+            content=output.getvalue(), media_type="text/csv", headers=headers
+        )
+
+    @app.post("/api/v1/memory/import/csv")
+    async def import_csv(file: UploadFile) -> dict:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        content = await file.read()
+        reader = csv.DictReader(io.StringIO(content.decode()))
+
+        errors = []
+        imported = 0
+        for row in reader:
+            try:
+                idx = int(row.get("Index", 0))
+                frequency = float(row.get("Frequency", 0))
+                if frequency < 25 or frequency > 1300:
+                    raise ValueError(f"Invalid frequency: {frequency}")
+
+                delay = int(row.get("Delay", 2))
+                if delay < 0 or delay > 30:
+                    raise ValueError(f"Invalid delay: {delay}")
+
+                lockout = str(row.get("Lockout", "")).lower() == "true"
+                priority = str(row.get("Priority", "")).lower() == "true"
+
+                tone_str = row.get("CTCSS/DCS", "")
+                tone_squelch = None
+                if tone_str and tone_str.strip():
+                    tone_squelch = float(tone_str)
+
+                bank = int(row.get("Bank", 1))
+                if bank < 1 or bank > 10:
+                    raise ValueError(f"Invalid bank: {bank}")
+
+                payload = ChannelData(
+                    index=idx,
+                    frequency=frequency,
+                    modulation=row.get("Modulation", "FM").upper(),
+                    alpha_tag=row.get("Alpha Tag", ""),
+                    delay=delay,
+                    lockout=lockout,
+                    priority=priority,
+                    tone_squelch=tone_squelch,
+                    bank=bank,
+                )
+
+                setter = getattr(driver, "set_channel", None)
+                if not callable(setter):
+                    raise HTTPException(
+                        status_code=400, detail="channel_write_unsupported"
+                    )
+
+                await setter(payload)
+                runtime.state_store.set_shadow_channel(payload)
+                imported += 1
+            except Exception as exc:
+                errors.append({"row": row, "error": str(exc)})
+
+        runtime.state_store.save_shadow()
+        return {"imported": imported, "errors": errors}
+
+    @app.get("/api/v1/preferences")
+    async def get_preferences() -> Dict[str, Any]:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.preferences_store:
+            raise HTTPException(status_code=503, detail="preferences_not_configured")
+        return runtime.preferences_store.get_all()
+
+    @app.get("/api/v1/preferences/{key}")
+    async def get_preference(key: str) -> Dict[str, Any]:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.preferences_store:
+            raise HTTPException(status_code=503, detail="preferences_not_configured")
+        value = runtime.preferences_store.get(key)
+        if value is None:
+            raise HTTPException(status_code=404, detail=f"Unknown preference: {key}")
+        return {"key": key, "value": value}
+
+    @app.put("/api/v1/preferences/{key}")
+    async def set_preference(key: str, request: Dict[str, Any]) -> Dict[str, Any]:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.preferences_store:
+            raise HTTPException(status_code=503, detail="preferences_not_configured")
+        if "value" not in request:
+            raise HTTPException(status_code=400, detail="value_required")
+        runtime.preferences_store.set(key, request["value"])
+        return {"key": key, "value": request["value"]}
+
+    @app.put("/api/v1/preferences")
+    async def set_preferences(request: Dict[str, Any]) -> Dict[str, Any]:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.preferences_store:
+            raise HTTPException(status_code=503, detail="preferences_not_configured")
+        runtime.preferences_store.set_multiple(request)
+        return runtime.preferences_store.get_all()
+
+    @app.post("/api/v1/preferences/reset")
+    async def reset_preferences() -> Dict[str, Any]:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.preferences_store:
+            raise HTTPException(status_code=503, detail="preferences_not_configured")
+        return runtime.preferences_store.reset()
+
     @app.get("/api/v1/debug/glg")
     async def debug_glg() -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime
@@ -1339,6 +1503,42 @@ def create_app(
         )
         deleted = await runtime.analytics_db.cleanup_old_data(days)
         return {"deleted_records": deleted}
+
+    @app.get("/api/v1/analytics/activity-log")
+    async def get_activity_log(
+        limit: int = 100,
+        offset: int = 0,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+        channel: Optional[int] = None,
+    ) -> list:
+        runtime: RuntimeState = app.state.runtime
+        if not runtime.analytics_db:
+            raise HTTPException(status_code=503, detail="Analytics not enabled")
+        hits = await runtime.analytics_db.get_activity_log(
+            limit=limit,
+            offset=offset,
+            start_time=start_time,
+            end_time=end_time,
+            channel=channel,
+        )
+        return [
+            {
+                "id": hit.id,
+                "timestamp": hit.timestamp,
+                "frequency": hit.frequency,
+                "channel": hit.channel,
+                "alpha_tag": hit.alpha_tag,
+                "rssi": hit.rssi,
+                "duration": hit.duration,
+                "modulation": hit.modulation,
+                "mode": hit.mode,
+                "bank": hit.bank,
+                "session_id": hit.session_id,
+                "ended_at": hit.ended_at,
+            }
+            for hit in hits
+        ]
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
