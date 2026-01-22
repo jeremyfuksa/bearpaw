@@ -491,6 +491,239 @@ Cancel in-progress memory sync.
 
 ---
 
+#### GET /memory/export/csv
+
+Download scanner channels in CSV format.
+
+**Response:** `200 OK` (text/csv)
+
+**Headers:**
+- `Content-Disposition: attachment; filename=channels.csv`
+
+**Behavior:**
+- Exports all channels from shadow state (not scanner)
+- Includes all channel fields: Index, Frequency, Modulation, Alpha Tag, Delay, Lockout, Priority, CTCSS/DCS, Bank
+- No program mode required (uses cached shadow state)
+
+**Errors:**
+- `503 Service Unavailable` if backend error
+
+**CSV Format:**
+```csv
+Index,Frequency,Modulation,Alpha Tag,Delay,Lockout,Priority,CTCSS/DCS,Bank
+1,151.2500,FM,Police Dispatch,2,false,true,123.0,1
+2,154.6000,NFM,Fire Dispatch,2,false,false,,1
+```
+
+---
+
+#### POST /memory/import/csv
+
+Import channels from CSV file.
+
+**Request:** `multipart/form-data` with file field
+
+**Response:** `200 OK`
+
+```json
+{
+  "imported": 45,
+  "errors": [
+    {
+      "row": {"Index": "501", "Frequency": "999.0000", ...},
+      "error": "Invalid frequency: 999.0"
+    }
+  ]
+}
+```
+
+**Behavior:**
+- Parses CSV and validates each row
+- Updates shadow state with valid channels
+- Writes to scanner if channel_write_supported
+- Returns count of successfully imported channels and any errors
+
+**Validation:**
+- Frequency must be 25-512 MHz
+- Delay must be 0-30 seconds
+- Bank must be 1-10
+- Lockout/Priority must be "true" or "false"
+
+**Errors:**
+- `400 Bad Request` if CSV format invalid
+- `503 Service Unavailable` if backend error
+
+---
+
+### 3.5 Preferences
+
+#### GET /preferences
+
+Get all application preferences.
+
+**Response:** `200 OK`
+
+```json
+{
+  "dashboard_enabled": true,
+  "default_volume": 10,
+  "auto_start_scan": true
+}
+```
+
+**Errors:**
+- `503 Service Unavailable` if preferences store not configured
+
+---
+
+#### GET /preferences/{key}
+
+Get a specific preference value.
+
+**Path Parameters:**
+- `key`: Preference key name
+
+**Response:** `200 OK`
+
+```json
+{
+  "key": "dashboard_enabled",
+  "value": true
+}
+```
+
+**Errors:**
+- `404 Not Found` if preference key does not exist
+- `503 Service Unavailable` if preferences store not configured
+
+---
+
+#### PUT /preferences/{key}
+
+Set a specific preference value.
+
+**Path Parameters:**
+- `key`: Preference key name
+
+**Request Body:**
+
+```json
+{
+  "value": true
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "key": "dashboard_enabled",
+  "value": true
+}
+```
+
+**Errors:**
+- `400 Bad Request` if value field missing
+- `503 Service Unavailable` if preferences store not configured
+
+---
+
+#### PUT /preferences
+
+Set multiple preferences at once.
+
+**Request Body:**
+
+```json
+{
+  "dashboard_enabled": true,
+  "default_volume": 10,
+  "auto_start_scan": false
+}
+```
+
+**Response:** `200 OK`
+
+Returns all current preferences after update.
+
+**Errors:**
+- `503 Service Unavailable` if preferences store not configured
+
+---
+
+#### POST /preferences/reset
+
+Reset all preferences to default values.
+
+**Response:** `200 OK`
+
+Returns default preference values.
+
+**Errors:**
+- `503 Service Unavailable` if preferences store not configured
+
+---
+
+### 3.6 Analytics
+
+#### GET /analytics/activity-log
+
+Get activity log entries with optional filtering.
+
+**Query Parameters:**
+- `limit` (optional): Maximum number of entries to return (default: 100)
+- `offset` (optional): Number of entries to skip (for pagination, default: 0)
+- `start_time` (optional): Unix timestamp for start of range
+- `end_time` (optional): Unix timestamp for end of range
+- `channel` (optional): Filter by specific channel number
+
+**Examples:**
+- `/analytics/activity-log` - Last 100 entries
+- `/analytics/activity-log?limit=50&offset=50` - Entries 51-100
+- `/analytics/activity-log?channel=25` - Only channel 25
+- `/analytics/activity-log?start_time=1704412800&end_time=1704499200` - Specific date range
+
+**Response:** `200 OK`
+
+```json
+[
+  {
+    "id": 1,
+    "timestamp": 1704412800.123,
+    "frequency": 151.2500,
+    "channel": 25,
+    "alpha_tag": "Police Dispatch",
+    "rssi": 75,
+    "duration": 12.5,
+    "modulation": "FM",
+    "mode": "SCAN",
+    "bank": 1,
+    "session_id": "session-abc123",
+    "ended_at": 1704412812.623
+  }
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Unique entry ID |
+| `timestamp` | number | Unix timestamp when hit started |
+| `frequency` | number | Frequency in MHz |
+| `channel` | number or null | Channel number |
+| `alpha_tag` | string | Channel name |
+| `rssi` | number | Signal strength (0-100) |
+| `duration` | number or null | Duration in seconds |
+| `modulation` | string | Modulation mode |
+| `mode` | string | Receiver mode when hit occurred |
+| `bank` | number or null | Bank number |
+| `session_id` | string | Session identifier |
+| `ended_at` | number or null | Unix timestamp when hit ended |
+
+**Errors:**
+- `503 Service Unavailable` if analytics not enabled
+
+---
+
 ## 4. WebSocket API
 
 ### 4.1 Connection
@@ -987,6 +1220,13 @@ Use OpenAPI spec to generate:
 
 ## 10. Changelog
 
+### Version 1.1.0 (Current)
+
+- CSV export/import endpoints (`/memory/export/csv`, `/memory/import/csv`)
+- Activity log endpoint (`/analytics/activity-log`) with filtering and pagination
+- Preferences API (`/preferences`, `/preferences/{key}`) with reset support
+- Recording support (Tauri desktop app only)
+
 ### Version 1.0.0 (Initial Release)
 
 - REST API for control and queries
@@ -1000,7 +1240,7 @@ Use OpenAPI spec to generate:
 
 ## 11. Future API Additions (Roadmap)
 
-### Version 1.1.0 (Planned)
+### Version 1.2.0 (Planned)
 
 - Authentication (API keys, JWT)
 - Rate limiting
