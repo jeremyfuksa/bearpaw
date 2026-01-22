@@ -1365,11 +1365,20 @@ def create_app(
         return {"imported": imported, "errors": errors}
 
     @app.get("/api/v1/preferences")
-    async def get_preferences() -> Dict[str, Any]:
+    async def get_preferences() -> Response[Dict[str, Any]]:
         runtime: RuntimeState = app.state.runtime
-        if not runtime.preferences_store:
-            raise HTTPException(status_code=503, detail="preferences_not_configured")
-        return runtime.preferences_store.get_all()
+        try:
+            if not runtime.preferences_store:
+                logger.error("Preferences store is None - not configured")
+                raise HTTPException(
+                    status_code=503, detail="preferences_not_configured"
+                )
+            return Response(content=runtime.preferences_store.get_all())
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Error loading preferences: %s", exc)
+            raise HTTPException(status_code=500, detail="internal_error")
 
     @app.get("/api/v1/preferences/{key}")
     async def get_preference(key: str) -> Dict[str, Any]:
