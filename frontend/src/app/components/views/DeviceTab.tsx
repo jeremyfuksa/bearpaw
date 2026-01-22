@@ -1357,22 +1357,19 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                         Minimum seconds a transmission must last to be logged as a hit
                       </p>
                     </div>
-                    <Select
-                      value={String(preferences.hitMinDuration)}
-                      onValueChange={(value) => updatePreferences({ hitMinDuration: Number.parseInt(value, 10) })}
-                      className="w-[140px] h-8 text-xs bg-black/20 border-white/10"
-                    >
-                      <SelectTrigger className="w-[140px] h-8 text-xs bg-black/20 border-white/10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
-                        {[0.5, 1, 2, 3, 5, 10].map((duration) => (
-                          <SelectItem key={duration} value={String(duration)}>
-                            {duration}s
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-3">
+                      <Slider
+                        value={[preferences.hitMinDuration]}
+                        onValueChange={(values) => updatePreferences({ hitMinDuration: values[0] })}
+                        min={0.5}
+                        max={10}
+                        step={0.5}
+                        className="w-[180px]"
+                      />
+                      <span className="text-xs text-white/70 w-12 text-right font-mono">
+                        {preferences.hitMinDuration}s
+                      </span>
+                    </div>
                   </div>
                   <div className="h-px bg-white/5" />
                   <div className="flex items-center justify-between">
