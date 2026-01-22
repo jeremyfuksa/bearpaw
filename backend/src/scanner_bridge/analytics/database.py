@@ -424,3 +424,77 @@ class AnalyticsDatabase:
         )
         self._conn.commit()
         return cursor.rowcount
+
+    async def get_activity_log(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+        channel: Optional[int] = None,
+    ) -> list[ScanHit]:
+        """Get activity log entries with optional filters."""
+        return await asyncio.to_thread(
+            self._get_activity_log_sync, limit, offset, start_time, end_time, channel
+        )
+
+    def _get_activity_log_sync(
+        self,
+        limit: int,
+        offset: int,
+        start_time: Optional[float],
+        end_time: Optional[float],
+        channel: Optional[int],
+    ) -> list[ScanHit]:
+        """Synchronous activity log query."""
+        if not self._conn:
+            return []
+
+        conditions = []
+        params = []
+
+        if start_time is not None:
+            conditions.append("timestamp >= ?")
+            params.append(start_time)
+
+        if end_time is not None:
+            conditions.append("timestamp <= ?")
+            params.append(end_time)
+
+        if channel is not None:
+            conditions.append("channel = ?")
+            params.append(channel)
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        query = f"""
+            SELECT id, timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at
+            FROM scan_hits
+            {where_clause}
+            ORDER BY timestamp DESC
+            LIMIT ? OFFSET ?
+        """
+
+        cursor = self._conn.execute(query, [*params, limit, offset])
+        results = []
+        for row in cursor.fetchall():
+            results.append(
+                ScanHit(
+                    id=row[0],
+                    timestamp=row[1],
+                    frequency=row[2],
+                    channel=row[3],
+                    alpha_tag=row[4],
+                    modulation=row[5],
+                    rssi=row[6],
+                    duration=row[7],
+                    mode=row[8],
+                    bank=row[9],
+                    session_id=row[10],
+                    ended_at=row[11],
+                )
+            )
+
+        return results

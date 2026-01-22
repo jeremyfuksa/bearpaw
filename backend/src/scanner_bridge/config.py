@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 try:
     import tomllib
 except ImportError:  # pragma: no cover
@@ -67,7 +68,9 @@ class MqttExporterConfig(BaseModel):
 
 class ExporterConfig(BaseModel):
     text_file: TextFileExporterConfig = Field(default_factory=TextFileExporterConfig)
-    json_stream: JsonStreamExporterConfig = Field(default_factory=JsonStreamExporterConfig)
+    json_stream: JsonStreamExporterConfig = Field(
+        default_factory=JsonStreamExporterConfig
+    )
     mqtt: MqttExporterConfig = Field(default_factory=MqttExporterConfig)
 
 
@@ -77,6 +80,17 @@ class AnalyticsConfig(BaseModel):
     retention_days: int = 30
     cleanup_interval_hours: int = 24
     min_hit_duration: float = 1.0
+
+
+class RecordingConfig(BaseModel):
+    enabled: bool = False
+    output_path: str = "./recordings"
+    format: str = "wav"
+    sample_rate: int = 44100
+    channels: int = 1
+    buffer_seconds: int = 30
+    auto_record_on_squelch: bool = False
+    audio_device_index: Optional[int] = None
 
 
 class AppConfig(BaseModel):

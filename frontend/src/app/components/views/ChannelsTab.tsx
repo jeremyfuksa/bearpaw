@@ -173,6 +173,68 @@ export function ChannelsTab() {
     }
   };
 
+  const handleExportCSV = async () => {
+    try {
+      const response = await fetch('/api/v1/memory/export/csv');
+      if (!response.ok) {
+        throw new Error('Failed to export CSV');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'channels.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Channels exported successfully');
+    } catch (error) {
+      console.error('Failed to export CSV', error);
+      toast.error('Failed to export channels');
+    }
+  };
+
+  const handleImportCSV = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/v1/memory/import/csv', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to import CSV');
+        }
+
+        const result = await response.json();
+        const { imported, errors } = result;
+
+        if (errors.length > 0) {
+          toast.error(`Imported ${imported} channels with ${errors.length} errors`, {
+            description: `Failed: ${errors.slice(0, 3).map(e => (e.row as any).Index || 'unknown').join(', ')}${errors.length > 3 ? '...' : ''}`,
+          });
+        } else {
+          toast.success(`Imported ${imported} channels successfully`);
+        }
+
+        const updatedChannels = await api.getChannels();
+        setChannels(updatedChannels);
+      } catch (error) {
+        console.error('Failed to import CSV', error);
+        toast.error('Failed to import channels');
+      }
+    };
+    input.click();
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -228,10 +290,16 @@ export function ChannelsTab() {
           </div>
 
           <div className="flex gap-2 shrink-0">
-            <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white">
+            <button
+              onClick={handleImportCSV}
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white"
+            >
               Import CSV
             </button>
-            <button className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white">
+            <button
+              onClick={handleExportCSV}
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white"
+            >
               Export CSV
             </button>
           </div>
