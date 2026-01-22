@@ -358,4 +358,65 @@ export class ScannerAPIClient {
   async exportBc125atSs(): Promise<string> {
     return this.requestText("/memory/export/bc125at_ss");
   }
+
+  async exportCsv(): Promise<string> {
+    return this.requestText("/memory/export/csv");
+  }
+
+  async importCsv(file: File): Promise<{ imported: number; errors: Array<{ row: Record<string, string>; error: string }> }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${this.baseURL}/memory/import/csv`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const payload = await response.json();
+      const message =
+        typeof payload === "object" && payload && "message" in payload
+          ? String((payload as { message?: string }).message)
+          : response.statusText;
+      throw new APIError(message || "Request failed", response.status, payload);
+    }
+
+    return response.json();
+  }
+
+  async getAllPreferences(): Promise<Record<string, any>> {
+    return this.request<Record<string, any>>("/preferences");
+  }
+
+  async getPreference(key: string): Promise<{ key: string; value: any }> {
+    return this.request<{ key: string; value: any }>(`/preferences/${key}`);
+  }
+
+  async setPreference(key: string, value: any): Promise<{ key: string; value: any }> {
+    return this.request<{ key: string; value: any }>(`/preferences/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    });
+  }
+
+  async setPreferences(prefs: Record<string, any>): Promise<Record<string, any>> {
+    return this.request<Record<string, any>>("/preferences", {
+      method: 'PUT',
+      body: JSON.stringify(prefs),
+    });
+  }
+
+  async resetPreferences(): Promise<Record<string, any>> {
+    return this.request<Record<string, any>>("/preferences", {
+      method: 'POST',
+    });
+  }
+
+  preferencesApi = {
+    getAll: () => this.getAllPreferences(),
+    get: (key: string) => this.getPreference(key),
+    set: (key: string, value: any) => this.setPreference(key, value),
+    setAll: (prefs: Record<string, any>) => this.setPreferences(prefs),
+    reset: () => this.resetPreferences(),
+  };
 }

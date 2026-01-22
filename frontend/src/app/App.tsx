@@ -53,7 +53,7 @@ import type {
 import { DeviceTab } from "./components/views/DeviceTab";
 import { ChannelsTab } from "./components/views/ChannelsTab";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "/api/v1";
 
 export type Tab = "Scan" | "Device" | "Channels";
 export type ConnectionStatus = "connected" | "connecting" | "disconnected";
@@ -88,7 +88,7 @@ const defaultCloseCallBand = [false, false, false, false, false];
 export default function App() {
   useKeyboardShortcuts({
     openActivityLog: () => setIsLogModalOpen(true),
-    openMemoryBrowser: () => console.log("Memory browser not implemented"),
+    openMemoryBrowser: () => setCurrentTab("Channels"),
   });
   const api = useAPI();
   const { ws, connected, connecting } = useWebSocket();
@@ -130,6 +130,9 @@ export default function App() {
   >(null);
   const [_temporaryLockoutChannels, setTemporaryLockoutChannels] = useState<number[]>([]);
   const [isMemorySyncing, setIsMemorySyncing] = useState(false);
+  const [activityLogData, setActivityLogData] = useState<any[]>([]);
+  const [activityLogLoading, setActivityLogLoading] = useState(false);
+  const [activityLogHasMore, setActivityLogHasMore] = useState(true);
 
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
@@ -274,6 +277,41 @@ export default function App() {
     const timeout = window.setTimeout(() => setChartAnimate(false), 700);
     return () => window.clearTimeout(timeout);
   }, [isDashboardMode]);
+
+  useEffect(() => {
+    if (!isLogModalOpen) {
+      setActivityLogData([]);
+      return;
+    }
+
+    let active = true;
+    const fetchActivityLog = async (limit = 50, offset = 0) => {
+      setActivityLogLoading(true);
+      try {
+        const response = await fetch(`${API_BASE}/analytics/activity-log?limit=${limit}&offset=${offset}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch activity log');
+        }
+        const data = await response.json();
+        if (active) {
+          setActivityLogData(offset === 0 ? data : [...activityLogData, ...data]);
+          setActivityLogHasMore(data.length >= limit);
+        }
+      } catch (error) {
+        console.error('Failed to fetch activity log', error);
+      } finally {
+        if (active) {
+          setActivityLogLoading(false);
+        }
+      }
+    };
+
+    fetchActivityLog();
+
+    return () => {
+      active = false;
+    };
+  }, [isLogModalOpen, API_BASE]);
 
   const handleMemorySync = useCallback(async () => {
     if (syncInProgressRef.current || isMemorySyncing) {
@@ -568,12 +606,33 @@ export default function App() {
     [api],
   );
 
-  const handleRecordingToggle = useCallback(() => {
-    toast.info("Recording feature coming soon", {
-      description: "Audio recording requires backend support",
-    });
-    setRecording(!isRecording);
-  }, [isRecording, setRecording]);
+  const handleRecordingToggle = useCallback(async () => {
+    try {
+      if (typeof __TAURI__ !== 'undefined' && __TAURI__) {
+        const { invoke } = await import('@tauri-apps/api/core');
+
+        if (isRecording) {
+          const info = await invoke('stop_recording');
+          console.log('Recording stopped:', info);
+          toast.success('Recording saved');
+        } else {
+          const live = liveState || useStore.getState().liveState;
+          const recordingId = await invoke('start_recording', {
+            frequency: live?.frequency,
+            alphaTag: live?.alpha_tag,
+          });
+          console.log('Recording started:', recordingId);
+          toast.success('Recording started');
+        }
+        setRecording(!isRecording);
+      } else {
+        toast.error('Recording is only available in Tauri desktop app');
+      }
+    } catch (error) {
+      console.error('Recording toggle failed', error);
+      toast.error('Failed to toggle recording');
+    }
+  }, [isRecording, liveState, setRecording]);
 
   const recentHits = useMemo(
     () =>
@@ -993,22 +1052,78 @@ export default function App() {
 
       {isLogModalOpen && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-          <div className="w-[400px] rounded-xl border border-white/10 bg-[#11131b] p-6 text-white shadow-2xl">
-            <h3 className="text-lg font-bold mb-2">Activity Log</h3>
-            <p className="text-sm text-white/60">
-              Activity log is being rebuilt in the new UI. Close this modal to continue.
-            </p>
-            <div className="mt-4 flex justify-end">
+          <div className="w-[500px] max-h-[600px] rounded-xl border border-white/10 bg-[#11131b] p-6 text-white shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">Activity Log</h3>
               <button
                 onClick={() => setIsLogModalOpen(false)}
-                className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition"
+                className="text-white/50 hover:text-white transition"
               >
-                 Close
-               </button>
-             </div>
+                <X size={20} />
+              </button>
             </div>
+            <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg p-2 space-y-1 min-h-0">
+              {activityLogLoading ? (
+                <div className="flex items-center justify-center py-8 text-white/50 text-sm">
+                  Loading...
+                </div>
+              ) : activityLogData.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-white/50 text-sm">
+                  No activity recorded
+                </div>
+              ) : (
+                activityLogData.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between px-3 py-2 bg-white/5 rounded hover:bg-white/10 transition cursor-pointer text-xs"
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="text-white/40 text-xs w-16 text-right">
+                        {new Date(entry.timestamp * 1000).toLocaleTimeString()}
+                      </div>
+                      <div className="font-mono font-bold text-orange-400">
+                        {entry.frequency.toFixed(4)}
+                      </div>
+                      <div className="text-white/70 truncate">
+                        {entry.alpha_tag || '—'}
+                      </div>
+                      {entry.channel && (
+                        <div className="text-white/50 text-xs">
+                          CH{entry.channel}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-white/40">
+                      {entry.duration && (
+                        <span>{formatDuration(entry.duration)}</span>
+                      )}
+                      <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center" style={{
+                        backgroundColor: `rgba(255, 255, 255, ${Math.min(0.8, (entry.rssi / 100) + 0.2)})`
+                      }} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            {activityLogHasMore && activityLogData.length > 0 && (
+              <button
+                onClick={() => {
+                  const fetchData = async () => {
+                    const response = await fetch(`${API_BASE}/analytics/activity-log?limit=50&offset=${activityLogData.length}`);
+                    const data = await response.json();
+                    setActivityLogData([...activityLogData, ...data]);
+                    setActivityLogHasMore(data.length >= 50);
+                  };
+                  fetchData();
+                }}
+                className="mt-4 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/70 transition"
+              >
+                Load More
+              </button>
+            )}
           </div>
-        )}
-      </div>
-    );
-  }
+        </div>
+      )}
+    </div>
+  );
+}
