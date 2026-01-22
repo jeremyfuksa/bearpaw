@@ -99,7 +99,8 @@ export default function App() {
   const channels = useStore((state) => state.channels);
   const activityLog = useStore((state) => state.activityLog);
   const fullActivityLog = useStore((state) => state.fullActivityLog);
-  const isDashboardMode = useStore((state) => state.isDashboardMode);
+  const preferences = useStore((state) => state.preferences);
+  const isDashboardMode = preferences.startInDashboardMode;
   const isRecording = useStore((state) => state.isRecording);
   const updateLiveState = useStore((state) => state.updateLiveState);
   const setDeviceInfo = useStore((state) => state.setDeviceInfo);
@@ -108,9 +109,8 @@ export default function App() {
   const setConnecting = useStore((state) => state.setConnecting);
   const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
   const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
-  const setDashboardMode = useStore((state) => state.setDashboardMode);
+  const setPreferences = useStore((state) => state.setPreferences);
   const setRecording = useStore((state) => state.setRecording);
-  const preferences = useStore((state) => state.preferences);
   const updatePreferences = useStore((state) => state.updatePreferences);
 
   const [currentTab, setCurrentTab] = useState<Tab>("Scan");
@@ -133,6 +133,7 @@ export default function App() {
   const [_temporaryLockoutChannels, setTemporaryLockoutChannels] = useState<number[]>([]);
   const [isMemorySyncing, setIsMemorySyncing] = useState(false);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
+  const [preferencesLoading, setPreferencesLoading] = useState(false);
 
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
@@ -144,6 +145,34 @@ export default function App() {
     setConnected(connected);
     setConnecting(connecting);
   }, [connected, connecting, setConnected, setConnecting]);
+
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/preferences`);
+        if (response.ok) {
+          const prefs = await response.json();
+          const frontendPrefs: Partial<Parameters<typeof preferences>[0]> = {
+            theme: prefs.theme === "field" ? "field" : "night",
+            displayMode: prefs.displayMode || "frequency",
+            reducedMotion: prefs.reduced_motion || false,
+            hitMinDuration: prefs.hit_min_duration || 2,
+            startInDashboardMode: prefs.start_dashboard_mode ?? false,
+            autoConnect: prefs.auto_connect ?? false,
+            checkUpdates: prefs.check_updates ?? true,
+            recordingBufferSize: prefs.recording_buffer_size || 30,
+            dataRetentionDays: prefs.data_retention_days || 30,
+            audioOutputDevice: prefs.audio_output_device || "default",
+            recordingsPath: prefs.recordings_path || "./recordings",
+          };
+          setPreferences(frontendPrefs as any);
+        }
+      } catch (error) {
+        console.warn("Failed to load preferences from backend", error);
+      }
+    };
+    loadPreferences();
+  }, [setPreferences]);
 
   useEffect(() => {
     const unsubscribeState = ws.on("state_update", (message) => {
@@ -611,6 +640,21 @@ export default function App() {
     }
   }, [isRecording, liveState, setRecording]);
 
+  const handleDashboardToggle = useCallback(async () => {
+    const newValue = !isDashboardMode;
+    updatePreferences({ startInDashboardMode: newValue } as any);
+    try {
+      await fetch(`${API_BASE}/preferences`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start_dashboard_mode: newValue }),
+      });
+    } catch (error) {
+      console.error("Failed to save dashboard preference", error);
+      toast.error("Failed to save preference");
+    }
+  }, [isDashboardMode, updatePreferences]);
+
   const recentHits = useMemo(
     () =>
       activityLog.map((entry) => ({
@@ -740,7 +784,7 @@ export default function App() {
                     isRecording={isRecording}
                     onRecordingToggle={handleRecordingToggle}
                     isDashboardMode={isDashboardMode}
-                    onDashboardToggle={() => setDashboardMode(!isDashboardMode)}
+                    onDashboardToggle={handleDashboardToggle}
                   />
                   <ScannerDisplay
                     mainText={mainText}

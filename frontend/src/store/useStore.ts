@@ -1,5 +1,4 @@
 import { create } from "zustand";
-
 import type {
   ActivityLogEntry,
   ChannelData,
@@ -13,6 +12,13 @@ interface Preferences {
   displayMode: "frequency" | "alpha";
   reducedMotion: boolean;
   hitMinDuration: number;
+  startInDashboardMode: boolean;
+  autoConnect: boolean;
+  checkUpdates: boolean;
+  recordingBufferSize: number;
+  dataRetentionDays: number;
+  audioOutputDevice: string;
+  recordingsPath: string;
 }
 
 interface AppState {
@@ -27,7 +33,6 @@ interface AppState {
   lastSequence: number;
   memoryDrafts: Record<number, ChannelDraft>;
   memoryEditingIndex: number | null;
-  isDashboardMode: boolean;
   isRecording: boolean;
 
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
@@ -37,10 +42,10 @@ interface AppState {
   setConnecting: (connecting: boolean) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
+  setPreferences: (prefs: Preferences) => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
   setMemoryEditingIndex: (index: number | null) => void;
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
-  setDashboardMode: (mode: boolean) => void;
   setRecording: (recording: boolean) => void;
   addToFullActivityLog: (entry: ActivityLogEntry) => void;
 }
@@ -50,6 +55,13 @@ const defaultPreferences: Preferences = {
   displayMode: "frequency",
   reducedMotion: false,
   hitMinDuration: 2,
+  startInDashboardMode: false,
+  autoConnect: false,
+  checkUpdates: true,
+  recordingBufferSize: 30,
+  dataRetentionDays: 30,
+  audioOutputDevice: "default",
+  recordingsPath: "./recordings",
 };
 
 export const useStore = create<AppState>((set) => ({
@@ -64,7 +76,6 @@ export const useStore = create<AppState>((set) => ({
   lastSequence: 0,
   memoryDrafts: {},
   memoryEditingIndex: null,
-  isDashboardMode: true,
   isRecording: false,
 
   updateLiveState: (state, sequence) =>
@@ -103,6 +114,11 @@ export const useStore = create<AppState>((set) => ({
 
   clearActivityLog: () => set({ activityLog: [], fullActivityLog: [] }),
 
+  setPreferences: (prefs) =>
+    set((prev) => ({
+      preferences: { ...prev.preferences, ...prefs },
+    })),
+
   updatePreferences: (prefs) =>
     set((prev) => ({
       preferences: { ...prev.preferences, ...prefs },
@@ -117,6 +133,5 @@ export const useStore = create<AppState>((set) => ({
       },
     })),
 
-  setDashboardMode: (mode) => set({ isDashboardMode: mode }),
   setRecording: (recording) => set({ isRecording: recording }),
 }));
