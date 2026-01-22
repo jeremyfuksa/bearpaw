@@ -392,6 +392,221 @@ Frontend detects Tauri automatically and uses `localhost:8000` for API/WebSocket
 
 ---
 
+## Tauri Commands
+
+Scanner Bridge exposes several Tauri commands for native desktop functionality.
+
+### Recording Commands
+
+#### start_recording
+
+Start audio recording of current scanner activity.
+
+**Parameters:**
+- `frequency` (number): Current frequency in MHz
+- `alpha_tag` (string): Current channel name
+
+**Returns:** `string` - Recording ID
+
+**Example:**
+```javascript
+const recordingId = await invoke('start_recording', {
+  frequency: 151.2500,
+  alpha_tag: 'Police Dispatch'
+});
+```
+
+**Behavior:**
+- Captures audio from selected audio device
+- Saves to configured output path (default: `./recordings/`)
+- Uses WAV format by default
+- Buffer captures last N seconds for pre-roll
+
+---
+
+#### stop_recording
+
+Stop current audio recording and save to disk.
+
+**Parameters:** None
+
+**Returns:** `string` - Recording file path
+
+**Example:**
+```javascript
+const info = await invoke('stop_recording');
+console.log('Recording saved:', info);
+```
+
+**Behavior:**
+- Stops audio capture
+- Finalizes WAV file
+- Returns file path for reference
+
+---
+
+#### get_recording_status
+
+Get current recording state.
+
+**Parameters:** None
+
+**Returns:** Recording status object
+
+**Example:**
+```javascript
+const status = await invoke('get_recording_status');
+console.log('Recording:', status.is_recording);
+console.log('Duration:', status.duration);
+```
+
+**Response:**
+```json
+{
+  "is_recording": true,
+  "duration": 12.5,
+  "recording_id": "rec-abc123",
+  "file_path": "/path/to/recording.wav"
+}
+```
+
+---
+
+#### list_recordings
+
+List all saved recordings.
+
+**Parameters:** None
+
+**Returns:** Array of recording metadata
+
+**Example:**
+```javascript
+const recordings = await invoke('list_recordings');
+recordings.forEach(rec => {
+  console.log(`${rec.filename} - ${rec.duration}s`);
+});
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "rec-abc123",
+    "filename": "recording_20250121_105430.wav",
+    "file_path": "/path/to/recordings/recording_20250121_105430.wav",
+    "duration": 45.2,
+    "frequency": 151.2500,
+    "alpha_tag": "Police Dispatch",
+    "created_at": 1704412800.123
+  }
+]
+```
+
+---
+
+#### delete_recording
+
+Delete a saved recording file.
+
+**Parameters:**
+- `recording_id` (string): Recording ID to delete
+
+**Returns:** Success confirmation
+
+**Example:**
+```javascript
+await invoke('delete_recording', { recording_id: 'rec-abc123' });
+```
+
+---
+
+#### list_audio_devices
+
+List available audio input devices.
+
+**Parameters:** None
+
+**Returns:** Array of audio devices
+
+**Example:**
+```javascript
+const devices = await invoke('list_audio_devices');
+devices.forEach(device => {
+  console.log(`${device.name} (index: ${device.index})`);
+});
+```
+
+**Response:**
+```json
+[
+  {
+    "index": 0,
+    "name": "Built-in Microphone",
+    "is_default": true
+  },
+  {
+    "index": 1,
+    "name": "USB Audio Device",
+    "is_default": false
+  }
+]
+```
+
+---
+
+#### update_recording_config
+
+Update recording configuration.
+
+**Parameters:**
+- `config` (RecordingConfig object): New configuration values
+
+**Returns:** Updated configuration
+
+**Example:**
+```javascript
+const newConfig = await invoke('update_recording_config', {
+  config: {
+    enabled: true,
+    output_path: "~/Documents/Recordings",
+    format: "wav",
+    sample_rate: 48000,
+    channels: 2,
+    buffer_seconds: 30
+  }
+});
+```
+
+**RecordingConfig Fields:**
+- `enabled` (boolean): Enable/disable recording
+- `output_path` (string): Directory for saving recordings
+- `format` (string): Audio format ("wav")
+- `sample_rate` (number): Sample rate in Hz (default: 44100)
+- `channels` (number): Number of audio channels (1=mono, 2=stereo)
+- `buffer_seconds` (number): Pre-roll buffer duration
+- `auto_record_on_squelch` (boolean): Auto-start when squelch opens
+- `audio_device_index` (number or null): Preferred audio device index
+
+---
+
+#### get_recording_config
+
+Get current recording configuration.
+
+**Parameters:** None
+
+**Returns:** Current RecordingConfig object
+
+**Example:**
+```javascript
+const config = await invoke('get_recording_config');
+console.log('Output path:', config.output_path);
+console.log('Sample rate:', config.sample_rate);
+```
+
+---
+
 ## Troubleshooting
 
 ### Backend Not Starting

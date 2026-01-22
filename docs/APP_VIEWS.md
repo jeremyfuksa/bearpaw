@@ -38,9 +38,13 @@ When disconnected, shows error icon:
 ### Control Buttons
 
 #### REC (Recording)
-- **Purpose**: Audio recording toggle (currently placeholder - shows toast "Recording feature coming soon")
+- **Purpose**: Audio recording toggle (Tauri desktop app only)
 - **Behavior**: Toggles recording state, shows red dot when active
+- **Tauri commands**:
+  - `start_recording`: Starts recording with current frequency and alpha tag
+  - `stop_recording`: Stops recording and saves to disk
 - **Mode Requirement**: Works in any mode
+- **Note**: Shows error "Recording is only available in Tauri desktop app" in web version
 
 #### VOL (Volume)
 - **Purpose**: Adjust scanner audio volume
@@ -134,8 +138,19 @@ Shows three metrics (same as top bar but vertical layout):
 
 ### Activity Log Button
 - **Purpose**: Open activity log modal
-- **Behavior**: Shows modal with message "Activity log is being rebuilt in new UI"
-- **Note**: Full activity log feature is in development
+- **Behavior**: Shows modal with scan hit history
+- **Data source**: `/analytics/activity-log` API endpoint
+- **Pagination**: Loads 50 entries initially, "Load More" button loads additional entries
+- **Columns displayed**:
+  - **Time**: Timestamp in local time (HH:MM:SS format)
+  - **Frequency**: Monospace, orange color (4 decimal places)
+  - **Tag**: Alpha tag or "—"
+  - **Channel**: Channel number (if available)
+  - **Duration**: Hit duration (if available)
+  - **Signal**: Visual indicator (circle with opacity based on RSSI)
+- **Loading**: Shows "Loading..." while fetching data
+- **Empty state**: Shows "No activity recorded"
+- **Modal size**: 500px width, 600px max height
 
 ### Mode Detection
 The app automatically detects scanner mode from live state:
@@ -354,12 +369,24 @@ Contains app preferences and about information.
 #### About Section
 - **Shows**: "Bearpaw v2.4.0-beta"
 - **Description**: "Community-developed control software for Uniden scanners."
-- **Links**: Website and GitHub buttons
+- **Links**:
+  - **Website**: Opens https://bearpaw-scanner.github.io in new tab
+  - **GitHub**: Opens https://github.com/bearpaw-scanner in new tab
 - **Donate**: "Enjoying the app? A $10 donation helps keep updates coming!"
+  - Opens https://github.com/sponsors/bearpaw-scanner in new tab
 
-#### Support Button
-- **Purpose**: Link to support/donation
-- **Note**: Shows "Support Dev" heading
+#### Application Settings
+- **Heading**: "Application Settings"
+- **Description**: "Manage your workspace preferences"
+- **Reset to Defaults**:
+  - **Behavior**: Shows confirmation dialog "Reset all preferences to default values? This cannot be undone."
+  - **On confirm**: Calls `POST /preferences/reset`, reloads page
+  - **Feedback**: Toast "Preferences reset to defaults"
+
+#### Support Section
+- **Heading**: "Support Bearpaw"
+- **Description**: "Enjoying the app? A $10 donation helps keep updates coming!"
+- **Button**: Opens https://github.com/sponsors/bearpaw-scanner in new tab
 
 ---
 
@@ -425,13 +452,28 @@ When you click a channel row, it enters edit mode:
 
 #### Import CSV
 - **Purpose**: Import channels from CSV file
-- **Status**: Placeholder - button exists but function not implemented
-- **Expected behavior**: Upload CSV, parse, update channel list
+- **Behavior**:
+  - Opens file picker dialog (CSV files only)
+  - Parses CSV and validates each row
+  - Updates channels in shadow state
+  - Writes to scanner if channel_write_supported
+  - Shows toast with import summary (success or errors)
+- **Validation**:
+  - Frequency must be 25-512 MHz
+  - Delay must be 0-30 seconds
+  - Bank must be 1-10
+- **Error handling**: Shows toast with count of errors and first 3 failed row indices
+- **API endpoint**: `POST /memory/import/csv`
+- **Format**: Same as Export CSV output
 
 #### Export CSV
 - **Purpose**: Export channels to CSV file
-- **Status**: Placeholder - button exists but function not implemented
-- **Expected behavior**: Download channel data as CSV
+- **Behavior**:
+  - Downloads all channels from shadow state
+  - Shows toast "Channels exported successfully"
+- **File format**: CSV with columns: Index, Frequency, Modulation, Alpha Tag, Delay, Lockout, Priority, CTCSS/DCS, Bank
+- **API endpoint**: `GET /memory/export/csv`
+- **Example filename**: `channels.csv`
 
 ### Bank Calculation
 Channels are assigned to banks based on index:
