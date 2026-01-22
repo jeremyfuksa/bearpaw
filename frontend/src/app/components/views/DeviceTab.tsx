@@ -1364,18 +1364,21 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
                       </span>
                     </div>
                   </div>
-                  <div className="h-px bg-white/5" />
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">
-                        Start in Dashboard Mode
-                      </label>
-                      <p className="text-xs text-white/40">
-                        Launch directly into the dashboard view
-                      </p>
-                    </div>
-                    <Switch />
-                  </div>
+                   <div className="h-px bg-white/5" />
+                   <div className="flex items-center justify-between">
+                     <div className="space-y-0.5">
+                       <label className="text-sm font-medium text-white">
+                         Start in Dashboard Mode
+                       </label>
+                       <p className="text-xs text-white/40">
+                         Launch directly into widget-based dashboard view
+                       </p>
+                     </div>
+                     <Switch
+                       checked={isDashboardMode}
+                       onCheckedChange={(checked) => updatePreferences({ isDashboardMode: checked })}
+                     />
+                   </div>
                   <div className="h-px bg-white/5" />
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
