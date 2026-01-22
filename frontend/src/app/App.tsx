@@ -135,6 +135,7 @@ export default function App() {
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
   const lastHitOpenRef = useRef(false);
+  const squelchOpenStartTimeRef = useRef<number | null>(null);
   const analyticsLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -147,23 +148,30 @@ export default function App() {
       const payload = message as StateUpdateMessage;
       updateLiveState(payload.data, payload.sequence);
       const squelchOpen = payload.data.squelch_open;
-      const isNewHit = squelchOpen === true && !lastHitOpenRef.current;
+
       if (typeof squelchOpen === "boolean") {
-        lastHitOpenRef.current = squelchOpen;
-      }
-      if (isNewHit && payload.data.frequency) {
-        const entry: ActivityLogEntry = {
-          id: `${payload.timestamp}-${payload.sequence}`,
-          timestamp: payload.timestamp,
-          frequency: payload.data.frequency,
-          channel: payload.data.channel ?? null,
-          alpha_tag: payload.data.alpha_tag ?? null,
-          type: "hit",
-          rssi: payload.data.rssi,
-          hasAudio: isRecording,
-        };
-        addActivityLogEntry(entry);
-        addToFullActivityLog(entry);
+        if (squelchOpen && !lastHitOpenRef.current) {
+          squelchOpenStartTimeRef.current = payload.timestamp;
+          lastHitOpenRef.current = true;
+        } else if (!squelchOpen && lastHitOpenRef.current) {
+          const duration = payload.timestamp - (squelchOpenStartTimeRef.current || payload.timestamp);
+          if (duration >= 2 && squelchOpenStartTimeRef.current !== null) {
+            const entry: ActivityLogEntry = {
+              id: `${squelchOpenStartTimeRef.current}-${payload.sequence}`,
+              timestamp: squelchOpenStartTimeRef.current,
+              frequency: liveState?.frequency ?? 0,
+              channel: liveState?.channel ?? null,
+              alpha_tag: liveState?.alpha_tag ?? null,
+              type: "hit",
+              rssi: liveState?.rssi,
+              hasAudio: isRecording,
+            };
+            addActivityLogEntry(entry);
+            addToFullActivityLog(entry);
+          }
+          squelchOpenStartTimeRef.current = null;
+          lastHitOpenRef.current = false;
+        }
       }
     });
 
