@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
 from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, WebSocket
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response as StarletteResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -1365,7 +1365,7 @@ def create_app(
         return {"imported": imported, "errors": errors}
 
     @app.get("/api/v1/preferences")
-    async def get_preferences() -> Response[Dict[str, Any]]:
+    async def get_preferences() -> JSONResponse:
         runtime: RuntimeState = app.state.runtime
         try:
             if not runtime.preferences_store:
@@ -1373,11 +1373,32 @@ def create_app(
                 raise HTTPException(
                     status_code=503, detail="preferences_not_configured"
                 )
-            return Response(content=runtime.preferences_store.get_all())
+            return JSONResponse(content=runtime.preferences_store.get_all())
         except HTTPException:
             raise
         except Exception as exc:
             logger.exception("Error loading preferences: %s", exc)
+            raise HTTPException(status_code=500, detail="internal_error")
+
+    @app.get("/api/v1/preferences/{key}")
+    async def get_preference(key: str) -> JSONResponse:
+        runtime: RuntimeState = app.state.runtime
+        try:
+            if not runtime.preferences_store:
+                logger.error("Preferences store is None - not configured")
+                raise HTTPException(
+                    status_code=503, detail="preferences_not_configured"
+                )
+            value = runtime.preferences_store.get(key)
+            if value is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown preference: {key}"
+                )
+            return JSONResponse(content={"key": key, "value": value})
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Error loading preference %s: %s", key, exc)
             raise HTTPException(status_code=500, detail="internal_error")
 
     @app.get("/api/v1/preferences/{key}")
@@ -1401,12 +1422,19 @@ def create_app(
         return {"key": key, "value": request["value"]}
 
     @app.put("/api/v1/preferences")
-    async def set_preferences(request: Dict[str, Any]) -> Response[Dict[str, Any]]:
+    async def set_preferences(request: Dict[str, Any]) -> JSONResponse:
         runtime: RuntimeState = app.state.runtime
-        if not runtime.preferences_store:
-            raise HTTPException(status_code=503, detail="preferences_not_configured")
-        runtime.preferences_store.set_multiple(request)
-        return Response(content=runtime.preferences_store.get_all())
+        try:
+            if not runtime.preferences_store:
+                logger.error("Preferences store is None - not configured")
+                raise HTTPException(
+                    status_code=503, detail="preferences_not_configured"
+                )
+            runtime.preferences_store.set_multiple(request)
+            return JSONResponse(content=runtime.preferences_store.get_all())
+        except Exception as exc:
+            logger.exception("Error saving preferences: %s", exc)
+            raise HTTPException(status_code=500, detail="internal_error")
 
     @app.post("/api/v1/preferences/reset")
     async def reset_preferences() -> Dict[str, Any]:
