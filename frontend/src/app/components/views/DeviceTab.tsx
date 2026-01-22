@@ -58,6 +58,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
   const setChannels = useStore((state) => state.setChannels);
   const preferences = useStore((state) => state.preferences);
   const updatePreferences = useStore((state) => state.updatePreferences);
+  const isDashboardMode = preferences.isDashboardMode;
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
