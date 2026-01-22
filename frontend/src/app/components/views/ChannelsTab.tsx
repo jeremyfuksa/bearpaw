@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { Search, Lock } from "lucide-react";
+import { Search, Lock, Edit3 } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
 import { useAPI } from "../../../api/useApi";
 import { useStore } from "../../../store/useStore";
 import type { ChannelData, ChannelDraft } from "../../../types";
+import { ChannelEditSheet } from "./ChannelEditSheet";
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
 
@@ -24,42 +25,22 @@ function buildDraft(channel: ChannelData): ChannelDraft {
     delay: channel.delay.toString(),
     lockout: channel.lockout,
     priority: channel.priority,
+    comments: "",
   };
-}
-
-function useDebounce<T extends (...args: any[]) => any>(callback: T, delay: number): T {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
-  const callbackRef = useRef(callback);
-
-  useEffect(() => {
-    callbackRef.current = callback;
-  }, [callback]);
-
-  return useMemo((...args: Parameters<T>) => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-
-    timeoutRef.current = setTimeout(() => {
-      callbackRef.current(...args);
-    }, delay);
-  }, []) as T;
 }
 
 export function ChannelsTab() {
   const api = useAPI();
   const channels = useStore((state) => state.channels) ?? [];
   const memoryDrafts = useStore((state) => state.memoryDrafts);
-  const memoryEditingIndex = useStore((state) => state.memoryEditingIndex);
-  const setMemoryEditingIndex = useStore((state) => state.setMemoryEditingIndex);
   const setMemoryDraft = useStore((state) => state.setMemoryDraft);
   const setChannels = useStore((state) => state.setChannels);
 
   const [activeBank, setActiveBank] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const previousEditingIndex = useRef<number | null>(null);
 
   const filteredChannels = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -73,98 +54,23 @@ export function ChannelsTab() {
     });
   }, [activeBank, channels, searchTerm]);
 
-  const commitDraft = useCallback(
-    async (channelIndex: number) => {
-      const channel = channels.find((entry) => entry.index === channelIndex);
-      const draft = memoryDrafts[channelIndex];
-      if (!channel || !draft) return;
+  const editingChannel = editingChannelIndex !== null
+    ? channels.find((ch) => ch.index === editingChannelIndex)
+    : null;
 
-      const parsedFrequency = Number.parseFloat(draft.frequency);
-      const parsedDelay = Number.parseInt(draft.delay, 10);
-      const toneValue =
-        draft.tone_squelch.trim() === ""
-          ? null
-          : Number.parseFloat(draft.tone_squelch);
+  const handleOpenEditSheet = useCallback((channelIndex: number) => {
+    const channel = channels.find((ch) => ch.index === channelIndex);
+    if (!channel) return;
 
-      const payload = {
-        frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
-        modulation: draft.modulation,
-        alpha_tag: draft.alpha_tag,
-        delay: Number.isFinite(parsedDelay) ? parsedDelay : channel.delay,
-        lockout: draft.lockout,
-        priority: draft.priority,
-        tone_squelch: Number.isFinite(toneValue ?? NaN) ? toneValue : null,
-        bank: deriveBankFromIndex(channel.index),
-      };
-
-      const normalizedTone = payload.tone_squelch ?? null;
-      const originalTone = channel.tone_squelch ?? null;
-
-      const hasChanges =
-        payload.frequency !== channel.frequency ||
-        payload.modulation !== channel.modulation ||
-        payload.alpha_tag !== channel.alpha_tag ||
-        payload.delay !== channel.delay ||
-        payload.lockout !== channel.lockout ||
-        payload.priority !== channel.priority ||
-        normalizedTone !== originalTone;
-
-      if (!hasChanges) return;
-
-      try {
-        const updated = await api.updateChannel(channel.index, payload);
-        setChannels((prev) =>
-          prev.map((entry) => (entry.index === updated.index ? updated : entry)),
-        );
-        setMemoryDraft(updated.index, buildDraft(updated));
-        toast.success(`Saved CH ${updated.index}`);
-      } catch (error) {
-        console.error("Failed to save channel", error);
-        toast.error(`Failed to save CH ${channel.index}`);
-      }
-    },
-    [api, channels, memoryDrafts, setChannels, setMemoryDraft],
-  );
-
-  const debouncedCommitDraft = useDebounce(commitDraft, 500);
-
-  useEffect(() => {
-    const previous = previousEditingIndex.current;
-    if (previous !== null && previous !== memoryEditingIndex) {
-      void debouncedCommitDraft(previous);
-    }
-    previousEditingIndex.current = memoryEditingIndex;
-  }, [debouncedCommitDraft, memoryEditingIndex]);
-
-     useEffect(() => {
-     if (memoryEditingIndex === null) return;
-     const handleClick = (event: MouseEvent) => {
-       const target = event.target as Node | null;
-       if (containerRef.current && target && containerRef.current.contains(target)) {
-         return;
-       }
-       setMemoryEditingIndex(null);
-     };
-     document.addEventListener("mousedown", handleClick);
-     return () => {
-       document.removeEventListener("mousedown", handleClick);
-     };
-   }, [memoryEditingIndex, setMemoryEditingIndex]);
-
-  useEffect(() => {
-    setMemoryEditingIndex(null);
-  }, [activeBank, setMemoryEditingIndex]);
-
-  const handleRowClick = (channelIndex: number) => {
-    if (memoryEditingIndex === channelIndex) return;
-    setMemoryEditingIndex(channelIndex);
+    setEditingChannelIndex(channelIndex);
     if (!memoryDrafts[channelIndex]) {
-      const channel = channels.find((ch) => ch.index === channelIndex);
-      if (channel) {
-        setMemoryDraft(channelIndex, buildDraft(channel));
-      }
+      setMemoryDraft(channelIndex, buildDraft(channel));
     }
-  };
+  }, [channels, memoryDrafts, setMemoryDraft]);
+
+  const handleCloseEditSheet = useCallback(() => {
+    setEditingChannelIndex(null);
+  }, []);
 
   const updateDraftField = (channelIndex: number, field: keyof ChannelDraft, value: string | boolean) => {
     const draft = memoryDrafts[channelIndex];
@@ -172,6 +78,41 @@ export function ChannelsTab() {
       setMemoryDraft(channelIndex, { ...draft, [field]: value });
     }
   };
+
+  const handleSaveChannel = useCallback(async (channelIndex: number, draft: ChannelDraft) => {
+    const channel = channels.find((entry) => entry.index === channelIndex);
+    if (!channel) return;
+
+    const parsedFrequency = Number.parseFloat(draft.frequency);
+    const parsedDelay = Number.parseInt(draft.delay, 10);
+    const toneValue =
+      draft.tone_squelch.trim() === ""
+        ? null
+        : Number.parseFloat(draft.tone_squelch);
+
+    const payload = {
+      frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
+      modulation: draft.modulation,
+      alpha_tag: draft.alpha_tag,
+      delay: Number.isFinite(parsedDelay) ? parsedDelay : channel.delay,
+      lockout: draft.lockout,
+      priority: draft.priority,
+      tone_squelch: Number.isFinite(toneValue ?? NaN) ? toneValue : null,
+      bank: deriveBankFromIndex(channelIndex),
+    };
+
+    try {
+      const updated = await api.updateChannel(channelIndex, payload);
+      setChannels((prev) =>
+        prev.map((entry) => (entry.index === updated.index ? updated : entry)),
+      );
+      setMemoryDraft(updated.index, buildDraft(updated));
+      toast.success(`Saved CH ${updated.index}`);
+    } catch (error) {
+      console.error("Failed to save channel", error);
+      toast.error(`Failed to save CH ${channelIndex}`);
+    }
+  }, [api, channels, setChannels, setMemoryDraft]);
 
   const handleExportCSV = async () => {
     try {
@@ -323,23 +264,26 @@ export function ChannelsTab() {
           </div>
 
           {/* Rows */}
-          <div className="overflow-y-auto flex-1 p-0">
+          <div className={cn(
+            "overflow-y-auto flex-1 p-0",
+            editingChannelIndex !== null && "opacity-50 pointer-events-none"
+          )}>
             {filteredChannels.length === 0 ? (
               <div className="flex h-[240px] items-center justify-center text-xs text-white/50">
                 No channels match your filters
               </div>
             ) : (
               filteredChannels.map((channel) => {
-                const isEditing = memoryEditingIndex === channel.index;
-                const draft = memoryDrafts[channel.index] ?? buildDraft(channel);
+                const isEditing = editingChannelIndex === channel.index;
+                const draft = memoryDrafts[channel.index];
 
                 return (
                   <div
                     key={channel.index}
-                    onClick={() => handleRowClick(channel.index)}
+                    onClick={() => handleOpenEditSheet(channel.index)}
                     className={cn(
                       "grid grid-cols-[50px_90px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-1.5 text-xs border-b border-white/5 items-center group transition-colors cursor-pointer min-h-[36px]",
-                      isEditing ? "bg-brand-primary/10" : "hover:bg-white/5",
+                      isEditing ? "bg-brand-primary/20 border-brand-primary/30" : "hover:bg-white/5",
                       channel.lockout && "opacity-50 grayscale",
                     )}
                   >
@@ -347,98 +291,54 @@ export function ChannelsTab() {
                       {channel.index}
                     </div>
 
-                    {isEditing ? (
-                      <>
-                        <input
-                          className="bg-black/50 border border-[#ef991f] rounded px-1.5 py-0.5 text-brand-primary w-full outline-none font-mono font-bold"
-                          value={draft.frequency}
-                          onChange={(e) => updateDraftField(channel.index, "frequency", e.target.value)}
-                          autoFocus
-                        />
-                        <input
-                          className="bg-black/50 border border-[#ef991f] rounded px-1.5 py-0.5 text-white w-full outline-none font-bold"
-                          value={draft.alpha_tag}
-                          onChange={(e) => updateDraftField(channel.index, "alpha_tag", e.target.value)}
-                        />
-                        <select
-                          className="bg-black/50 border border-[#ef991f] rounded px-1 py-0.5 text-white w-full outline-none"
-                          value={draft.modulation}
-                          onChange={(e) => updateDraftField(channel.index, "modulation", e.target.value)}
-                        >
-                          {["AUTO", "FM", "AM", "NFM"].map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          className="bg-black/50 border border-[#ef991f] rounded px-1 py-0.5 text-white w-full outline-none"
-                          value={draft.tone_squelch}
-                          onChange={(e) => updateDraftField(channel.index, "tone_squelch", e.target.value)}
-                        />
-                        <input
-                          className="bg-black/50 border border-[#ef991f] rounded px-1 py-0.5 text-white w-full outline-none"
-                          value={draft.delay}
-                          onChange={(e) => updateDraftField(channel.index, "delay", e.target.value)}
-                        />
-                        <div className="flex justify-center">
-                          <input
-                            type="checkbox"
-                            checked={draft.lockout}
-                            onChange={(e) => updateDraftField(channel.index, "lockout", e.target.checked)}
-                            className="accent-brand-primary"
-                          />
-                        </div>
-                        <div className="flex justify-center">
-                          <input
-                            type="checkbox"
-                            checked={draft.priority}
-                            onChange={(e) => updateDraftField(channel.index, "priority", e.target.checked)}
-                            className="accent-brand-primary"
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center">
-                          {channel.frequency.toFixed(4)}
-                        </div>
-                        <div className="font-medium text-white/80 truncate pl-1">
-                          {channel.alpha_tag || "—"}
-                        </div>
-                        <div className="flex justify-center">
-                          <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
-                            {channel.modulation || "AUTO"}
-                          </span>
-                        </div>
-                        <div className="text-white/30 text-xs text-center">
-                          {channel.tone_squelch ?? "—"}
-                        </div>
-                        <div className="text-white/30 text-xs text-center">
-                          {channel.delay}s
-                        </div>
-                        <div className="flex justify-center">
-                          {channel.lockout ? (
-                            <Lock size={10} className="text-red-400" />
-                          ) : (
-                            <div className="w-1 h-1 rounded-full bg-white/5" />
-                          )}
-                        </div>
-                        <div className="flex justify-center">
-                          {channel.priority ? (
-                            <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-glow" />
-                          ) : (
-                            <div className="w-1 h-1 rounded-full bg-white/5" />
-                          )}
-                        </div>
-                      </>
-                    )}
+                    <div className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center">
+                      {channel.frequency.toFixed(4)}
+                    </div>
+                    <div className="font-medium text-white/80 truncate pl-1">
+                      {channel.alpha_tag || "—"}
+                    </div>
+                    <div className="flex justify-center">
+                      <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
+                        {channel.modulation || "AUTO"}
+                      </span>
+                    </div>
+                    <div className="text-white/30 text-xs text-center">
+                      {channel.tone_squelch ?? "—"}
+                    </div>
+                    <div className="text-white/30 text-xs text-center">
+                      {channel.delay}s
+                    </div>
+                    <div className="flex justify-center">
+                      {channel.lockout ? (
+                        <Lock size={10} className="text-red-400" />
+                      ) : (
+                        <div className="w-1 h-1 rounded-full bg-white/5" />
+                      )}
+                    </div>
+                    <div className="flex justify-center">
+                      {channel.priority ? (
+                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-glow" />
+                      ) : (
+                        <div className="w-1 h-1 rounded-full bg-white/5" />
+                      )}
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
         </div>
+
+        {editingChannel && editingChannelIndex !== null && (
+          <ChannelEditSheet
+            channel={editingChannel}
+            draft={draft ?? buildDraft(editingChannel)}
+            isOpen={editingChannelIndex !== null}
+            onClose={handleCloseEditSheet}
+            onSave={(draft) => handleSaveChannel(editingChannelIndex, draft)}
+            onFieldChange={(field, value) => updateDraftField(editingChannelIndex, field, value)}
+          />
+        )}
       </div>
     </motion.div>
   );

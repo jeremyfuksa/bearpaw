@@ -52,6 +52,7 @@ import type {
 } from "../types";
 import { DeviceTab } from "./components/views/DeviceTab";
 import { ChannelsTab } from "./components/views/ChannelsTab";
+import { ActivityExportSheet } from "./components/views/ActivityExportSheet";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "/api/v1";
 
@@ -111,7 +112,6 @@ export default function App() {
   const setRecording = useStore((state) => state.setRecording);
 
   const [currentTab, setCurrentTab] = useState<Tab>("Scan");
-  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [banks, setBanks] = useState<boolean[]>(() =>
     Array.from({ length: 10 }, () => true),
   );
@@ -130,9 +130,7 @@ export default function App() {
   >(null);
   const [_temporaryLockoutChannels, setTemporaryLockoutChannels] = useState<number[]>([]);
   const [isMemorySyncing, setIsMemorySyncing] = useState(false);
-  const [activityLogData, setActivityLogData] = useState<any[]>([]);
-  const [activityLogLoading, setActivityLogLoading] = useState(false);
-  const [activityLogHasMore, setActivityLogHasMore] = useState(true);
+  const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
 
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
@@ -278,40 +276,7 @@ export default function App() {
     return () => window.clearTimeout(timeout);
   }, [isDashboardMode]);
 
-  useEffect(() => {
-    if (!isLogModalOpen) {
-      setActivityLogData([]);
-      return;
-    }
 
-    let active = true;
-    const fetchActivityLog = async (limit = 50, offset = 0) => {
-      setActivityLogLoading(true);
-      try {
-        const response = await fetch(`${API_BASE}/analytics/activity-log?limit=${limit}&offset=${offset}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch activity log');
-        }
-        const data = await response.json();
-        if (active) {
-          setActivityLogData(offset === 0 ? data : [...activityLogData, ...data]);
-          setActivityLogHasMore(data.length >= limit);
-        }
-      } catch (error) {
-        console.error('Failed to fetch activity log', error);
-      } finally {
-        if (active) {
-          setActivityLogLoading(false);
-        }
-      }
-    };
-
-    fetchActivityLog();
-
-    return () => {
-      active = false;
-    };
-  }, [isLogModalOpen, API_BASE]);
 
   const handleMemorySync = useCallback(async () => {
     if (syncInProgressRef.current || isMemorySyncing) {
@@ -828,9 +793,13 @@ export default function App() {
                       <TooltipTrigger asChild>
                         <button
                           type="button"
-                          onClick={() => setIsLogModalOpen(true)}
-                          className="ml-auto inline-flex items-center justify-center rounded-scanner-sm border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:text-white hover:bg-white/10 hover:border-white/20 transition-colors"
-                          aria-label="Open hit log"
+                          onClick={() => setIsExportSheetOpen(true)}
+                          disabled={fullActivityLog.length === 0}
+                          className={cn(
+                            "ml-auto inline-flex items-center justify-center rounded-scanner-sm border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:text-white hover:bg-white/10 hover:border-white/20 transition-colors",
+                            fullActivityLog.length === 0 && "opacity-50 cursor-not-allowed"
+                          )}
+                          aria-label="Export activity log"
                         >
                           <FileText size={14} />
                         </button>
@@ -841,7 +810,7 @@ export default function App() {
                         className="bg-neutral-950 border border-white/10 text-white"
                         arrowClassName="bg-neutral-950 fill-neutral-950"
                       >
-                        Log
+                        Export
                       </TooltipContent>
                     </Tooltip>
                   </h3>
@@ -1050,80 +1019,11 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {isLogModalOpen && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-          <div className="w-[500px] max-h-[600px] rounded-xl border border-white/10 bg-[#11131b] p-6 text-white shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">Activity Log</h3>
-              <button
-                onClick={() => setIsLogModalOpen(false)}
-                className="text-white/50 hover:text-white transition"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto border border-white/10 rounded-lg p-2 space-y-1 min-h-0">
-              {activityLogLoading ? (
-                <div className="flex items-center justify-center py-8 text-white/50 text-sm">
-                  Loading...
-                </div>
-              ) : activityLogData.length === 0 ? (
-                <div className="flex items-center justify-center py-8 text-white/50 text-sm">
-                  No activity recorded
-                </div>
-              ) : (
-                activityLogData.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-center justify-between px-3 py-2 bg-white/5 rounded hover:bg-white/10 transition cursor-pointer text-xs"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="text-white/40 text-xs w-16 text-right">
-                        {new Date(entry.timestamp * 1000).toLocaleTimeString()}
-                      </div>
-                      <div className="font-mono font-bold text-orange-400">
-                        {entry.frequency.toFixed(4)}
-                      </div>
-                      <div className="text-white/70 truncate">
-                        {entry.alpha_tag || '—'}
-                      </div>
-                      {entry.channel && (
-                        <div className="text-white/50 text-xs">
-                          CH{entry.channel}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-white/40">
-                      {entry.duration && (
-                        <span>{formatDuration(entry.duration)}</span>
-                      )}
-                      <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center" style={{
-                        backgroundColor: `rgba(255, 255, 255, ${Math.min(0.8, (entry.rssi / 100) + 0.2)})`
-                      }} />
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            {activityLogHasMore && activityLogData.length > 0 && (
-              <button
-                onClick={() => {
-                  const fetchData = async () => {
-                    const response = await fetch(`${API_BASE}/analytics/activity-log?limit=50&offset=${activityLogData.length}`);
-                    const data = await response.json();
-                    setActivityLogData([...activityLogData, ...data]);
-                    setActivityLogHasMore(data.length >= 50);
-                  };
-                  fetchData();
-                }}
-                className="mt-4 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm text-white/70 transition"
-              >
-                Load More
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <ActivityExportSheet
+        isOpen={isExportSheetOpen}
+        onClose={() => setIsExportSheetOpen(false)}
+        hasActivity={fullActivityLog.length > 0}
+      />
     </div>
   );
 }

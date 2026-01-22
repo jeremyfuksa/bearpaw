@@ -62,7 +62,7 @@ export const useStore = create<AppState>((set) => ({
   lastSequence: 0,
   memoryDrafts: {},
   memoryEditingIndex: null,
-  isDashboardMode: false,
+  isDashboardMode: true,
   isRecording: false,
 
   updateLiveState: (state, sequence) =>
