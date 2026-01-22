@@ -8,8 +8,8 @@ from typing import Any, Dict, Optional
 
 class PreferencesStore:
     DEFAULTS = {
-        "auto_connect": True,
-        "start_dashboard_mode": False,
+        "auto_connect": False,
+        "start_dashboard_mode": True,
         "check_updates": True,
         "recording_buffer_size": 30,
         "data_retention_days": 30,
