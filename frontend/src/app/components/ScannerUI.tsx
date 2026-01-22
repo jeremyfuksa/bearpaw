@@ -143,7 +143,7 @@ export function StatusHeader({
             className="bg-neutral-950 border border-white/10 text-white"
             arrowClassName="bg-neutral-950 fill-neutral-950"
           >
-            {isDashboardMode ? "Monitor view" : "Dashboard view"}
+            {isDashboardMode ? "Dashboard view" : "Monitor view"}
           </TooltipContent>
         </Tooltip>
         <button
