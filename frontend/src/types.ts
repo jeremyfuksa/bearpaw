@@ -92,6 +92,8 @@ export interface ActivityLogEntry {
   type: "hit" | "hold" | "manual";
   rssi?: number;
   hasAudio?: boolean;
+  duration?: number | null;
+  ended_at?: number | null;
 }
 
 export interface LockoutsResponse {
