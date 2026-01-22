@@ -20,20 +20,6 @@ import { useAPI } from "../../../api/useApi";
 import { useStore } from "../../../store/useStore";
 import { Slider } from "../ui/slider";
 import { Switch } from "../ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 
 type DeviceCategory =
   | "Sync"
