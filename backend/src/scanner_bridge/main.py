@@ -13,6 +13,8 @@ import uvicorn
 
 from scanner_bridge.api import create_app
 from scanner_bridge.config import AppConfig, load_config
+from scanner_bridge.middleware import add_cors_middleware
+from scanner_bridge.middleware import add_cors_middleware
 
 
 logger = logging.getLogger("scanner_bridge")
@@ -198,7 +200,8 @@ def main() -> None:
         print("Choose either --daemon or --foreground", file=sys.stderr)
         sys.exit(2)
 
-    app = create_app(config, port_override=args.port)
+     app = create_app(config, port_override=args.port)
+    add_cors_middleware(app)
     _install_access_log_filters()
     if args.foreground:
         asyncio.run(
