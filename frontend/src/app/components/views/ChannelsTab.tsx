@@ -495,6 +495,9 @@ export function ChannelsTab() {
                 const displayAlpha = isCleared
                   ? "—"
                   : (channel.alpha_tag || "—").trim() || "—";
+                const displayFrequency = isCleared
+                  ? "–"
+                  : channel.frequency.toFixed(4);
                 const displayModulation = isCleared
                   ? "AUTO"
                   : channel.modulation || "AUTO";
@@ -518,7 +521,7 @@ export function ChannelsTab() {
                     </div>
 
                     <div className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center">
-                      {channel.frequency.toFixed(4)}
+                      {displayFrequency}
                     </div>
                     <div className="font-medium text-white/80 truncate pl-1">
                       {displayAlpha}
