@@ -48,7 +48,7 @@ pip install pyinstaller
 # Build with PyInstaller
 echo "🔧 Building with PyInstaller..."
 pyinstaller --clean --noconfirm \
-  backend/packing/tauri/scanner-bridge-tauri.spec
+  backend/packaging/tauri/scanner-bridge-tauri.spec
 
 # Rename executable for Tauri externalBin
 DIST_DIR="$PROJECT_ROOT/backend/dist"
