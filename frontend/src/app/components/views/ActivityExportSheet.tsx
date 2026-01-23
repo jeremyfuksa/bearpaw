@@ -41,21 +41,6 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [exportMonth, setExportMonth] = useState<number>(new Date().getMonth() + 1);
-  const [exportDay, setExportDay] = useState<number>(new Date().getDate());
-  const [exportYear, setExportYear] = useState<number>(new Date().getFullYear());
-  const [endMonth, setEndMonth] = useState<number>(new Date().getMonth() + 1);
-  const [endDay, setEndDay] = useState<number>(new Date().getDate());
-  const [endYear, setEndYear] = useState<number>(new Date().getFullYear());
-
-  const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
-
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
 
   const getTimeframeLabel = (timeframe: Timeframe): string => {
     switch (timeframe) {
@@ -90,10 +75,8 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
       case "all":
         break;
       case "custom":
-        const start = new Date(exportYear, exportMonth - 1, exportDay);
-        const end = new Date(endYear, endMonth - 1, endDay);
-        params.append("start_time", String(getUnixTime(start)));
-        params.append("end_time", String(getUnixTime(end)));
+        params.append("start_time", String(getUnixTime(customStartDate)));
+        params.append("end_time", String(getUnixTime(customEndDate)));
         break;
     }
 
@@ -203,79 +186,21 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-white/70">Start Date</label>
-                      <div className="flex gap-2">
-                        <select
-                          value={exportMonth}
-                          onChange={(e) => setExportMonth(Number(e.target.value))}
-                          className="bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
-                        >
-                          {months.map((month, i) => (
-                            <option key={month} value={i + 1}>
-                              {month}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={exportDay}
-                          onChange={(e) => setExportDay(Number(e.target.value))}
-                          className="bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
-                        >
-                          {days.map((day) => (
-                            <option key={day} value={day}>
-                              {day}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={exportYear}
-                          onChange={(e) => setExportYear(Number(e.target.value))}
-                          className="bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
-                        >
-                          {years.map((year) => (
-                            <option key={year} value={year}>
-                              {year}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <input
+                        type="date"
+                        value={customStartDate ? customStartDate.toISOString().slice(0, 10) : ""}
+                        onChange={(e) => setCustomStartDate(e.target.value ? new Date(e.target.value) : null)}
+                        className="w-full bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-white/70">End Date</label>
-                      <div className="flex gap-2">
-                        <select
-                          value={endMonth}
-                          onChange={(e) => setEndMonth(Number(e.target.value))}
-                          className="bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
-                        >
-                          {months.map((month, i) => (
-                            <option key={month} value={i + 1}>
-                              {month}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={endDay}
-                          onChange={(e) => setEndDay(Number(e.target.value))}
-                          className="bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
-                        >
-                          {days.map((day) => (
-                            <option key={day} value={day}>
-                              {day}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          value={endYear}
-                          onChange={(e) => setEndYear(Number(e.target.value))}
-                          className="bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
-                        >
-                          {years.map((year) => (
-                            <option key={year} value={year}>
-                              {year}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <input
+                        type="date"
+                        value={customEndDate ? customEndDate.toISOString().slice(0, 10) : ""}
+                        onChange={(e) => setCustomEndDate(e.target.value ? new Date(e.target.value) : null)}
+                        className="w-full bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
+                      />
                     </div>
                   </div>
                 </div>
