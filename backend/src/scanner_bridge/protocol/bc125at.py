@@ -21,7 +21,9 @@ class BC125ATDriver(ScannerDriver):
         self._scheduler = scheduler
         self._mode = "SCAN"
         self._pre_program_mode: Optional[str] = None
-        self._program_mode_forced_hold = False  # Track if we forced HOLD for program mode
+        self._program_mode_forced_hold = (
+            False  # Track if we forced HOLD for program mode
+        )
         self._in_program_mode = False
         self.last_error: Optional[str] = None
         self._last_volume: int = 0
@@ -94,7 +96,38 @@ class BC125ATDriver(ScannerDriver):
             squelch_token = parts[4] if len(parts) > 4 else ""
             if squelch_token in ("0", "1"):
                 squelch_open = squelch_token == "0"
-        alpha_tag = parts[7] if len(parts) > 7 and parts[7] else None
+
+        alpha_tag = None
+        alpha_tag_candidates = []
+        if (
+            len(parts) > 7
+            and parts[7]
+            and not parts[7].isdigit()
+            and parts[7] not in ("FM", "AM", "NFM", "AUTO", "0", "1")
+        ):
+            alpha_tag_candidates.append((7, parts[7]))
+        if (
+            len(parts) > 8
+            and parts[8]
+            and not parts[8].isdigit()
+            and parts[8] not in ("FM", "AM", "NFM", "AUTO", "0", "1")
+        ):
+            alpha_tag_candidates.append((8, parts[8]))
+
+        if alpha_tag_candidates:
+            alpha_tag = alpha_tag_candidates[0][1]
+            self._logger.debug(
+                "GLG alpha_tag: candidates=%s, selected=parts[%d]=%s",
+                alpha_tag_candidates,
+                alpha_tag_candidates[0][0],
+                alpha_tag,
+            )
+        else:
+            self._logger.debug(
+                "GLG alpha_tag: no valid candidates found, parts[7]=%s, parts[8]=%s",
+                parts[7] if len(parts) > 7 else None,
+                parts[8] if len(parts) > 8 else None,
+            )
         channel = None
         for value in reversed(parts):
             if value.isdigit():
@@ -170,7 +203,9 @@ class BC125ATDriver(ScannerDriver):
             self.last_error = None
         else:
             self.last_error = response.strip() or "key_failed"
-            self._logger.warning("Key command failed (%s): %s", key_code, self.last_error)
+            self._logger.warning(
+                "Key command failed (%s): %s", key_code, self.last_error
+            )
         return ok
 
     async def set_volume(self, volume: int) -> bool:
@@ -271,7 +306,9 @@ class BC125ATDriver(ScannerDriver):
         lock_value = "1" if lock else "0"
         await self._enter_program_mode()
         try:
-            response = await self._send(f"KBP,{level},{lock_value}", PRIORITY_BACKGROUND)
+            response = await self._send(
+                f"KBP,{level},{lock_value}", PRIORITY_BACKGROUND
+            )
         finally:
             await self._exit_program_mode()
         return self._is_ok_response(response)
@@ -298,7 +335,9 @@ class BC125ATDriver(ScannerDriver):
         code_value = "1" if code_search else "0"
         await self._enter_program_mode()
         try:
-            response = await self._send(f"SCO,{delay},{code_value}", PRIORITY_BACKGROUND)
+            response = await self._send(
+                f"SCO,{delay},{code_value}", PRIORITY_BACKGROUND
+            )
         finally:
             await self._exit_program_mode()
         return self._is_ok_response(response)
@@ -332,7 +371,9 @@ class BC125ATDriver(ScannerDriver):
             await self._exit_program_mode()
         is_ok = self._is_ok_response(response)
         if not is_ok:
-            self._logger.warning("Close call set failed. Command: %s, Response: %s", command, response)
+            self._logger.warning(
+                "Close call set failed. Command: %s, Response: %s", command, response
+            )
         return is_ok
 
     async def get_service_search_groups(self) -> list[bool]:
@@ -350,14 +391,18 @@ class BC125ATDriver(ScannerDriver):
     async def get_custom_search_range(self, index: int) -> tuple[float, float]:
         return await self._get_custom_search_range(index, assume_program_mode=False)
 
-    async def set_custom_search_range(self, index: int, lower: float, upper: float) -> bool:
+    async def set_custom_search_range(
+        self, index: int, lower: float, upper: float
+    ) -> bool:
         if not 1 <= index <= 10:
             raise ValueError("search_range_invalid")
         lower_raw = int(round(lower * 10000))
         upper_raw = int(round(upper * 10000))
         await self._enter_program_mode()
         try:
-            response = await self._send(f"CSP,{index},{lower_raw},{upper_raw}", PRIORITY_BACKGROUND)
+            response = await self._send(
+                f"CSP,{index},{lower_raw},{upper_raw}", PRIORITY_BACKGROUND
+            )
         finally:
             await self._exit_program_mode()
         return self._is_ok_response(response)
@@ -387,7 +432,9 @@ class BC125ATDriver(ScannerDriver):
             await self._exit_program_mode()
         return self._is_ok_response(response)
 
-    async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
+    async def read_channel(
+        self, index: int, assume_program_mode: bool = False
+    ) -> ChannelData:
         if not assume_program_mode:
             await self._enter_program_mode()
         response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
@@ -441,7 +488,11 @@ class BC125ATDriver(ScannerDriver):
                 raise ValueError("channel_read_failed")
 
             has_bank = len(parts) >= 8 and parts[-1].isdigit() and int(parts[-1]) <= 10
-            template_freq = parts[1] if len(parts) > 1 and looks_like_frequency(parts[1]) else parts[0]
+            template_freq = (
+                parts[1]
+                if len(parts) > 1 and looks_like_frequency(parts[1])
+                else parts[0]
+            )
             tone_value = format_tone_value(channel.tone_squelch)
 
             values = [
@@ -460,18 +511,27 @@ class BC125ATDriver(ScannerDriver):
             self._logger.info("CIN write: %s", write_command)
             write_response = await self._send(write_command, PRIORITY_BACKGROUND)
             self._logger.info("CIN write response: %s", write_response.strip())
-            if not self._is_ok_response(write_response) and "OK" not in write_response.upper():
+            if (
+                not self._is_ok_response(write_response)
+                and "OK" not in write_response.upper()
+            ):
                 raise ValueError(write_response.strip() or "channel_write_failed")
 
             response = await self._send(f"CIN,{channel.index}", PRIORITY_BACKGROUND)
             self._logger.info("CIN readback: %s", response.strip())
             updated = self._parse_channel_response(channel.index, response)
-            if updated.priority != channel.priority or updated.lockout != channel.lockout:
+            if (
+                updated.priority != channel.priority
+                or updated.lockout != channel.lockout
+            ):
                 await asyncio.sleep(0.2)
                 response = await self._send(f"CIN,{channel.index}", PRIORITY_BACKGROUND)
                 self._logger.info("CIN readback retry: %s", response.strip())
                 updated = self._parse_channel_response(channel.index, response)
-            if updated.priority != channel.priority or updated.lockout != channel.lockout:
+            if (
+                updated.priority != channel.priority
+                or updated.lockout != channel.lockout
+            ):
                 raise ValueError("channel_write_mismatch")
             return updated
         finally:
@@ -502,11 +562,12 @@ class BC125ATDriver(ScannerDriver):
                 parts.append("")
             name, freq, mod, tone, delay, lockout, priority = parts[:7]
             lockout_value = "0" if lockout == "1" else "1"
-            write_command = (
-                f"CIN,{index},{name},{freq},{mod},{tone},{delay},{lockout_value},{priority}"
-            )
+            write_command = f"CIN,{index},{name},{freq},{mod},{tone},{delay},{lockout_value},{priority}"
             write_response = await self._send(write_command, PRIORITY_BACKGROUND)
-            if not self._is_ok_response(write_response) and "OK" not in write_response.upper():
+            if (
+                not self._is_ok_response(write_response)
+                and "OK" not in write_response.upper()
+            ):
                 raise ValueError(write_response.strip() or "lockout_failed")
             response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
             return self._parse_channel_response(index, response)
@@ -526,11 +587,12 @@ class BC125ATDriver(ScannerDriver):
                 parts.append("")
             name, freq, mod, tone, delay, lockout, priority = parts[:7]
             lockout_value = "1" if locked else "0"
-            write_command = (
-                f"CIN,{index},{name},{freq},{mod},{tone},{delay},{lockout_value},{priority}"
-            )
+            write_command = f"CIN,{index},{name},{freq},{mod},{tone},{delay},{lockout_value},{priority}"
             write_response = await self._send(write_command, PRIORITY_BACKGROUND)
-            if not self._is_ok_response(write_response) and "OK" not in write_response.upper():
+            if (
+                not self._is_ok_response(write_response)
+                and "OK" not in write_response.upper()
+            ):
                 raise ValueError(write_response.strip() or "lockout_failed")
             response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
             return self._parse_channel_response(index, response)
@@ -542,7 +604,9 @@ class BC125ATDriver(ScannerDriver):
         try:
             locked = await self._is_frequency_locked(frequency_raw)
             command = "ULF" if locked else "LOF"
-            response = await self._send(f"{command},{frequency_raw}", PRIORITY_BACKGROUND)
+            response = await self._send(
+                f"{command},{frequency_raw}", PRIORITY_BACKGROUND
+            )
             if not self._is_ok_response(response) and "OK" not in response.upper():
                 raise ValueError(response.strip() or "lockout_failed")
             result = await self._is_frequency_locked(frequency_raw)
@@ -572,7 +636,9 @@ class BC125ATDriver(ScannerDriver):
         await self._enter_program_mode()
         try:
             command = "LOF" if locked else "ULF"
-            response = await self._send(f"{command},{frequency_raw}", PRIORITY_BACKGROUND)
+            response = await self._send(
+                f"{command},{frequency_raw}", PRIORITY_BACKGROUND
+            )
             if not self._is_ok_response(response) and "OK" not in response.upper():
                 raise ValueError(response.strip() or "lockout_failed")
             return True
@@ -721,8 +787,12 @@ class BC125ATDriver(ScannerDriver):
             priority = await self._get_priority_mode(assume_program_mode=True)
             search = await self._get_search_settings(assume_program_mode=True)
             close_call = await self._get_close_call_settings(assume_program_mode=True)
-            service_search = await self._get_group_flags("SSG", 10, assume_program_mode=True)
-            custom_search = await self._get_group_flags("CSG", 10, assume_program_mode=True)
+            service_search = await self._get_group_flags(
+                "SSG", 10, assume_program_mode=True
+            )
+            custom_search = await self._get_group_flags(
+                "CSG", 10, assume_program_mode=True
+            )
             custom_ranges = [
                 await self._get_custom_search_range(index, assume_program_mode=True)
                 for index in range(1, 11)
@@ -786,10 +856,18 @@ class BC125ATDriver(ScannerDriver):
         bank = 0
 
         modes = {"FM", "AM", "NFM", "AUTO"}
-        mod_index = next((idx for idx, value in enumerate(parts) if value.upper() in modes), None)
-        format_kind = "name-first" if (
-            len(parts) >= 2 and looks_like_frequency(parts[1]) and not looks_like_frequency(parts[0])
-        ) else "freq-mod-tag"
+        mod_index = next(
+            (idx for idx, value in enumerate(parts) if value.upper() in modes), None
+        )
+        format_kind = (
+            "name-first"
+            if (
+                len(parts) >= 2
+                and looks_like_frequency(parts[1])
+                and not looks_like_frequency(parts[0])
+            )
+            else "freq-mod-tag"
+        )
         if format_kind == "freq-mod-tag" and mod_index == 2 and len(parts) > 1:
             if looks_like_frequency(parts[0]) and looks_like_frequency(parts[1]):
                 format_kind = "freq-tone-mod-tag"
@@ -907,7 +985,9 @@ class BC125ATDriver(ScannerDriver):
         parts = self._parse_command_parts(response, "BSV")
         return int(parts[0]) if parts and parts[0].isdigit() else 0
 
-    async def _get_key_beep_settings(self, assume_program_mode: bool) -> tuple[int, bool]:
+    async def _get_key_beep_settings(
+        self, assume_program_mode: bool
+    ) -> tuple[int, bool]:
         if not assume_program_mode:
             await self._enter_program_mode()
         try:
@@ -963,7 +1043,9 @@ class BC125ATDriver(ScannerDriver):
         lockout = parts[4] == "1" if len(parts) > 4 else False
         return mode, alert_beep, alert_light, band, lockout
 
-    async def _get_group_flags(self, command: str, length: int, assume_program_mode: bool) -> list[bool]:
+    async def _get_group_flags(
+        self, command: str, length: int, assume_program_mode: bool
+    ) -> list[bool]:
         if not assume_program_mode:
             await self._enter_program_mode()
         try:

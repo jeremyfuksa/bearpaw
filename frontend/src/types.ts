@@ -65,6 +65,7 @@ export interface EventMessage {
     frequency?: number;
     channel?: number;
     alpha_tag?: string;
+    rssi?: number;
     duration?: number;
     message?: string;
   };

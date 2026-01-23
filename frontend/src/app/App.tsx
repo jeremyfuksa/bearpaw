@@ -139,6 +139,7 @@ export default function App() {
   const syncStartedRef = useRef(false);
   const lastHitOpenRef = useRef(false);
   const squelchOpenStartTimeRef = useRef<number | null>(null);
+  const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
   const analyticsLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -191,16 +192,11 @@ export default function App() {
           lastHitOpenRef.current = true;
         } else if (!squelchOpen && lastHitOpenRef.current) {
           const duration = payload.timestamp - (squelchOpenStartTimeRef.current || payload.timestamp);
-          if (duration >= preferences.hitMinDuration && squelchOpenStartTimeRef.current !== null) {
+          if (duration >= preferences.hitMinDuration && squelchOpenStartTimeRef.current !== null && currentHitDataRef.current) {
             const entry: ActivityLogEntry = {
+              ...currentHitDataRef.current,
               id: `${squelchOpenStartTimeRef.current}-${payload.sequence}`,
               timestamp: squelchOpenStartTimeRef.current,
-              frequency: liveState?.frequency ?? 0,
-              channel: liveState?.channel ?? null,
-              alpha_tag: liveState?.alpha_tag ?? null,
-              type: "hit",
-              rssi: liveState?.rssi,
-              hasAudio: isRecording,
               duration,
               ended_at: payload.timestamp,
             };
@@ -208,6 +204,7 @@ export default function App() {
             addToFullActivityLog(entry);
           }
           squelchOpenStartTimeRef.current = null;
+          currentHitDataRef.current = null;
           lastHitOpenRef.current = false;
         }
       }
@@ -217,6 +214,21 @@ export default function App() {
       const payload = message as EventMessage;
       if (payload.event === "state_stale") {
         updateLiveState({ stale: true });
+      }
+      if (payload.event === "scan_hit") {
+        squelchOpenStartTimeRef.current = payload.timestamp;
+        currentHitDataRef.current = {
+          id: `${payload.timestamp}-pending`,
+          timestamp: payload.timestamp,
+          frequency: payload.data.frequency ?? 0,
+          channel: payload.data.channel ?? null,
+          alpha_tag: payload.data.alpha_tag ?? null,
+          type: "hit",
+          rssi: payload.data.rssi,
+          hasAudio: isRecording,
+          duration: 0,
+          ended_at: 0,
+        };
       }
     });
 

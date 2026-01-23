@@ -82,6 +82,11 @@ class AnalyticsConfig(BaseModel):
     min_hit_duration: float = 1.0
 
 
+class LoggingConfig(BaseModel):
+    level: str = "INFO"
+    format: str = "%(levelname)s %(message)s"
+
+
 class RecordingConfig(BaseModel):
     enabled: bool = False
     output_path: str = "./recordings"
@@ -100,6 +105,7 @@ class AppConfig(BaseModel):
     state: StateConfig = Field(default_factory=StateConfig)
     exporters: ExporterConfig = Field(default_factory=ExporterConfig)
     analytics: AnalyticsConfig = Field(default_factory=AnalyticsConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 def load_config(path: Optional[str]) -> AppConfig:
