@@ -147,6 +147,8 @@ export default function App() {
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
   const analyticsLoadedRef = useRef(false);
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSyncCompletedRef = useRef<number>(0);
+  const SYNC_FRESHNESS_MS = 5 * 60 * 1000; // 5 minutes
 
   useEffect(() => {
     setConnected(connected);
@@ -264,8 +266,10 @@ export default function App() {
         console.debug("[Progress] Sync complete, processing...");
         syncInProgressRef.current = false;
         setIsMemorySyncing(false);
+        lastSyncCompletedRef.current = Date.now();
+        console.debug("[Progress] Last sync completed timestamp set", { timestamp: lastSyncCompletedRef.current });
 
-        // Check for PGM mode with a timeout to account for mode transitions
+        // Double-check PGM mode after a delay to account for mode transitions
         programModeEntryTimeoutRef.current = setTimeout(() => {
           const normalizedMode = (liveState?.mode ?? "").toString().trim().toUpperCase();
           console.debug("[Progress] Checking PGM mode", { mode: liveState?.mode, normalized: normalizedMode, isPGM: normalizedMode === "PGM" });
@@ -549,6 +553,7 @@ export default function App() {
         isInProgramMode,
         isMemorySyncing,
         pendingTab,
+        timeSinceLastSync: Date.now() - lastSyncCompletedRef.current,
       });
 
       if (newTab === "Scan") {
@@ -564,8 +569,16 @@ export default function App() {
       }
 
       if (newTab === "Device" || newTab === "Channels") {
-        if (isInProgramMode || isMemorySyncing) {
-          console.debug("[Tab] Direct tab switch allowed", { newTab, isInProgramMode, isMemorySyncing });
+        const timeSinceLastSync = Date.now() - lastSyncCompletedRef.current;
+        const isRecentSync = timeSinceLastSync < SYNC_FRESHNESS_MS && timeSinceLastSync > 0;
+        console.debug("[Tab] Checking sync freshness", {
+          timeSinceLastSync,
+          isRecentSync,
+          threshold: SYNC_FRESHNESS_MS,
+        });
+
+        if (isInProgramMode || isMemorySyncing || isRecentSync) {
+          console.debug("[Tab] Direct tab switch allowed", { newTab, isInProgramMode, isMemorySyncing, isRecentSync });
           setCurrentTab(newTab);
         } else if (currentTab !== newTab) {
           console.debug("[Tab] Setting up program mode", { newTab, pendingTab: newTab });
