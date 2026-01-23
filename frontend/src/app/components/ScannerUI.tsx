@@ -36,7 +36,7 @@ export function TabNav({
   connectionStatus,
   modelName = "BC125AT",
 }: TabNavProps) {
-  const tabs = ["Scan", "Device", "Channels"];
+  const tabs = ["Scan", "Search", "Device", "Channels"];
   const { statusColor, statusText } = getStatusDisplay(
     connectionStatus,
     modelName,
