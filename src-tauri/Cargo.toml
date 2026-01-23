@@ -1,24 +1,24 @@
 [package]
-name = "uniden-scanner-bridge"
+name = "scanner-bridge-desktop"
 version = "1.0.0"
-description = "Uniden Scanner Bridge - Cross-platform scanner control"
-authors = ["Scanner Bridge"]
-license = "MIT"
-repository = ""
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rodio = "0.17"
-symphonia = { version = "0.5", features = ["wav"] }
-tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+cpal = "0.15"
+hound = "3.5"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
+thiserror = "1"
+dirs = "5"
 
 [features]
 default = ["custom-protocol"]
