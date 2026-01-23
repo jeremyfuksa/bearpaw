@@ -54,10 +54,11 @@ import { DeviceTab } from "./components/views/DeviceTab";
 import { ChannelsTab } from "./components/views/ChannelsTab";
 import { ActivityExportSheet } from "./components/views/ActivityExportSheet";
 import { ProgramModeSheet } from "./components/views/ProgramModeSheet";
+import { SearchTab } from "./components/views/SearchTab";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "/api/v1";
 
-export type Tab = "Scan" | "Device" | "Channels";
+export type Tab = "Scan" | "Search" | "Device" | "Channels";
 export type ConnectionStatus = "connected" | "connecting" | "disconnected";
 export type ScannerMode = "SCAN" | "HOLD" | "SEARCH" | "CLOSE_CALL";
 
@@ -578,6 +579,12 @@ export default function App() {
         }
         setCurrentTab(newTab);
         setIsInProgramMode(false);
+        return;
+      }
+
+      // Search tab doesn't require program mode
+      if (newTab === "Search") {
+        setCurrentTab(newTab);
         return;
       }
 
@@ -1223,6 +1230,7 @@ export default function App() {
           )}
 
           {currentTab === "Device" && <DeviceTab />}
+          {currentTab === "Search" && <SearchTab />}
           {currentTab === "Channels" && <ChannelsTab />}
         </AnimatePresence>
       </div>
