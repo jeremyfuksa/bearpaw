@@ -83,8 +83,7 @@ export function DeviceTab() {
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState("AO");
   const [contrast, setContrast] = useState(7);
-  const [keyBeepMode, setKeyBeepMode] = useState<"auto" | "manual" | "off">("auto");
-  const [keyBeepLevel, setKeyBeepLevel] = useState(1);
+  const [keyBeepMode, setKeyBeepMode] = useState<"auto" | "off">("auto");
   const [priorityMode, setPriorityMode] = useState("off");
   const [weatherAlert, setWeatherAlert] = useState(false);
   const [keyBeepLock, setKeyBeepLock] = useState(false);
@@ -380,11 +379,8 @@ export function DeviceTab() {
       setKeyBeepLock(Boolean(res.lock));
       if (res.level === 99) {
         setKeyBeepMode("off");
-      } else if (res.level === 0) {
-        setKeyBeepMode("auto");
       } else {
-        setKeyBeepMode("manual");
-        setKeyBeepLevel(res.level);
+        setKeyBeepMode("auto");
       }
       return res;
     } catch (error) {
@@ -400,7 +396,7 @@ export function DeviceTab() {
       try {
         await api.setKeyBeepSettings(level, keyBeepLock);
         const refreshed = await refreshKeyBeep();
-        console.debug("Key beep refresh result (1)", refreshed);
+        console.debug("Key beep refresh result", refreshed);
 
         if (!refreshed) {
           toast.error("Failed to set key beep");
@@ -409,35 +405,13 @@ export function DeviceTab() {
 
         if (
           (level === 99 && refreshed.level === 99) ||
-          (level === 0 && refreshed.level === 0) ||
-          (level > 0 && level < 99 && refreshed.level > 0 && refreshed.level < 99)
+          (level === 0 && refreshed.level === 0)
         ) {
           console.debug("Key beep verification passed");
           return;
         }
 
-        console.debug("First verification failed, trying second refresh after delay...");
-        await new Promise(resolve => setTimeout(resolve, 100));
-        const refreshed2 = await refreshKeyBeep();
-        console.debug("Key beep refresh result (2)", refreshed2);
-        console.debug("Verification", {
-          requested: level,
-          actual: refreshed2?.level,
-          offCheck: level === 99 && refreshed2?.level === 99,
-          autoCheck: level === 0 && refreshed2?.level === 0,
-          manualCheck: level > 0 && level < 99 && refreshed2?.level > 0 && refreshed2?.level < 99,
-        });
-
-        if (
-          (level === 99 && refreshed2.level === 99) ||
-          (level === 0 && refreshed2.level === 0) ||
-          (level > 0 && level < 99 && refreshed2.level > 0 && refreshed2.level < 99)
-        ) {
-          console.debug("Key beep verification passed on retry");
-          return;
-        }
-
-        console.error("Key beep verification failed after retry", { requested: level, actual: refreshed2?.level });
+        console.error("Key beep verification failed", { requested: level, actual: refreshed.level });
         toast.error("Failed to set key beep");
       } catch (error) {
         console.error("Failed to set key beep", { payload, error });
@@ -448,21 +422,13 @@ export function DeviceTab() {
   );
 
   const handleKeyBeepModeChange = useCallback(
-    async (value: "auto" | "manual" | "off") => {
+    async (value: "auto" | "off") => {
       setKeyBeepMode(value);
-      const level = value === "off" ? 99 : value === "auto" ? 0 : keyBeepLevel;
+      const level = value === "off" ? 99 : 0;
       await applyKeyBeep(level);
     },
-    [applyKeyBeep, keyBeepLevel],
+    [applyKeyBeep],
   );
-
-  const handleKeyBeepLevelChange = useCallback(async (value: number[]) => {
-    const level = value[0];
-    setKeyBeepLevel(level);
-    if (keyBeepMode === "manual") {
-      await applyKeyBeep(level);
-    }
-  }, [applyKeyBeep, keyBeepMode]);
 
   const handlePriorityModeChange = useCallback(async (value: string) => {
     setPriorityMode(value);
@@ -899,28 +865,15 @@ export function DeviceTab() {
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
                     <span className="text-xs font-medium text-white/70">Key Beep</span>
-                    <div className="flex items-center gap-2">
-                      <Select value={keyBeepMode} onValueChange={(val) => handleKeyBeepModeChange(val as "auto" | "manual" | "off")}>
-                        <SelectTrigger className="w-[80px] h-7 text-xs bg-black/20 border-white/10">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
-                          <SelectItem value="off">Off</SelectItem>
-                          <SelectItem value="auto">Auto</SelectItem>
-                          <SelectItem value="manual">Manual</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {keyBeepMode === "manual" && (
-                        <Slider
-                          value={[keyBeepLevel]}
-                          min={1}
-                          max={15}
-                          step={1}
-                          onValueChange={handleKeyBeepLevelChange}
-                          className="w-[100px]"
-                        />
-                      )}
-                    </div>
+                    <Select value={keyBeepMode} onValueChange={(val) => handleKeyBeepModeChange(val as "auto" | "off")}>
+                      <SelectTrigger className="w-[100px] h-7 text-xs bg-black/20 border-white/10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                        <SelectItem value="off">Off</SelectItem>
+                        <SelectItem value="auto">Auto</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
