@@ -189,13 +189,7 @@ export function DeviceTab() {
         }
         if (settings.key_beep) {
           setKeyBeepLock(Boolean(settings.key_beep.lock));
-          if (settings.key_beep.level === 99) {
-            setKeyBeepMode("off");
-          } else if (settings.key_beep.level === 0) {
-            setKeyBeepMode("auto");
-          } else {
-            setKeyBeepMode("low");
-          }
+          setKeyBeepEnabled(settings.key_beep.level !== 99);
         }
         if (settings.priority) {
           const priorityMap: Record<number, string> = { 0: "off", 1: "on", 2: "plus" };
