@@ -54,11 +54,10 @@ import { DeviceTab } from "./components/views/DeviceTab";
 import { ChannelsTab } from "./components/views/ChannelsTab";
 import { ActivityExportSheet } from "./components/views/ActivityExportSheet";
 import { ProgramModeSheet } from "./components/views/ProgramModeSheet";
-import { SearchTab } from "./components/views/SearchTab";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "/api/v1";
 
-export type Tab = "Scan" | "Search" | "Device" | "Channels";
+export type Tab = "Scan" | "Device" | "Channels";
 export type ConnectionStatus = "connected" | "connecting" | "disconnected";
 export type ScannerMode = "SCAN" | "HOLD" | "SEARCH" | "CLOSE_CALL";
 
@@ -247,58 +246,43 @@ export default function App() {
         /sync complete/i.test(payload.message) ||
         /sync cancelled/i.test(payload.message);
 
-      console.debug("[Progress] Message received", {
-        percent: payload.percent,
-        message: payload.message,
-        isComplete,
-        syncInProgress: syncInProgressRef.current,
-        pendingTab,
-      });
-
       // Detect auto-sync that we didn't initiate and set ref to true
       if (!syncInProgressRef.current && !isComplete && payload.message.includes("Syncing channel")) {
-        console.debug("[Progress] Auto-sync detected, setting syncInProgressRef to true");
         syncInProgressRef.current = true;
         setIsMemorySyncing(true);
       }
 
       if (isComplete && syncInProgressRef.current) {
-        console.debug("[Progress] Sync complete, processing...");
         syncInProgressRef.current = false;
         setIsMemorySyncing(false);
         hasSyncedInSessionRef.current = true;
-        console.debug("[Progress] Session sync flag set to true");
 
         // Double-check PGM mode after a delay to account for mode transitions
         programModeEntryTimeoutRef.current = setTimeout(() => {
           const normalizedMode = (liveState?.mode ?? "").toString().trim().toUpperCase();
-          console.debug("[Progress] Checking PGM mode", { mode: liveState?.mode, normalized: normalizedMode, isPGM: normalizedMode === "PGM" });
           setIsInProgramMode(normalizedMode === "PGM");
         }, 500);
 
         api
           .getChannels()
-          .then((channelData) => {
-            console.debug("[Progress] Channels fetched", channelData.length);
-            setChannels(channelData);
-          })
+          .then((channelData) => setChannels(channelData))
           .then(() => {
-            console.debug("[Progress] About to check pendingTab", { pendingTab });
             if (pendingTab) {
-              console.debug("[Progress] Switching to pending tab", pendingTab);
               setCurrentTab(pendingTab);
               setIsProgramModeSheetOpen(false);
               setPendingTab(null);
-              console.debug("[Progress] Sheet should be closed now");
-            } else {
-              console.debug("[Progress] No pending tab to switch to");
+              return;
+            }
+            if (currentTab === "Scan") {
+              api.sendScan().catch((error) => {
+                console.warn("Failed to resume scan after sync", error);
+                toast.error("Failed to resume scan");
+              });
             }
           })
           .catch((error) =>
             console.warn("[Progress] Failed to refresh channels after sync", error),
           );
-      } else {
-        console.debug("[Progress] Not processing - conditions not met", { isComplete, syncInProgress: syncInProgressRef.current });
       }
     });
 
@@ -310,7 +294,7 @@ export default function App() {
         clearTimeout(programModeEntryTimeoutRef.current);
       }
     };
-  }, [addActivityLogEntry, addToFullActivityLog, api, isRecording, setChannels, updateLiveState, ws, liveState?.mode]);
+  }, [addActivityLogEntry, addToFullActivityLog, api, currentTab, isRecording, setChannels, updateLiveState, ws, liveState?.mode]);
 
   useEffect(() => {
     let active = true;
@@ -392,23 +376,18 @@ export default function App() {
 
   const handleMemorySync = useCallback(async () => {
     if (syncInProgressRef.current || isMemorySyncing) {
-      console.debug("[Sync] Already syncing, ignoring request");
       return;
     }
-    console.debug("[Sync] Starting memory sync");
     setIsMemorySyncing(true);
     try {
       const result = await api.syncMemory({ force: true });
-      console.debug("[Sync] API result", result);
       if (result.status === "already_running") {
         syncInProgressRef.current = true;
-        console.debug("[Sync] Sync already running");
         return;
       }
       toast.success("Channel sync started");
       syncInProgressRef.current = true;
       hasSyncedInSessionRef.current = false; // Reset session flag for manual sync
-      console.debug("[Sync] Sync started, ref set to true, session flag reset");
     } catch (error) {
       console.warn("Failed to start channel sync", error);
       toast.error("Unable to start channel sync");
@@ -417,7 +396,6 @@ export default function App() {
   }, [api, isMemorySyncing]);
 
   const handleEnterProgramMode = useCallback(() => {
-    console.debug("[Program Mode] Enter program mode requested", { pendingTab });
     handleMemorySync();
   }, [handleMemorySync]);
 
@@ -522,14 +500,9 @@ export default function App() {
     };
   }, [currentTab]);
 
-  useEffect(() => {
-    console.debug("[State] isProgramModeSheetOpen changed", isProgramModeSheetOpen);
-  }, [isProgramModeSheetOpen]);
-
   // Listen for manual refresh requests from Device/Channels tabs
   useEffect(() => {
     const handleSyncRequest = () => {
-      console.debug("[App] Manual sync request received");
       handleMemorySync();
     };
 
@@ -561,15 +534,6 @@ export default function App() {
   const handleTabChange = useCallback(
     (tab: string) => {
       const newTab = tab as Tab;
-      console.debug("[Tab] Change requested", {
-        newTab,
-        currentTab,
-        isInProgramMode,
-        isMemorySyncing,
-        pendingTab,
-        hasSyncedInSession: hasSyncedInSessionRef.current,
-      });
-
       if (newTab === "Scan") {
         if (isInProgramMode) {
           api.sendScan().catch((error) => {
@@ -582,18 +546,10 @@ export default function App() {
         return;
       }
 
-      // Search tab doesn't require program mode
-      if (newTab === "Search") {
-        setCurrentTab(newTab);
-        return;
-      }
-
       if (newTab === "Device" || newTab === "Channels") {
         if (isInProgramMode || isMemorySyncing || hasSyncedInSessionRef.current) {
-          console.debug("[Tab] Direct tab switch allowed", { newTab, isInProgramMode, isMemorySyncing, hasSyncedInSession: hasSyncedInSessionRef.current });
           setCurrentTab(newTab);
         } else if (currentTab !== newTab) {
-          console.debug("[Tab] Setting up program mode", { newTab, pendingTab: newTab });
           setPendingTab(newTab);
           setIsProgramModeSheetOpen(true);
         }
@@ -642,6 +598,7 @@ export default function App() {
       setToggleBusy(false);
     }
   }, [api, connected, getScannerMode, toggleBusy]);
+
 
   const triggerTemporaryLockout = useCallback(async () => {
     if (!connected) return;
@@ -1230,7 +1187,6 @@ export default function App() {
           )}
 
           {currentTab === "Device" && <DeviceTab />}
-          {currentTab === "Search" && <SearchTab />}
           {currentTab === "Channels" && <ChannelsTab />}
         </AnimatePresence>
       </div>
