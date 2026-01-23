@@ -184,7 +184,7 @@ export function ChannelsTab() {
     >
       {/* Side Nav: Banks */}
       <div className="w-[160px] flex flex-col gap-1 bg-black/20 rounded-lg p-2 border border-white/5 h-full overflow-y-auto shrink-0">
-        <h3 className="px-3 py-2 text-xs font-bold text-white/40 uppercase tracking-wider sticky top-0 bg-scanner-bg-dark/90 backdrop-blur-sm z-10">
+        <h3 className="px-3 py-2 text-xs font-bold text-white/40 uppercase tracking-wider sticky top-0 bg-[#1c1f26]/90 backdrop-blur-sm z-10">
           Bank Select
         </h3>
         {bankTabs.map((bank) => (
