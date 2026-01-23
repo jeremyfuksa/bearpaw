@@ -1,0 +1,71 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - 'frontend/node_modules'
+      - 'frontend/.nitro'
+      - 'frontend/playwright-report'
+      - 'frontend/coverage'
+      - 'backend/.venv'
+      - 'backend/__pycache__'
+      '*.egg-info'
+      '*.dist'
+      'build'
+      'dist-ssr'
+
+jobs:
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        run: |
+          cd backend
+          python -m venv create -p requirements.txt
+          source .venv/bin/activate
+          pip install -e .
+      - name: Run backend tests
+        run: |
+          cd backend
+          source .venv/bin/activate
+          python -m unittest discover -s tests -v
+
+  test-frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Node.js
+        run: |
+          cd frontend
+          npm ci
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test --run
+
+  test-coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: test-backend
+    needs: test-frontend
+    steps:
+      - name: Backend coverage
+        run: |
+          cd backend
+          source .venv/bin/activate
+          coverage run --source=scanner_bridge -m unittest discover -s tests
+          coverage xml
+      - name: Frontend coverage
+        run: |
+          cd frontend
+          npm run test:coverage
+      - name: Upload coverage reports
+        run: |
+          echo "Coverage upload not configured"
