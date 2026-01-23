@@ -53,6 +53,7 @@ import type {
 import { DeviceTab } from "./components/views/DeviceTab";
 import { ChannelsTab } from "./components/views/ChannelsTab";
 import { ActivityExportSheet } from "./components/views/ActivityExportSheet";
+import { ProgramModeSheet } from "./components/views/ProgramModeSheet";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "/api/v1";
 
@@ -135,6 +136,9 @@ export default function App() {
   const [isMemorySyncing, setIsMemorySyncing] = useState(false);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [preferencesLoading, setPreferencesLoading] = useState(false);
+  const [isProgramModeSheetOpen, setIsProgramModeSheetOpen] = useState(false);
+  const [isInProgramMode, setIsInProgramMode] = useState(false);
+  const [pendingTab, setPendingTab] = useState<Tab | null>(null);
 
   const syncInProgressRef = useRef(false);
   const syncStartedRef = useRef(false);
@@ -142,6 +146,7 @@ export default function App() {
   const squelchOpenStartTimeRef = useRef<number | null>(null);
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
   const analyticsLoadedRef = useRef(false);
+  const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setConnected(connected);
@@ -242,10 +247,23 @@ export default function App() {
       if (isComplete && syncInProgressRef.current) {
         syncInProgressRef.current = false;
         setIsMemorySyncing(false);
+
+        // Check for PGM mode with a timeout to account for mode transitions
+        programModeEntryTimeoutRef.current = setTimeout(() => {
+          const normalizedMode = (liveState?.mode ?? "").toString().trim().toUpperCase();
+          setIsInProgramMode(normalizedMode === "PGM");
+        }, 500);
+
         api
           .getChannels()
           .then((channelData) => setChannels(channelData))
-          .then(() => api.sendScan())
+          .then(() => {
+            if (pendingTab) {
+              setCurrentTab(pendingTab);
+              setIsProgramModeSheetOpen(false);
+              setPendingTab(null);
+            }
+          })
           .catch((error) =>
             console.warn("Failed to refresh channels after sync", error),
           );
@@ -256,8 +274,11 @@ export default function App() {
       unsubscribeState();
       unsubscribeEvent();
       unsubscribeProgress();
+      if (programModeEntryTimeoutRef.current) {
+        clearTimeout(programModeEntryTimeoutRef.current);
+      }
     };
-  }, [addActivityLogEntry, addToFullActivityLog, api, isRecording, setChannels, updateLiveState, ws]);
+  }, [addActivityLogEntry, addToFullActivityLog, api, isRecording, setChannels, updateLiveState, ws, liveState?.mode]);
 
   useEffect(() => {
     let active = true;
@@ -356,6 +377,10 @@ export default function App() {
       setIsMemorySyncing(false);
     }
   }, [api, isMemorySyncing]);
+
+  const handleEnterProgramMode = useCallback(() => {
+    handleMemorySync();
+  }, [handleMemorySync]);
 
   useEffect(() => {
     let active = true;
@@ -458,12 +483,51 @@ export default function App() {
     };
   }, [currentTab]);
 
+  useEffect(() => {
+    // Don't track mode changes during sync completion to avoid race conditions
+    if (isMemorySyncing) return;
+
+    const normalizedMode = (liveState?.mode ?? "").toString().trim().toUpperCase();
+    const isProgramModeNow = normalizedMode === "PGM";
+
+    if (isProgramModeNow !== isInProgramMode) {
+      setIsInProgramMode(isProgramModeNow);
+    }
+  }, [liveState?.mode, isInProgramMode, isMemorySyncing]);
+
   const getConnectionStatus = useCallback((): ConnectionStatus => {
     if (!connected || deviceInfo?.connection_status === "disconnected" || liveState?.stale)
       return "disconnected";
     if (connecting) return "connecting";
     return "connected";
   }, [connected, connecting, deviceInfo, liveState]);
+
+  const handleTabChange = useCallback(
+    (tab: string) => {
+      const newTab = tab as Tab;
+      if (newTab === "Scan") {
+        if (isInProgramMode) {
+          api.sendScan().catch((error) => {
+            console.warn("Failed to exit program mode", error);
+            toast.error("Failed to exit program mode");
+          });
+        }
+        setCurrentTab(newTab);
+        setIsInProgramMode(false);
+        return;
+      }
+
+      if (newTab === "Device" || newTab === "Channels") {
+        if (isInProgramMode || isMemorySyncing) {
+          setCurrentTab(newTab);
+        } else if (currentTab !== newTab) {
+          setPendingTab(newTab);
+          setIsProgramModeSheetOpen(true);
+        }
+      }
+    },
+    [isInProgramMode, isMemorySyncing, currentTab, api],
+  );
 
   const getScannerMode = () => {
     const normalized = (liveState?.mode ?? "").toString().trim().toUpperCase();
@@ -764,7 +828,7 @@ export default function App() {
       <div className="px-6 pt-4 pb-2">
         <TabNav
           currentTab={currentTab}
-          onTabChange={(tab) => setCurrentTab(tab as Tab)}
+          onTabChange={handleTabChange}
           connectionStatus={getConnectionStatus()}
           modelName={deviceInfo?.model || "BC125AT"}
         />
@@ -1092,12 +1156,7 @@ export default function App() {
               </motion.div>
           )}
 
-          {currentTab === "Device" && (
-            <DeviceTab
-              isMemorySyncing={isMemorySyncing}
-              onMemorySync={handleMemorySync}
-            />
-          )}
+          {currentTab === "Device" && <DeviceTab />}
           {currentTab === "Channels" && <ChannelsTab />}
         </AnimatePresence>
       </div>
@@ -1106,6 +1165,12 @@ export default function App() {
         isOpen={isExportSheetOpen}
         onClose={() => setIsExportSheetOpen(false)}
         hasActivity={fullActivityLog.length > 0}
+      />
+      <ProgramModeSheet
+        isOpen={isProgramModeSheetOpen}
+        onClose={() => setIsProgramModeSheetOpen(false)}
+        isSyncing={isMemorySyncing}
+        onEnterProgramMode={handleEnterProgramMode}
       />
     </div>
   );

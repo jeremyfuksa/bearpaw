@@ -12,7 +12,6 @@ import {
   Heart,
   Code,
   ExternalLink,
-  RefreshCcw,
 } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
@@ -29,7 +28,6 @@ import {
 } from "../ui/select";
 
 type DeviceCategory =
-  | "Sync"
   | "Locked Channels"
   | "Device Config"
   | "Close Call"
@@ -45,12 +43,7 @@ interface SearchRange {
   end: string;
 }
 
-interface DeviceTabProps {
-  isMemorySyncing: boolean;
-  onMemorySync?: () => void;
-}
-
-export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
+export function DeviceTab() {
   const api = useAPI();
   const deviceInfo = useStore((state) => state.deviceInfo);
   const liveState = useStore((state) => state.liveState);
@@ -61,9 +54,7 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>("Sync");
-  const [pendingCategory, setPendingCategory] = useState<DeviceCategory | null>(null);
-  const [pendingSyncRequested, setPendingSyncRequested] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>("Device Config");
   const [selectedChannels, setSelectedChannels] = useState<number[]>([]);
   const [isClearing, setIsClearing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -172,12 +163,8 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
 
   const programModeSettingsLoaded = useRef(false);
 
-  // Load all device settings once on mount (single program mode session)
+  // Load all device settings when component mounts
   useEffect(() => {
-    if (programModeSettingsLoaded.current) {
-      return;
-    }
-
     let active = true;
     const loadAllSettings = async () => {
       try {
@@ -328,40 +315,6 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
       setIsClearing(false);
     }
   }, [api, lockedChannelIds.length, setChannels]);
-
-  const handleStartSync = useCallback(() => {
-    if (!onMemorySync) {
-      toast.error("Scanner is not connected");
-      return;
-    }
-    programModeSettingsLoaded.current = false;
-    onMemorySync();
-  }, [onMemorySync]);
-
-  const handleCategoryClick = useCallback(
-    (category: DeviceCategory) => {
-      // Only require memory sync for "Locked Channels" (needs channel data)
-      // Device config settings are loaded via getAllSettings() on mount
-      if (category === "Locked Channels" && channels.length === 0) {
-        setPendingCategory(category);
-        setPendingSyncRequested(true);
-        setSelectedCategory("Sync");
-        handleStartSync();
-        return;
-      }
-      setSelectedCategory(category);
-    },
-    [channels.length, handleStartSync],
-  );
-
-  useEffect(() => {
-    if (!pendingCategory || !pendingSyncRequested) return;
-    if (isMemorySyncing) return;
-    setSelectedCategory(pendingCategory);
-    setPendingCategory(null);
-    setPendingSyncRequested(false);
-  }, [isMemorySyncing, pendingCategory, pendingSyncRequested]);
-
 
   // Setting handlers
   const handleVolumeChange = useCallback(async (value: number[]) => {
@@ -640,10 +593,10 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
     >
       {/* Side Nav */}
       <div className="w-[200px] flex flex-col gap-1 bg-black/20 rounded-lg p-2 border border-white/5 h-full">
-        {["Sync", "Locked Channels", "Device Config", "Close Call", "Service Search", "Custom Search"].map((cat) => (
+        {["Locked Channels", "Device Config", "Close Call", "Service Search", "Custom Search"].map((cat) => (
           <button
             key={cat}
-            onClick={() => handleCategoryClick(cat as DeviceCategory)}
+            onClick={() => setSelectedCategory(cat as DeviceCategory)}
             className={cn(
               "text-left px-3 py-2 rounded text-xs font-medium transition-colors",
               selectedCategory === cat
@@ -681,48 +634,6 @@ export function DeviceTab({ isMemorySyncing, onMemorySync }: DeviceTabProps) {
               </span>
             )}
           </h2>
-        )}
-
-        {/* Sync */}
-        {selectedCategory === "Sync" && (
-          <div className="max-w-3xl space-y-6">
-            <div className="bg-white/5 rounded-lg border border-white/10 p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
-                  <RefreshCcw className={cn("w-4 h-4", isMemorySyncing && "animate-spin")} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">Program Mode Sync</h2>
-                  <p className="text-xs text-white/50">
-                    Configuration pages read from scanner memory and require program mode.
-                  </p>
-                </div>
-              </div>
-
-              <div className="text-sm text-white/60 leading-relaxed space-y-2">
-                <p>
-                  When you start a sync, the scanner switches into program mode and scanning pauses until
-                  the sync completes.
-                </p>
-                <p>
-                  Use this before opening Device Config, Close Call, Service Search, or Custom Search to
-                  ensure the data reflects the device.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => handleStartSync()}
-                  disabled={!onMemorySync}
-                  className="px-4 py-2 rounded bg-brand-primary hover:bg-brand-hover text-black text-xs font-bold uppercase tracking-wider shadow-brand hover:shadow-brand-lg transition-all flex items-center gap-2 disabled:opacity-50"
-                >
-                  <RefreshCcw className={cn("w-3 h-3", isMemorySyncing && "animate-spin")} />
-                  {isMemorySyncing ? "Syncing..." : "Start Sync"}
-                </button>
-                <span className="text-xs text-white/40">PGM mode required</span>
-              </div>
-            </div>
-          </div>
         )}
 
         {/* Locked Channels */}
