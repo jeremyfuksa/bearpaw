@@ -123,6 +123,7 @@ export default function App() {
   const [chartAnimate, setChartAnimate] = useState(false);
   const [busiestChannels, setBusiestChannels] = useState<{ alpha_tag: string; hit_count: number }[]>([]);
   const [hourlyHeatmap, setHourlyHeatmap] = useState<number[][]>([]);
+  const [heatmapStats, setHeatmapStats] = useState<{ min: number; max: number; avg: number }>({ min: 0, max: 0, avg: 0 });
   const [sessionStats, setSessionStats] = useState<
     {
       total_hits?: number;
@@ -426,6 +427,7 @@ export default function App() {
         if (heatmapRes.ok) {
           const data = await heatmapRes.json();
           if (active) {
+            const stats = data.stats || { min: 0, max: 0, avg: 0 };
             // Transform flat array to 7x24 grid
             const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
             if (data.heatmap && Array.isArray(data.heatmap)) {
@@ -436,6 +438,7 @@ export default function App() {
               }
             }
             setHourlyHeatmap(grid);
+            setHeatmapStats(stats);
           }
         }
       } catch (error) {
@@ -1048,7 +1051,14 @@ export default function App() {
                             <div className="flex-1 grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px]">
                               {Array.from({ length: 24 }).map((_, col) => {
                                 const heatmapData = hourlyHeatmap?.[row]?.[col] ?? 0;
-                                const intensity = Math.min(5, Math.floor(heatmapData / 10));
+                                
+                                // Calculate intensity based on stats
+                                let intensity = 0;
+                                if (heatmapStats.max > heatmapStats.min) {
+                                  const normalized = (heatmapData - heatmapStats.min) / (heatmapStats.max - heatmapStats.min);
+                                  intensity = Math.min(5, Math.floor(normalized * 5));
+                                }
+                                
                                 return (
                                   <div
                                     key={col}
