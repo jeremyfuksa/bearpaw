@@ -856,11 +856,22 @@ export function DeviceTab() {
 
               {/* Display Settings */}
               <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
-                    <Maximize2 size={16} />
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
+                      <Maximize2 size={16} />
+                    </div>
+                    <h3 className="font-bold text-white">Display & System</h3>
                   </div>
-                  <h3 className="font-bold text-white">Display & System</h3>
+                  <button
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('sync-memory-request'));
+                    }}
+                    className="px-3 py-1 text-xs font-medium text-white/70 bg-white/10 hover:bg-white/20 rounded border border-white/10 transition-colors flex items-center gap-2"
+                  >
+                    <RefreshCcw size={14} />
+                    Refresh
+                  </button>
                 </div>
 
                 <div className="space-y-4">

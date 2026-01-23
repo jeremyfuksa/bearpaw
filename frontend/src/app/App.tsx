@@ -147,8 +147,7 @@ export default function App() {
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
   const analyticsLoadedRef = useRef(false);
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastSyncCompletedRef = useRef<number>(0);
-  const SYNC_FRESHNESS_MS = 5 * 60 * 1000; // 5 minutes
+  const hasSyncedInSessionRef = useRef(false);
 
   useEffect(() => {
     setConnected(connected);
@@ -266,8 +265,8 @@ export default function App() {
         console.debug("[Progress] Sync complete, processing...");
         syncInProgressRef.current = false;
         setIsMemorySyncing(false);
-        lastSyncCompletedRef.current = Date.now();
-        console.debug("[Progress] Last sync completed timestamp set", { timestamp: lastSyncCompletedRef.current });
+        hasSyncedInSessionRef.current = true;
+        console.debug("[Progress] Session sync flag set to true");
 
         // Double-check PGM mode after a delay to account for mode transitions
         programModeEntryTimeoutRef.current = setTimeout(() => {
@@ -407,7 +406,8 @@ export default function App() {
       }
       toast.success("Channel sync started");
       syncInProgressRef.current = true;
-      console.debug("[Sync] Sync started, ref set to true");
+      hasSyncedInSessionRef.current = false; // Reset session flag for manual sync
+      console.debug("[Sync] Sync started, ref set to true, session flag reset");
     } catch (error) {
       console.warn("Failed to start channel sync", error);
       toast.error("Unable to start channel sync");
@@ -525,6 +525,19 @@ export default function App() {
     console.debug("[State] isProgramModeSheetOpen changed", isProgramModeSheetOpen);
   }, [isProgramModeSheetOpen]);
 
+  // Listen for manual refresh requests from Device/Channels tabs
+  useEffect(() => {
+    const handleSyncRequest = () => {
+      console.debug("[App] Manual sync request received");
+      handleMemorySync();
+    };
+
+    window.addEventListener('sync-memory-request', handleSyncRequest);
+    return () => {
+      window.removeEventListener('sync-memory-request', handleSyncRequest);
+    };
+  }, [handleMemorySync]);
+
   useEffect(() => {
     // Don't track mode changes during sync completion to avoid race conditions
     if (isMemorySyncing) return;
@@ -553,7 +566,7 @@ export default function App() {
         isInProgramMode,
         isMemorySyncing,
         pendingTab,
-        timeSinceLastSync: Date.now() - lastSyncCompletedRef.current,
+        hasSyncedInSession: hasSyncedInSessionRef.current,
       });
 
       if (newTab === "Scan") {
@@ -569,16 +582,8 @@ export default function App() {
       }
 
       if (newTab === "Device" || newTab === "Channels") {
-        const timeSinceLastSync = Date.now() - lastSyncCompletedRef.current;
-        const isRecentSync = timeSinceLastSync < SYNC_FRESHNESS_MS && timeSinceLastSync > 0;
-        console.debug("[Tab] Checking sync freshness", {
-          timeSinceLastSync,
-          isRecentSync,
-          threshold: SYNC_FRESHNESS_MS,
-        });
-
-        if (isInProgramMode || isMemorySyncing || isRecentSync) {
-          console.debug("[Tab] Direct tab switch allowed", { newTab, isInProgramMode, isMemorySyncing, isRecentSync });
+        if (isInProgramMode || isMemorySyncing || hasSyncedInSessionRef.current) {
+          console.debug("[Tab] Direct tab switch allowed", { newTab, isInProgramMode, isMemorySyncing, hasSyncedInSession: hasSyncedInSessionRef.current });
           setCurrentTab(newTab);
         } else if (currentTab !== newTab) {
           console.debug("[Tab] Setting up program mode", { newTab, pendingTab: newTab });
