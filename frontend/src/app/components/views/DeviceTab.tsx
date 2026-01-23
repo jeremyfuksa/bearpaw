@@ -82,7 +82,8 @@ export function DeviceTab() {
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState("AO");
   const [contrast, setContrast] = useState(7);
-  const [keyBeepMode, setKeyBeepMode] = useState<"auto" | "low" | "off">("low");
+  const [keyBeepMode, setKeyBeepMode] = useState<"auto" | "manual" | "off">("auto");
+  const [keyBeepLevel, setKeyBeepLevel] = useState(1);
   const [priorityMode, setPriorityMode] = useState("off");
   const [weatherAlert, setWeatherAlert] = useState(false);
   const [keyBeepLock, setKeyBeepLock] = useState(false);
@@ -381,7 +382,8 @@ export function DeviceTab() {
       } else if (res.level === 0) {
         setKeyBeepMode("auto");
       } else {
-        setKeyBeepMode("low");
+        setKeyBeepMode("manual");
+        setKeyBeepLevel(res.level);
       }
       return res;
     } catch (error) {
@@ -392,39 +394,45 @@ export function DeviceTab() {
 
   const applyKeyBeep = useCallback(
     async (level: number) => {
-      const attempts = Array.from(new Set([level, 0, 99]));
-      for (const attempt of attempts) {
-        const payload = { level: attempt, lock: keyBeepLock };
-        console.debug("Setting key beep", payload);
-        try {
-          await api.setKeyBeepSettings(attempt, keyBeepLock);
-          const refreshed = await refreshKeyBeep();
-          if (refreshed) {
-            if (
-              (level === 99 && refreshed.level === 99) ||
-              (level === 0 && refreshed.level === 0) ||
-              (level > 0 && level < 99 && refreshed.level > 0 && refreshed.level < 99)
-            ) {
-              return;
-            }
+      const payload = { level, lock: keyBeepLock };
+      console.debug("Setting key beep", payload);
+      try {
+        await api.setKeyBeepSettings(level, keyBeepLock);
+        const refreshed = await refreshKeyBeep();
+        if (refreshed) {
+          if (
+            (level === 99 && refreshed.level === 99) ||
+            (level === 0 && refreshed.level === 0) ||
+            (level > 0 && level < 99 && refreshed.level === level)
+          ) {
+            return;
           }
-        } catch (error) {
-          console.error("Failed to set key beep", { payload, error });
         }
+        toast.error("Failed to set key beep");
+      } catch (error) {
+        console.error("Failed to set key beep", { payload, error });
+        toast.error("Failed to set key beep");
       }
-      toast.error("Failed to set key beep");
     },
     [api, keyBeepLock, refreshKeyBeep],
   );
 
   const handleKeyBeepModeChange = useCallback(
-    async (value: "auto" | "low" | "off") => {
+    async (value: "auto" | "manual" | "off") => {
       setKeyBeepMode(value);
-      const level = value === "off" ? 99 : value === "auto" ? 0 : 1;
+      const level = value === "off" ? 99 : value === "auto" ? 0 : keyBeepLevel;
       await applyKeyBeep(level);
     },
-    [applyKeyBeep],
+    [applyKeyBeep, keyBeepLevel],
   );
+
+  const handleKeyBeepLevelChange = useCallback(async (value: number[]) => {
+    const level = value[0];
+    setKeyBeepLevel(level);
+    if (keyBeepMode === "manual") {
+      await applyKeyBeep(level);
+    }
+  }, [applyKeyBeep, keyBeepMode]);
 
   const handlePriorityModeChange = useCallback(async (value: string) => {
     setPriorityMode(value);
@@ -689,7 +697,7 @@ export function DeviceTab() {
                     <SelectTrigger className="w-[120px] h-8 text-xs bg-black/20 border-white/10">
                       <SelectValue placeholder="All Banks" />
                     </SelectTrigger>
-                    <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
+                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
                       <SelectItem value="all">All Banks</SelectItem>
                       {Array.from({ length: 10 }, (_, i) => i + 1).map((bank) => (
                         <SelectItem key={bank} value={String(bank)}>
@@ -833,7 +841,7 @@ export function DeviceTab() {
                       <SelectTrigger className="w-[140px] h-7 text-xs bg-black/20 border-white/10">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
+                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
                         <SelectItem value="AO">Always On</SelectItem>
                         <SelectItem value="AF">Always Off</SelectItem>
                         <SelectItem value="KY">Keypress</SelectItem>
@@ -850,16 +858,28 @@ export function DeviceTab() {
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
                     <span className="text-xs font-medium text-white/70">Key Beep</span>
-                    <Select value={keyBeepMode} onValueChange={(val) => handleKeyBeepModeChange(val as "auto" | "low" | "off")}>
-                      <SelectTrigger className="w-[180px] h-7 text-xs bg-black/20 border-white/10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
-                        <SelectItem value="off">Off</SelectItem>
-                        <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="low">Level 1</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Select value={keyBeepMode} onValueChange={(val) => handleKeyBeepModeChange(val as "auto" | "manual" | "off")}>
+                        <SelectTrigger className="w-[80px] h-7 text-xs bg-black/20 border-white/10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                          <SelectItem value="off">Off</SelectItem>
+                          <SelectItem value="auto">Auto</SelectItem>
+                          <SelectItem value="manual">Manual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {keyBeepMode === "manual" && (
+                        <Slider
+                          value={[keyBeepLevel]}
+                          min={1}
+                          max={15}
+                          step={1}
+                          onValueChange={handleKeyBeepLevelChange}
+                          className="w-[100px]"
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -881,7 +901,7 @@ export function DeviceTab() {
                     <SelectTrigger className="w-[140px] h-7 text-xs bg-black/20 border-white/10">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
+                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="on">On</SelectItem>
                       <SelectItem value="plus">Plus</SelectItem>
@@ -949,7 +969,7 @@ export function DeviceTab() {
                     <SelectTrigger className="w-[180px] h-8 text-xs bg-white/5 border-white/10">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
-                    <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
+                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="cc_dnd">CC DND</SelectItem>
                       <SelectItem value="cc_priority">CC Priority</SelectItem>
@@ -1335,7 +1355,7 @@ export function DeviceTab() {
                       <SelectTrigger className="w-full bg-white/5 border-white/10 text-xs">
                         <SelectValue placeholder="Select device" />
                       </SelectTrigger>
-                      <SelectContent className="bg-scanner-bg-dark border-white/10 text-white">
+                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
                         <SelectItem value="default">System Default</SelectItem>
                         <SelectItem value="speakers">Speakers (Realtek Audio)</SelectItem>
                         <SelectItem value="headphones">Headphones (USB Audio)</SelectItem>
