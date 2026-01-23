@@ -253,6 +253,13 @@ export default function App() {
         pendingTab,
       });
 
+      // Detect auto-sync that we didn't initiate and set ref to true
+      if (!syncInProgressRef.current && !isComplete && payload.message.includes("Syncing channel")) {
+        console.debug("[Progress] Auto-sync detected, setting syncInProgressRef to true");
+        syncInProgressRef.current = true;
+        setIsMemorySyncing(true);
+      }
+
       if (isComplete && syncInProgressRef.current) {
         console.debug("[Progress] Sync complete, processing...");
         syncInProgressRef.current = false;
