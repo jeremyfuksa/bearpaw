@@ -399,25 +399,44 @@ export function DeviceTab() {
       try {
         await api.setKeyBeepSettings(level, keyBeepLock);
         const refreshed = await refreshKeyBeep();
-        console.debug("Key beep refresh result", refreshed);
+        console.debug("Key beep refresh result (1)", refreshed);
+
+        if (!refreshed) {
+          toast.error("Failed to set key beep");
+          return;
+        }
+
+        if (
+          (level === 99 && refreshed.level === 99) ||
+          (level === 0 && refreshed.level === 0) ||
+          (level > 0 && level < 99 && refreshed.level > 0 && refreshed.level < 99)
+        ) {
+          console.debug("Key beep verification passed");
+          return;
+        }
+
+        console.debug("First verification failed, trying second refresh after delay...");
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const refreshed2 = await refreshKeyBeep();
+        console.debug("Key beep refresh result (2)", refreshed2);
         console.debug("Verification", {
           requested: level,
-          actual: refreshed?.level,
-          offCheck: level === 99 && refreshed?.level === 99,
-          autoCheck: level === 0 && refreshed?.level === 0,
-          manualCheck: level > 0 && level < 99 && refreshed?.level > 0 && refreshed?.level < 99,
+          actual: refreshed2?.level,
+          offCheck: level === 99 && refreshed2?.level === 99,
+          autoCheck: level === 0 && refreshed2?.level === 0,
+          manualCheck: level > 0 && level < 99 && refreshed2?.level > 0 && refreshed2?.level < 99,
         });
-        if (refreshed) {
-          if (
-            (level === 99 && refreshed.level === 99) ||
-            (level === 0 && refreshed.level === 0) ||
-            (level > 0 && level < 99 && refreshed.level > 0 && refreshed.level < 99)
-          ) {
-            console.debug("Key beep verification passed");
-            return;
-          }
+
+        if (
+          (level === 99 && refreshed2.level === 99) ||
+          (level === 0 && refreshed2.level === 0) ||
+          (level > 0 && level < 99 && refreshed2.level > 0 && refreshed2.level < 99)
+        ) {
+          console.debug("Key beep verification passed on retry");
+          return;
         }
-        console.error("Key beep verification failed", { requested: level, actual: refreshed?.level });
+
+        console.error("Key beep verification failed after retry", { requested: level, actual: refreshed2?.level });
         toast.error("Failed to set key beep");
       } catch (error) {
         console.error("Failed to set key beep", { payload, error });
