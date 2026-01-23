@@ -403,7 +403,7 @@ export function DeviceTab() {
           if (
             (level === 99 && refreshed.level === 99) ||
             (level === 0 && refreshed.level === 0) ||
-            (level > 0 && level < 99 && refreshed.level === level)
+            (level > 0 && level < 99 && refreshed.level > 0 && refreshed.level < 99)
           ) {
             return;
           }
