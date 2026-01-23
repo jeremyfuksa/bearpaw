@@ -83,7 +83,7 @@ export function DeviceTab() {
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState("AO");
   const [contrast, setContrast] = useState(7);
-  const [keyBeepMode, setKeyBeepMode] = useState<"auto" | "off">("auto");
+  const [keyBeepEnabled, setKeyBeepEnabled] = useState(true);
   const [priorityMode, setPriorityMode] = useState("off");
   const [weatherAlert, setWeatherAlert] = useState(false);
   const [keyBeepLock, setKeyBeepLock] = useState(false);
@@ -377,11 +377,7 @@ export function DeviceTab() {
     try {
       const res = await api.getKeyBeepSettings();
       setKeyBeepLock(Boolean(res.lock));
-      if (res.level === 99) {
-        setKeyBeepMode("off");
-      } else {
-        setKeyBeepMode("auto");
-      }
+      setKeyBeepEnabled(res.level !== 99);
       return res;
     } catch (error) {
       console.error("Failed to refresh key beep", error);
@@ -390,7 +386,8 @@ export function DeviceTab() {
   }, [api]);
 
   const applyKeyBeep = useCallback(
-    async (level: number) => {
+    async (enabled: boolean) => {
+      const level = enabled ? 1 : 99;
       const payload = { level, lock: keyBeepLock };
       console.debug("Setting key beep", payload);
       try {
@@ -403,15 +400,16 @@ export function DeviceTab() {
           return;
         }
 
-        if (
-          (level === 99 && refreshed.level === 99) ||
-          (level === 0 && refreshed.level === 0)
-        ) {
+        const matches =
+          (enabled && refreshed.level !== 99) ||
+          (!enabled && refreshed.level === 99);
+
+        if (matches) {
           console.debug("Key beep verification passed");
           return;
         }
 
-        console.error("Key beep verification failed", { requested: level, actual: refreshed.level });
+        console.error("Key beep verification failed", { enabled, actualLevel: refreshed.level });
         toast.error("Failed to set key beep");
       } catch (error) {
         console.error("Failed to set key beep", { payload, error });
@@ -421,11 +419,10 @@ export function DeviceTab() {
     [api, keyBeepLock, refreshKeyBeep],
   );
 
-  const handleKeyBeepModeChange = useCallback(
-    async (value: "auto" | "off") => {
-      setKeyBeepMode(value);
-      const level = value === "off" ? 99 : 0;
-      await applyKeyBeep(level);
+  const handleKeyBeepChange = useCallback(
+    async (enabled: boolean) => {
+      setKeyBeepEnabled(enabled);
+      await applyKeyBeep(enabled);
     },
     [applyKeyBeep],
   );
@@ -864,16 +861,15 @@ export function DeviceTab() {
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                    <span className="text-xs font-medium text-white/70">Key Beep</span>
-                    <Select value={keyBeepMode} onValueChange={(val) => handleKeyBeepModeChange(val as "auto" | "off")}>
-                      <SelectTrigger className="w-[100px] h-7 text-xs bg-black/20 border-white/10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
-                        <SelectItem value="off">Off</SelectItem>
-                        <SelectItem value="auto">Auto</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <label htmlFor="key-beep" className="text-xs font-medium text-white/70 cursor-pointer">
+                      Key Beep
+                    </label>
+                    <Switch
+                      id="key-beep"
+                      className="data-[state=checked]:bg-brand-primary"
+                      checked={keyBeepEnabled}
+                      onCheckedChange={handleKeyBeepChange}
+                    />
                   </div>
                 </div>
               </div>
