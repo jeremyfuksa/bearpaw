@@ -244,29 +244,50 @@ export default function App() {
         payload.percent >= 100 ||
         /sync complete/i.test(payload.message) ||
         /sync cancelled/i.test(payload.message);
+
+      console.debug("[Progress] Message received", {
+        percent: payload.percent,
+        message: payload.message,
+        isComplete,
+        syncInProgress: syncInProgressRef.current,
+        pendingTab,
+      });
+
       if (isComplete && syncInProgressRef.current) {
+        console.debug("[Progress] Sync complete, processing...");
         syncInProgressRef.current = false;
         setIsMemorySyncing(false);
 
         // Check for PGM mode with a timeout to account for mode transitions
         programModeEntryTimeoutRef.current = setTimeout(() => {
           const normalizedMode = (liveState?.mode ?? "").toString().trim().toUpperCase();
+          console.debug("[Progress] Checking PGM mode", { mode: liveState?.mode, normalized: normalizedMode, isPGM: normalizedMode === "PGM" });
           setIsInProgramMode(normalizedMode === "PGM");
         }, 500);
 
         api
           .getChannels()
-          .then((channelData) => setChannels(channelData))
+          .then((channelData) => {
+            console.debug("[Progress] Channels fetched", channelData.length);
+            setChannels(channelData);
+          })
           .then(() => {
+            console.debug("[Progress] About to check pendingTab", { pendingTab });
             if (pendingTab) {
+              console.debug("[Progress] Switching to pending tab", pendingTab);
               setCurrentTab(pendingTab);
               setIsProgramModeSheetOpen(false);
               setPendingTab(null);
+              console.debug("[Progress] Sheet should be closed now");
+            } else {
+              console.debug("[Progress] No pending tab to switch to");
             }
           })
           .catch((error) =>
-            console.warn("Failed to refresh channels after sync", error),
+            console.warn("[Progress] Failed to refresh channels after sync", error),
           );
+      } else {
+        console.debug("[Progress] Not processing - conditions not met", { isComplete, syncInProgress: syncInProgressRef.current });
       }
     });
 
@@ -360,17 +381,22 @@ export default function App() {
 
   const handleMemorySync = useCallback(async () => {
     if (syncInProgressRef.current || isMemorySyncing) {
+      console.debug("[Sync] Already syncing, ignoring request");
       return;
     }
+    console.debug("[Sync] Starting memory sync");
     setIsMemorySyncing(true);
     try {
       const result = await api.syncMemory({ force: true });
+      console.debug("[Sync] API result", result);
       if (result.status === "already_running") {
         syncInProgressRef.current = true;
+        console.debug("[Sync] Sync already running");
         return;
       }
       toast.success("Channel sync started");
       syncInProgressRef.current = true;
+      console.debug("[Sync] Sync started, ref set to true");
     } catch (error) {
       console.warn("Failed to start channel sync", error);
       toast.error("Unable to start channel sync");
@@ -379,6 +405,7 @@ export default function App() {
   }, [api, isMemorySyncing]);
 
   const handleEnterProgramMode = useCallback(() => {
+    console.debug("[Program Mode] Enter program mode requested", { pendingTab });
     handleMemorySync();
   }, [handleMemorySync]);
 
@@ -484,6 +511,10 @@ export default function App() {
   }, [currentTab]);
 
   useEffect(() => {
+    console.debug("[State] isProgramModeSheetOpen changed", isProgramModeSheetOpen);
+  }, [isProgramModeSheetOpen]);
+
+  useEffect(() => {
     // Don't track mode changes during sync completion to avoid race conditions
     if (isMemorySyncing) return;
 
@@ -505,6 +536,14 @@ export default function App() {
   const handleTabChange = useCallback(
     (tab: string) => {
       const newTab = tab as Tab;
+      console.debug("[Tab] Change requested", {
+        newTab,
+        currentTab,
+        isInProgramMode,
+        isMemorySyncing,
+        pendingTab,
+      });
+
       if (newTab === "Scan") {
         if (isInProgramMode) {
           api.sendScan().catch((error) => {
@@ -519,8 +558,10 @@ export default function App() {
 
       if (newTab === "Device" || newTab === "Channels") {
         if (isInProgramMode || isMemorySyncing) {
+          console.debug("[Tab] Direct tab switch allowed", { newTab, isInProgramMode, isMemorySyncing });
           setCurrentTab(newTab);
         } else if (currentTab !== newTab) {
+          console.debug("[Tab] Setting up program mode", { newTab, pendingTab: newTab });
           setPendingTab(newTab);
           setIsProgramModeSheetOpen(true);
         }
