@@ -1524,9 +1524,9 @@ def create_app(
                 for cell in heatmap
             ],
             "stats": {
-                "min": stats.min_count,
-                "max": stats.max_count,
-                "avg": stats.avg_count,
+                "min": stats["min_count"],
+                "max": stats["max_count"],
+                "avg": stats["avg_count"],
             },
         }
 
