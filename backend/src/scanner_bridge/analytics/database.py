@@ -329,18 +329,19 @@ class AnalyticsDatabase:
 
     async def get_hourly_heatmap(
         self, days: int = 7, min_duration: float = 3.0
-    ) -> list[HeatmapCell]:
-        """Get hourly hit counts for heatmap visualization."""
-        return await asyncio.to_thread(
+    ) -> tuple[list[HeatmapCell], dict[str, float]]:
+        """Get hourly hit counts for heatmap visualization and return stats."""
+        heatmap, stats = await asyncio.to_thread(
             self._get_hourly_heatmap_sync, days, min_duration
         )
+        return heatmap, stats
 
     def _get_hourly_heatmap_sync(
         self, days: int, min_duration: float
-    ) -> list[HeatmapCell]:
+    ) -> tuple[list[HeatmapCell], dict[str, float]]:
         """Synchronous heatmap query."""
         if not self._conn:
-            return []
+            return [], {"min": 0, "max": 0, "avg": 0}
 
         cutoff = time.time() - (days * 86400)
         cursor = self._conn.execute(
@@ -359,10 +360,20 @@ class AnalyticsDatabase:
             (cutoff, min_duration),
         )
 
-        return [
-            HeatmapCell(hour=row[0], day=row[1], count=row[2])
-            for row in cursor.fetchall()
+        results = cursor.fetchall()
+        if not results:
+            return [], {"min": 0, "max": 0, "avg": 0}
+
+        counts = [row[2] for row in results]
+        heatmap = [
+            HeatmapCell(hour=row[0], day=row[1], count=row[2]) for row in results
         ]
+        stats = {
+            "min_count": min(counts),
+            "max_count": max(counts),
+            "avg_count": sum(counts) / len(counts),
+        }
+        return heatmap, stats
 
     async def get_session_stats(
         self, session_id: str, min_duration: float = 3.0

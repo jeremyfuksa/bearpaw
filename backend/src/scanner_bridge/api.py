@@ -1515,12 +1515,19 @@ def create_app(
         if not runtime.analytics_db:
             raise HTTPException(status_code=503, detail="Analytics not enabled")
         min_duration = runtime.config.analytics.min_hit_duration
-        heatmap = await runtime.analytics_db.get_hourly_heatmap(days, min_duration)
+        heatmap, stats = await runtime.analytics_db.get_hourly_heatmap(
+            days, min_duration
+        )
         return {
             "heatmap": [
                 {"hour": cell.hour, "day": cell.day, "count": cell.count}
                 for cell in heatmap
-            ]
+            ],
+            "stats": {
+                "min": stats.min_count,
+                "max": stats.max_count,
+                "avg": stats.avg_count,
+            },
         }
 
     @app.get("/api/v1/analytics/session-stats")
