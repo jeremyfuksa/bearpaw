@@ -200,7 +200,7 @@ def main() -> None:
         print("Choose either --daemon or --foreground", file=sys.stderr)
         sys.exit(2)
 
-     app = create_app(config, port_override=args.port)
+    app = create_app(config, port_override=args.port)
     add_cors_middleware(app)
     _install_access_log_filters()
     if args.foreground:

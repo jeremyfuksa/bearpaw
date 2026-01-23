@@ -57,6 +57,9 @@ export function ChannelsTab() {
   const editingChannel = editingChannelIndex !== null
     ? channels.find((ch) => ch.index === editingChannelIndex)
     : null;
+  const editingDraft = editingChannelIndex !== null
+    ? memoryDrafts[editingChannelIndex]
+    : undefined;
 
   const handleOpenEditSheet = useCallback((channelIndex: number) => {
     const channel = channels.find((ch) => ch.index === channelIndex);
@@ -332,7 +335,7 @@ export function ChannelsTab() {
         {editingChannel && editingChannelIndex !== null && (
           <ChannelEditSheet
             channel={editingChannel}
-            draft={draft ?? buildDraft(editingChannel)}
+            draft={editingDraft ?? buildDraft(editingChannel)}
             isOpen={editingChannelIndex !== null}
             onClose={handleCloseEditSheet}
             onSave={(draft) => handleSaveChannel(editingChannelIndex, draft)}

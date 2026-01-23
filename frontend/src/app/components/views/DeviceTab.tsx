@@ -383,11 +383,9 @@ export function DeviceTab() {
     async (enabled: boolean) => {
       const level = enabled ? 1 : 99;
       const payload = { level, lock: keyBeepLock };
-      console.debug("Setting key beep", payload);
       try {
         await api.setKeyBeepSettings(level, keyBeepLock);
         const refreshed = await refreshKeyBeep();
-        console.debug("Key beep refresh result", refreshed);
 
         if (!refreshed) {
           toast.error("Failed to set key beep");
@@ -399,7 +397,6 @@ export function DeviceTab() {
           (!enabled && refreshed.level === 99);
 
         if (matches) {
-          console.debug("Key beep verification passed");
           return;
         }
 
@@ -1056,6 +1053,10 @@ export function DeviceTab() {
         {selectedCategory === "Service Search" && (
           <div className="max-w-3xl">
             <div className="bg-white/5 rounded-lg border border-white/10 p-8">
+              <p className="text-sm text-white/60 mb-6">
+                Service Search runs on the scanner itself. Enable the service banks you want to
+                use, then start Service Search directly on the device.
+              </p>
               <div className="grid grid-cols-2 gap-x-16 gap-y-6">
                 {[
                   "Police",
@@ -1090,6 +1091,10 @@ export function DeviceTab() {
         {/* Custom Search */}
         {selectedCategory === "Custom Search" && (
           <div className="flex flex-col max-w-5xl mx-auto overflow-hidden gap-4">
+            <p className="text-sm text-white/60">
+              Custom Search runs on the scanner itself. Configure these ranges here, then start
+              Custom Search directly on the device.
+            </p>
             <div className="flex-1 h-full bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner">
               {/* Table Header */}
               <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-xs font-bold text-white/30 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">

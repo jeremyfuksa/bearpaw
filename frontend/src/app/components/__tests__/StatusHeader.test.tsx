@@ -30,6 +30,7 @@ describe("StatusHeader", () => {
       expect(lockoutButton).toBeInTheDocument();
     });
 
+
     it("should render HOLD button", () => {
       render(<StatusHeader {...defaultProps} />);
       const holdButton = screen.getByRole("button", { name: /HOLD/i });
@@ -85,6 +86,7 @@ describe("StatusHeader", () => {
 
       expect(onHoldToggle).toHaveBeenCalledTimes(1);
     });
+
 
     it("should call onRecordingToggle when recording button is clicked", async () => {
       const onRecordingToggle = vi.fn();
