@@ -15,7 +15,6 @@ from scanner_bridge.api import create_app
 from scanner_bridge.config import AppConfig, load_config
 
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("scanner_bridge")
 
 _NOISY_LOG_MARKERS = (
@@ -98,9 +97,9 @@ async def _foreground_status(app) -> None:
 
 async def run_foreground(app, host: str, port: int, log_level: str) -> None:
     log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
-    log_config["formatters"]["access"][
-        "fmt"
-    ] = '%(levelprefix)s "%(request_line)s" %(status_code)s'
+    log_config["formatters"]["access"]["fmt"] = (
+        '%(levelprefix)s "%(request_line)s" %(status_code)s'
+    )
     config = uvicorn.Config(
         app, host=host, port=port, log_level=log_level, log_config=log_config
     )
@@ -141,7 +140,9 @@ def _daemonize(pid_file: str, log_file: str) -> None:
         handle.write(str(os.getpid()))
 
 
-def _install_signal_handlers(server: uvicorn.Server, app, config_path: Optional[str]) -> None:
+def _install_signal_handlers(
+    server: uvicorn.Server, app, config_path: Optional[str]
+) -> None:
     def handle_exit(signum, frame):
         server.should_exit = True
 
@@ -169,9 +170,9 @@ def run_server(
         _daemonize(pid_file, log_file)
     _install_access_log_filters()
     log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
-    log_config["formatters"]["access"][
-        "fmt"
-    ] = '%(levelprefix)s "%(request_line)s" %(status_code)s'
+    log_config["formatters"]["access"]["fmt"] = (
+        '%(levelprefix)s "%(request_line)s" %(status_code)s'
+    )
     config = uvicorn.Config(
         app, host=host, port=port, log_level=log_level, log_config=log_config
     )
@@ -182,8 +183,12 @@ def run_server(
 
 def main() -> None:
     args = parse_args()
-    logging.getLogger().setLevel(args.log_level.upper())
     config = load_config(args.config)
+
+    log_level = config.logging.level.upper()
+    logging.basicConfig(level=log_level, format=config.logging.format)
+    logging.getLogger().setLevel(log_level)
+    logger.debug("Debug logging enabled")
     if args.api_host:
         config.api.host = args.api_host
     if args.api_port:
@@ -196,7 +201,9 @@ def main() -> None:
     app = create_app(config, port_override=args.port)
     _install_access_log_filters()
     if args.foreground:
-        asyncio.run(run_foreground(app, config.api.host, config.api.port, args.log_level))
+        asyncio.run(
+            run_foreground(app, config.api.host, config.api.port, args.log_level)
+        )
         return
     run_server(
         app,

@@ -37,3 +37,14 @@ exporters:
     topic_prefix: scanner
     qos: 0
     retain: false
+
+analytics:
+  enabled: true
+  db_path: ./analytics.db
+  retention_days: 30
+  cleanup_interval_hours: 24
+  min_hit_duration: 1.0
+
+logging:
+  level: DEBUG
+  format: "%(levelname)s %(message)s"

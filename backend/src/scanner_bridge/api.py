@@ -213,21 +213,32 @@ def create_app(
                         description=devices[0].description,
                     )
                 elif config.device.transport in ("auto", "usb"):
-                    device_info = DeviceInfo(
-                        model=None,
-                        port=None,
-                        vid=config.device.usb_vid,
-                        pid=config.device.usb_pid,
-                        serial_number=config.device.usb_serial,
-                        description="USB CDC",
-                    )
-                    transport = UsbTransport(
-                        config.device.usb_vid,
-                        config.device.usb_pid,
-                        serial_number=config.device.usb_serial,
-                        timeout=0.5,
-                    )
-                    transport.connect()
+                    if os.getenv("NO_HARDWARE"):
+                        device_info = DeviceInfo(
+                            model="MOCK",
+                            port=None,
+                            vid=config.device.usb_vid,
+                            pid=config.device.usb_pid,
+                            serial_number=config.device.usb_serial,
+                            description="Mock Device",
+                        )
+                        transport = None
+                    else:
+                        device_info = DeviceInfo(
+                            model=None,
+                            port=None,
+                            vid=config.device.usb_vid,
+                            pid=config.device.usb_pid,
+                            serial_number=config.device.usb_serial,
+                            description="USB CDC",
+                        )
+                        transport = UsbTransport(
+                            config.device.usb_vid,
+                            config.device.usb_pid,
+                            serial_number=config.device.usb_serial,
+                            timeout=0.5,
+                        )
+                        transport.connect()
                 else:
                     raise RuntimeError("No scanner devices detected")
             else:
@@ -355,7 +366,7 @@ def create_app(
             or (
                 runtime.transport is None and config.device.transport in ("usb", "auto")
             )
-        ):
+        ) and not os.getenv("NO_HARDWARE"):
             runtime.reconnect_task = asyncio.create_task(_monitor_usb(app))
 
     async def shutdown() -> None:
@@ -1541,6 +1552,76 @@ def create_app(
         deleted = await runtime.analytics_db.cleanup_old_data(days)
         return {"deleted_records": deleted}
 
+    @app.post("/api/v1/test/simulate-hit")
+    async def simulate_hit() -> dict:
+        """Simulate a scanner hit for testing purposes"""
+        from scanner_bridge.models import LiveState
+
+        runtime: RuntimeState = app.state.runtime
+
+        # Create a fake hit
+        import time
+
+        timestamp = time.time()
+
+        # Update state to simulate squelch opening
+        live_state = LiveState(
+            timestamp=timestamp,
+            frequency=162.550,
+            modulation="FM",
+            squelch_open=True,
+            rssi=75,
+            mode="SCAN",
+            channel=1,
+            alpha_tag="Test Channel",
+            volume=5,
+            battery=None,
+            stale=False,
+        )
+        changes = runtime.state_store.update_live_state(live_state)
+
+        # Send state update
+        await runtime.ws_manager.broadcast(
+            {
+                "type": "state_update",
+                "timestamp": timestamp,
+                "sequence": int(timestamp * 1000),
+                "data": changes,
+            }
+        )
+
+        # Simulate squelch closing after a short delay
+        async def close_squelch():
+            await asyncio.sleep(2)  # 2 second hit
+            close_timestamp = time.time()
+            close_state = LiveState(
+                timestamp=close_timestamp,
+                frequency=162.550,
+                modulation="FM",
+                squelch_open=False,
+                rssi=0,
+                mode="SCAN",
+                channel=1,
+                alpha_tag="Test Channel",
+                volume=5,
+                battery=None,
+                stale=False,
+            )
+            close_changes = runtime.state_store.update_live_state(close_state)
+            await runtime.ws_manager.broadcast(
+                {
+                    "type": "state_update",
+                    "timestamp": close_timestamp,
+                    "sequence": int(close_timestamp * 1000),
+                    "data": close_changes,
+                }
+            )
+
+        # Run in background
+        asyncio.create_task(close_squelch())
+
+        return {"message": "Simulated hit", "frequency": 162.550, "duration": 2}
+
     @app.get("/api/v1/analytics/activity-log")
     async def get_activity_log(
         limit: int = 100,
@@ -1702,13 +1783,20 @@ async def _poll_status(app: FastAPI) -> None:
                         "data": {
                             "frequency": state.frequency,
                             "channel": state.channel,
+                            "alpha_tag": state.alpha_tag,
+                            "rssi": state.rssi,
                         },
                     }
                     await runtime.ws_manager.broadcast(event_payload)
                     if runtime.json_exporter:
                         runtime.json_exporter.append(
                             "scan_hit",
-                            {"frequency": state.frequency, "channel": state.channel},
+                            {
+                                "frequency": state.frequency,
+                                "channel": state.channel,
+                                "alpha_tag": state.alpha_tag,
+                                "rssi": state.rssi,
+                            },
                             timestamp=state.timestamp,
                         )
                     if runtime.mqtt_exporter:
@@ -1718,6 +1806,8 @@ async def _poll_status(app: FastAPI) -> None:
                                 "timestamp": state.timestamp,
                                 "frequency": state.frequency,
                                 "channel": state.channel,
+                                "alpha_tag": state.alpha_tag,
+                                "rssi": state.rssi,
                             },
                         )
                     if runtime.analytics_db:
