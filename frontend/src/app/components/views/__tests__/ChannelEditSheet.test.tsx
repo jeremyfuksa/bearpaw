@@ -10,6 +10,7 @@ describe("ChannelEditSheet", () => {
   let mockDraft: ChannelDraft;
   let mockOnSave: ReturnType<typeof vi.fn>;
   let mockOnFieldChange: ReturnType<typeof vi.fn>;
+  let mockOnClear: ReturnType<typeof vi.fn>;
   let mockOnClose: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -27,21 +28,23 @@ describe("ChannelEditSheet", () => {
     mockDraft = createTestChannelDraft();
     mockOnSave = vi.fn().mockResolvedValue(undefined);
     mockOnFieldChange = vi.fn();
+    mockOnClear = vi.fn();
     mockOnClose = vi.fn();
   });
 
   describe("Rendering", () => {
     it("should render edit sheet when isOpen is true", () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-        />
-      );
+        render(
+          <ChannelEditSheet
+            channel={mockChannel}
+            draft={mockDraft}
+            isOpen={true}
+            onClose={mockOnClose}
+            onSave={mockOnSave}
+            onFieldChange={mockOnFieldChange}
+            onClear={mockOnClear}
+          />
+        );
       expect(screen.getByText(/Edit Channel 1/i)).toBeInTheDocument();
     });
 
@@ -455,35 +458,38 @@ describe("ChannelEditSheet", () => {
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByRole("button", { name: /Save/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Save Draft/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Clear/i })).toBeInTheDocument();
     });
 
     it("should render cancel button", () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-        />
-      );
+        render(
+          <ChannelEditSheet
+            channel={mockChannel}
+            draft={mockDraft}
+            isOpen={true}
+            onClose={mockOnClose}
+            onSave={mockOnSave}
+            onFieldChange={mockOnFieldChange}
+            onClear={mockOnClear}
+          />
+        );
       expect(screen.getByRole("button", { name: /Cancel/i })).toBeInTheDocument();
     });
 
     it("should call onSave when save button is clicked", async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-        />
-      );
-      const saveButton = screen.getByRole("button", { name: /Save/i });
+        render(
+          <ChannelEditSheet
+            channel={mockChannel}
+            draft={mockDraft}
+            isOpen={true}
+            onClose={mockOnClose}
+            onSave={mockOnSave}
+            onFieldChange={mockOnFieldChange}
+            onClear={mockOnClear}
+          />
+        );
+      const saveButton = screen.getByRole("button", { name: /Save Draft/i });
       await userEvent.click(saveButton);
       await waitFor(() => {
         expect(mockOnSave).toHaveBeenCalledWith(mockDraft);
@@ -491,16 +497,17 @@ describe("ChannelEditSheet", () => {
     });
 
     it("should call onClose when cancel button is clicked", async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-        />
-      );
+        render(
+          <ChannelEditSheet
+            channel={mockChannel}
+            draft={mockDraft}
+            isOpen={true}
+            onClose={mockOnClose}
+            onSave={mockOnSave}
+            onFieldChange={mockOnFieldChange}
+            onClear={mockOnClear}
+          />
+        );
       const cancelButton = screen.getByRole("button", { name: /Cancel/i });
       await userEvent.click(cancelButton);
       expect(mockOnClose).toHaveBeenCalled();
@@ -518,7 +525,7 @@ describe("ChannelEditSheet", () => {
           onFieldChange={mockOnFieldChange}
         />
       );
-      const saveButton = screen.getByRole("button", { name: /Save/i });
+      const saveButton = screen.getByRole("button", { name: /Save Draft/i });
       expect(saveButton).toBeDisabled();
     });
 
@@ -536,7 +543,7 @@ describe("ChannelEditSheet", () => {
           onFieldChange={mockOnFieldChange}
         />
       );
-      const saveButton = screen.getByRole("button", { name: /Save/i });
+      const saveButton = screen.getByRole("button", { name: /Save Draft/i });
       await userEvent.click(saveButton);
 
       expect(screen.getByText(/Saving\.\.\./i)).toBeInTheDocument();

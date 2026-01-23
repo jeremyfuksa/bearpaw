@@ -141,6 +141,14 @@ export class ScannerAPIClient {
     });
   }
 
+  async startProgramMode(): Promise<void> {
+    await this.request("/memory/program-mode/start", { method: "POST" });
+  }
+
+  async endProgramMode(): Promise<void> {
+    await this.request("/memory/program-mode/end", { method: "POST" });
+  }
+
   async toggleTemporaryLockout(options?: {
     frequency?: number;
     channel?: number;

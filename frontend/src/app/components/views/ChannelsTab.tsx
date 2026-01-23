@@ -17,14 +17,30 @@ function deriveBankFromIndex(index: number) {
 }
 
 function buildDraft(channel: ChannelData): ChannelDraft {
+  if (channel.frequency === 0) {
+    return buildEmptyDraft();
+  }
   return {
     frequency: channel.frequency.toFixed(4),
-    alpha_tag: channel.alpha_tag || "",
+    alpha_tag: channel.alpha_tag?.trim() || "",
     modulation: channel.modulation || "AUTO",
     tone_squelch: channel.tone_squelch?.toString() ?? "",
     delay: channel.delay.toString(),
     lockout: channel.lockout,
     priority: channel.priority,
+    comments: "",
+  };
+}
+
+function buildEmptyDraft(): ChannelDraft {
+  return {
+    frequency: "0",
+    alpha_tag: "",
+    modulation: "AUTO",
+    tone_squelch: "",
+    delay: "0",
+    lockout: false,
+    priority: false,
     comments: "",
   };
 }
@@ -39,6 +55,7 @@ export function ChannelsTab() {
   const [activeBank, setActiveBank] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,9 +63,12 @@ export function ChannelsTab() {
     const query = searchTerm.trim().toLowerCase();
     return channels.filter((channel) => {
       const matchesBank = deriveBankFromIndex(channel.index) === activeBank;
+      const displayTag = channel.frequency === 0
+        ? ""
+        : (channel.alpha_tag ?? "").trim().toLowerCase();
       const matchesSearch =
         query === "" ||
-        channel.alpha_tag.toLowerCase().includes(query) ||
+        displayTag.includes(query) ||
         channel.frequency.toString().includes(query);
       return matchesBank && matchesSearch;
     });
@@ -60,6 +80,67 @@ export function ChannelsTab() {
   const editingDraft = editingChannelIndex !== null
     ? memoryDrafts[editingChannelIndex]
     : undefined;
+
+  const draftChanges = useMemo(() => {
+    return Object.entries(memoryDrafts).reduce((acc, [indexKey, draft]) => {
+      const channelIndex = Number(indexKey);
+      const channel = channels.find((entry) => entry.index === channelIndex);
+      if (!channel) return acc;
+
+      const parsedFrequency = Number.parseFloat(draft.frequency);
+      const parsedDelay = Number.parseInt(draft.delay, 10);
+      const parsedTone =
+        draft.tone_squelch.trim() === ""
+          ? null
+          : Number.parseFloat(draft.tone_squelch);
+
+      const normalized = {
+        frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
+        alpha_tag: draft.alpha_tag,
+        modulation: draft.modulation,
+        delay: Number.isFinite(parsedDelay) ? parsedDelay : channel.delay,
+        tone_squelch: Number.isFinite(parsedTone ?? NaN) ? parsedTone : null,
+        lockout: draft.lockout,
+        priority: draft.priority,
+      };
+
+      const lockoutChanged = normalized.lockout !== channel.lockout;
+      const priorityChanged = normalized.priority !== channel.priority;
+      const hasChanges =
+        normalized.frequency !== channel.frequency ||
+        normalized.alpha_tag !== (channel.alpha_tag ?? "") ||
+        normalized.modulation !== (channel.modulation ?? "AUTO") ||
+        normalized.delay !== channel.delay ||
+        normalized.tone_squelch !== (channel.tone_squelch ?? null) ||
+        lockoutChanged ||
+        priorityChanged;
+
+      if (!hasChanges) return acc;
+
+      const bankValue = channel.bank > 0 ? channel.bank : deriveBankFromIndex(channelIndex);
+
+      acc.push({
+        channelIndex,
+        channel,
+        draft,
+        payload: {
+          ...normalized,
+          bank: bankValue,
+        },
+        lockoutChanged,
+        priorityChanged,
+      });
+
+      return acc;
+    }, [] as Array<{
+      channelIndex: number;
+      channel: ChannelData;
+      draft: ChannelDraft;
+      payload: Omit<ChannelData, "index">;
+      lockoutChanged: boolean;
+      priorityChanged: boolean;
+    }>);
+  }, [channels, memoryDrafts]);
 
   const handleOpenEditSheet = useCallback((channelIndex: number) => {
     const channel = channels.find((ch) => ch.index === channelIndex);
@@ -82,40 +163,147 @@ export function ChannelsTab() {
     }
   };
 
-  const handleSaveChannel = useCallback(async (channelIndex: number, draft: ChannelDraft) => {
-    const channel = channels.find((entry) => entry.index === channelIndex);
-    if (!channel) return;
+  const handleSaveDraft = useCallback(async (channelIndex: number, draft: ChannelDraft) => {
+    setMemoryDraft(channelIndex, draft);
+    toast.success(`Draft saved for CH ${channelIndex}`);
+  }, [setMemoryDraft]);
 
-    const parsedFrequency = Number.parseFloat(draft.frequency);
-    const parsedDelay = Number.parseInt(draft.delay, 10);
-    const toneValue =
-      draft.tone_squelch.trim() === ""
-        ? null
-        : Number.parseFloat(draft.tone_squelch);
+  const handleClearDraft = useCallback((channelIndex: number) => {
+    setMemoryDraft(channelIndex, buildEmptyDraft());
+    toast.success(`Cleared CH ${channelIndex}`);
+  }, [setMemoryDraft]);
 
-    const payload = {
-      frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
-      modulation: draft.modulation,
-      alpha_tag: draft.alpha_tag,
-      delay: Number.isFinite(parsedDelay) ? parsedDelay : channel.delay,
-      lockout: draft.lockout,
-      priority: draft.priority,
-      tone_squelch: Number.isFinite(toneValue ?? NaN) ? toneValue : null,
-      bank: deriveBankFromIndex(channelIndex),
-    };
+  const handleUploadDrafts = useCallback(async () => {
+    if (draftChanges.length === 0 || isUploading) return;
+    setIsUploading(true);
+    const failed: Array<{ index: number; detail?: string }> = [];
+    const warnings: Array<{ index: number; detail: string }> = [];
 
     try {
-      const updated = await api.updateChannel(channelIndex, payload);
-      setChannels((prev) =>
-        prev.map((entry) => (entry.index === updated.index ? updated : entry)),
-      );
-      setMemoryDraft(updated.index, buildDraft(updated));
-      toast.success(`Saved CH ${updated.index}`);
+      await api.startProgramMode();
+      for (const change of draftChanges) {
+        try {
+          let payload = change.payload;
+          if (!change.lockoutChanged && !change.priorityChanged) {
+            try {
+              const latest = await api.getChannel(change.channelIndex);
+              payload = {
+                ...payload,
+                lockout: latest.lockout,
+                priority: latest.priority,
+                bank: latest.bank || payload.bank,
+              };
+            } catch (refreshError) {
+              console.warn("Failed to refresh channel before upload", refreshError);
+            }
+          }
+
+          if (payload.frequency === 0) {
+            const preUpdatePayload = {
+              ...payload,
+              frequency: change.channel.frequency,
+              alpha_tag: change.channel.alpha_tag,
+            };
+            await api.updateChannel(change.channelIndex, preUpdatePayload);
+          }
+
+          const updated = await api.updateChannel(change.channelIndex, payload);
+          setChannels((prev) =>
+            prev.map((entry) => (entry.index === updated.index ? updated : entry)),
+          );
+          setMemoryDraft(updated.index, buildDraft(updated));
+        } catch (error) {
+          const apiError = error as { message?: string; payload?: { detail?: string } };
+          const detail = apiError?.payload?.detail ?? apiError?.message;
+          console.error("Channel upload failed", {
+            channelIndex: change.channelIndex,
+            detail,
+            error: apiError,
+          });
+          if (detail === "channel_write_mismatch") {
+            try {
+              const refreshed = await api.getChannel(change.channelIndex);
+              const matchesPrimaryFields =
+                refreshed.frequency === change.payload.frequency &&
+                refreshed.alpha_tag === change.payload.alpha_tag &&
+                refreshed.modulation === change.payload.modulation &&
+                refreshed.delay === change.payload.delay &&
+                (refreshed.tone_squelch ?? null) === (change.payload.tone_squelch ?? null);
+              console.error("Channel write mismatch details", {
+                channelIndex: change.channelIndex,
+                payload: change.payload,
+                refreshed,
+                matchesPrimaryFields,
+              });
+              const lockoutApplied = refreshed.lockout === change.payload.lockout;
+              const priorityApplied = refreshed.priority === change.payload.priority;
+              setChannels((prev) =>
+                prev.map((entry) => (entry.index === refreshed.index ? refreshed : entry)),
+              );
+              setMemoryDraft(refreshed.index, buildDraft(refreshed));
+              if (matchesPrimaryFields) {
+                if (
+                  (change.lockoutChanged && !lockoutApplied) ||
+                  (change.priorityChanged && !priorityApplied)
+                ) {
+                  warnings.push({
+                    index: change.channelIndex,
+                    detail: "Lockout/Priority did not apply",
+                  });
+                }
+                continue;
+              }
+            } catch (refreshError) {
+              console.error("Failed to refresh channel after mismatch", refreshError);
+            }
+          }
+
+          failed.push({ index: change.channelIndex, detail });
+        }
+      }
+
     } catch (error) {
-      console.error("Failed to save channel", error);
-      toast.error(`Failed to save CH ${channelIndex}`);
+      console.error("Failed to upload channel edits", error);
+      toast.error("Failed to upload channel edits");
+    } finally {
+      try {
+        await api.endProgramMode();
+      } catch (error) {
+        console.warn("Failed to exit program mode", error);
+      }
+      setIsUploading(false);
     }
-  }, [api, channels, setChannels, setMemoryDraft]);
+
+    try {
+      const refreshedChannels = await api.getChannels();
+      setChannels(refreshedChannels);
+    } catch (error) {
+      console.warn("Failed to refresh channels after upload", error);
+    }
+
+    if (failed.length === 0 && warnings.length === 0) {
+      toast.success(`Uploaded ${draftChanges.length} channel edits`);
+    } else if (failed.length === 0 && warnings.length > 0) {
+      toast.error(`Uploaded with ${warnings.length} warnings (lockout/priority not applied)`);
+    } else if (failed.length > 0) {
+      const firstFailure = failed[0];
+      const detailText = firstFailure.detail ? ` (${firstFailure.detail})` : "";
+      console.error("Upload failed", { failed });
+      toast.error(
+        `Failed to upload ${failed.length} channel edits. First failure: CH ${firstFailure.index}${detailText}`,
+      );
+    }
+  }, [api, draftChanges, isUploading, setChannels, setMemoryDraft]);
+
+  const handleDiscardDrafts = useCallback(() => {
+    if (draftChanges.length === 0 || isUploading) return;
+    if (!window.confirm("Discard all pending channel edits?")) return;
+
+    for (const change of draftChanges) {
+      setMemoryDraft(change.channelIndex, buildDraft(change.channel));
+    }
+    toast.success("Drafts discarded");
+  }, [draftChanges, isUploading, setMemoryDraft]);
 
   const handleExportCSV = async () => {
     try {
@@ -249,6 +437,30 @@ export function ChannelsTab() {
           </div>
         </div>
 
+        <div className="flex items-center justify-between bg-black/10 p-3 rounded-lg border border-white/5 shrink-0">
+          <div className="text-xs text-white/60">
+            {draftChanges.length > 0
+              ? `Edits are saved as drafts. ${draftChanges.length} pending.`
+              : "Edits are saved as drafts. No pending changes."}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleDiscardDrafts}
+              disabled={draftChanges.length === 0 || isUploading}
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Discard Changes
+            </button>
+            <button
+              onClick={handleUploadDrafts}
+              disabled={draftChanges.length === 0 || isUploading}
+              className="px-3 py-1.5 bg-brand-primary hover:bg-brand-hover rounded text-xs font-bold uppercase tracking-wider border border-brand-primary/40 transition-colors text-black disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isUploading ? "Uploading..." : "Upload Changes"}
+            </button>
+          </div>
+        </div>
+
         {/* Table */}
         <div
           className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
@@ -279,6 +491,17 @@ export function ChannelsTab() {
               filteredChannels.map((channel) => {
                 const isEditing = editingChannelIndex === channel.index;
                 const draft = memoryDrafts[channel.index];
+                const isCleared = channel.frequency === 0;
+                const displayAlpha = isCleared
+                  ? "—"
+                  : (channel.alpha_tag || "—").trim() || "—";
+                const displayModulation = isCleared
+                  ? "AUTO"
+                  : channel.modulation || "AUTO";
+                const displayTone = isCleared ? "—" : (channel.tone_squelch ?? "—");
+                const displayDelay = isCleared ? 0 : channel.delay;
+                const displayLockout = isCleared ? false : channel.lockout;
+                const displayPriority = isCleared ? false : channel.priority;
 
                 return (
                   <div
@@ -298,28 +521,28 @@ export function ChannelsTab() {
                       {channel.frequency.toFixed(4)}
                     </div>
                     <div className="font-medium text-white/80 truncate pl-1">
-                      {channel.alpha_tag || "—"}
+                      {displayAlpha}
                     </div>
                     <div className="flex justify-center">
                       <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
-                        {channel.modulation || "AUTO"}
+                        {displayModulation}
                       </span>
                     </div>
                     <div className="text-white/30 text-xs text-center">
-                      {channel.tone_squelch ?? "—"}
+                      {displayTone}
                     </div>
                     <div className="text-white/30 text-xs text-center">
-                      {channel.delay}s
+                      {displayDelay}s
                     </div>
                     <div className="flex justify-center">
-                      {channel.lockout ? (
+                      {displayLockout ? (
                         <Lock size={10} className="text-red-400" />
                       ) : (
                         <div className="w-1 h-1 rounded-full bg-white/5" />
                       )}
                     </div>
                     <div className="flex justify-center">
-                      {channel.priority ? (
+                      {displayPriority ? (
                         <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-glow" />
                       ) : (
                         <div className="w-1 h-1 rounded-full bg-white/5" />
@@ -338,8 +561,9 @@ export function ChannelsTab() {
             draft={editingDraft ?? buildDraft(editingChannel)}
             isOpen={editingChannelIndex !== null}
             onClose={handleCloseEditSheet}
-            onSave={(draft) => handleSaveChannel(editingChannelIndex, draft)}
+            onSave={(draft) => handleSaveDraft(editingChannelIndex, draft)}
             onFieldChange={(field, value) => updateDraftField(editingChannelIndex, field, value)}
+            onClear={() => handleClearDraft(editingChannelIndex)}
           />
         )}
       </div>
