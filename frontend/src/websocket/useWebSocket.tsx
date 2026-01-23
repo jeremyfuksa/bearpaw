@@ -4,11 +4,13 @@ import { ScannerWebSocket } from "./ScannerWebSocket";
 // Detect if running in Tauri
 const isTauri = '__TAURI__' in window;
 
+console.log('WebSocket: isTauri =', isTauri, 'window.__TAURI__ =', window.__TAURI__);
+
 // WebSocket URL configuration
-const defaultWsURL = isTauri
-  ? 'ws://localhost:8000/ws'  // Sidecar runs on localhost
-  : import.meta.env.VITE_WS_URL ||
-    `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
+// For development, always use the backend on port 8000
+const defaultWsURL = 'ws://localhost:8000/ws';
+
+console.log('WebSocket URL:', defaultWsURL);
 
 interface WebSocketContextValue {
   ws: ScannerWebSocket;

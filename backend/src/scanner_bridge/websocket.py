@@ -16,6 +16,7 @@ class WebSocketManager:
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
+        print(f"[ws] Client connected, total connections: {len(self._connections) + 1}")
         self._connections.add(websocket)
         self._last_pong[websocket] = time.time()
         self._topics[websocket] = None

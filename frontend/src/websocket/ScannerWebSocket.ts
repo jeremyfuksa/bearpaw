@@ -15,19 +15,20 @@ export class ScannerWebSocket {
     this.url = url;
   }
 
-  connect(): void {
-    if (
-      this.ws &&
-      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
-    }
+    connect(): void {
+        if (
+          this.ws &&
+          (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+        ) {
+          return;
+        }
 
-    this.shouldReconnect = true;
-    this.debug =
-      typeof window !== "undefined" && window.localStorage?.getItem("ws_debug") === "1";
-    this.emit("connection", { status: "connecting" });
-    this.ws = new WebSocket(this.url);
+        this.shouldReconnect = true;
+        this.debug =
+          typeof window !== "undefined" && window.localStorage?.getItem("ws_debug") === "1";
+        console.log('[ws] Connecting to:', this.url);
+        this.emit("connection", { status: "connecting" });
+        this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
