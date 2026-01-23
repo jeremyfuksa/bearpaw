@@ -399,15 +399,25 @@ export function DeviceTab() {
       try {
         await api.setKeyBeepSettings(level, keyBeepLock);
         const refreshed = await refreshKeyBeep();
+        console.debug("Key beep refresh result", refreshed);
+        console.debug("Verification", {
+          requested: level,
+          actual: refreshed?.level,
+          offCheck: level === 99 && refreshed?.level === 99,
+          autoCheck: level === 0 && refreshed?.level === 0,
+          manualCheck: level > 0 && level < 99 && refreshed?.level > 0 && refreshed?.level < 99,
+        });
         if (refreshed) {
           if (
             (level === 99 && refreshed.level === 99) ||
             (level === 0 && refreshed.level === 0) ||
             (level > 0 && level < 99 && refreshed.level > 0 && refreshed.level < 99)
           ) {
+            console.debug("Key beep verification passed");
             return;
           }
         }
+        console.error("Key beep verification failed", { requested: level, actual: refreshed?.level });
         toast.error("Failed to set key beep");
       } catch (error) {
         console.error("Failed to set key beep", { payload, error });
