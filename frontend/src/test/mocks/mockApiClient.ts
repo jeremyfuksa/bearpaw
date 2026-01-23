@@ -92,6 +92,22 @@ export const createMockApiClient = () => {
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return mockApiResponses.channel;
     }),
+    startProgramMode: vi.fn(async () => {
+      const response = responses.get("/memory/program-mode/start");
+      if (response?.error) {
+        throw new APIError(response.error.message, response.error.status, response.error);
+      }
+      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
+      return undefined;
+    }),
+    endProgramMode: vi.fn(async () => {
+      const response = responses.get("/memory/program-mode/end");
+      if (response?.error) {
+        throw new APIError(response.error.message, response.error.status, response.error);
+      }
+      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
+      return undefined;
+    }),
     toggleTemporaryLockout: vi.fn(async (options?: unknown) => {
       const response = responses.get("/commands/lockout");
       if (response?.error) {

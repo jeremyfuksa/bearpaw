@@ -1255,6 +1255,28 @@ def create_app(
         asyncio.create_task(_run_sync(app, task))
         return {"status": "started", "task_id": task.task_id}
 
+    @app.post("/api/v1/memory/program-mode/start")
+    async def program_mode_start() -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        if runtime.sync_task:
+            raise HTTPException(status_code=409, detail="sync_in_progress")
+        begin_sync = getattr(driver, "begin_memory_sync", None)
+        if not callable(begin_sync):
+            raise HTTPException(status_code=400, detail="program_mode_unsupported")
+        await begin_sync()
+        return {"status": "ok"}
+
+    @app.post("/api/v1/memory/program-mode/end")
+    async def program_mode_end() -> Dict[str, str]:
+        runtime: RuntimeState = app.state.runtime
+        driver = require_driver(runtime)
+        end_sync = getattr(driver, "end_memory_sync", None)
+        if not callable(end_sync):
+            raise HTTPException(status_code=400, detail="program_mode_unsupported")
+        await end_sync()
+        return {"status": "ok"}
+
     @app.post("/api/v1/memory/sync/cancel")
     async def memory_sync_cancel() -> Dict[str, str]:
         runtime: RuntimeState = app.state.runtime

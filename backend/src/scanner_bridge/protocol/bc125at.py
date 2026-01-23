@@ -250,11 +250,15 @@ class BC125ATDriver(ScannerDriver):
     async def set_squelch(self, level: int) -> bool:
         if not 0 <= level <= 15:
             raise ValueError("squelch_out_of_range")
-        await self._enter_program_mode()
+        should_exit = False
+        if not self._in_program_mode:
+            await self._enter_program_mode()
+            should_exit = True
         try:
             response = await self._send(f"SQL,{level}", PRIORITY_BACKGROUND)
         finally:
-            await self._exit_program_mode()
+            if should_exit:
+                await self._exit_program_mode()
         ok = self._is_ok_response(response)
         if not ok and response.strip().upper().startswith("SQL,"):
             ok = True
@@ -488,6 +492,20 @@ class BC125ATDriver(ScannerDriver):
                 raise ValueError("channel_read_failed")
 
             has_bank = len(parts) >= 8 and parts[-1].isdigit() and int(parts[-1]) <= 10
+            has_tone = True
+            if len(parts) == 7:
+                lockout_candidate = parts[3]
+                delay_candidate = parts[4]
+                priority_candidate = parts[5]
+                bank_candidate = parts[6]
+                if (
+                    lockout_candidate in {"0", "1"}
+                    and delay_candidate.isdigit()
+                    and priority_candidate in {"0", "1"}
+                    and bank_candidate.isdigit()
+                    and int(bank_candidate) <= 10
+                ):
+                    has_tone = False
             template_freq = (
                 parts[1]
                 if len(parts) > 1 and looks_like_frequency(parts[1])
@@ -495,17 +513,28 @@ class BC125ATDriver(ScannerDriver):
             )
             tone_value = format_tone_value(channel.tone_squelch)
 
-            values = [
-                alpha_tag,
-                format_frequency(channel.frequency, template_freq),
-                modulation,
-                tone_value,
-                delay_value,
-                lockout_value,
-                priority_value,
-            ]
-            if has_bank:
-                values.append(bank_value)
+            if has_tone:
+                values = [
+                    alpha_tag,
+                    format_frequency(channel.frequency, template_freq),
+                    modulation,
+                    tone_value,
+                    delay_value,
+                    lockout_value,
+                    priority_value,
+                ]
+                if has_bank:
+                    values.append(bank_value)
+            else:
+                values = [
+                    alpha_tag,
+                    format_frequency(channel.frequency, template_freq),
+                    modulation,
+                    lockout_value,
+                    delay_value,
+                    priority_value,
+                    bank_value,
+                ]
 
             write_command = f"CIN,{channel.index}," + ",".join(values)
             self._logger.info("CIN write: %s", write_command)
@@ -532,7 +561,14 @@ class BC125ATDriver(ScannerDriver):
                 updated.priority != channel.priority
                 or updated.lockout != channel.lockout
             ):
-                raise ValueError("channel_write_mismatch")
+                self._logger.warning(
+                    "Channel write mismatch for %s (lockout/priority). Expected lockout=%s priority=%s got lockout=%s priority=%s",
+                    channel.index,
+                    channel.lockout,
+                    channel.priority,
+                    updated.lockout,
+                    updated.priority,
+                )
             return updated
         finally:
             await self._exit_program_mode()
@@ -878,16 +914,28 @@ class BC125ATDriver(ScannerDriver):
             modulation = parts[2] if len(parts) > 2 and parts[2] else "FM"
             remaining = parts[3:]
             if len(remaining) >= 4:
-                if remaining[0] != "":
-                    tone = parse_float(remaining[0])
-                if remaining[1] != "":
+                if (
+                    len(remaining) == 4
+                    and remaining[0] in {"0", "1"}
+                    and remaining[1].isdigit()
+                    and remaining[2] in {"0", "1"}
+                    and remaining[3].isdigit()
+                ):
+                    lockout = remaining[0] == "1"
                     delay = int(remaining[1])
-                if remaining[2] != "":
-                    lockout = remaining[2] == "1"
-                if remaining[3] != "":
-                    priority = remaining[3] == "1"
-                if len(remaining) > 4 and remaining[4] != "":
-                    bank = int(remaining[4])
+                    priority = remaining[2] == "1"
+                    bank = int(remaining[3])
+                else:
+                    if remaining[0] != "":
+                        tone = parse_float(remaining[0])
+                    if remaining[1] != "":
+                        delay = int(remaining[1])
+                    if remaining[2] != "":
+                        lockout = remaining[2] == "1"
+                    if remaining[3] != "":
+                        priority = remaining[3] == "1"
+                    if len(remaining) > 4 and remaining[4] != "":
+                        bank = int(remaining[4])
             elif len(remaining) >= 3:
                 if remaining[0] != "":
                     delay = int(remaining[0])

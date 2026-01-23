@@ -19,6 +19,7 @@ interface ChannelEditSheetProps {
   onClose: () => void;
   onSave: (draft: ChannelDraft) => Promise<void>;
   onFieldChange: (field: keyof ChannelDraft, value: string | boolean) => void;
+  onClear: () => void;
 }
 
 export function ChannelEditSheet({
@@ -28,6 +29,7 @@ export function ChannelEditSheet({
   onClose,
   onSave,
   onFieldChange,
+  onClear,
 }: ChannelEditSheetProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -42,6 +44,7 @@ export function ChannelEditSheet({
     if (field === "frequency" && typeof value === "string") {
       const freq = parseFloat(value);
       if (isNaN(freq)) return "Invalid frequency";
+      if (freq === 0) return null;
       if (freq < 25 || freq > 512) return "Frequency must be 25-512 MHz";
     }
     if (field === "delay" && typeof value === "string") {
@@ -237,11 +240,17 @@ export function ChannelEditSheet({
                 Cancel
               </button>
               <button
+                onClick={onClear}
+                className="flex-1 py-2.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-wider border border-white/10 transition-colors"
+              >
+                Clear
+              </button>
+              <button
                 onClick={handleSave}
                 disabled={isSaving || Object.keys(errors).length > 0}
                 className="flex-1 py-2.5 rounded bg-brand-primary hover:bg-brand-hover text-black text-xs font-bold uppercase tracking-wider border border-brand-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSaving ? "Saving..." : "Save"}
+                {isSaving ? "Saving..." : "Save Draft"}
               </button>
             </div>
           </motion.div>
