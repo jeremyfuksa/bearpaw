@@ -698,7 +698,7 @@ export function DeviceTab() {
                       {allSelected ? "Deselect" : "Select Page"}
                     </button>
                     <button
-                      onClick={handleUnlockSelected}
+                      onClick={() => handleUnlockSelected()}
                       disabled={selectedChannels.length === 0 || isClearing}
                       className="px-3 py-2 text-xs font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/40 transition-colors disabled:opacity-50"
                     >
@@ -833,7 +833,10 @@ export function DeviceTab() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-white/70">Backlight</span>
                     <Select value={backlight} onValueChange={handleBacklightChange}>
-                      <SelectTrigger className="w-[140px] h-7 text-xs bg-black/20 border-white/10">
+                      <SelectTrigger
+                        aria-label="Backlight"
+                        className="w-[140px] h-7 text-xs bg-black/20 border-white/10"
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
@@ -879,7 +882,10 @@ export function DeviceTab() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-white/70">Priority Mode</span>
                   <Select value={priorityMode} onValueChange={handlePriorityModeChange}>
-                    <SelectTrigger className="w-[140px] h-7 text-xs bg-black/20 border-white/10">
+                    <SelectTrigger
+                      aria-label="Priority Mode"
+                      className="w-[140px] h-7 text-xs bg-black/20 border-white/10"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
@@ -947,7 +953,10 @@ export function DeviceTab() {
                     <span className="text-xs text-white/40">Operation mode</span>
                   </div>
                   <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
-                    <SelectTrigger className="w-[180px] h-8 text-xs bg-white/5 border-white/10">
+                  <SelectTrigger
+                    aria-label="Mode"
+                    className="w-[180px] h-8 text-xs bg-white/5 border-white/10"
+                  >
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
                     <SelectContent className="bg-[#1c1f26] border-white/10 text-white">

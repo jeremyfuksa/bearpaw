@@ -1,11 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "sonner";
-import { DeviceTab } from "../views/DeviceTab";
-import { mockApiResponses, mockApiErrors } from "../../test/fixtures";
-import { createMockApiClient } from "../../test/mocks";
-import { createTestLiveState, createTestDeviceInfo, createTestChannel } from "../../test/fixtures";
+import { DeviceTab } from "../DeviceTab";
+import { createMockApiClient } from "../../../../test/mocks/mockApiClient";
+import {
+  createTestChannel,
+  createTestDeviceInfo,
+  createTestLiveState,
+} from "../../../../test/fixtures";
+import { useAPI } from "../../../../api/useApi";
+import { useStore } from "../../../../store/useStore";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -15,7 +18,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("../../api/useApi", () => ({
+vi.mock("../../../../api/useApi", () => ({
   useAPI: vi.fn(() => createMockApiClient()),
 }));
 
@@ -25,34 +28,64 @@ describe("DeviceTab", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockApiClient = createMockApiClient();
-    vi.mocked("../../api/useApi").useAPI.mockReturnValue(mockApiClient);
+    vi.mocked(useAPI).mockReturnValue(mockApiClient);
+    useStore.setState({
+      channels: [],
+      liveState: createTestLiveState(),
+      deviceInfo: createTestDeviceInfo(),
+    });
   });
 
-  describe("Sync category", () => {
-    it("should render Start Sync button", () => {
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
-      expect(screen.getByText(/Start Sync/i)).toBeInTheDocument();
+  const renderDeviceTab = () => render(<DeviceTab />);
+
+  const selectCategory = async (label: RegExp | string) => {
+    await userEvent.click(screen.getByRole("button", { name: label }));
+  };
+
+  describe("Device Config category", () => {
+    it("should render device config by default", () => {
+      renderDeviceTab();
+      expect(screen.getByRole("heading", { name: /Audio & Power/i })).toBeInTheDocument();
     });
 
-    it("should call onMemorySync when Start Sync button is clicked", async () => {
-      const onMemorySync = vi.fn();
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={onMemorySync} />);
+    it("should update volume when slider changes", async () => {
+      mockApiClient.setVolume = vi.fn().mockResolvedValue(undefined);
 
-      const syncButton = screen.getByRole("button", { name: /Start Sync/i });
-      await userEvent.click(syncButton);
+      renderDeviceTab();
 
-      expect(onMemorySync).toHaveBeenCalledOnce();
+      const slider = screen.getAllByRole("slider")[0];
+      slider.focus();
+      await userEvent.keyboard("{ArrowRight}");
+
+      expect(mockApiClient.setVolume).toHaveBeenCalled();
     });
 
-    it("should disable Start Sync button when syncing", () => {
-      render(<DeviceTab isMemorySyncing={true} onMemorySync={vi.fn()} />);
-      const syncButton = screen.getByRole("button", { name: /Syncing/i });
-      expect(syncButton).toBeDisabled();
+    it("should call setBacklight when option selected", async () => {
+      mockApiClient.setBacklight = vi.fn().mockResolvedValue(undefined);
+
+      renderDeviceTab();
+
+      const selectTrigger = screen.getByRole("combobox", { name: /Backlight/i });
+      await userEvent.click(selectTrigger);
+
+      const option = screen.getByRole("option", { name: /Always Off/i });
+      await userEvent.click(option);
+
+      expect(mockApiClient.setBacklight).toHaveBeenCalledWith("AF");
     });
 
-    it("should show sync in progress state", () => {
-      render(<DeviceTab isMemorySyncing={true} onMemorySync={vi.fn()} />);
-      expect(screen.getByText(/Syncing/i)).toBeInTheDocument();
+    it("should call setPrioritySettings when option selected", async () => {
+      mockApiClient.setPrioritySettings = vi.fn().mockResolvedValue(undefined);
+
+      renderDeviceTab();
+
+      const selectTrigger = screen.getByRole("combobox", { name: /Priority Mode/i });
+      await userEvent.click(selectTrigger);
+
+      const option = screen.getByRole("option", { name: /^Plus$/i });
+      await userEvent.click(option);
+
+      expect(mockApiClient.setPrioritySettings).toHaveBeenCalledWith(2);
     });
   });
 
@@ -62,38 +95,48 @@ describe("DeviceTab", () => {
         createTestChannel({ index: 1, frequency: 151.25, bank: 1 }),
         createTestChannel({ index: 5, frequency: 155.5, bank: 2 }),
       ];
-      mockApiClient.getChannels = vi.fn().mockResolvedValue(mockChannels);
+      useStore.setState({ channels: mockChannels });
       mockApiClient.getLockouts = vi.fn().mockResolvedValue({
         channels: [1, 5],
         frequencies: [],
         temporary_channels: [],
       });
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
 
-      await waitFor(() => screen.getByText(/Locked Channels/i));
-
-      expect(screen.getByText(/1 locked/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/2 locked/i)).toBeInTheDocument();
+      });
       expect(screen.getByText(/CH 1/i)).toBeInTheDocument();
       expect(screen.getByText(/151.2500/i)).toBeInTheDocument();
     });
 
     it("should call unlock when Unlock Selected button clicked", async () => {
       const mockChannels = [createTestChannel({ index: 1 })];
-      mockApiClient.getChannels = vi.fn().mockResolvedValue(mockChannels);
+      useStore.setState({ channels: mockChannels });
+      mockApiClient.getLockouts = vi.fn().mockResolvedValue({
+        channels: [1],
+        frequencies: [],
+        temporary_channels: [],
+      });
       mockApiClient.clearChannelLockouts = vi.fn().mockResolvedValue({
         cleared: [1],
         failed: [],
       });
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
 
-      await waitFor(() => {
-        const checkbox = screen.getByRole("checkbox");
-        await userEvent.click(checkbox);
-      });
+      await screen.findByText(/CH 1/i);
+
+      const checkbox = screen.getByRole("checkbox");
+      await userEvent.click(checkbox);
 
       const unlockButton = screen.getByRole("button", { name: /Unlock Selected/i });
+      await waitFor(() => {
+        expect(unlockButton).toBeEnabled();
+      });
       await userEvent.click(unlockButton);
 
       await waitFor(() => {
@@ -102,6 +145,12 @@ describe("DeviceTab", () => {
     });
 
     it("should call unlock all when Unlock All button clicked", async () => {
+      const mockChannels = [
+        createTestChannel({ index: 1 }),
+        createTestChannel({ index: 2 }),
+        createTestChannel({ index: 3 }),
+      ];
+      useStore.setState({ channels: mockChannels });
       mockApiClient.getLockouts = vi.fn().mockResolvedValue({
         channels: [1, 2, 3],
         frequencies: [],
@@ -112,66 +161,31 @@ describe("DeviceTab", () => {
         failed: [],
       });
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
 
-      await waitFor(() => screen.getByRole("button", { name: /Unlock All/i }));
-      await userEvent.click(screen.getByRole("button", { name: /Unlock All/i }));
+      const unlockAllButton = await screen.findByRole("button", { name: /Unlock All/i });
+      await userEvent.click(unlockAllButton);
 
       expect(mockApiClient.clearChannelLockouts).toHaveBeenCalled();
     });
   });
 
-  describe("Device Config - Volume", () => {
-    it("should update volume when slider changes", async () => {
-      mockApiClient.setVolume = vi.fn().mockResolvedValue(undefined);
-
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
-
-      const slider = screen.getByRole("slider");
-      await userEvent.click(slider);
-
-      expect(mockApiClient.setVolume).toHaveBeenCalled();
-    });
-  });
-
-  describe("Device Config - Backlight", () => {
-    it("should call setBacklight when option selected", async () => {
-      mockApiClient.setBacklight = vi.fn().mockResolvedValue(undefined);
-
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
-
-      const selectTrigger = screen.getByRole("combobox", { name: /Backlight/i });
+  describe("Close Call category", () => {
+    const enableCloseCall = async () => {
+      await selectCategory(/Close Call/i);
+      const selectTrigger = screen.getByRole("combobox", { name: /Mode/i });
       await userEvent.click(selectTrigger);
-
-      const option = screen.getByRole("option", { name: /Always On/i });
+      const option = screen.getByRole("option", { name: /CC DND/i });
       await userEvent.click(option);
+    };
 
-      expect(mockApiClient.setBacklight).toHaveBeenCalledWith("AO");
-    });
-  });
-
-  describe("Device Config - Priority Mode", () => {
-    it("should call setPrioritySettings when option selected", async () => {
-      mockApiClient.setPrioritySettings = vi.fn().mockResolvedValue(undefined);
-
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
-
-      const selectTrigger = screen.getByRole("combobox", { name: /Priority Mode/i });
-      await userEvent.click(selectTrigger);
-
-      const option = screen.getByRole("option", { name: /On/i });
-      await userEvent.click(option);
-
-      expect(mockApiClient.setPrioritySettings).toHaveBeenCalledWith(1);
-    });
-  });
-
-  describe("Device Config - Close Call", () => {
     it("should call setCloseCallSettings when mode changed", async () => {
       mockApiClient.setCloseCallSettings = vi.fn().mockResolvedValue(undefined);
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
 
+      await selectCategory(/Close Call/i);
       const selectTrigger = screen.getByRole("combobox", { name: /Mode/i });
       await userEvent.click(selectTrigger);
 
@@ -184,9 +198,10 @@ describe("DeviceTab", () => {
     it("should toggle lockout switch", async () => {
       mockApiClient.setCloseCallSettings = vi.fn().mockResolvedValue(undefined);
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await enableCloseCall();
 
-      const lockoutSwitch = screen.getByRole("switch", { name: /Lockout/i });
+      const lockoutSwitch = screen.getByRole("switch", { name: /Lockout Hits While Scanning/i });
       await userEvent.click(lockoutSwitch);
 
       expect(mockApiClient.setCloseCallSettings).toHaveBeenCalled();
@@ -195,7 +210,8 @@ describe("DeviceTab", () => {
     it("should toggle beep switch", async () => {
       mockApiClient.setCloseCallSettings = vi.fn().mockResolvedValue(undefined);
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await enableCloseCall();
 
       const beepSwitch = screen.getByRole("switch", { name: /Alert Beep/i });
       await userEvent.click(beepSwitch);
@@ -206,7 +222,8 @@ describe("DeviceTab", () => {
     it("should toggle light switch", async () => {
       mockApiClient.setCloseCallSettings = vi.fn().mockResolvedValue(undefined);
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await enableCloseCall();
 
       const lightSwitch = screen.getByRole("switch", { name: /Alert Light/i });
       await userEvent.click(lightSwitch);
@@ -215,59 +232,60 @@ describe("DeviceTab", () => {
     });
   });
 
-  describe("Service Search", () => {
+  describe("Service Search category", () => {
     it("should toggle service search group", async () => {
       mockApiClient.setServiceSearchSettings = vi.fn().mockResolvedValue(undefined);
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await selectCategory(/Service Search/i);
 
-      const switch = screen.getAllByRole("switch").find(s => s.getAttribute("id")?.includes("service"));
-      if (switch) {
-        await userEvent.click(switch);
-        expect(mockApiClient.setServiceSearchSettings).toHaveBeenCalled();
-      }
+      const serviceSwitch = screen.getByRole("switch", { name: /Police/i });
+      await userEvent.click(serviceSwitch);
+
+      expect(mockApiClient.setServiceSearchSettings).toHaveBeenCalled();
     });
   });
 
-  describe("Custom Search", () => {
+  describe("Custom Search category", () => {
     it("should toggle search range enable", async () => {
       mockApiClient.setCustomSearchSettings = vi.fn().mockResolvedValue(undefined);
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
 
-      const switches = screen.getAllByRole("switch").filter(s => s.getAttribute("id")?.includes("range"));
-      if (switches[0]) {
-        await userEvent.click(switches[0]);
-        expect(mockApiClient.setCustomSearchSettings).toHaveBeenCalled();
-      }
+      const switches = screen.getAllByRole("switch");
+      await userEvent.click(switches[0]);
+
+      expect(mockApiClient.setCustomSearchSettings).toHaveBeenCalled();
     });
 
-    it("should update range label", async () => {
+    it("should update range values", async () => {
       mockApiClient.setCustomSearchRange = vi.fn().mockResolvedValue(undefined);
 
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
 
-      const inputs = screen.getAllByRole("textbox").filter(i => i.getAttribute("id")?.includes("label"));
-      if (inputs[0]) {
-        await userEvent.type(inputs[0], "Test Label");
-      }
+      const startInput = screen.getByDisplayValue("140.0000");
+      fireEvent.change(startInput, { target: { value: "141.0000" } });
 
       await waitFor(() => {
-        expect(mockApiClient.setCustomSearchRange).toHaveBeenCalled();
+        expect(mockApiClient.setCustomSearchRange).toHaveBeenLastCalledWith(1, 141, 149);
       });
     });
   });
 
   describe("Preferences category", () => {
-    it("should render preference controls", () => {
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
-      expect(screen.getByText(/Preferences/i)).toBeInTheDocument();
+    it("should render preference controls", async () => {
+      renderDeviceTab();
+      await selectCategory(/Preferences/i);
+      expect(screen.getByText(/Application Settings/i)).toBeInTheDocument();
     });
 
-    it("should render external links", () => {
-      render(<DeviceTab isMemorySyncing={false} onMemorySync={vi.fn()} />);
-      expect(screen.getByRole("link", { name: /Help/i })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /GitHub/i })).toBeInTheDocument();
+    it("should render external links", async () => {
+      renderDeviceTab();
+      await selectCategory(/Preferences/i);
+      expect(screen.getByRole("button", { name: /Website/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Github/i })).toBeInTheDocument();
     });
   });
 });

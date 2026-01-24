@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ChannelEditSheet } from "../views/ChannelEditSheet";
-import { createTestChannel, createTestChannelDraft } from "../../test/fixtures";
-import type { ChannelDraft, ChannelData } from "../../../types";
+import { ChannelEditSheet } from "../ChannelEditSheet";
+import { createTestChannel, createTestChannelDraft } from "../../../../test/fixtures";
+import type { ChannelDraft, ChannelData } from "../../../../types";
 
 describe("ChannelEditSheet", () => {
   let mockChannel: ChannelData;
@@ -105,53 +105,62 @@ describe("ChannelEditSheet", () => {
         />
       );
       const input = screen.getByLabelText(/frequency/i);
-      await userEvent.type(input, "155.7500");
-      expect(mockOnFieldChange).toHaveBeenCalledWith("frequency", "155.7500");
+      fireEvent.change(input, { target: { value: "155.7500" } });
+      expect(mockOnFieldChange).toHaveBeenLastCalledWith("frequency", "155.7500");
     });
 
-    it("should show error for invalid frequency", () => {
-      const draftWithInvalidFreq = createTestChannelDraft({ frequency: "invalid" });
+    it("should show error for invalid frequency", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithInvalidFreq}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
+      const input = screen.getByLabelText(/frequency/i);
+      fireEvent.change(input, { target: { value: "invalid" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
+      });
     });
 
-    it("should show error for frequency out of range (below min)", () => {
-      const draftWithLowFreq = createTestChannelDraft({ frequency: "20.0000" });
+    it("should show error for frequency out of range (below min)", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithLowFreq}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByText(/Frequency must be 25-512 MHz/i)).toBeInTheDocument();
+      const input = screen.getByLabelText(/frequency/i);
+      fireEvent.change(input, { target: { value: "20.0000" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Frequency must be 25-512 MHz/i)).toBeInTheDocument();
+      });
     });
 
-    it("should show error for frequency out of range (above max)", () => {
-      const draftWithHighFreq = createTestChannelDraft({ frequency: "600.0000" });
+    it("should show error for frequency out of range (above max)", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithHighFreq}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByText(/Frequency must be 25-512 MHz/i)).toBeInTheDocument();
+      const input = screen.getByLabelText(/frequency/i);
+      fireEvent.change(input, { target: { value: "600.0000" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Frequency must be 25-512 MHz/i)).toBeInTheDocument();
+      });
     });
   });
 
@@ -183,8 +192,8 @@ describe("ChannelEditSheet", () => {
         />
       );
       const input = screen.getByLabelText(/alpha tag/i);
-      await userEvent.type(input, "Updated Tag");
-      expect(mockOnFieldChange).toHaveBeenCalledWith("alpha_tag", "Updated Tag");
+      fireEvent.change(input, { target: { value: "Updated Tag" } });
+      expect(mockOnFieldChange).toHaveBeenLastCalledWith("alpha_tag", "Updated Tag");
     });
 
     it("should enforce maxLength of 16", () => {
@@ -218,7 +227,7 @@ describe("ChannelEditSheet", () => {
       expect(screen.getByText(/FM/i)).toBeInTheDocument();
     });
 
-    it("should render all modulation options", () => {
+    it("should render all modulation options", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
@@ -229,6 +238,8 @@ describe("ChannelEditSheet", () => {
           onFieldChange={mockOnFieldChange}
         />
       );
+      const selectTrigger = screen.getByRole("combobox");
+      await userEvent.click(selectTrigger);
       expect(screen.getByText(/AUTO/i)).toBeInTheDocument();
       expect(screen.getByText(/AM/i)).toBeInTheDocument();
       expect(screen.getByText(/NFM/i)).toBeInTheDocument();
@@ -284,38 +295,44 @@ describe("ChannelEditSheet", () => {
         />
       );
       const input = screen.getByLabelText(/tone/i);
-      await userEvent.type(input, "192.8");
-      expect(mockOnFieldChange).toHaveBeenCalledWith("tone_squelch", "192.8");
+      fireEvent.change(input, { target: { value: "192.8" } });
+      expect(mockOnFieldChange).toHaveBeenLastCalledWith("tone_squelch", "192.8");
     });
 
-    it("should show error for tone below 0", () => {
-      const draftWithLowTone = createTestChannelDraft({ tone_squelch: "-10" });
+    it("should show error for tone below 0", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithLowTone}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByText(/Tone must be 0-999/i)).toBeInTheDocument();
+      const input = screen.getByLabelText(/tone/i);
+      fireEvent.change(input, { target: { value: "-10" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Tone must be 0-999/i)).toBeInTheDocument();
+      });
     });
 
-    it("should show error for tone above 999", () => {
-      const draftWithHighTone = createTestChannelDraft({ tone_squelch: "1500" });
+    it("should show error for tone above 999", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithHighTone}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByText(/Tone must be 0-999/i)).toBeInTheDocument();
+      const input = screen.getByLabelText(/tone/i);
+      fireEvent.change(input, { target: { value: "1500" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Tone must be 0-999/i)).toBeInTheDocument();
+      });
     });
   });
 
@@ -347,38 +364,44 @@ describe("ChannelEditSheet", () => {
         />
       );
       const input = screen.getByLabelText(/delay/i);
-      await userEvent.type(input, "5");
-      expect(mockOnFieldChange).toHaveBeenCalledWith("delay", "5");
+      fireEvent.change(input, { target: { value: "5" } });
+      expect(mockOnFieldChange).toHaveBeenLastCalledWith("delay", "5");
     });
 
-    it("should show error for delay below 0", () => {
-      const draftWithLowDelay = createTestChannelDraft({ delay: "-5" });
+    it("should show error for delay below 0", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithLowDelay}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
+      const input = screen.getByLabelText(/delay/i);
+      fireEvent.change(input, { target: { value: "-5" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
+      });
     });
 
-    it("should show error for delay above 30", () => {
-      const draftWithHighDelay = createTestChannelDraft({ delay: "50" });
+    it("should show error for delay above 30", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithHighDelay}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
-      expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
+      const input = screen.getByLabelText(/delay/i);
+      fireEvent.change(input, { target: { value: "50" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
+      });
     });
   });
 
@@ -513,20 +536,23 @@ describe("ChannelEditSheet", () => {
       expect(mockOnClose).toHaveBeenCalled();
     });
 
-    it("should disable save button when there are errors", () => {
-      const draftWithErrors = createTestChannelDraft({ frequency: "invalid" });
+    it("should disable save button when there are errors", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithErrors}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
         />
       );
+      const input = screen.getByLabelText(/frequency/i);
+      fireEvent.change(input, { target: { value: "invalid" } });
       const saveButton = screen.getByRole("button", { name: /Save Draft/i });
-      expect(saveButton).toBeDisabled();
+      await waitFor(() => {
+        expect(saveButton).toBeDisabled();
+      });
     });
 
     it("should show saving state while saving", async () => {
@@ -551,42 +577,11 @@ describe("ChannelEditSheet", () => {
   });
 
   describe("Error Display", () => {
-    it("should display error message below invalid frequency field", () => {
-      const draftWithInvalidFreq = createTestChannelDraft({ frequency: "abc" });
+    it("should display error message below invalid frequency field", async () => {
       render(
         <ChannelEditSheet
           channel={mockChannel}
-          draft={draftWithInvalidFreq}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-        />
-      );
-      expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
-    });
-
-    it("should display error message below invalid delay field", () => {
-      const draftWithInvalidDelay = createTestChannelDraft({ delay: "abc" });
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={draftWithInvalidDelay}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-        />
-      );
-      expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
-    });
-
-    it("should clear error when valid value is entered", async () => {
-      const draftWithInvalidFreq = createTestChannelDraft({ frequency: "abc" });
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={draftWithInvalidFreq}
+          draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
@@ -594,8 +589,48 @@ describe("ChannelEditSheet", () => {
         />
       );
       const input = screen.getByLabelText(/frequency/i);
-      await userEvent.clear(input);
-      await userEvent.type(input, "151.25");
+      fireEvent.change(input, { target: { value: "abc" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
+      });
+    });
+
+    it("should display error message below invalid delay field", async () => {
+      render(
+        <ChannelEditSheet
+          channel={mockChannel}
+          draft={mockDraft}
+          isOpen={true}
+          onClose={mockOnClose}
+          onSave={mockOnSave}
+          onFieldChange={mockOnFieldChange}
+        />
+      );
+      const input = screen.getByLabelText(/delay/i);
+      fireEvent.change(input, { target: { value: "abc" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
+      });
+    });
+
+    it("should clear error when valid value is entered", async () => {
+      render(
+        <ChannelEditSheet
+          channel={mockChannel}
+          draft={mockDraft}
+          isOpen={true}
+          onClose={mockOnClose}
+          onSave={mockOnSave}
+          onFieldChange={mockOnFieldChange}
+        />
+      );
+      const input = screen.getByLabelText(/frequency/i);
+      fireEvent.change(input, { target: { value: "abc" } });
+      await waitFor(() => {
+        expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
+      });
+
+      fireEvent.change(input, { target: { value: "151.25" } });
 
       await waitFor(() => {
         expect(screen.queryByText(/Invalid frequency/i)).not.toBeInTheDocument();
