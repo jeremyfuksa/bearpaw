@@ -1862,28 +1862,36 @@ async def _poll_status(app: FastAPI) -> None:
             failures += 1
             if failures == 1 and runtime.device_info.connection_status != "connecting":
                 runtime.device_info.connection_status = "connecting"
+                logger.info("Device disconnected, attempting to reconnect...")
             if isinstance(exc, (ConnectionError, OSError)):
                 try:
                     if runtime.transport:
+                        logger.info("Attempting USB reconnection...")
                         await asyncio.to_thread(
                             runtime.transport.reconnect,
                             runtime.config.polling.reconnect_backoff,
                         )
+                        logger.info("USB reconnection successful")
                 except Exception as reconnect_exc:
                     logger.warning("Reconnect failed: %s", reconnect_exc)
             if failures >= 3:
-                stale_changes = runtime.state_store.mark_live_state_stale()
-                if stale_changes:
-                    runtime.device_info.connection_status = "disconnected"
-                    await runtime.ws_manager.broadcast(
-                        {
-                            "type": "event",
-                            "timestamp": stale_changes.get("timestamp"),
-                            "event": "state_stale",
-                            "data": {"message": "Live state stale"},
-                        }
-                    )
-            logger.warning(
-                "Status poll failed: %s: %s", type(exc).__name__, exc, exc_info=True
-            )
-        await asyncio.sleep(runtime.config.polling.sts_interval)
+                if runtime.device_info.connection_status != "disconnected":
+                    stale_changes = runtime.state_store.mark_live_state_stale()
+                    if stale_changes:
+                        runtime.device_info.connection_status = "disconnected"
+                        await runtime.ws_manager.broadcast(
+                            {
+                                "type": "event",
+                                "timestamp": stale_changes.get("timestamp"),
+                                "event": "state_stale",
+                                "data": {"message": "Live state stale"},
+                            }
+                        )
+            if failures < 3 or failures % 10 == 0:
+                logger.warning(
+                    "Status poll failed: %s: %s", type(exc).__name__, exc, exc_info=True
+                )
+        poll_interval = runtime.config.polling.sts_interval * (
+            5 if runtime.device_info.connection_status == "disconnected" else 1
+        )
+        await asyncio.sleep(poll_interval)

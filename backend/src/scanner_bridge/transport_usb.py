@@ -89,6 +89,14 @@ class UsbTransport:
         if self._thread:
             self._running.clear()
             self._thread.join(timeout=2.0)
+        if self._device:
+            try:
+                usb.util.release_interface(self._device, self.data_interface)
+            except Exception:
+                pass
+        self._device = None
+        self._out_ep = None
+        self._in_ep = None
         for delay in backoff:
             try:
                 time.sleep(delay)
