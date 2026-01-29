@@ -61,8 +61,8 @@ class UsbTransport:
         self._setup_cdc_control()
         usb.util.claim_interface(self._device, intf.bInterfaceNumber)
 
-        # Small delay after claiming interface for device to settle (macOS needs this)
-        time.sleep(0.1)
+        # Delay after claiming interface for device to settle (macOS needs more time)
+        time.sleep(0.25)
 
         self._out_ep = usb.util.find_descriptor(intf, bEndpointAddress=self.ep_out_addr)
         self._in_ep = usb.util.find_descriptor(intf, bEndpointAddress=self.ep_in_addr)
@@ -86,7 +86,9 @@ class UsbTransport:
         self._in_ep = None
 
     def reconnect(self, backoff: list[float]) -> None:
-        self.disconnect()
+        if self._thread:
+            self._running.clear()
+            self._thread.join(timeout=2.0)
         for delay in backoff:
             try:
                 time.sleep(delay)
@@ -121,17 +123,32 @@ class UsbTransport:
         if not self._device or not self._out_ep or not self._in_ep:
             raise ConnectionError("USB device not open")
         payload = cmd if cmd.endswith("\r") else cmd + "\r"
-        try:
-            self._out_ep.write(
-                payload.encode("ascii"), timeout=int(self.timeout * 1000)
-            )
-            return self._read_response()
-        except Exception:
-            if not self._is_device_present():
-                self._device = None
-                self._out_ep = None
-                self._in_ep = None
-            raise ConnectionError("USB device not open")
+
+        max_retries = 3
+        base_delay = 0.1
+
+        for attempt in range(max_retries):
+            try:
+                self._out_ep.write(
+                    payload.encode("ascii"), timeout=int(self.timeout * 1000)
+                )
+                return self._read_response()
+            except usb.core.USBError as exc:
+                if attempt == max_retries - 1:
+                    if not self._is_device_present():
+                        self._device = None
+                        self._out_ep = None
+                        self._in_ep = None
+                    raise ConnectionError(f"USB device not open: {exc}")
+                time.sleep(base_delay * (attempt + 1))
+            except Exception as exc:
+                if not self._is_device_present():
+                    self._device = None
+                    self._out_ep = None
+                    self._in_ep = None
+                raise ConnectionError(f"USB device not open: {exc}")
+
+        raise ConnectionError("USB device not open")
 
     def _read_response(self) -> str:
         if not self._in_ep:

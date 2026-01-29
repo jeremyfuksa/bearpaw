@@ -6,6 +6,8 @@ import { useStore } from "../store/useStore";
 interface ShortcutHandlers {
   openActivityLog: () => void;
   openMemoryBrowser: () => void;
+  closeOverlays: () => void;
+  openShortcuts: () => void;
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
@@ -34,7 +36,10 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           event.preventDefault();
           const liveState = useStore.getState().liveState;
           if (liveState && navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(liveState.frequency.toFixed(4));
+            navigator.clipboard
+              .writeText(liveState.frequency.toFixed(4))
+              .catch(() => {
+              });
           }
           break;
         }

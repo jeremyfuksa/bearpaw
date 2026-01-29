@@ -82,6 +82,11 @@ class AnalyticsConfig(BaseModel):
     min_hit_duration: float = 1.0
 
 
+class WebSocketConfig(BaseModel):
+    ping_interval: float = 30.0
+    ping_timeout: float = 10.0
+
+
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     format: str = "%(levelname)s %(message)s"
@@ -106,6 +111,7 @@ class AppConfig(BaseModel):
     exporters: ExporterConfig = Field(default_factory=ExporterConfig)
     analytics: AnalyticsConfig = Field(default_factory=AnalyticsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    websocket: WebSocketConfig = Field(default_factory=WebSocketConfig)
 
 
 def load_config(path: Optional[str]) -> AppConfig:

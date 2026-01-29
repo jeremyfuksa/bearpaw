@@ -97,8 +97,10 @@ export function DeviceTab() {
 
   // Service Search Settings
   const [serviceSearchGroups, setServiceSearchGroups] = useState<boolean[]>([
-    false, false, false, false, false, false, false, false,
+    false, false, false, false, false, false,
   ]);
+  const [searchDelay, setSearchDelay] = useState(3);
+  const [codeSearchEnabled, setCodeSearchEnabled] = useState(false);
 
   // Custom Search Settings
   const [searchRanges, setSearchRanges] = useState<SearchRange[]>([
@@ -214,6 +216,12 @@ export function DeviceTab() {
           setServiceSearchGroups(settings.service_search.groups);
         }
 
+        // Populate search settings
+        if (settings.search) {
+          setSearchDelay(settings.search.delay);
+          setCodeSearchEnabled(settings.search.code_search);
+        }
+
         // Populate custom search settings and ranges
         if (settings.custom_search && settings.custom_search_ranges) {
           const defaultLabels = [
@@ -323,9 +331,9 @@ export function DeviceTab() {
 
   const handleSquelchChange = useCallback(async (value: number[]) => {
     const level = value[0];
-    setSquelch(level);
     try {
       await api.setSquelch(level);
+      setSquelch(level);
     } catch (error) {
       console.error("Failed to set squelch", error);
       toast.error("Failed to set squelch");
@@ -334,9 +342,9 @@ export function DeviceTab() {
 
   const handleBatterySaverChange = useCallback(async (value: number[]) => {
     const chargeTime = value[0];
-    setBatterySaver(chargeTime);
     try {
       await api.setBatterySettings(chargeTime);
+      setBatterySaver(chargeTime);
     } catch (error) {
       console.error("Failed to set battery saver", error);
       toast.error("Failed to set battery saver");
@@ -345,9 +353,9 @@ export function DeviceTab() {
 
   const handleBacklightChange = useCallback(
     async (value: string) => {
-      setBacklight(value);
       try {
         await api.setBacklight(value);
+        setBacklight(value);
       } catch (error) {
         console.error("Failed to set backlight", error);
         toast.error("Failed to set backlight");
@@ -358,9 +366,9 @@ export function DeviceTab() {
 
   const handleContrastChange = useCallback(async (value: number[]) => {
     const level = value[0];
-    setContrast(level);
     try {
       await api.setContrastSettings(level);
+      setContrast(level);
     } catch (error) {
       console.error("Failed to set contrast", error);
       toast.error("Failed to set contrast");
@@ -465,10 +473,6 @@ export function DeviceTab() {
       [setting]: value,
     };
 
-    if (setting === "lockout") setCloseCallLockout(value);
-    if (setting === "alert_beep") setCloseCallBeep(value);
-    if (setting === "alert_light") setCloseCallLight(value);
-
     try {
       await api.setCloseCallSettings({
         mode: modeMap[closeCallMode] || 0,
@@ -477,6 +481,9 @@ export function DeviceTab() {
         band: closeCallBands,
         lockout: updates.lockout,
       });
+      if (setting === "lockout") setCloseCallLockout(value);
+      if (setting === "alert_beep") setCloseCallBeep(value);
+      if (setting === "alert_light") setCloseCallLight(value);
     } catch (error) {
       console.error("Failed to update close call setting", error);
       toast.error("Failed to update close call setting");
@@ -486,7 +493,6 @@ export function DeviceTab() {
   const handleCloseCallBandToggle = useCallback(async (index: number) => {
     const newBands = [...closeCallBands];
     newBands[index] = !newBands[index];
-    setCloseCallBands(newBands);
 
     const modeMap: Record<string, number> = { "off": 0, "cc_dnd": 1, "cc_priority": 2 };
     try {
@@ -497,26 +503,46 @@ export function DeviceTab() {
         band: newBands,
         lockout: closeCallLockout,
       });
+      setCloseCallBands(newBands);
     } catch (error) {
       console.error("Failed to toggle close call band", error);
       toast.error("Failed to toggle close call band");
-      // Revert the optimistic update
-      setCloseCallBands(closeCallBands);
     }
   }, [api, closeCallMode, closeCallBeep, closeCallLight, closeCallBands, closeCallLockout]);
 
   const handleServiceSearchToggle = useCallback(async (index: number) => {
     const newGroups = [...serviceSearchGroups];
     newGroups[index] = !newGroups[index];
-    setServiceSearchGroups(newGroups);
 
     try {
       await api.setServiceSearchSettings(newGroups);
+      setServiceSearchGroups(newGroups);
     } catch (error) {
       console.error("Failed to toggle service search", error);
       toast.error("Failed to toggle service search");
     }
   }, [api, serviceSearchGroups]);
+
+  const handleSearchDelayChange = useCallback(async (value: number[]) => {
+    const delay = value[0];
+    setSearchDelay(delay);
+    try {
+      await api.setSearchSettings(delay, codeSearchEnabled);
+    } catch (error) {
+      console.error("Failed to set search delay", error);
+      toast.error("Failed to set search delay");
+    }
+  }, [api, codeSearchEnabled]);
+
+  const handleCodeSearchToggle = useCallback(async (checked: boolean) => {
+    setCodeSearchEnabled(checked);
+    try {
+      await api.setSearchSettings(searchDelay, checked);
+    } catch (error) {
+      console.error("Failed to toggle code search", error);
+      toast.error("Failed to toggle code search");
+    }
+  }, [api, searchDelay]);
 
   const toggleRange = useCallback(async (id: number) => {
     const newRanges = searchRanges.map((r) =>
@@ -1066,34 +1092,76 @@ export function DeviceTab() {
                 Service Search runs on the scanner itself. Enable the service banks you want to
                 use, then start Service Search directly on the device.
               </p>
-              <div className="grid grid-cols-2 gap-x-16 gap-y-6">
-                {[
-                  "Police",
-                  "Fire/Emergency",
-                  "Ham",
-                  "Marine",
-                  "Railroad",
-                  "Civil Air",
-                  "Military Air",
-                  "CB",
-                ].map((service, index) => (
-                  <div key={service} className="flex items-center justify-between group">
-                    <label
-                      htmlFor={`service-${service}`}
-                      className="text-sm font-medium text-white/70 group-hover:text-white transition-colors cursor-pointer"
-                    >
-                      {service}
-                    </label>
-                    <Switch
-                      id={`service-${service}`}
-                      className="data-[state=checked]:bg-brand-primary"
-                      checked={serviceSearchGroups[index]}
-                      onCheckedChange={() => handleServiceSearchToggle(index)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+           <div className="grid grid-cols-2 gap-x-16 gap-y-6">
+                 {[
+                   "Police",
+                   "Fire/Emergency",
+                   "Ham",
+                   "Marine",
+                   "Railroad",
+                   "Civil Air",
+                   "Military Air",
+                   "CB",
+                 ].map((service, index) => (
+                   <div key={service} className="flex items-center justify-between group">
+                     <label
+                       htmlFor={`service-${service}`}
+                       className="text-sm font-medium text-white/70 group-hover:text-white transition-colors cursor-pointer"
+                     >
+                       {service}
+                     </label>
+                     <Switch
+                       id={`service-${service}`}
+                       className="data-[state=checked]:bg-brand-primary"
+                       checked={serviceSearchGroups[index]}
+                       onCheckedChange={() => handleServiceSearchToggle(index)}
+                     />
+                   </div>
+                 ))}
+               </div>
+
+               <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
+                 <h3 className="text-sm font-bold text-white">Search Settings</h3>
+                 
+                 <div className="flex items-center justify-between">
+                   <label
+                     htmlFor="code-search"
+                     className="text-sm font-medium text-white/70"
+                   >
+                     Code Search
+                   </label>
+                   <Switch
+                     id="code-search"
+                     className="data-[state=checked]:bg-brand-primary"
+                     checked={codeSearchEnabled}
+                     onCheckedChange={handleCodeSearchToggle}
+                   />
+                 </div>
+
+                 <div>
+                   <label
+                     htmlFor="search-delay"
+                     className="text-sm font-medium text-white/70 block mb-2"
+                   >
+                     Search Delay (seconds)
+                   </label>
+                   <Slider
+                     id="search-delay"
+                     min={0}
+                     max={30}
+                     step={1}
+                     value={[searchDelay]}
+                     onValueChange={handleSearchDelayChange}
+                     className="w-full"
+                   />
+                   <div className="flex justify-between text-xs text-white/50 mt-1">
+                     <span>0s</span>
+                     <span>{searchDelay}s</span>
+                     <span>30s</span>
+                   </div>
+                 </div>
+               </div>
+             </div>
           </div>
         )}
 

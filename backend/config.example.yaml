@@ -48,3 +48,7 @@ analytics:
 logging:
   level: DEBUG
   format: "%(levelname)s %(message)s"
+
+websocket:
+  ping_interval: 30
+  ping_timeout: 10

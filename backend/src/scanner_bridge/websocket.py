@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from scanner_bridge.config import WebSocketConfig
+
+logger = logging.getLogger(__name__)
+
 
 class WebSocketManager:
-    def __init__(self) -> None:
+    def __init__(self, config: WebSocketConfig) -> None:
+        self._config = config
         self._connections: Set[WebSocket] = set()
         self._last_pong: Dict[WebSocket, float] = {}
         self._last_ping: Dict[WebSocket, float] = {}
@@ -16,7 +22,9 @@ class WebSocketManager:
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
-        print(f"[ws] Client connected, total connections: {len(self._connections) + 1}")
+        logger.info(
+            "Client connected, total connections: %d", len(self._connections) + 1
+        )
         self._connections.add(websocket)
         self._last_pong[websocket] = time.time()
         self._topics[websocket] = None
@@ -28,26 +36,27 @@ class WebSocketManager:
         self._topics.pop(websocket, None)
 
     async def broadcast(self, message: dict, force: bool = False) -> None:
-        stale = []
         topic = _topic_for_message(message) if not force else None
-        for websocket in self._connections:
+        for websocket in list(self._connections):
             if topic and not self._is_subscribed(websocket, topic):
                 continue
             try:
                 await websocket.send_json(message)
             except Exception:
-                stale.append(websocket)
-        for websocket in stale:
-            self.disconnect(websocket)
+                self.disconnect(websocket)
 
     async def heartbeat(self) -> None:
         while True:
-            await asyncio.sleep(30)
+            await asyncio.sleep(self._config.ping_interval)
             now = time.time()
             for websocket in list(self._connections):
                 last_ping = self._last_ping.get(websocket)
                 last_pong = self._last_pong.get(websocket, 0)
-                if last_ping and last_pong < last_ping and now - last_ping > 10:
+                if (
+                    last_ping
+                    and last_pong < last_ping
+                    and now - last_ping > self._config.ping_timeout
+                ):
                     self.disconnect(websocket)
                     try:
                         await websocket.close(code=1001)

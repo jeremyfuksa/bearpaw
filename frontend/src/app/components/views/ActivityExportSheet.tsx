@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { X, Download, Calendar } from "lucide-react";
+import { X, Download, Calendar, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../../../lib/utils";
+import { useAPI } from "../../../api/useApi";
 
 interface ActivityExportSheetProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const api = useAPI();
 
   const getTimeframeLabel = (timeframe: Timeframe): string => {
     switch (timeframe) {
@@ -127,6 +129,19 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
     }
   };
 
+  const handleCleanup = async () => {
+    setIsExporting(true);
+    try {
+      await api.cleanupAnalytics();
+      toast.success("Analytics data cleaned up");
+    } catch (error) {
+      console.error("Failed to cleanup analytics", error);
+      toast.error("Failed to cleanup analytics");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -207,7 +222,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-white/10 shrink-0">
+            <div className="px-6 py-4 border-t border-white/10 shrink-0 space-y-3">
               <button
                 onClick={handleExport}
                 disabled={!hasActivity || isExporting}
@@ -215,6 +230,14 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
               >
                 <Download size={16} />
                 {isExporting ? "Exporting..." : "Download CSV"}
+              </button>
+              <button
+                onClick={handleCleanup}
+                disabled={isExporting}
+                className="w-full py-3 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-bold uppercase tracking-wider border border-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <Trash2 size={16} />
+                {isExporting ? "Cleaning..." : "Cleanup Analytics"}
               </button>
             </div>
           </motion.div>

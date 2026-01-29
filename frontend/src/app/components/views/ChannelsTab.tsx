@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { Search, Lock, Edit3 } from "lucide-react";
+import { Search, Lock, Edit3, GripVertical } from "lucide-react";
+import { DndProvider, useDrag, useDrop } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 
 import { cn } from "../../../lib/utils";
 import { useAPI } from "../../../api/useApi";
@@ -10,6 +12,135 @@ import type { ChannelData, ChannelDraft } from "../../../types";
 import { ChannelEditSheet } from "./ChannelEditSheet";
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
+
+const DND_ITEM_TYPE = "channel-row";
+
+interface ChannelRowProps {
+  channelIndex: number;
+  displayIndex: number;
+  rowIndex: number;
+  isEditing: boolean;
+  isPending: boolean;
+  isSelected: boolean;
+  disableDrag: boolean;
+  displayFrequency: string;
+  displayAlpha: string;
+  displayModulation: string;
+  displayTone: string | number;
+  displayDelay: number;
+  displayLockout: boolean;
+  displayPriority: boolean;
+  onSelect: () => void;
+  onClick: () => void;
+  onMove: (fromIndex: number, toIndex: number) => void;
+}
+
+function ChannelRow({
+  channelIndex,
+  displayIndex,
+  rowIndex,
+  isEditing,
+  isPending,
+  isSelected,
+  disableDrag,
+  displayFrequency,
+  displayAlpha,
+  displayModulation,
+  displayTone,
+  displayDelay,
+  displayLockout,
+  displayPriority,
+  onSelect,
+  onClick,
+  onMove,
+}: ChannelRowProps) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  const [{ isDragging }, drag] = useDrag({
+    type: DND_ITEM_TYPE,
+    item: { rowIndex },
+    canDrag: !disableDrag,
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  const [, drop] = useDrop({
+    accept: DND_ITEM_TYPE,
+    hover: (item: { rowIndex: number }) => {
+      if (!ref.current) return;
+      if (item.rowIndex === rowIndex) return;
+      onMove(item.rowIndex, rowIndex);
+      item.rowIndex = rowIndex;
+    },
+  });
+
+  drag(drop(ref));
+
+  return (
+    <div
+      ref={ref}
+      onClick={onClick}
+      className={cn(
+        "grid grid-cols-[36px_50px_90px_1fr_60px_60px_50px_50px_50px_50px] gap-2 px-4 py-1.5 text-xs border-b border-white/5 items-center group transition-colors cursor-pointer min-h-[36px]",
+        isEditing ? "bg-brand-primary/20 border-brand-primary/30" : "hover:bg-white/5",
+        isPending && "bg-brand-primary/10 border-l-2 border-brand-primary/60",
+        isDragging && "opacity-60",
+      )}
+    >
+      <div className="flex items-center justify-center">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={(event) => {
+            event.stopPropagation();
+            onSelect();
+          }}
+          onClick={(event) => event.stopPropagation()}
+          className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
+        />
+      </div>
+      <div className="flex items-center justify-center text-white/40">
+        <GripVertical size={12} className={cn(disableDrag && "opacity-30")} />
+      </div>
+      <div className="font-mono text-white/30 text-xs pl-1">
+        {displayIndex}
+      </div>
+
+      <div className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center">
+        {displayFrequency}
+      </div>
+      <div className="font-medium text-white/80 truncate pl-1">
+        {displayAlpha}
+      </div>
+      <div className="flex justify-center">
+        <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
+          {displayModulation}
+        </span>
+      </div>
+      <div className="text-white/30 text-xs text-center">
+        {displayTone}
+      </div>
+      <div className="text-white/30 text-xs text-center">
+        {displayDelay}s
+      </div>
+      <div className="flex justify-center">
+        {displayLockout ? (
+          <Lock size={10} className="text-red-400" />
+        ) : (
+          <div className="w-1 h-1 rounded-full bg-white/5" />
+        )}
+      </div>
+      <div className="flex justify-center">
+        {displayPriority ? (
+          <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-glow" />
+        ) : (
+          <div className="w-1 h-1 rounded-full bg-white/5" />
+        )}
+      </div>
+    </div>
+  );
+}
 
 function deriveBankFromIndex(index: number) {
   const normalized = Math.max(1, index);
@@ -56,6 +187,8 @@ export function ChannelsTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([]);
+  const [bankOrders, setBankOrders] = useState<Record<number, number[]>>({});
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -63,16 +196,61 @@ export function ChannelsTab() {
     const query = searchTerm.trim().toLowerCase();
     return channels.filter((channel) => {
       const matchesBank = deriveBankFromIndex(channel.index) === activeBank;
-      const displayTag = channel.frequency === 0
+      const draft = memoryDrafts[channel.index];
+      const draftFrequency = draft ? Number.parseFloat(draft.frequency) : channel.frequency;
+      const isCleared = Number.isFinite(draftFrequency) && draftFrequency === 0;
+      const displayTag = isCleared
         ? ""
-        : (channel.alpha_tag ?? "").trim().toLowerCase();
+        : (draft?.alpha_tag ?? channel.alpha_tag ?? "").trim().toLowerCase();
+      const displayFrequency = Number.isFinite(draftFrequency) ? draftFrequency : channel.frequency;
       const matchesSearch =
         query === "" ||
         displayTag.includes(query) ||
-        channel.frequency.toString().includes(query);
+        displayFrequency.toString().includes(query);
       return matchesBank && matchesSearch;
     });
-  }, [activeBank, channels, searchTerm]);
+  }, [activeBank, channels, memoryDrafts, searchTerm]);
+
+  const bankChannels = useMemo(() => {
+    return channels
+      .filter((channel) => deriveBankFromIndex(channel.index) === activeBank)
+      .map((channel) => channel.index)
+      .sort((a, b) => a - b);
+  }, [activeBank, channels]);
+
+  useEffect(() => {
+    setBankOrders((prev) => ({
+      ...prev,
+      [activeBank]: prev[activeBank] ?? bankChannels,
+    }));
+  }, [activeBank, bankChannels]);
+
+  const currentBankOrder = bankOrders[activeBank] ?? bankChannels;
+  const bankBase = (activeBank - 1) * 50;
+
+  const orderedFilteredChannels = useMemo(() => {
+    if (filteredChannels.length === 0) return [];
+    const channelMap = new Map(filteredChannels.map((channel) => [channel.index, channel]));
+    return currentBankOrder
+      .map((channelIndex) => channelMap.get(channelIndex))
+      .filter((channel): channel is ChannelData => Boolean(channel));
+  }, [currentBankOrder, filteredChannels]);
+
+  const reorderTargets = useMemo(() => {
+    return currentBankOrder.reduce((acc, channelIndex, position) => {
+      acc[channelIndex] = bankBase + position + 1;
+      return acc;
+    }, {} as Record<number, number>);
+  }, [bankBase, currentBankOrder]);
+
+  const moveRow = useCallback((fromIndex: number, toIndex: number) => {
+    setBankOrders((prev) => {
+      const order = [...(prev[activeBank] ?? bankChannels)];
+      const [moved] = order.splice(fromIndex, 1);
+      order.splice(toIndex, 0, moved);
+      return { ...prev, [activeBank]: order };
+    });
+  }, [activeBank, bankChannels]);
 
   const editingChannel = editingChannelIndex !== null
     ? channels.find((ch) => ch.index === editingChannelIndex)
@@ -82,30 +260,30 @@ export function ChannelsTab() {
     : undefined;
 
   const draftChanges = useMemo(() => {
-    return Object.entries(memoryDrafts).reduce((acc, [indexKey, draft]) => {
-      const channelIndex = Number(indexKey);
-      const channel = channels.find((entry) => entry.index === channelIndex);
-      if (!channel) return acc;
+    return channels.reduce((acc, channel) => {
+      const channelIndex = channel.index;
+      const draft = memoryDrafts[channelIndex];
 
-      const parsedFrequency = Number.parseFloat(draft.frequency);
-      const parsedDelay = Number.parseInt(draft.delay, 10);
+      const parsedFrequency = Number.parseFloat(draft?.frequency ?? channel.frequency.toString());
+      const parsedDelay = Number.parseInt(draft?.delay ?? channel.delay.toString(), 10);
       const parsedTone =
-        draft.tone_squelch.trim() === ""
+        (draft?.tone_squelch ?? "").trim() === ""
           ? null
-          : Number.parseFloat(draft.tone_squelch);
+          : Number.parseFloat(draft?.tone_squelch ?? "");
 
       const normalized = {
         frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
-        alpha_tag: draft.alpha_tag,
-        modulation: draft.modulation,
+        alpha_tag: draft?.alpha_tag ?? channel.alpha_tag ?? "",
+        modulation: draft?.modulation ?? channel.modulation ?? "AUTO",
         delay: Number.isFinite(parsedDelay) ? parsedDelay : channel.delay,
         tone_squelch: Number.isFinite(parsedTone ?? NaN) ? parsedTone : null,
-        lockout: draft.lockout,
-        priority: draft.priority,
+        lockout: draft?.lockout ?? channel.lockout,
+        priority: draft?.priority ?? channel.priority,
       };
 
       const lockoutChanged = normalized.lockout !== channel.lockout;
       const priorityChanged = normalized.priority !== channel.priority;
+      const targetIndex = reorderTargets[channelIndex] ?? channelIndex;
       const hasChanges =
         normalized.frequency !== channel.frequency ||
         normalized.alpha_tag !== (channel.alpha_tag ?? "") ||
@@ -113,7 +291,8 @@ export function ChannelsTab() {
         normalized.delay !== channel.delay ||
         normalized.tone_squelch !== (channel.tone_squelch ?? null) ||
         lockoutChanged ||
-        priorityChanged;
+        priorityChanged ||
+        targetIndex !== channelIndex;
 
       if (!hasChanges) return acc;
 
@@ -129,18 +308,20 @@ export function ChannelsTab() {
         },
         lockoutChanged,
         priorityChanged,
+        targetIndex,
       });
 
       return acc;
     }, [] as Array<{
       channelIndex: number;
       channel: ChannelData;
-      draft: ChannelDraft;
+      draft: ChannelDraft | undefined;
       payload: Omit<ChannelData, "index">;
       lockoutChanged: boolean;
       priorityChanged: boolean;
+      targetIndex: number;
     }>);
-  }, [channels, memoryDrafts]);
+  }, [channels, memoryDrafts, reorderTargets]);
 
   const handleOpenEditSheet = useCallback((channelIndex: number) => {
     const channel = channels.find((ch) => ch.index === channelIndex);
@@ -173,6 +354,30 @@ export function ChannelsTab() {
     toast.success(`Cleared CH ${channelIndex}`);
   }, [setMemoryDraft]);
 
+  const handleToggleSelectAll = useCallback(() => {
+    const visibleIds = orderedFilteredChannels.map((channel) => channel.index);
+    const allSelected = visibleIds.every((id) => selectedChannelIds.includes(id));
+    setSelectedChannelIds(allSelected ? [] : visibleIds);
+  }, [orderedFilteredChannels, selectedChannelIds]);
+
+  const handleToggleSelect = useCallback((channelIndex: number) => {
+    setSelectedChannelIds((prev) =>
+      prev.includes(channelIndex)
+        ? prev.filter((id) => id !== channelIndex)
+        : [...prev, channelIndex],
+    );
+  }, []);
+
+  const handleClearSelected = useCallback(() => {
+    if (selectedChannelIds.length === 0) return;
+    if (!window.confirm(`Clear ${selectedChannelIds.length} selected channels?`)) return;
+    for (const channelIndex of selectedChannelIds) {
+      setMemoryDraft(channelIndex, buildEmptyDraft());
+    }
+    toast.success(`Cleared ${selectedChannelIds.length} channels`);
+    setSelectedChannelIds([]);
+  }, [selectedChannelIds, setMemoryDraft]);
+
   const handleUploadDrafts = useCallback(async () => {
     if (draftChanges.length === 0 || isUploading) return;
     setIsUploading(true);
@@ -184,6 +389,12 @@ export function ChannelsTab() {
       for (const change of draftChanges) {
         try {
           let payload = change.payload;
+          const targetIndex = change.targetIndex ?? change.channelIndex;
+          const targetBank = deriveBankFromIndex(targetIndex);
+          payload = {
+            ...payload,
+            bank: targetBank,
+          };
           if (!change.lockoutChanged && !change.priorityChanged) {
             try {
               const latest = await api.getChannel(change.channelIndex);
@@ -204,10 +415,10 @@ export function ChannelsTab() {
               frequency: change.channel.frequency,
               alpha_tag: change.channel.alpha_tag,
             };
-            await api.updateChannel(change.channelIndex, preUpdatePayload);
+            await api.updateChannel(targetIndex, preUpdatePayload);
           }
 
-          const updated = await api.updateChannel(change.channelIndex, payload);
+          const updated = await api.updateChannel(targetIndex, payload);
           setChannels((prev) =>
             prev.map((entry) => (entry.index === updated.index ? updated : entry)),
           );
@@ -325,6 +536,26 @@ export function ChannelsTab() {
     }
   };
 
+  const handleExportBc125atSs = async () => {
+    try {
+      const response = await fetch('/api/v1/memory/export/bc125at_ss');
+      if (!response.ok) {
+        throw new Error('Failed to export BC125AT format');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'scanner.ss';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('BC125AT format exported successfully');
+    } catch (error) {
+      console.error('Failed to export BC125AT format', error);
+      toast.error('Failed to export BC125AT format');
+    }
+  };
+
   const handleImportCSV = async () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -423,6 +654,13 @@ export function ChannelsTab() {
 
           <div className="flex gap-2 shrink-0">
             <button
+              onClick={handleClearSelected}
+              disabled={selectedChannelIds.length === 0}
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Clear Selected
+            </button>
+            <button
               onClick={handleImportCSV}
               className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white"
             >
@@ -431,8 +669,14 @@ export function ChannelsTab() {
             <button
               onClick={handleExportCSV}
               className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white"
-            >
+             >
               Export CSV
+            </button>
+            <button
+              onClick={handleExportBc125atSs}
+              className="px-3 py-1.5 rounded bg-brand-primary hover:bg-brand-hover text-black font-bold uppercase tracking-wider border border-brand-primary/40 transition-colors"
+            >
+              BC125AT (.ss)
             </button>
           </div>
         </div>
@@ -462,101 +706,103 @@ export function ChannelsTab() {
         </div>
 
         {/* Table */}
-        <div
-          className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
-          ref={containerRef}
-        >
-          {/* Header */}
-          <div className="grid grid-cols-[50px_90px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0">
-            {["CH", "FREQ", "TAG", "MODE", "TONE", "DLY", "L/O", "PRIO"].map((h) => (
-              <div
-                key={h}
-                className="text-xs font-bold text-white/30 uppercase tracking-wider select-none text-center first:text-left"
-              >
-                {h}
+        <DndProvider backend={HTML5Backend}>
+          <div
+            className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
+            ref={containerRef}
+          >
+            {/* Header */}
+            <div className="grid grid-cols-[36px_50px_90px_1fr_60px_60px_50px_50px_50px_50px] gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0">
+              <div className="flex items-center justify-center">
+                <input
+                  type="checkbox"
+                  checked={
+                    orderedFilteredChannels.length > 0 &&
+                    orderedFilteredChannels.every((channel) => selectedChannelIds.includes(channel.index))
+                  }
+                  onChange={handleToggleSelectAll}
+                  className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
+                />
               </div>
-            ))}
-          </div>
+              <div />
+              {["CH", "FREQ", "TAG", "MODE", "TONE", "DLY", "L/O", "PRIO"].map((h) => (
+                <div
+                  key={h}
+                  className="text-xs font-bold text-white/30 uppercase tracking-wider select-none text-center first:text-left"
+                >
+                  {h}
+                </div>
+              ))}
+            </div>
 
-          {/* Rows */}
-          <div className={cn(
-            "overflow-y-auto flex-1 p-0",
-            editingChannelIndex !== null && "opacity-50 pointer-events-none"
-          )}>
-            {filteredChannels.length === 0 ? (
-              <div className="flex h-[240px] items-center justify-center text-xs text-white/50">
-                No channels match your filters
-              </div>
-            ) : (
-              filteredChannels.map((channel) => {
-                const isEditing = editingChannelIndex === channel.index;
-                const draft = memoryDrafts[channel.index];
-                const isCleared = channel.frequency === 0;
-                const displayAlpha = isCleared
-                  ? "—"
-                  : (channel.alpha_tag || "—").trim() || "—";
-                const displayFrequency = isCleared
-                  ? "–"
-                  : channel.frequency.toFixed(4);
+            {/* Rows */}
+            <div className={cn(
+              "overflow-y-auto flex-1 p-0",
+              editingChannelIndex !== null && "opacity-50 pointer-events-none"
+            )}>
+              {orderedFilteredChannels.length === 0 ? (
+                <div className="flex h-[240px] items-center justify-center text-xs text-white/50">
+                  No channels match your filters
+                </div>
+              ) : (
+                orderedFilteredChannels.map((channel, rowIndex) => {
+                  const isEditing = editingChannelIndex === channel.index;
+                  const draft = memoryDrafts[channel.index];
+                  const displayIndex = reorderTargets[channel.index] ?? channel.index;
+                  const draftFrequency = draft ? Number.parseFloat(draft.frequency) : channel.frequency;
+                  const isCleared = Number.isFinite(draftFrequency) && draftFrequency === 0;
+                  const displayAlpha = isCleared
+                    ? "—"
+                    : (draft?.alpha_tag ?? channel.alpha_tag ?? "—").trim() || "—";
+                  const displayFrequency = isCleared
+                    ? "–"
+                    : Number.isFinite(draftFrequency)
+                      ? draftFrequency.toFixed(4)
+                      : channel.frequency.toFixed(4);
                 const displayModulation = isCleared
                   ? "AUTO"
-                  : channel.modulation || "AUTO";
-                const displayTone = isCleared ? "—" : (channel.tone_squelch ?? "—");
-                const displayDelay = isCleared ? 0 : channel.delay;
-                const displayLockout = isCleared ? false : channel.lockout;
-                const displayPriority = isCleared ? false : channel.priority;
+                  : draft?.modulation ?? channel.modulation ?? "AUTO";
+                  const displayTone = isCleared
+                    ? "—"
+                    : draft?.tone_squelch || (channel.tone_squelch ?? "—");
+                  const displayDelay = isCleared
+                    ? 0
+                    : Number.parseInt(draft?.delay ?? channel.delay.toString(), 10);
+                  const displayLockout = isCleared
+                    ? false
+                    : draft?.lockout ?? channel.lockout;
+                  const displayPriority = isCleared
+                    ? false
+                    : draft?.priority ?? channel.priority;
+                  const isPending = Boolean(draft) || displayIndex !== channel.index;
 
-                return (
-                  <div
-                    key={channel.index}
-                    onClick={() => handleOpenEditSheet(channel.index)}
-                    className={cn(
-                      "grid grid-cols-[50px_90px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-1.5 text-xs border-b border-white/5 items-center group transition-colors cursor-pointer min-h-[36px]",
-                      isEditing ? "bg-brand-primary/20 border-brand-primary/30" : "hover:bg-white/5",
-                      channel.lockout && "opacity-50 grayscale",
-                    )}
-                  >
-                    <div className="font-mono text-white/30 text-xs pl-1">
-                      {channel.index}
-                    </div>
-
-                    <div className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center">
-                      {displayFrequency}
-                    </div>
-                    <div className="font-medium text-white/80 truncate pl-1">
-                      {displayAlpha}
-                    </div>
-                    <div className="flex justify-center">
-                      <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
-                        {displayModulation}
-                      </span>
-                    </div>
-                    <div className="text-white/30 text-xs text-center">
-                      {displayTone}
-                    </div>
-                    <div className="text-white/30 text-xs text-center">
-                      {displayDelay}s
-                    </div>
-                    <div className="flex justify-center">
-                      {displayLockout ? (
-                        <Lock size={10} className="text-red-400" />
-                      ) : (
-                        <div className="w-1 h-1 rounded-full bg-white/5" />
-                      )}
-                    </div>
-                    <div className="flex justify-center">
-                      {displayPriority ? (
-                        <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-glow" />
-                      ) : (
-                        <div className="w-1 h-1 rounded-full bg-white/5" />
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+                  return (
+                    <ChannelRow
+                      key={channel.index}
+                      channelIndex={channel.index}
+                      displayIndex={displayIndex}
+                      isEditing={isEditing}
+                      isPending={isPending}
+                      isSelected={selectedChannelIds.includes(channel.index)}
+                      onSelect={() => handleToggleSelect(channel.index)}
+                      onClick={() => handleOpenEditSheet(channel.index)}
+                      onMove={moveRow}
+                      rowIndex={rowIndex}
+                      disableDrag={searchTerm.trim().length > 0}
+                      displayFrequency={displayFrequency}
+                      displayAlpha={displayAlpha}
+                      displayModulation={displayModulation}
+                      displayTone={displayTone}
+                      displayDelay={displayDelay}
+                      displayLockout={displayLockout}
+                      displayPriority={displayPriority}
+                    />
+                  );
+                })
+              )}
+            </div>
           </div>
-        </div>
+        </DndProvider>
 
         {editingChannel && editingChannelIndex !== null && (
           <ChannelEditSheet

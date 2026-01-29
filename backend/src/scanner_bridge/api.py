@@ -288,7 +288,7 @@ def create_app(
         state_store = StateStore(persistence)
         state_store.load_shadow()
 
-        ws_manager = WebSocketManager()
+        ws_manager = WebSocketManager(config.websocket)
         heartbeat_task = asyncio.create_task(ws_manager.heartbeat())
 
         text_exporter = None
@@ -323,23 +323,6 @@ def create_app(
             await analytics_db.initialize()
 
         preferences_store = PreferencesStore(config.state.db_path)
-
-        runtime = RuntimeState(
-            config=config,
-            transport=transport,
-            scheduler=scheduler,
-            driver=driver,
-            state_store=state_store,
-            ws_manager=ws_manager,
-            device_info=device_info,
-            session_id=session_id,
-            heartbeat_task=heartbeat_task,
-            text_exporter=text_exporter,
-            json_exporter=json_exporter,
-            mqtt_exporter=mqtt_exporter,
-            analytics_db=analytics_db,
-            preferences_store=preferences_store,
-        )
 
         runtime = RuntimeState(
             config=config,
@@ -584,12 +567,14 @@ def create_app(
         cleared_list: list[float] = []
         failed_list: list[float] = []
         for raw in raw_list:
-            frequency = raw / 10000.0
+            frequency = raw / 10000.0 if raw > 0 else 0.0
             try:
                 await set_lock(raw, False)
-                cleared_list.append(frequency)
+                if frequency > 0:
+                    cleared_list.append(frequency)
             except Exception as exc:
-                failed_list.append(frequency)
+                if frequency > 0:
+                    failed_list.append(frequency)
                 logger.warning("Failed to clear global lockout %s: %s", raw, exc)
         return {"cleared": cleared_list, "failed": failed_list}
 
@@ -1231,10 +1216,10 @@ def create_app(
             updated = await call_or_unsupported(
                 lambda: setter(payload), "channel_write_unsupported"
             )
+            runtime.state_store.set_shadow_channel(updated)
+            runtime.state_store.save_shadow()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        runtime.state_store.set_shadow_channel(updated)
-        runtime.state_store.save_shadow()
         return ChannelDataModel.model_validate(updated)
 
     class MemorySyncRequest(BaseModel):
@@ -1350,6 +1335,9 @@ def create_app(
         for row in reader:
             try:
                 idx = int(row.get("Index", 0))
+                if idx < 1 or idx > 500:
+                    raise ValueError(f"Invalid channel index: {idx} (must be 1-500)")
+
                 frequency = float(row.get("Frequency", 0))
                 if frequency < 25 or frequency > 1300:
                     raise ValueError(f"Invalid frequency: {frequency}")
@@ -1761,6 +1749,9 @@ async def _poll_status(app: FastAPI) -> None:
     failures = 0
     while True:
         try:
+            if not runtime.scheduler or not runtime.driver or not runtime.state_store:
+                await asyncio.sleep(0.1)
+                continue
             if runtime.scheduler.has_high_priority() or getattr(
                 runtime.driver, "in_program_mode", False
             ):

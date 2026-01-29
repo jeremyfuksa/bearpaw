@@ -96,13 +96,23 @@ class ApiTests(unittest.TestCase):
                 )
             }
         )
+
+
+from scanner_bridge.websocket import WebSocketManager
+from scanner_bridge.config import WebSocketConfig, AppConfig
+
+
+class TestCaseMixin:
+    def setUp(self) -> None:
+        state_store = StateStore(persistence=None)
+        ws_config = WebSocketConfig()
         app.state.runtime = RuntimeState(
             config=AppConfig(),
             transport=StubTransport(),
             scheduler=StubScheduler(),
             driver=StubDriver(),
             state_store=state_store,
-            ws_manager=WebSocketManager(),
+            ws_manager=WebSocketManager(ws_config),
             device_info=DeviceInfo(
                 model="BC125AT",
                 port="/dev/ttyACM0",

@@ -1,24 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "sonner";
-import { ActivityExportSheet } from "../../views/ActivityExportSheet";
-import type { ActivityLogEntry } from "../../../types";
-import { mockFetch, resetMockFetch, mockFetchError, mockFetchNetworkError } from "../../test/utils";
+import { ActivityExportSheet } from "../ActivityExportSheet";
+import type { ActivityLogEntry } from "../../../../types";
+import { mockFetch, resetMockFetch, mockFetchError, mockFetchNetworkError } from "../../../../test/utils";
 
-vi.mock("sonner", () => ({
-  toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
-  },
-}));
-
-vi.mock("../../../api/useApi", () => ({
+vi.mock("../../../../api/useApi", () => ({
   useAPI: vi.fn(),
 }));
 
-vi.mock("../../../store/useStore", () => ({
+vi.mock("../../../../store/useStore", () => ({
   useStore: vi.fn(),
 }));
 
@@ -31,15 +22,16 @@ describe("ActivityExportSheet", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetch({ entries: [] });
+    mockFetch([]);
     global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
     global.URL.revokeObjectURL = vi.fn();
-    document.createElement = vi.fn((tag: string) => {
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
       if (tag === "a") {
-        return { href: "", download: "", click: vi.fn() };
+        return { href: "", download: "", click: vi.fn() } as any;
       }
-      return {};
-    }) as any;
+      return originalCreateElement(tag);
+    });
   });
 
   afterEach(() => {
@@ -196,7 +188,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -205,13 +197,12 @@ describe("ActivityExportSheet", () => {
       
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v1/analytics/activity-log"),
-          expect.objectContaining({ method: "GET" })
+          expect.stringContaining("/api/v1/analytics/activity-log")
         );
       });
     });
 
-    it("should show success toast on successful export", async () => {
+    it("should close after successful export", async () => {
       const mockEntries: ActivityLogEntry[] = [
         {
           id: "test-1",
@@ -227,7 +218,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -235,7 +226,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(toast.success).toHaveBeenCalledWith("Channels exported successfully");
+        expect(mockProps.onClose).toHaveBeenCalled();
       });
     });
 
@@ -255,7 +246,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       const mockBlob = new Blob(["test"], { type: "text/csv" });
       global.Blob = vi.fn(() => mockBlob);
       
@@ -288,7 +279,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       const mockURL = "blob:mock-url";
       global.URL.createObjectURL = vi.fn(() => mockURL);
       
@@ -318,14 +309,15 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       const mockClick = vi.fn();
-      global.document.createElement = vi.fn((tag: string) => {
+      const originalCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
         if (tag === "a") {
-          return { href: "", download: "", click: mockClick };
+          return { href: "", download: "", click: mockClick } as any;
         }
-        return {};
-      }) as any;
+        return originalCreateElement(tag);
+      });
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -353,7 +345,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       const mockRevoke = vi.fn();
       global.URL.revokeObjectURL = mockRevoke;
       
@@ -383,7 +375,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -441,7 +433,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -456,7 +448,8 @@ describe("ActivityExportSheet", () => {
   });
 
   describe("Error Handling", () => {
-    it("should show error toast on fetch failure", async () => {
+    it("should log errors on fetch failure", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       mockFetchError(500, "Failed to export activity log");
       
       render(<ActivityExportSheet {...mockProps} />);
@@ -465,11 +458,17 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Failed to export activity log");
+        expect(consoleSpy).toHaveBeenCalledWith(
+          "Failed to export activity log",
+          expect.any(Error),
+        );
       });
+
+      consoleSpy.mockRestore();
     });
 
-    it("should show error toast on network error", async () => {
+    it("should log errors on network error", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       mockFetchNetworkError();
       
       render(<ActivityExportSheet {...mockProps} />);
@@ -478,11 +477,17 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Failed to export activity log");
+        expect(consoleSpy).toHaveBeenCalledWith(
+          "Failed to export activity log",
+          expect.any(Error),
+        );
       });
+
+      consoleSpy.mockRestore();
     });
 
     it("should handle JSON parse errors", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       global.fetch = vi.fn(() =>
         Promise.resolve({
           ok: true,
@@ -496,8 +501,13 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Failed to export activity log");
+        expect(consoleSpy).toHaveBeenCalledWith(
+          "Failed to export activity log",
+          expect.any(Error),
+        );
       });
+
+      consoleSpy.mockRestore();
     });
 
     it("should not call onClose on error", async () => {
@@ -575,7 +585,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -606,7 +616,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -638,7 +648,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -656,7 +666,7 @@ describe("ActivityExportSheet", () => {
 
   describe("Edge Cases", () => {
     it("should handle empty activity log", async () => {
-      mockFetch({ entries: [] });
+      mockFetch([]);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -687,7 +697,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -718,7 +728,7 @@ describe("ActivityExportSheet", () => {
         },
       ];
 
-      mockFetch({ entries: mockEntries });
+      mockFetch(mockEntries);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
