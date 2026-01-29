@@ -363,6 +363,13 @@ export class ScannerAPIClient {
     });
   }
 
+  async cancelSync(taskId?: string): Promise<void> {
+    await this.request("/memory/sync/cancel", {
+      method: "POST",
+      body: taskId ? JSON.stringify({ task_id: taskId }) : undefined,
+    });
+  }
+
   async exportBc125atSs(): Promise<string> {
     return this.requestText("/memory/export/bc125at_ss");
   }
@@ -418,6 +425,10 @@ export class ScannerAPIClient {
     return this.request<Record<string, any>>("/preferences", {
       method: 'POST',
     });
+  }
+
+  async cleanupAnalytics(): Promise<void> {
+    await this.request("/analytics/cleanup", { method: 'POST' });
   }
 
   preferencesApi = {

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "../lib/utils";
 import { Toaster, toast } from "sonner";
 import {
@@ -35,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./components/ui/select";
-import { motion, AnimatePresence } from "motion/react";
+import { type WindowWithImportMeta } from "../types";
 import { useAPI } from "../api/useApi";
 import { useStore } from "../store/useStore";
 import { useWebSocket } from "../websocket/useWebSocket";
@@ -55,7 +56,7 @@ import { ChannelsTab } from "./components/views/ChannelsTab";
 import { ActivityExportSheet } from "./components/views/ActivityExportSheet";
 import { ProgramModeSheet } from "./components/views/ProgramModeSheet";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "/api/v1";
+const API_BASE = (import.meta.env?.VITE_API_BASE_URL as string) || "/api/v1";
 
 export type Tab = "Scan" | "Device" | "Channels";
 export type ConnectionStatus = "connected" | "connecting" | "disconnected";
@@ -89,8 +90,17 @@ const defaultCloseCallBand = [false, false, false, false, false];
 
 export default function App() {
   useKeyboardShortcuts({
-    openActivityLog: () => setIsLogModalOpen(true),
+    openActivityLog: () => setIsExportSheetOpen(true),
     openMemoryBrowser: () => setCurrentTab("Channels"),
+    closeOverlays: () => {
+      setIsExportSheetOpen(false);
+      setIsProgramModeSheetOpen(false);
+    },
+    openShortcuts: () => {
+      toast.info("Keyboard Shortcuts:\nCtrl+S: Scan | Ctrl+H: Hold\nCtrl+L: Activity Log | Ctrl+M: Memory\nCtrl+C: Copy Freq | Ctrl+↑/↓: Navigate\nEsc: Close overlays | ?: Show shortcuts", {
+        duration: 5000,
+      });
+    },
   });
   const api = useAPI();
   const { ws, connected, connecting } = useWebSocket();
@@ -141,13 +151,12 @@ export default function App() {
   const [pendingTab, setPendingTab] = useState<Tab | null>(null);
 
   const syncInProgressRef = useRef(false);
-  const syncStartedRef = useRef(false);
+  const syncTaskIdRef = useRef<string | null>(null);
   const lastHitOpenRef = useRef(false);
   const squelchOpenStartTimeRef = useRef<number | null>(null);
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
   const analyticsLoadedRef = useRef(false);
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hasSyncedInSessionRef = useRef(false);
 
   useEffect(() => {
     setConnected(connected);
@@ -177,7 +186,7 @@ export default function App() {
             recordingsPath: prefs.recordings_path || "./recordings",
           };
           console.log("[Preferences] Setting in store:", frontendPrefs);
-          setPreferences(frontendPrefs as any);
+          setPreferences(frontendPrefs);
           console.log("[Preferences] Current store preferences after set:", useStore.getState().preferences);
         }
       } catch (error) {
@@ -198,7 +207,8 @@ export default function App() {
           squelchOpenStartTimeRef.current = payload.timestamp;
           lastHitOpenRef.current = true;
         } else if (!squelchOpen && lastHitOpenRef.current) {
-          const duration = payload.timestamp - (squelchOpenStartTimeRef.current || payload.timestamp);
+          const startTime = squelchOpenStartTimeRef.current !== null ? squelchOpenStartTimeRef.current : payload.timestamp;
+          const duration = payload.timestamp - startTime;
           if (duration >= preferences.hitMinDuration && squelchOpenStartTimeRef.current !== null && currentHitDataRef.current) {
             const entry: ActivityLogEntry = {
               ...currentHitDataRef.current,
@@ -246,16 +256,17 @@ export default function App() {
         /sync complete/i.test(payload.message) ||
         /sync cancelled/i.test(payload.message);
 
-      // Detect auto-sync that we didn't initiate and set ref to true
+      // Detect sync in progress or just completed
       if (!syncInProgressRef.current && !isComplete && payload.message.includes("Syncing channel")) {
         syncInProgressRef.current = true;
         setIsMemorySyncing(true);
+        syncTaskIdRef.current = payload.task_id || null;
       }
 
       if (isComplete && syncInProgressRef.current) {
         syncInProgressRef.current = false;
         setIsMemorySyncing(false);
-        hasSyncedInSessionRef.current = true;
+        syncTaskIdRef.current = null;
 
         // Double-check PGM mode after a delay to account for mode transitions
         programModeEntryTimeoutRef.current = setTimeout(() => {
@@ -334,8 +345,8 @@ export default function App() {
   }, [api, setChannels, setDeviceInfo, updateLiveState]);
 
   useEffect(() => {
-    if (syncStartedRef.current) return;
     if (!deviceInfo || deviceInfo.connection_status !== "connected") return;
+    if (syncInProgressRef.current) return;
     if (channels.length > 0) return;
 
     let active = true;
@@ -349,11 +360,12 @@ export default function App() {
         ) {
           syncInProgressRef.current = true;
           setIsMemorySyncing(true);
-          syncStartedRef.current = true;
+          syncTaskIdRef.current = result.task_id || null;
         }
       } catch (error) {
-        if (!active) return;
-        console.warn("Failed to start memory sync", error);
+        if (active) {
+          console.warn("Failed to start memory sync", error);
+        }
       }
     };
     startMemorySync();
@@ -386,8 +398,7 @@ export default function App() {
         return;
       }
       toast.success("Channel sync started");
-      syncInProgressRef.current = true;
-      hasSyncedInSessionRef.current = false; // Reset session flag for manual sync
+        syncInProgressRef.current = true;
     } catch (error) {
       console.warn("Failed to start channel sync", error);
       toast.error("Unable to start channel sync");
@@ -395,7 +406,21 @@ export default function App() {
     }
   }, [api, isMemorySyncing]);
 
+  const handleCancelSync = useCallback(async () => {
+    try {
+      await api.cancelSync(syncTaskIdRef.current || undefined);
+      toast.info("Sync cancelled");
+      syncInProgressRef.current = false;
+      syncTaskIdRef.current = null;
+      setIsMemorySyncing(false);
+    } catch (error) {
+      console.warn("Failed to cancel sync", error);
+      toast.error("Unable to cancel sync");
+    }
+  }, [api]);
+
   const handleEnterProgramMode = useCallback(() => {
+    if (syncInProgressRef.current) return;
     handleMemorySync();
   }, [handleMemorySync]);
 
@@ -547,7 +572,7 @@ export default function App() {
       }
 
       if (newTab === "Device" || newTab === "Channels") {
-        if (isInProgramMode || isMemorySyncing || hasSyncedInSessionRef.current) {
+        if (isInProgramMode || isMemorySyncing) {
           setCurrentTab(newTab);
         } else if (currentTab !== newTab) {
           setPendingTab(newTab);
@@ -756,7 +781,7 @@ export default function App() {
 
   const handleDashboardToggle = useCallback(async () => {
     const newValue = !isDashboardMode;
-    updatePreferences({ startInDashboardMode: newValue } as any);
+        updatePreferences({ startInDashboardMode: newValue });
     try {
       await fetch(`${API_BASE}/preferences`, {
         method: "PUT",
@@ -915,7 +940,16 @@ export default function App() {
                     variant={isDashboardMode ? "default" : "hero"}
                     className="flex-1 min-h-0 mb-3"
                   />
-                  <BankControls activeBanks={banks} onToggleBank={handleBankToggle} />
+                   <BankControls activeBanks={banks} onToggleBank={handleBankToggle} />
+                  {isMemorySyncing && (
+                    <button
+                      type="button"
+                      onClick={handleCancelSync}
+                      className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-lg transition-colors z-10"
+                    >
+                      Cancel Sync
+                    </button>
+                  )}
                   {!isDashboardMode && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}

@@ -745,12 +745,28 @@ class BC125ATDriver(ScannerDriver):
 
     async def _read_glf_list_no_params(self) -> list[int]:
         locked: list[int] = []
-        while True:
+        seen: set[int] = set()
+        max_iterations = 600
+        iterations = 0
+        while iterations < max_iterations:
             response = await self._send("GLF", PRIORITY_BACKGROUND)
             next_key = self._parse_glf_response(response)
             if next_key is None:
                 break
+            if next_key in seen:
+                logger.warning(
+                    "GLF: detected duplicate key %d, terminating list read", next_key
+                )
+                break
+            if not (1 <= next_key <= 500):
+                logger.warning(
+                    "GLF: invalid key %d (must be 1-500), terminating list read",
+                    next_key,
+                )
+                break
+            seen.add(next_key)
             locked.append(next_key)
+            iterations += 1
         return locked
 
     async def send_program_command(self, command: str) -> str:

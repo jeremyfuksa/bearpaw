@@ -7,9 +7,9 @@ from typing import Optional
 
 from scanner_bridge.transport import SerialTransport
 
-PRIORITY_CONTROL = 1
-PRIORITY_TELEMETRY = 2
-PRIORITY_BACKGROUND = 3
+PRIORITY_CONTROL = 0
+PRIORITY_TELEMETRY = 1
+PRIORITY_BACKGROUND = 2
 
 
 @dataclass(order=True)

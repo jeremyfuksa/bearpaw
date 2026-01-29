@@ -83,11 +83,11 @@ describe("API Contract Tests", () => {
     });
 
     it("should have get channel endpoint", () => {
-      expect("/api/v1/memory/channels/:index").toMatch(/memory\/channels\/\d+$/);
+      expect("/api/v1/memory/channels/:index").toMatch(/memory\/channels\/:index$/);
     });
 
     it("should have update channel endpoint", () => {
-      expect("/api/v1/memory/channels/:index").toMatch(/memory\/channels\/\d+$/);
+      expect("/api/v1/memory/channels/:index").toMatch(/memory\/channels\/:index$/);
     });
   });
 
@@ -185,7 +185,7 @@ describe("API Contract Tests", () => {
     });
   });
 
-    describe("Settings Endpoints - Close Call", () => {
+  describe("Settings Endpoints - Close Call", () => {
     it("should have get close call settings endpoint", () => {
       expect("/api/v1/settings/close-call").toMatch(/settings\/close-call$/);
     });
@@ -215,11 +215,11 @@ describe("API Contract Tests", () => {
     });
 
     it("should have get custom search range endpoint", () => {
-      expect("/api/v1/settings/custom-search/ranges/:index").toMatch(/settings\/custom-search\/ranges\/\d+$/);
+      expect("/api/v1/settings/custom-search/ranges/:index").toMatch(/settings\/custom-search\/ranges\/:index$/);
     });
 
     it("should have set custom search range endpoint", () => {
-      expect("/api/v1/settings/custom-search/ranges/:index").toMatch(/settings\/custom-search\/ranges\/\d+$/);
+      expect("/api/v1/settings/custom-search/ranges/:index").toMatch(/settings\/custom-search\/ranges\/:index$/);
     });
   });
 
@@ -252,7 +252,7 @@ describe("API Contract Tests", () => {
       expect("/api/v1/preferences").toMatch(/preferences$/);
     });
 
-  it("should have get preference endpoint", () => {
+    it("should have get preference endpoint", () => {
       expect("/api/v1/preferences/:key").toMatch(/preferences\/:\w+$/);
     });
 
@@ -285,6 +285,7 @@ describe("API Contract Tests", () => {
     it("should have analytics cleanup endpoint", () => {
       expect("/api/v1/analytics/cleanup").toMatch(/analytics\/cleanup$/);
     });
+  });
 
   describe("WebSocket Connection", () => {
     it("should have WebSocket endpoint", () => {
@@ -292,7 +293,7 @@ describe("API Contract Tests", () => {
     });
 
     it("should support WebSocket protocol", () => {
-      expect(["ws", "wss", "http", "https"]).toContainExpect(expect.stringMatching(/^wss?$/));
+      expect(["ws", "wss", "http", "https"]).toEqual(expect.arrayContaining(["ws", "wss"]));
     });
   });
 

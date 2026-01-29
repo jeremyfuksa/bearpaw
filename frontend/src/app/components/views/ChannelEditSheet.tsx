@@ -124,6 +124,7 @@ export function ChannelEditSheet({
               <h3 className="text-lg font-bold text-white">Edit Channel {channel.index}</h3>
               <button
                 onClick={onClose}
+                aria-label="Close"
                 className="text-white/50 hover:text-white transition-colors"
               >
                 <X size={20} />
@@ -136,6 +137,7 @@ export function ChannelEditSheet({
                 <input
                   type="text"
                   inputMode="decimal"
+                  aria-label="Frequency"
                   value={draft.frequency}
                   onChange={(e) => handleFieldChange("frequency", e.target.value)}
                   className={cn(
@@ -152,6 +154,7 @@ export function ChannelEditSheet({
                 <label className="text-xs font-medium text-white/70">Alpha Tag</label>
                 <input
                   type="text"
+                  aria-label="Alpha Tag"
                   value={draft.alpha_tag}
                   onChange={(e) => handleFieldChange("alpha_tag", e.target.value)}
                   maxLength={16}
@@ -162,7 +165,10 @@ export function ChannelEditSheet({
               <div className="space-y-2">
                 <label className="text-xs font-medium text-white/70">Modulation</label>
                 <Select value={draft.modulation} onValueChange={(value) => handleFieldChange("modulation", value)}>
-                  <SelectTrigger className="w-full h-10 bg-black/40 border-white/10 focus:border-brand-primary text-white text-sm">
+                  <SelectTrigger
+                    aria-label="Modulation"
+                    className="w-full h-10 bg-black/40 border-white/10 focus:border-brand-primary text-white text-sm"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#11131b] border-white/10 text-white">
@@ -180,6 +186,7 @@ export function ChannelEditSheet({
                 <input
                   type="text"
                   inputMode="decimal"
+                  aria-label="Tone Squelch"
                   value={draft.tone_squelch}
                   onChange={(e) => handleFieldChange("tone_squelch", e.target.value)}
                   placeholder="—"
@@ -198,6 +205,7 @@ export function ChannelEditSheet({
                 <input
                   type="text"
                   inputMode="numeric"
+                  aria-label="Delay"
                   value={draft.delay}
                   onChange={(e) => handleFieldChange("delay", e.target.value)}
                   className={cn(
@@ -214,6 +222,7 @@ export function ChannelEditSheet({
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <Switch
+                      aria-label="Lockout"
                       checked={draft.lockout}
                       onCheckedChange={(checked) => handleFieldChange("lockout", checked)}
                       className="data-[state=checked]:bg-brand-primary"
@@ -222,6 +231,7 @@ export function ChannelEditSheet({
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch
+                      aria-label="Priority"
                       checked={draft.priority}
                       onCheckedChange={(checked) => handleFieldChange("priority", checked)}
                       className="data-[state=checked]:bg-brand-primary"

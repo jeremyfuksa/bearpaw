@@ -39,8 +39,19 @@ class StateStore:
         with self._lock:
             changes: Dict[str, object] = {}
             if not self._live_state:
-                self._live_state = state
-                return state.__dict__
+                self._live_state = LiveState(
+                    timestamp=0.0,
+                    frequency=0.0,
+                    modulation="AUTO",
+                    squelch_open=False,
+                    rssi=0,
+                    mode="SCAN",
+                    channel=None,
+                    alpha_tag=None,
+                    volume=0,
+                    battery=None,
+                    stale=True,
+                )
             for field, value in state.__dict__.items():
                 if getattr(self._live_state, field) != value:
                     changes[field] = value

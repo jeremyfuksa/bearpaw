@@ -85,10 +85,14 @@ class SR30CDriver(ScannerDriver):
             self.last_error = None
         else:
             self.last_error = response.strip() or "key_failed"
-            self._logger.warning("Key command failed (%s): %s", key_code, self.last_error)
+            self._logger.warning(
+                "Key command failed (%s): %s", key_code, self.last_error
+            )
         return ok
 
-    async def read_channel(self, index: int, assume_program_mode: bool = False) -> ChannelData:
+    async def read_channel(
+        self, index: int, assume_program_mode: bool = False
+    ) -> ChannelData:
         if not assume_program_mode:
             await self._enter_program_mode()
         response = await self._send(f"CIN,{index}", PRIORITY_BACKGROUND)
@@ -150,7 +154,11 @@ class SR30CDriver(ScannerDriver):
         tone = None
         bank = 0
 
-        if len(parts) >= 2 and looks_like_frequency(parts[1]) and not looks_like_frequency(parts[0]):
+        if (
+            len(parts) >= 2
+            and looks_like_frequency(parts[1])
+            and not looks_like_frequency(parts[0])
+        ):
             alpha_tag = parts[0]
             freq = parse_frequency(parts[1])
             modulation = parts[2] if len(parts) > 2 and parts[2] else "FM"
@@ -214,11 +222,8 @@ class SR30CDriver(ScannerDriver):
     async def _exit_program_mode(self) -> None:
         try:
             await self._send("EPG", PRIORITY_BACKGROUND)
-            # Only restore mode if we forced HOLD and mode hasn't changed
-            if self._program_mode_forced_hold and self._mode == "HOLD":
-                if self._pre_program_mode == "SCAN":
-                    await self._send("KEY,S,P", PRIORITY_CONTROL)
-                self._mode = self._pre_program_mode or self._mode
+            if self._pre_program_mode is not None:
+                self._mode = self._pre_program_mode
             self._pre_program_mode = None
             self._program_mode_forced_hold = False
         finally:
@@ -315,7 +320,9 @@ class SR30CDriver(ScannerDriver):
     async def get_custom_search_range(self, index: int) -> tuple[float, float]:
         raise NotImplementedError
 
-    async def set_custom_search_range(self, index: int, lower: float, upper: float) -> bool:
+    async def set_custom_search_range(
+        self, index: int, lower: float, upper: float
+    ) -> bool:
         raise NotImplementedError
 
     async def get_weather_priority(self) -> bool:

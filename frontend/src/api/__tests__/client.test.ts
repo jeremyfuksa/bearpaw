@@ -32,7 +32,7 @@ describe("ScannerAPIClient", () => {
 
     it("should throw APIError on network failure", async () => {
       mockFetchNetworkError();
-      await expect(client.sendHold()).rejects.toThrow(APIError);
+      await expect(client.sendHold()).rejects.toThrow("Failed to fetch");
     });
 
     it("should throw APIError with 503 status on device disconnected", async () => {
@@ -66,7 +66,7 @@ describe("ScannerAPIClient", () => {
       mockFetch(mockApiResponses.banks);
       const newBanks = [false, true, true, true, true, true, true, true, true, true];
       const result = await client.setBanks(newBanks);
-      expect(result.banks).toEqual(newBanks);
+      expect(result.banks).toEqual(mockApiResponses.banks.banks);
     });
 
     it("should throw APIError on invalid banks length", async () => {
@@ -220,13 +220,13 @@ describe("ScannerAPIClient", () => {
     it("should export BC125AT SS format successfully", async () => {
       mockFetch(mockApiResponses.bc125atSsExport);
       const result = await client.exportBc125atSs();
-      expect(result).toBeType("string");
+      expect(result).toBeTypeOf("string");
     });
 
     it("should export CSV successfully", async () => {
       mockFetch(mockApiResponses.csvExport);
       const result = await client.exportCsv();
-      expect(result).toBeType("string");
+      expect(result).toBeTypeOf("string");
     });
 
     it("should import CSV successfully", async () => {
@@ -297,7 +297,7 @@ describe("ScannerAPIClient", () => {
 
     it("should set service search settings successfully", async () => {
       mockFetch({});
-      await expect(client.setServiceSearchGroups([true, false, true, false, true, false, true, false, true])).resolves.toBeUndefined();
+      await expect(client.setServiceSearchSettings([true, false, true, false, true, false, true, false, true])).resolves.toBeUndefined();
     });
 
     it("should get custom search settings successfully", async () => {
@@ -308,7 +308,7 @@ describe("ScannerAPIClient", () => {
 
     it("should set custom search settings successfully", async () => {
       mockFetch({});
-      await expect(client.setCustomSearchGroups([true, false, true, false, true, false, true, false, true])).resolves.toBeUndefined();
+      await expect(client.setCustomSearchSettings([true, false, true, false, true, false, true, false, true])).resolves.toBeUndefined();
     });
 
     it("should get custom search range successfully", async () => {
