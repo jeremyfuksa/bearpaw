@@ -152,6 +152,7 @@ export default function App() {
 
   const syncInProgressRef = useRef(false);
   const syncTaskIdRef = useRef<string | null>(null);
+  const hasSyncedInitiallyRef = useRef(false);
   const lastHitOpenRef = useRef(false);
   const squelchOpenStartTimeRef = useRef<number | null>(null);
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
@@ -265,6 +266,7 @@ export default function App() {
 
       if (isComplete && syncInProgressRef.current) {
         syncInProgressRef.current = false;
+        hasSyncedInitiallyRef.current = true;
         setIsMemorySyncing(false);
         syncTaskIdRef.current = null;
 
@@ -411,6 +413,7 @@ export default function App() {
       await api.cancelSync(syncTaskIdRef.current || undefined);
       toast.info("Sync cancelled");
       syncInProgressRef.current = false;
+      hasSyncedInitiallyRef.current = true;
       syncTaskIdRef.current = null;
       setIsMemorySyncing(false);
     } catch (error) {
@@ -880,6 +883,32 @@ export default function App() {
         }}
       />
 
+      <AnimatePresence>
+        {isMemorySyncing && !hasSyncedInitiallyRef.current && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-[#1c1f26]/95 flex flex-col items-center justify-center z-50"
+          >
+            <div className="flex flex-col items-center gap-6">
+              <div className="w-16 h-16 border-4 border-[#4c627d] border-t-[#4c627d] rounded-full animate-spin" />
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-bold text-[#f5ebe8]">Syncing Scanner Memory</h2>
+                <p className="text-sm text-[#acbbcc]">Loading channels from device...</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelSync}
+                className="mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-white/10"
+              >
+                Cancel Sync
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="px-6 pt-4 pb-2">
         <TabNav
           currentTab={currentTab}
@@ -941,15 +970,6 @@ export default function App() {
                     className="flex-1 min-h-0 mb-3"
                   />
                    <BankControls activeBanks={banks} onToggleBank={handleBankToggle} />
-                  {isMemorySyncing && (
-                    <button
-                      type="button"
-                      onClick={handleCancelSync}
-                      className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium shadow-lg transition-colors z-10"
-                    >
-                      Cancel Sync
-                    </button>
-                  )}
                   {!isDashboardMode && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
