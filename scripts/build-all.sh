@@ -26,19 +26,22 @@ if [ -f "$HOME/.cargo/env" ]; then
     source "$HOME/.cargo/env"
 fi
 
-if ! command -v cargo tauri &> /dev/null; then
+echo ""
+echo "🚀 Building Tauri app..."
+cd "$PROJECT_ROOT"
+TAURI_BUNDLES="${TAURI_BUNDLES:-app}"
+if cargo tauri --version &> /dev/null; then
+    cargo tauri build --bundles "$TAURI_BUNDLES"
+elif npx tauri --version &> /dev/null; then
+    echo "Using npx tauri..."
+    npx tauri build --bundles "$TAURI_BUNDLES"
+else
     echo ""
     echo "❌ Tauri CLI not found. Installing..."
     echo "   Run: cargo install tauri-cli"
     echo "   Or: npm install -g @tauri-apps/cli"
     exit 1
 fi
-
-# 4. Build Tauri app
-echo ""
-echo "🚀 Building Tauri app..."
-cd "$PROJECT_ROOT"
-cargo tauri build
 
 echo ""
 echo "✅ Build complete!"

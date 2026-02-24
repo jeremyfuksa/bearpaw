@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ProjectRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
+$ProjectRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $ScriptDir))
 
 Write-Host "🔨 Building Scanner Bridge Python backend for Tauri sidecar..." -ForegroundColor Cyan
 Write-Host "Project root: $ProjectRoot" -ForegroundColor Cyan
@@ -14,6 +14,10 @@ $TRIPLE = "x86_64-pc-windows-msvc"
 $BIN_NAME = "scanner-bridge-${TRIPLE}.exe"
 
 Write-Host "📋 Building for platform triple: $TRIPLE" -ForegroundColor Cyan
+$env:PYINSTALLER_CONFIG_DIR = Join-Path $ProjectRoot "backend\.pyinstaller"
+if (-not (Test-Path $env:PYINSTALLER_CONFIG_DIR)) {
+    New-Item -ItemType Directory -Force -Path $env:PYINSTALLER_CONFIG_DIR | Out-Null
+}
 
 # Activate venv
 Write-Host "🐍 Activating virtual environment..." -ForegroundColor Yellow
@@ -35,7 +39,11 @@ Set-Location $ProjectRoot
 
 # Build with PyInstaller
 Write-Host "🔧 Building with PyInstaller..." -ForegroundColor Yellow
-& pyinstaller --clean --noconfirm backend\packaging\tauri\scanner-bridge-tauri.spec
+$env:SCANNER_BRIDGE_PROJECT_ROOT = $ProjectRoot
+& pyinstaller --clean --noconfirm `
+  --distpath "$ProjectRoot\backend\dist" `
+  --workpath "$ProjectRoot\backend\build" `
+  "$ProjectRoot\backend\packaging\tauri\scanner-bridge-tauri.spec"
 
 # Rename and copy
 $DistDir = Join-Path $ProjectRoot "backend\dist"

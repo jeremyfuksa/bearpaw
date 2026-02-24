@@ -344,7 +344,10 @@ class BC125ATDriver(ScannerDriver):
             )
         finally:
             await self._exit_program_mode()
-        return self._is_ok_response(response)
+        ok = self._is_ok_response(response)
+        if not ok and response.strip().upper().startswith("SCO,"):
+            ok = True
+        return ok
 
     async def get_close_call_settings(self) -> tuple[int, bool, bool, list[bool], bool]:
         return await self._get_close_call_settings(assume_program_mode=False)
@@ -1086,6 +1089,11 @@ class BC125ATDriver(ScannerDriver):
         parts = self._parse_command_parts(response, "SCO")
         delay = int(parts[0]) if parts and parts[0].lstrip("-").isdigit() else 0
         code_search = parts[1] == "1" if len(parts) > 1 else False
+
+        valid_delays = (-10, -5, 0, 1, 2, 3, 4, 5)
+        if delay not in valid_delays:
+            delay = 0
+
         return delay, code_search
 
     async def _get_close_call_settings(

@@ -6,6 +6,8 @@ from PyInstaller.utils.hooks import collect_submodules
 import sys
 import os
 
+PROJECT_ROOT = os.path.abspath(os.environ.get("SCANNER_BRIDGE_PROJECT_ROOT", "."))
+
 # Determine platform triple for Tauri externalBin naming
 if sys.platform == "darwin":
     # macOS
@@ -29,12 +31,12 @@ print(f"Building for Tauri externalBin: {EXE_NAME}")
 hiddenimports = collect_submodules("scanner_bridge")
 
 a = Analysis(
-    ["backend/src/scanner_bridge/main.py"],
-    pathex=["backend/src"],
+    [os.path.join(PROJECT_ROOT, "backend", "src", "scanner_bridge", "main.py")],
+    pathex=[os.path.join(PROJECT_ROOT, "backend", "src")],
     binaries=[],
     datas=[
         # Include default config
-        ("backend/config.example.yaml", "."),
+        (os.path.join(PROJECT_ROOT, "backend", "config.example.yaml"), "."),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],

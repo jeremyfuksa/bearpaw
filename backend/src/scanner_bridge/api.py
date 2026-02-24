@@ -801,7 +801,13 @@ def create_app(
         if not callable(snapshot_getter):
             raise HTTPException(status_code=400, detail="settings_snapshot_unsupported")
 
-        settings = await call_or_unsupported(snapshot_getter, "config_unsupported")
+        try:
+            settings = await call_or_unsupported(snapshot_getter, "config_unsupported")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("Failed to read device settings: %s", exc)
+            raise HTTPException(status_code=500, detail="config_read_failed") from exc
 
         # Build the config snapshot
         return ConfigSnapshot(
@@ -1452,6 +1458,30 @@ def create_app(
                     status_code=503, detail="preferences_not_configured"
                 )
             runtime.preferences_store.set_multiple(request)
+
+            mqtt_keys = {
+                "mqtt_enabled",
+                "mqtt_host",
+                "mqtt_port",
+                "mqtt_topic_prefix",
+                "mqtt_qos",
+                "mqtt_retain",
+            }
+            if mqtt_keys.intersection(request.keys()):
+                if runtime.mqtt_exporter:
+                    runtime.mqtt_exporter.close()
+                mqtt_enabled = runtime.preferences_store.get("mqtt_enabled")
+                if mqtt_enabled:
+                    runtime.mqtt_exporter = MqttExporter(
+                        runtime.preferences_store.get("mqtt_host"),
+                        runtime.preferences_store.get("mqtt_port"),
+                        runtime.preferences_store.get("mqtt_topic_prefix"),
+                        runtime.preferences_store.get("mqtt_qos"),
+                        runtime.preferences_store.get("mqtt_retain"),
+                    )
+                else:
+                    runtime.mqtt_exporter = None
+
             return JSONResponse(content=runtime.preferences_store.get_all())
         except Exception as exc:
             logger.exception("Error saving preferences: %s", exc)

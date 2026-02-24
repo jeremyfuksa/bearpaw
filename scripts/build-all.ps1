@@ -25,13 +25,14 @@ npm run build
 Write-Host ""
 Write-Host "🚀 Building Tauri app..." -ForegroundColor Yellow
 Set-Location "$ProjectRoot"
+$TauriBundles = if ($env:TAURI_BUNDLES) { $env:TAURI_BUNDLES } else { "app" }
 
 $TauriCommand = Get-Command cargo -ErrorAction SilentlyContinue
 if (-not $TauriCommand) {
     $NpmTauri = Get-Command npx tauri -ErrorAction SilentlyContinue
     if ($NpmTauri) {
         Write-Host "Using npx tauri..." -ForegroundColor Cyan
-        npx tauri build
+        npx tauri build --bundles $TauriBundles
     } else {
         Write-Host "❌ Tauri CLI not found. Installing..." -ForegroundColor Red
         Write-Host "   Run: cargo install tauri-cli" -ForegroundColor Yellow
@@ -39,7 +40,7 @@ if (-not $TauriCommand) {
         exit 1
     }
 } else {
-    cargo tauri build
+    cargo tauri build --bundles $TauriBundles
 }
 
 Write-Host ""

@@ -8,5 +8,3 @@ paho-mqtt>=1.6.1
 pyusb>=1.2.1
 httpx>=0.27.0
 python-multipart>=0.0.6
-fastapi-cors>=0.0.6
-

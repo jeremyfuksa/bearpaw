@@ -24,6 +24,7 @@ Frontend (run from `frontend/`):
 Root (Tauri desktop app):
 - `npm run dev`: start backend and frontend together.
 - `npm run tauri:dev`: start Tauri development mode.
+- `npm run build`: build all components (frontend + backend + Tauri).
 
 ## Python Code Style
 - **Indentation**: 4 spaces (always, no tabs).
@@ -89,6 +90,8 @@ Root (Tauri desktop app):
 - **Transport Layer**: `SerialTransport` and `UsbTransport` handle device communication. Drivers should not directly interact with hardware.
 - **State Management**: Use `StateStore` class for managing device state and shadow state (memory channels). Thread-safe updates via `update_live_state()` and `set_shadow_state()`.
 - **Exporters**: Export modules (MQTT, JSON stream, text file) live in `exporters/` and subscribe to state changes.
+- **Data Sanitization**: Always validate and sanitize data from device before returning to API. Device registers may contain invalid values; use default values when validation fails.
+- **Error Handling in API**: Catch specific exceptions (ValueError, HTTPException) and rethrow with meaningful error codes. Use `logger.error()` for unexpected failures.
 
 ## Additional Frontend Conventions
 - **Component Structure**: Organize components by feature/domain in `src/app/components/`. UI primitives go in `src/app/components/ui/` (shadcn/ui).
@@ -96,7 +99,7 @@ Root (Tauri desktop app):
 - **Store Patterns**: Zustand stores should be simple and focused. Use selectors (`useStore((s) => s.value)`) to prevent unnecessary re-renders.
 - **API Client**: `ScannerAPIClient` in `src/api/client.ts` handles all HTTP requests. Don't use `fetch` directly in components.
 - **Notification System**: Use `useNotifications` hook for displaying toast messages. Notifications auto-dismiss but allow manual close.
-- **Theming**: Use `next-themes` for dark/light mode support. Components should adapt to theme changes automatically.
+- **React Patterns**: Use `useRef()` for values persisting across renders without triggering re-renders (tracking latest values in callbacks). Use `useState()` for UI-updating values.
 
 ## Performance Considerations
 - Backend: Avoid blocking operations in async functions. Use `asyncio.gather()` for concurrent I/O when safe. Cache expensive computations.

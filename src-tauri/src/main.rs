@@ -39,11 +39,11 @@ async fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            if let tauri::WindowEvent::CloseRequested { api: _, .. } = event {
                 #[cfg(not(debug_assertions))]
                 {
-                    if let Some(sidecar) = window.try_state::<sidecar::SidecarState>() {
-                        let manager = sidecar.clone();
+                    if let Some(sidecar) = window.try_state::<commands::sidecar::SidecarState>() {
+                        let manager = sidecar.inner().clone();
                         tokio::spawn(async move {
                             let _ = manager.kill().await;
                         });

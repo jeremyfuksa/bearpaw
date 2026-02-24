@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, Download, Calendar, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import { cn } from "../../../lib/utils";
 import { useAPI } from "../../../api/useApi";
 
@@ -168,6 +169,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
               <h3 className="text-lg font-bold text-white">Export Activity Log</h3>
               <button
                 onClick={onClose}
+                aria-label="Close"
                 className="text-white/50 hover:text-white transition-colors"
               >
                 <X size={20} />
@@ -200,8 +202,11 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                 <div className="space-y-4 border-t border-white/10 pt-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-white/70">Start Date</label>
+                      <label htmlFor="activity-export-start-date" className="text-xs font-medium text-white/70">
+                        Start Date
+                      </label>
                       <input
+                        id="activity-export-start-date"
                         type="date"
                         value={customStartDate ? customStartDate.toISOString().slice(0, 10) : ""}
                         onChange={(e) => setCustomStartDate(e.target.value ? new Date(e.target.value) : null)}
@@ -209,8 +214,11 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-medium text-white/70">End Date</label>
+                      <label htmlFor="activity-export-end-date" className="text-xs font-medium text-white/70">
+                        End Date
+                      </label>
                       <input
+                        id="activity-export-end-date"
                         type="date"
                         value={customEndDate ? customEndDate.toISOString().slice(0, 10) : ""}
                         onChange={(e) => setCustomEndDate(e.target.value ? new Date(e.target.value) : null)}

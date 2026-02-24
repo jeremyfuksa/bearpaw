@@ -54,7 +54,6 @@ import type {
 import { DeviceTab } from "./components/views/DeviceTab";
 import { ChannelsTab } from "./components/views/ChannelsTab";
 import { ActivityExportSheet } from "./components/views/ActivityExportSheet";
-import { ProgramModeSheet } from "./components/views/ProgramModeSheet";
 
 const API_BASE = (import.meta.env?.VITE_API_BASE_URL as string) || "/api/v1";
 
@@ -94,7 +93,6 @@ export default function App() {
     openMemoryBrowser: () => setCurrentTab("Channels"),
     closeOverlays: () => {
       setIsExportSheetOpen(false);
-      setIsProgramModeSheetOpen(false);
     },
     openShortcuts: () => {
       toast.info("Keyboard Shortcuts:\nCtrl+S: Scan | Ctrl+H: Hold\nCtrl+L: Activity Log | Ctrl+M: Memory\nCtrl+C: Copy Freq | Ctrl+↑/↓: Navigate\nEsc: Close overlays | ?: Show shortcuts", {
@@ -146,9 +144,7 @@ export default function App() {
   const [isMemorySyncing, setIsMemorySyncing] = useState(false);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [preferencesLoading, setPreferencesLoading] = useState(false);
-  const [isProgramModeSheetOpen, setIsProgramModeSheetOpen] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
-  const [pendingTab, setPendingTab] = useState<Tab | null>(null);
 
   const syncInProgressRef = useRef(false);
   const syncTaskIdRef = useRef<string | null>(null);
@@ -185,6 +181,12 @@ export default function App() {
             dataRetentionDays: prefs.data_retention_days || 30,
             audioOutputDevice: prefs.audio_output_device || "default",
             recordingsPath: prefs.recordings_path || "./recordings",
+            mqttEnabled: prefs.mqtt_enabled ?? false,
+            mqttHost: prefs.mqtt_host || "127.0.0.1",
+            mqttPort: prefs.mqtt_port || 1883,
+            mqttTopicPrefix: prefs.mqtt_topic_prefix || "scanner",
+            mqttQos: prefs.mqtt_qos ?? 0,
+            mqttRetain: prefs.mqtt_retain ?? false,
           };
           console.log("[Preferences] Setting in store:", frontendPrefs);
           setPreferences(frontendPrefs);
@@ -280,12 +282,6 @@ export default function App() {
           .getChannels()
           .then((channelData) => setChannels(channelData))
           .then(() => {
-            if (pendingTab) {
-              setCurrentTab(pendingTab);
-              setIsProgramModeSheetOpen(false);
-              setPendingTab(null);
-              return;
-            }
             if (currentTab === "Scan") {
               api.sendScan().catch((error) => {
                 console.warn("Failed to resume scan after sync", error);
@@ -422,11 +418,6 @@ export default function App() {
     }
   }, [api]);
 
-  const handleEnterProgramMode = useCallback(() => {
-    if (syncInProgressRef.current) return;
-    handleMemorySync();
-  }, [handleMemorySync]);
-
   useEffect(() => {
     let active = true;
     const refreshDeviceInfo = async () => {
@@ -528,18 +519,6 @@ export default function App() {
     };
   }, [currentTab]);
 
-  // Listen for manual refresh requests from Device/Channels tabs
-  useEffect(() => {
-    const handleSyncRequest = () => {
-      handleMemorySync();
-    };
-
-    window.addEventListener('sync-memory-request', handleSyncRequest);
-    return () => {
-      window.removeEventListener('sync-memory-request', handleSyncRequest);
-    };
-  }, [handleMemorySync]);
-
   useEffect(() => {
     // Don't track mode changes during sync completion to avoid race conditions
     if (isMemorySyncing) return;
@@ -575,15 +554,10 @@ export default function App() {
       }
 
       if (newTab === "Device" || newTab === "Channels") {
-        if (isInProgramMode || isMemorySyncing) {
-          setCurrentTab(newTab);
-        } else if (currentTab !== newTab) {
-          setPendingTab(newTab);
-          setIsProgramModeSheetOpen(true);
-        }
+        setCurrentTab(newTab);
       }
     },
-    [isInProgramMode, isMemorySyncing, currentTab, api],
+    [isInProgramMode, api],
   );
 
   const getScannerMode = () => {
@@ -1249,12 +1223,6 @@ export default function App() {
         isOpen={isExportSheetOpen}
         onClose={() => setIsExportSheetOpen(false)}
         hasActivity={fullActivityLog.length > 0}
-      />
-      <ProgramModeSheet
-        isOpen={isProgramModeSheetOpen}
-        onClose={() => setIsProgramModeSheetOpen(false)}
-        isSyncing={isMemorySyncing}
-        onEnterProgramMode={handleEnterProgramMode}
       />
     </div>
   );
