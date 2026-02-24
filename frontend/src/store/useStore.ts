@@ -19,6 +19,12 @@ interface Preferences {
   dataRetentionDays: number;
   audioOutputDevice: string;
   recordingsPath: string;
+  mqttEnabled: boolean;
+  mqttHost: string;
+  mqttPort: number;
+  mqttTopicPrefix: string;
+  mqttQos: number;
+  mqttRetain: boolean;
 }
 
 interface AppState {
@@ -62,6 +68,12 @@ const defaultPreferences: Preferences = {
   dataRetentionDays: 30,
   audioOutputDevice: "default",
   recordingsPath: "./recordings",
+  mqttEnabled: false,
+  mqttHost: "127.0.0.1",
+  mqttPort: 1883,
+  mqttTopicPrefix: "scanner",
+  mqttQos: 0,
+  mqttRetain: false,
 };
 
 export const useStore = create<AppState>((set) => ({

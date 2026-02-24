@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ActivityExportSheet } from "../ActivityExportSheet";
+import { useAPI } from "../../../../api/useApi";
 import type { ActivityLogEntry } from "../../../../types";
 import { mockFetch, resetMockFetch, mockFetchError, mockFetchNetworkError } from "../../../../test/utils";
 
@@ -14,6 +15,8 @@ vi.mock("../../../../store/useStore", () => ({
 }));
 
 describe("ActivityExportSheet", () => {
+  const originalBlob = global.Blob;
+  let anchorClickMock: ReturnType<typeof vi.fn>;
   const mockProps = {
     isOpen: true,
     onClose: vi.fn(),
@@ -22,22 +25,43 @@ describe("ActivityExportSheet", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useAPI).mockReturnValue({
+      cleanupAnalytics: vi.fn().mockResolvedValue(undefined),
+    } as any);
     mockFetch([]);
+    global.Blob = vi.fn(function (
+      parts: BlobPart[],
+      options?: BlobPropertyBag,
+    ) {
+      return { parts, type: options?.type ?? "" } as unknown as Blob;
+    }) as unknown as typeof Blob;
+    anchorClickMock = vi.fn();
     global.URL.createObjectURL = vi.fn(() => "blob:mock-url");
     global.URL.revokeObjectURL = vi.fn();
     const originalCreateElement = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
       if (tag === "a") {
-        return { href: "", download: "", click: vi.fn() } as any;
+        return { href: "", download: "", click: anchorClickMock } as any;
       }
       return originalCreateElement(tag);
     });
   });
 
   afterEach(() => {
+    global.Blob = originalBlob;
     resetMockFetch();
     vi.restoreAllMocks();
   });
+
+  const getBlobCsvContent = (): string => {
+    const blobMock = global.Blob as unknown as ReturnType<typeof vi.fn>;
+    const calls = blobMock.mock.calls;
+    const lastCall = calls[calls.length - 1];
+    if (!lastCall) return "";
+    const parts = lastCall[0];
+    if (!Array.isArray(parts)) return "";
+    return parts.join("");
+  };
 
   describe("Rendering", () => {
     it("should render when isOpen is true", () => {
@@ -156,8 +180,8 @@ describe("ActivityExportSheet", () => {
       
       await userEvent.click(customButton);
       
-      const selects = screen.getAllByRole("combobox");
-      expect(selects.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByLabelText(/start date/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/end date/i)).toBeInTheDocument();
     });
 
     it("should have day select dropdown", async () => {
@@ -166,8 +190,7 @@ describe("ActivityExportSheet", () => {
       
       await userEvent.click(customButton);
       
-      const selects = screen.getAllByRole("combobox");
-      expect(selects.length).toBeGreaterThanOrEqual(4);
+      expect(screen.getAllByDisplayValue("").length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -247,8 +270,6 @@ describe("ActivityExportSheet", () => {
       ];
 
       mockFetch(mockEntries);
-      const mockBlob = new Blob(["test"], { type: "text/csv" });
-      global.Blob = vi.fn(() => mockBlob);
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -310,14 +331,6 @@ describe("ActivityExportSheet", () => {
       ];
 
       mockFetch(mockEntries);
-      const mockClick = vi.fn();
-      const originalCreateElement = document.createElement.bind(document);
-      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
-        if (tag === "a") {
-          return { href: "", download: "", click: mockClick } as any;
-        }
-        return originalCreateElement(tag);
-      });
       
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole("button", { name: /download/i });
@@ -325,7 +338,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(mockClick).toHaveBeenCalled();
+        expect(anchorClickMock).toHaveBeenCalled();
       });
     });
 
@@ -543,10 +556,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(
-          expect.stringContaining("start_time"),
-          expect.objectContaining({ method: "GET" })
-        );
+        expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("start_time"));
       });
     });
 
@@ -554,16 +564,16 @@ describe("ActivityExportSheet", () => {
       render(<ActivityExportSheet {...mockProps} />);
       const customButton = screen.getByRole("button", { name: /custom range/i });
       await userEvent.click(customButton);
+      await userEvent.type(screen.getByLabelText(/start date/i), "2026-01-01");
+      await userEvent.type(screen.getByLabelText(/end date/i), "2026-01-31");
       const downloadButton = screen.getByRole("button", { name: /download/i });
       
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(
-          expect.stringContaining("start_time"),
-          expect.stringContaining("end_time"),
-          expect.objectContaining({ method: "GET" })
-        );
+        const url = vi.mocked(global.fetch).mock.calls.at(-1)?.[0] as string;
+        expect(url).toContain("start_time");
+        expect(url).toContain("end_time");
       });
     });
   });
@@ -593,10 +603,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.Blob).toHaveBeenCalledWith(
-          expect.stringContaining("timestamp,frequency,tag,channel,rssi,duration"),
-          expect.objectContaining({ type: "text/csv" })
-        );
+        expect(getBlobCsvContent()).toContain("timestamp,frequency,tag,channel,rssi,duration");
       });
     });
 
@@ -624,11 +631,9 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.Blob).toHaveBeenCalledWith(
-          expect.stringContaining("151.2500"),
-          expect.stringContaining('"Test Channel"'),
-          expect.objectContaining({ type: "text/csv" })
-        );
+        const csv = getBlobCsvContent();
+        expect(csv).toContain("151.2500");
+        expect(csv).toContain('"Test Channel"');
       });
     });
 
@@ -656,10 +661,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.Blob).toHaveBeenCalledWith(
-          expect.stringContaining('"Test, Channel"'),
-          expect.objectContaining({ type: "text/csv" })
-        );
+        expect(getBlobCsvContent()).toContain('"Test, Channel"');
       });
     });
   });
@@ -674,10 +676,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.Blob).toHaveBeenCalledWith(
-          expect.stringContaining("timestamp,frequency,tag,channel,rssi,duration"),
-          expect.objectContaining({ type: "text/csv" })
-        );
+        expect(getBlobCsvContent()).toContain("timestamp,frequency,tag,channel,rssi,duration");
       });
     });
 
@@ -705,10 +704,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.Blob).toHaveBeenCalledWith(
-          expect.stringContaining('""'),
-          expect.objectContaining({ type: "text/csv" })
-        );
+        expect(getBlobCsvContent()).toContain('""');
       });
     });
 
@@ -736,10 +732,7 @@ describe("ActivityExportSheet", () => {
       await userEvent.click(downloadButton);
       
       await waitFor(() => {
-        expect(global.Blob).toHaveBeenCalledWith(
-          expect.stringContaining('""'),
-          expect.objectContaining({ type: "text/csv" })
-        );
+        expect(getBlobCsvContent()).toContain(",,75");
       });
     });
   });

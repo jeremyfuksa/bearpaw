@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 echo "🔨 Building Scanner Bridge Python backend for Tauri sidecar..."
 echo "Project root: $PROJECT_ROOT"
@@ -29,6 +29,8 @@ echo "📋 Building for platform triple: $TRIPLE"
 
 # Activate venv and install dependencies
 cd "$PROJECT_ROOT"
+export PYINSTALLER_CONFIG_DIR="$PROJECT_ROOT/backend/.pyinstaller"
+mkdir -p "$PYINSTALLER_CONFIG_DIR"
 if [ ! -d "backend/.venv" ]; then
     echo "❌ Virtual environment not found. Creating one..."
     cd backend
@@ -47,8 +49,11 @@ pip install pyinstaller
 
 # Build with PyInstaller
 echo "🔧 Building with PyInstaller..."
+export SCANNER_BRIDGE_PROJECT_ROOT="$PROJECT_ROOT"
 pyinstaller --clean --noconfirm \
-  backend/packaging/tauri/scanner-bridge-tauri.spec
+  --distpath "$PROJECT_ROOT/backend/dist" \
+  --workpath "$PROJECT_ROOT/backend/build" \
+  "$PROJECT_ROOT/backend/packaging/tauri/scanner-bridge-tauri.spec"
 
 # Rename executable for Tauri externalBin
 DIST_DIR="$PROJECT_ROOT/backend/dist"

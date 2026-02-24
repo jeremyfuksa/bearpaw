@@ -16,6 +16,12 @@ class PreferencesStore:
         "audio_output_device": "default",
         "theme": "dark",
         "recordings_path": "./recordings",
+        "mqtt_enabled": False,
+        "mqtt_host": "127.0.0.1",
+        "mqtt_port": 1883,
+        "mqtt_topic_prefix": "scanner",
+        "mqtt_qos": 0,
+        "mqtt_retain": False,
     }
 
     def __init__(self, db_path: str):

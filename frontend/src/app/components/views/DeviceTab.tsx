@@ -13,6 +13,7 @@ import {
   Code,
   ExternalLink,
   RefreshCcw,
+  Wifi,
 } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
@@ -837,22 +838,11 @@ export function DeviceTab() {
 
               {/* Display Settings */}
               <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
-                      <Maximize2 size={16} />
-                    </div>
-                    <h3 className="font-bold text-white">Display & System</h3>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
+                    <Maximize2 size={16} />
                   </div>
-                  <button
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent('sync-memory-request'));
-                    }}
-                    className="px-3 py-1 text-xs font-medium text-white/70 bg-white/10 hover:bg-white/20 rounded border border-white/10 transition-colors flex items-center gap-2"
-                  >
-                    <RefreshCcw size={14} />
-                    Refresh
-                  </button>
+                  <h3 className="font-bold text-white">Display & System</h3>
                 </div>
 
                 <div className="space-y-4">
@@ -1138,28 +1128,21 @@ export function DeviceTab() {
                    />
                  </div>
 
-                 <div>
-                   <label
-                     htmlFor="search-delay"
-                     className="text-sm font-medium text-white/70 block mb-2"
-                   >
-                     Search Delay (seconds)
-                   </label>
-                   <Slider
-                     id="search-delay"
-                     min={0}
-                     max={30}
-                     step={1}
-                     value={[searchDelay]}
-                     onValueChange={handleSearchDelayChange}
-                     className="w-full"
-                   />
-                   <div className="flex justify-between text-xs text-white/50 mt-1">
-                     <span>0s</span>
-                     <span>{searchDelay}s</span>
-                     <span>30s</span>
-                   </div>
-                 </div>
+                <div>
+                  <div className="flex justify-between text-xs font-medium text-white/70 mb-2">
+                    <label htmlFor="search-delay">Search Delay</label>
+                    <span className="text-white">{searchDelay}s</span>
+                  </div>
+                  <Slider
+                    id="search-delay"
+                    min={0}
+                    max={5}
+                    step={1}
+                    value={[searchDelay]}
+                    onValueChange={handleSearchDelayChange}
+                    className="w-full"
+                  />
+                </div>
                </div>
              </div>
           </div>
@@ -1436,6 +1419,97 @@ export function DeviceTab() {
                     </div>
                     <Slider defaultValue={[50]} max={100} step={1} />
                   </div>
+                </div>
+              </section>
+
+              {/* MQTT Settings */}
+              <section className="space-y-4">
+                <h3 className="text-sm font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
+                  <Wifi className="w-4 h-4 text-white/50" /> MQTT
+                </h3>
+                <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-medium text-white">Enable MQTT</label>
+                      <p className="text-xs text-white/40">
+                        Publish scanner state to MQTT broker
+                      </p>
+                    </div>
+                    <Switch
+                      checked={preferences.mqttEnabled}
+                      onCheckedChange={(checked) => handlePreferenceChange("mqttEnabled", checked)}
+                    />
+                  </div>
+
+                  {preferences.mqttEnabled && (
+                    <>
+                      <div className="h-px bg-white/5" />
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium text-white">Broker Host</label>
+                          <input
+                            type="text"
+                            value={preferences.mqttHost}
+                            onChange={(e) => handlePreferenceChange("mqttHost", e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
+                            placeholder="127.0.0.1"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium text-white">Broker Port</label>
+                          <input
+                            type="number"
+                            value={preferences.mqttPort}
+                            onChange={(e) => handlePreferenceChange("mqttPort", parseInt(e.target.value))}
+                            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
+                            placeholder="1883"
+                            min="1"
+                            max="65535"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium text-white">Topic Prefix</label>
+                          <input
+                            type="text"
+                            value={preferences.mqttTopicPrefix}
+                            onChange={(e) => handlePreferenceChange("mqttTopicPrefix", e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
+                            placeholder="scanner"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium text-white">QoS Level</label>
+                          <Select
+                            value={String(preferences.mqttQos)}
+                            onValueChange={(value) => handlePreferenceChange("mqttQos", parseInt(value))}
+                          >
+                            <SelectTrigger className="w-full bg-white/5 border-white/10 text-white h-9 text-sm">
+                              <SelectValue placeholder="Select QoS" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                              <SelectItem value="0">0 - At most once</SelectItem>
+                              <SelectItem value="1">1 - At least once</SelectItem>
+                              <SelectItem value="2">2 - Exactly once</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <label className="text-sm font-medium text-white">Retain Messages</label>
+                            <p className="text-xs text-white/40">Keep last message on broker</p>
+                          </div>
+                          <Switch
+                            checked={preferences.mqttRetain}
+                            onCheckedChange={(checked) => handlePreferenceChange("mqttRetain", checked)}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </section>
 
