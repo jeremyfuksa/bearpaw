@@ -12,6 +12,7 @@ pub use poll::spawn_poll_loop;
 
 use axum::{
     extract::{
+        Query,
         State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
@@ -20,19 +21,21 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tracing::info;
 
-use crate::state::{DeviceInfo, LiveState};
+use crate::state::{ChannelData, DeviceInfo, LiveState, ShadowState};
 
-/// Shared app state. Uses std::sync::RwLock for live/device (poll thread writes).
+/// Shared app state. Uses std::sync::RwLock for live/device/shadow (poll thread writes).
 /// command_tx is Some when a serial port is active; handlers send control commands there.
 #[derive(Clone)]
 pub struct AppState {
     pub live: Arc<std::sync::RwLock<LiveState>>,
     pub device: Arc<std::sync::RwLock<DeviceInfo>>,
+    pub shadow: Arc<std::sync::RwLock<ShadowState>>,
     pub ws_tx: broadcast::Sender<String>,
     pub sequence: Arc<AtomicU64>,
     /// When Some, poll loop is running; send control commands here.
@@ -47,6 +50,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/commands/hold", post(post_hold))
         .route("/api/v1/commands/scan", post(post_scan))
         .route("/api/v1/frequency", post(post_frequency))
+        .route("/api/v1/memory/channels", get(get_memory_channels))
+        .route("/api/v1/memory/sync", post(post_memory_sync))
         .route("/ws", get(ws_handler))
         .with_state(state)
 }
@@ -90,6 +95,74 @@ async fn post_frequency(
     .map_err(|_| ApiError::SendFailed)?;
     let live = state.live.read().unwrap().clone();
     Ok(Json(live))
+}
+
+#[derive(Deserialize)]
+struct MemoryChannelsQuery {
+    bank: Option<u8>,
+    lockout: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct MemoryChannelsResponse {
+    channels: Vec<ChannelData>,
+    count: usize,
+    last_sync: f64,
+}
+
+async fn get_memory_channels(
+    State(state): State<AppState>,
+    Query(q): Query<MemoryChannelsQuery>,
+) -> Json<MemoryChannelsResponse> {
+    let shadow = state.shadow.read().unwrap();
+    let mut channels: Vec<ChannelData> = shadow.channels.values().cloned().collect();
+    if let Some(bank) = q.bank {
+        channels.retain(|c| c.bank == bank);
+    }
+    if let Some(lockout) = q.lockout {
+        channels.retain(|c| c.lockout == lockout);
+    }
+    channels.sort_by_key(|c| c.index);
+    let count = channels.len();
+    let last_sync = shadow.last_sync;
+    Json(MemoryChannelsResponse {
+        channels,
+        count,
+        last_sync,
+    })
+}
+
+#[derive(Serialize)]
+struct MemorySyncResponse {
+    status: &'static str,
+    task_id: String,
+    estimated_duration: f64,
+}
+
+async fn post_memory_sync(State(state): State<AppState>) -> Result<(StatusCode, Json<MemorySyncResponse>), ApiError> {
+    use std::sync::mpsc::Sender;
+    let task_id = format!("sync-{}", uuid_simple());
+    let tx = state.command_tx.lock().unwrap();
+    let tx: &Sender<ControlCommand> = tx.as_ref().ok_or(ApiError::NoScanner)?;
+    tx.send(ControlCommand::StartSync {
+        task_id: task_id.clone(),
+        max_channels: 500,
+    })
+    .map_err(|_| ApiError::SendFailed)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(MemorySyncResponse {
+            status: "started",
+            task_id,
+            estimated_duration: 60.0,
+        }),
+    ))
+}
+
+fn uuid_simple() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    format!("{:08x}", t % 0x1_0000_0000)
 }
 
 #[derive(Debug)]
@@ -159,6 +232,7 @@ pub fn default_state() -> AppState {
             connection_status: "disconnected".to_string(),
             ..Default::default()
         })),
+        shadow: Arc::new(std::sync::RwLock::new(ShadowState::default())),
         ws_tx,
         sequence: Arc::new(AtomicU64::new(0)),
         command_tx: Arc::new(Mutex::new(None)),

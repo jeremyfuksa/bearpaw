@@ -67,10 +67,10 @@ crates/
 
 ### Phase 3: Memory (shadow state + sync)
 
-- [ ] **Protocol:** `PRG` / `EPG`, `CIN,<index>`; parse channel line into `ChannelData`.
-- [ ] **State:** Shadow state: list of channels; optional SQLite or JSON persistence.
-- [ ] **Sync:** Background task: enter PRG, read channels in batches, exit PRG; progress via WebSocket `progress` message.
-- [ ] **API:** `GET /api/v1/memory/channels`, `POST /api/v1/memory/sync`.
+- [x] **Protocol:** `PRG` / `EPG`, `CIN,<index>`; parse CIN response into `ChannelData`.
+- [x] **State:** Shadow state: `HashMap<u16, ChannelData>`, `last_sync`; in-memory only (no persistence yet).
+- [x] **Sync:** Poll loop handles `StartSync`: PRG → CIN 1..max_channels → EPG; progress via WebSocket `progress`.
+- [x] **API:** `GET /api/v1/memory/channels` (optional `?bank`, `?lockout`), `POST /api/v1/memory/sync` (202 + task_id).
 
 **Exit criteria:** Channel list and alpha tags in UI; memory sync with progress; no regression on status/control.
 
