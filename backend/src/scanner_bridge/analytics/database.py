@@ -341,7 +341,7 @@ class AnalyticsDatabase:
     ) -> tuple[list[HeatmapCell], dict[str, float]]:
         """Synchronous heatmap query."""
         if not self._conn:
-            return [], {"min": 0, "max": 0, "avg": 0}
+            return [], {"min_count": 0, "max_count": 0, "avg_count": 0}
 
         cutoff = time.time() - (days * 86400)
         cursor = self._conn.execute(
@@ -362,7 +362,7 @@ class AnalyticsDatabase:
 
         results = cursor.fetchall()
         if not results:
-            return [], {"min": 0, "max": 0, "avg": 0}
+            return [], {"min_count": 0, "max_count": 0, "avg_count": 0}
 
         counts = [row[2] for row in results]
         heatmap = [
