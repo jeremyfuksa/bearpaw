@@ -1,4 +1,4 @@
-//! Blocking serial poll loop: STS -> LiveState -> broadcast state_update.
+//! Blocking serial poll loop: drain control commands, then STS -> LiveState -> broadcast.
 
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
+use crate::api::ControlCommand;
 use crate::api::AppState;
 use crate::protocol::{livestate_from_sts, parse_mdl_response, parse_sts_response};
 use crate::transport::{SerialTransport, TransportError};
@@ -14,12 +15,18 @@ use crate::transport::{SerialTransport, TransportError};
 const POLL_INTERVAL_MS: u64 = 200;
 const STS_CMD: &str = "STS";
 const MDL_CMD: &str = "MDL";
+const KEY_HOLD: &str = "KEY,H,P";
+const KEY_SCAN: &str = "KEY,S,P";
 
-/// Spawn a blocking thread that opens the serial port, sends MDL once, then polls STS,
-/// updates state and broadcasts state_update JSON. Stops on error or when the port is dropped.
-pub fn spawn_poll_loop(state: AppState, port_name: String, baud: u32) {
+/// Spawn a blocking thread: open serial, process command channel + STS poll, broadcast state.
+pub fn spawn_poll_loop(
+    state: AppState,
+    port_name: String,
+    baud: u32,
+    cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
+) {
     thread::spawn(move || {
-        if let Err(e) = run_poll_loop(state.clone(), &port_name, baud) {
+        if let Err(e) = run_poll_loop(state.clone(), &port_name, baud, cmd_rx) {
             error!("Poll loop exited: {}", e);
             if let Ok(mut d) = state.device.write() {
                 d.connection_status = "disconnected".to_string();
@@ -33,6 +40,7 @@ fn run_poll_loop(
     state: AppState,
     port_name: &str,
     baud: u32,
+    cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let transport = SerialTransport::new(port_name, baud);
     let mut port = transport.open().map_err(|e| e.to_string())?;
@@ -53,7 +61,28 @@ fn run_poll_loop(
         }
     }
 
+    let mut commanded_mode: String = "SCAN".to_string();
+
     loop {
+        // Drain control commands (hold, scan, direct)
+        while let Ok(cmd) = cmd_rx.try_recv() {
+            match cmd {
+                ControlCommand::Hold => {
+                    let _ = transport.send(port.as_mut(), KEY_HOLD);
+                    commanded_mode = "HOLD".to_string();
+                }
+                ControlCommand::Scan => {
+                    let _ = transport.send(port.as_mut(), KEY_SCAN);
+                    commanded_mode = "SCAN".to_string();
+                }
+                ControlCommand::Direct { frequency, modulation } => {
+                    let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
+                    let _ = transport.send(port.as_mut(), &do_cmd);
+                    commanded_mode = "DIRECT".to_string();
+                }
+            }
+        }
+
         // STS (multiline response)
         let resp = match transport.send_and_read_multiline(port.as_mut(), STS_CMD) {
             Ok(r) => r,
@@ -72,7 +101,8 @@ fn run_poll_loop(
             continue;
         }
 
-        let live = livestate_from_sts(&map);
+        let mut live = livestate_from_sts(&map);
+        live.mode = commanded_mode.clone();
         let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
 
         {
