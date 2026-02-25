@@ -25,7 +25,7 @@ jobs:
       - name: Set up Python
         run: |
           cd backend
-          python -m venv create -p requirements.txt
+          python -m venv .venv
           source .venv/bin/activate
           pip install -e .
       - name: Run backend tests
@@ -53,8 +53,7 @@ jobs:
     name: Test Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    needs: test-backend
-    needs: test-frontend
+    needs: [test-backend, test-frontend]
     steps:
       - name: Backend coverage
         run: |
