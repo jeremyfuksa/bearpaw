@@ -5,9 +5,9 @@ from typing import Optional
 
 import logging
 
-from scanner_bridge.models import ChannelData, LiveState
-from scanner_bridge.protocol.base import ScannerDriver
-from scanner_bridge.scheduler import (
+from bearpaw.models import ChannelData, LiveState
+from bearpaw.protocol.base import ScannerDriver
+from bearpaw.scheduler import (
     PRIORITY_BACKGROUND,
     PRIORITY_CONTROL,
     PRIORITY_TELEMETRY,

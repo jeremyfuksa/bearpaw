@@ -1,10 +1,10 @@
 [Unit]
-Description=Scanner Bridge Backend
+Description=Bearpaw Backend
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/scanner-bridge --config /etc/scanner-bridge/config.yaml --daemon
+ExecStart=/usr/local/bin/bearpaw --config /etc/bearpaw/config.yaml --daemon
 Restart=on-failure
 User=scanner
 Group=scanner

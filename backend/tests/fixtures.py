@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field as dataclass_field
 from typing import Optional, Dict, List
-from scanner_bridge.models import (
+from bearpaw.models import (
     ChannelData,
     LiveState,
     DeviceInfo,

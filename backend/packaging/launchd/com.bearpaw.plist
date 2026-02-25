@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.scanner.bridge</string>
+  <string>com.bearpaw</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/bin/scanner-bridge</string>
+    <string>/usr/local/bin/bearpaw</string>
     <string>--config</string>
-    <string>/usr/local/etc/scanner-bridge/config.yaml</string>
+    <string>/usr/local/etc/bearpaw/config.yaml</string>
     <string>--daemon</string>
   </array>
   <key>RunAtLoad</key>

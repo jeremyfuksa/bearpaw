@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
-from scanner_bridge.protocol.bc125at import BC125ATDriver
+from bearpaw.protocol.bc125at import BC125ATDriver
 
 
 MAX_CHANNELS = 500

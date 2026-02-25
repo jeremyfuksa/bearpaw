@@ -181,7 +181,7 @@ Allow users to choose between two backend operation modes:
 - Backend code doesn't need changes - already supports multiple clients
 - Purely packaging/deployment enhancement
 - Service installation may require admin privileges on some platforms
-- Consider separate installers: "Scanner Bridge Server" (backend only) + "Scanner Bridge UI" (frontend only)
+- Consider separate installers: "Bearpaw Server" (backend only) + "Bearpaw UI" (frontend only)
 
 ---
 

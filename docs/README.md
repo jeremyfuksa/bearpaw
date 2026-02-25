@@ -1,4 +1,4 @@
-# Scanner Bridge Project Documentation
+# Bearpaw Project Documentation
 
 > **Cross-platform control and telemetry system for Uniden analog scanners**
 
@@ -24,7 +24,7 @@
 
 ## Project Overview
 
-The Scanner Bridge is a **two-silo system** designed for independent development:
+Bearpaw is a **two-silo system** designed for independent development:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -137,7 +137,7 @@ The Scanner Bridge is a **two-silo system** designed for independent development
 **Validation:**
 ```bash
 # Start backend
-python -m scanner_bridge --port /dev/ttyACM0
+bearpaw --config ./config.yaml
 
 # Test with curl
 curl http://localhost:8000/status
@@ -326,7 +326,7 @@ open docs/API_SPEC.md
 open docs/archive/INTEGRATION_TODO.md
 
 # 2. Ensure both silos are functional
-cd backend/ && python -m scanner_bridge &
+cd backend/ && bearpaw --config ./config.yaml &
 cd frontend/ && npm run dev &
 
 # 3. Start integration testing

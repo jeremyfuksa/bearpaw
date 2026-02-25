@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 import usb.core
 
-from scanner_bridge.transport_usb import UsbTransport
+from bearpaw.transport_usb import UsbTransport
 
 VID = 0x1965
 PID = 0x0017

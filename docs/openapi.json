@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Scanner Bridge",
+    "title": "Bearpaw",
     "version": "1.0.0"
   },
   "paths": {

@@ -1,4 +1,4 @@
-# Scanner Bridge Backend
+# Bearpaw Backend
 
 Python FastAPI service for Uniden scanner control and telemetry.
 
@@ -7,7 +7,7 @@ Python FastAPI service for Uniden scanner control and telemetry.
 1) Create and activate a venv in `backend/`.
 2) Install dependencies: `pip install -r requirements.txt`.
 3) Copy `config.example.yaml` to your own config.
-4) Run: `scanner-bridge --config ./config.yaml`.
+4) Run: `bearpaw --config ./config.yaml`.
 
 ## Config
 

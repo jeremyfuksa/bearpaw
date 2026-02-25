@@ -1,1 +1,0 @@
-"""Scanner Bridge backend package."""

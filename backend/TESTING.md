@@ -46,7 +46,7 @@ backend/tests/
 
 ```python
 import unittest
-from scanner_bridge.models import ChannelData
+from bearpaw.models import ChannelData
 from tests.fixtures import create_channel, create_live_state
 from tests.stubs import MockDriver, MockScheduler, MockTransport
 

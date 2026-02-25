@@ -3,17 +3,17 @@
 ## PyInstaller
 
 ```bash
-pyinstaller --clean --noconfirm backend/packaging/scanner-bridge.spec
+pyinstaller --clean --noconfirm backend/packaging/bearpaw.spec
 ```
 
 ## systemd
 
-Install `backend/packaging/systemd/scanner-bridge.service` to `/etc/systemd/system/` and configure `/etc/scanner-bridge/config.yaml`.
+Install `backend/packaging/systemd/bearpaw.service` to `/etc/systemd/system/` and configure `/etc/bearpaw/config.yaml`.
 
 ## launchd
 
-Install `backend/packaging/launchd/com.scanner.bridge.plist` to `~/Library/LaunchAgents/` or `/Library/LaunchDaemons/`.
+Install `backend/packaging/launchd/com.bearpaw.plist` to `~/Library/LaunchAgents/` or `/Library/LaunchDaemons/`.
 
 ## Windows
 
-Use the NSSM template in `backend/packaging/windows/scanner-bridge.nssm.txt`.
+Use the NSSM template in `backend/packaging/windows/bearpaw.nssm.txt`.

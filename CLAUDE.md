@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Scanner Bridge is a web-based control interface for Uniden scanners (BC125AT, SR30C). It's split into:
+Bearpaw is a web-based control interface for Uniden scanners (BC125AT, SR30C). It's split into:
 - **Backend**: Python FastAPI service that talks to scanner hardware via serial/USB
 - **Frontend**: React + TypeScript + Vite SPA that provides a web UI
 
@@ -21,7 +21,7 @@ source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 
 # Run backend
-scanner-bridge --config ./config.yaml
+bearpaw --config ./config.yaml
 
 # Install in dev mode
 pip install -e .
@@ -290,7 +290,7 @@ VITE_WS_URL=                   # WebSocket URL (auto-detected if empty)
 
 ```
 backend/
-  src/scanner_bridge/
+  src/bearpaw/
     api.py                    # FastAPI app, main polling loop
     scheduler.py              # Command priority queue
     state.py                  # LiveState/ShadowState management

@@ -1,4 +1,4 @@
-# Default Scanner Bridge configuration for bundled distribution
+# Default Bearpaw configuration for bundled distribution
 # This file is included with the Tauri app
 
 # Backend API configuration
@@ -23,7 +23,7 @@ scanner:
 # Logging configuration
 logging:
   level: "INFO"
-  file: "scanner-bridge.log"
+  file: "bearpaw.log"
   max_size_mb: 10
   backup_count: 5
 

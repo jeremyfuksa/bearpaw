@@ -5,8 +5,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from scanner_bridge.models import ChannelData, ShadowState
-from scanner_bridge.persistence import JsonPersistence, SQLitePersistence
+from bearpaw.models import ChannelData, ShadowState
+from bearpaw.persistence import JsonPersistence, SQLitePersistence
 
 
 class JsonPersistenceTests(unittest.TestCase):

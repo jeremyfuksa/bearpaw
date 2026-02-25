@@ -4,7 +4,7 @@ from typing import List
 
 import serial.tools.list_ports
 
-from scanner_bridge.models import DeviceDescriptor
+from bearpaw.models import DeviceDescriptor
 
 UNIDEN_VID = 0x1965
 UNIDEN_BC125AT_PID = 0x0017

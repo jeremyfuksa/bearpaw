@@ -14,9 +14,9 @@ from fastapi.responses import JSONResponse, Response as StarletteResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from scanner_bridge.config import AppConfig
-from scanner_bridge.discovery import discover_devices
-from scanner_bridge.models import (
+from bearpaw.config import AppConfig
+from bearpaw.discovery import discover_devices
+from bearpaw.models import (
     BacklightSettings,
     BanksModel,
     BatterySettings,
@@ -46,25 +46,25 @@ from scanner_bridge.models import (
     VolumeRequest,
     WeatherSettings,
 )
-from scanner_bridge.protocol import BC125ATDriver, SR30CDriver
-from scanner_bridge.scheduler import (
+from bearpaw.protocol import BC125ATDriver, SR30CDriver
+from bearpaw.scheduler import (
     CommandScheduler,
     PRIORITY_BACKGROUND,
     PRIORITY_TELEMETRY,
 )
-from scanner_bridge.state import StateStore, build_persistence
-from scanner_bridge.sync import MemorySyncTask
-from scanner_bridge.transport import SerialTransport
-from scanner_bridge.transport_usb import UsbTransport
-from scanner_bridge.websocket import WebSocketManager
-from scanner_bridge.exporters.text_exporter import TextFileExporter
-from scanner_bridge.exporters.json_stream import JsonEventStream
-from scanner_bridge.exporters.mqtt import MqttExporter
-from scanner_bridge.exporters.bc125at_ss import export_bc125at_ss
-from scanner_bridge.analytics.database import AnalyticsDatabase
-from scanner_bridge.preferences import PreferencesStore
+from bearpaw.state import StateStore, build_persistence
+from bearpaw.sync import MemorySyncTask
+from bearpaw.transport import SerialTransport
+from bearpaw.transport_usb import UsbTransport
+from bearpaw.websocket import WebSocketManager
+from bearpaw.exporters.text_exporter import TextFileExporter
+from bearpaw.exporters.json_stream import JsonEventStream
+from bearpaw.exporters.mqtt import MqttExporter
+from bearpaw.exporters.bc125at_ss import export_bc125at_ss
+from bearpaw.analytics.database import AnalyticsDatabase
+from bearpaw.preferences import PreferencesStore
 
-logger = logging.getLogger("scanner_bridge")
+logger = logging.getLogger("bearpaw")
 
 
 def _set_device_diagnostic(
@@ -126,7 +126,7 @@ def create_app(
     port_override: Optional[str] = None,
     startup_enabled: bool = True,
 ) -> FastAPI:
-    app = FastAPI(title="Scanner Bridge", version="1.0.0")
+    app = FastAPI(title="Bearpaw", version="1.0.0")
 
     if config.api.cors_origins:
         app.add_middleware(
@@ -1669,7 +1669,7 @@ def create_app(
     @app.post("/api/v1/test/simulate-hit")
     async def simulate_hit() -> dict:
         """Simulate a scanner hit for testing purposes"""
-        from scanner_bridge.models import LiveState
+        from bearpaw.models import LiveState
 
         runtime: RuntimeState = app.state.runtime
 

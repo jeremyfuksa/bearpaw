@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure
-- `backend/`: Python FastAPI service (`backend/src/scanner_bridge`) with tests in `backend/tests`, configs in `backend/*.yaml`.
+- `backend/`: Python FastAPI service (`backend/src/bearpaw`) with tests in `backend/tests`, configs in `backend/*.yaml`.
 - `frontend/`: React + TypeScript app (Vite). Source in `frontend/src`, assets in `frontend/public`.
 - `docs/`: Specs, API contract, and workflow notes (start with `docs/README.md`).
 
@@ -9,7 +9,7 @@
 Backend (run from `backend/`):
 - `source .venv/bin/activate`: activate virtual environment (venv is in `.venv/`, NOT `venv/`).
 - `pip install -e .`: install backend in editable mode.
-- `scanner-bridge --config ./config.yaml`: run the backend service.
+- `bearpaw --config ./config.yaml`: run the Bearpaw backend service.
 - `python -m unittest discover -s tests`: run all backend tests.
 - `python -m unittest tests.test_api.ApiTests.test_status`: run a single backend test.
 
@@ -52,7 +52,7 @@ Root (Tauri desktop app):
 - Python: snake_case for functions/variables, PascalCase for classes, UPPER_SNAKE for constants. File names: snake_case.py.
 - TypeScript: PascalCase for components/functions, camelCase for variables, kebab-case for files.
 - File naming: `kebab-case.ts` for utilities, `PascalCase.tsx` for components. Test files: `ComponentName.test.tsx` or `component-name.test.ts`.
-- Backend modules: `module_name.py`, package: `scanner_bridge.module_name`.
+- Backend modules: `module_name.py`, package: `bearpaw.module_name`.
 - Frontend paths: `kebab-case/` for directories, matching file names where possible.
 
 ## Testing Guidelines
@@ -128,7 +128,7 @@ Root (Tauri desktop app):
 
 ## Memory and Persistence
 - Backend uses SQLite for persistence (`scanner.db` and `analytics.db`). Never commit database files.
-- Memory channels are synced via `MemorySyncTask` in `backend/src/scanner_bridge/sync.py`.
+- Memory channels are synced via `MemorySyncTask` in `backend/src/bearpaw/sync.py`.
 - Frontend stores should persist critical state to localStorage where appropriate.
 
 ## WebSocket Message Flow

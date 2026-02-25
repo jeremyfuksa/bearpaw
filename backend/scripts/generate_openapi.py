@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scanner_bridge.api import create_app
-from scanner_bridge.config import AppConfig
+from bearpaw.api import create_app
+from bearpaw.config import AppConfig
 
 
 def main() -> None:
