@@ -28,6 +28,8 @@ node_modules/
 dist/
 frontend-old/
 backend/uv.lock
+backend/.pyinstaller/
+backend/build/
 
 # Tauri / Rust
 src-tauri/target/
