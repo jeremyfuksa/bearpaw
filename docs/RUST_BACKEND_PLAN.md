@@ -59,9 +59,9 @@ crates/
 
 ### Phase 2: Control + scan/hold
 
-- [ ] **Protocol:** `KEY,H,P` (hold), `KEY,S,P` (scan), `DO,<freq>,<mod>` (direct); optional volume/key beep if needed for UI.
-- [ ] **API:** `POST /api/v1/commands/hold`, `POST /api/v1/commands/scan`, `POST /api/v1/frequency` (body: frequency + modulation).
-- [ ] **Events:** Emit `event` (e.g. mode change) and/or rely on `state_update` for mode/frequency.
+- [x] **Protocol:** `KEY,H,P` (hold), `KEY,S,P` (scan), `DO,<freq>,<mod>` (direct).
+- [x] **API:** `POST /api/v1/commands/hold`, `POST /api/v1/commands/scan`, `POST /api/v1/frequency` (body: frequency + modulation).
+- [x] **Events:** Rely on `state_update` for mode/frequency (commanded_mode in poll loop).
 
 **Exit criteria:** User can hold, scan, and direct-tune from the UI; state and WS stay in sync.
 
