@@ -184,9 +184,6 @@ export function StatusHeader({
         </Popover>
         <button
           onClick={(e) => {
-             // Simple click logic handled by parent usually, but here we can demo
-             // Double click logic is complex in simple buttons, letting parent handle via simple click for now
-             // Or we can use onClick/onDoubleClick
              if (e.detail === 2) {
                  onLockout("permanent");
              } else {
@@ -220,16 +217,7 @@ export function StatusHeader({
 // --- Icons ---
 
 function SignalIcon({ strength }: { strength: number }) {
-  // strength 0-5
-  // Original SVG has multiple paths. We can just show the full icon for now or adapt it.
-  // The original component draws separate paths for bars.
-  // p3025b700 is the antenna/mast
-  // p31141000 is bar 1?
-  // p30ee9a00 is bar 2?
-  // etc.
-  // For simplicity and fidelity, I'll render the static icon from Figma or try to make it dynamic if I can map the paths.
-  // Let's just use the full icon as "Signal Present" indicator for now, as splitting it might be tricky without trial and error.
-  
+  // Render bars progressively (0-5) over the shared base icon.
   return (
     <div className="relative shrink-0 size-[16px]">
       <svg className="block size-full" fill="none" viewBox="0 0 16 14.0694">
@@ -240,7 +228,6 @@ function SignalIcon({ strength }: { strength: number }) {
           {strength > 2 && <path d={svgPaths.pd4593f0} fill="black" />}
           {strength > 3 && <path d={svgPaths.p24eea280} fill="black" />}
           {strength > 4 && <path d={svgPaths.p1690cd00} fill="black" />}
-          {/* p45ef080 seems to be the base or another part */}
           <path d={svgPaths.p45ef080} fill="black" /> 
         </g>
       </svg>

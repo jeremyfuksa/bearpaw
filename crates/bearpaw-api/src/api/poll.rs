@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use crate::api::ControlCommand;
 use crate::api::AppState;
 use crate::protocol::{livestate_from_sts, parse_cin_response, parse_mdl_response, parse_sts_response};
-use crate::state::ChannelData;
+use crate::state::{ChannelData, LiveState};
 use crate::transport::{SerialTransport, TransportError};
 use crate::transport_usb::UsbTransport;
 
@@ -58,18 +58,8 @@ fn run_poll_loop(
     info!("Serial opened: {} @ {} baud", port_name, baud);
 
     // Device info: model from MDL
-    {
-        let mdl_resp = transport.send(port.as_mut(), MDL_CMD)?;
-        if let Some(model) = parse_mdl_response(&mdl_resp) {
-            if let Ok(mut d) = state.device.write() {
-                d.model = Some(model);
-                d.port = Some(port_name.to_string());
-                d.connection_status = "connected".to_string();
-                d.diagnostic_code = None;
-                d.diagnostic_message = None;
-            }
-        }
-    }
+    let mdl_resp = transport.send(port.as_mut(), MDL_CMD)?;
+    update_device_info_from_mdl(&state, &mdl_resp, port_name);
 
     let mut commanded_mode: String = "SCAN".to_string();
 
@@ -116,43 +106,9 @@ fn run_poll_loop(
             Err(e) => return Err(e.into()),
         };
 
-        let map = parse_sts_response(&resp);
-        if map.is_empty() {
-            debug!("Empty STS response");
+        if !process_sts_frame(&state, &commanded_mode, &resp, "serial") {
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
             continue;
-        }
-
-        let mut live = livestate_from_sts(&map);
-        live.mode = commanded_mode.clone();
-        let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
-
-        {
-            if let Ok(mut g) = state.live.write() {
-                *g = live.clone();
-            }
-        }
-
-        let msg = json!({
-            "type": "state_update",
-            "sequence": seq,
-            "timestamp": live.timestamp,
-            "data": {
-                "timestamp": live.timestamp,
-                "frequency": live.frequency,
-                "modulation": live.modulation,
-                "squelch_open": live.squelch_open,
-                "rssi": live.rssi,
-                "mode": live.mode,
-                "channel": live.channel,
-                "volume": live.volume,
-                "battery": live.battery,
-                "stale": live.stale,
-            }
-        });
-        let s = msg.to_string();
-        if state.ws_tx.send(s).is_err() {
-            // no subscribers
         }
 
         thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
@@ -170,18 +126,8 @@ fn run_poll_loop_usb(
 
     info!("USB opened: {:04x}:{:04x}", vid, pid);
 
-    {
-        let mdl_resp = transport.send(&mut session, MDL_CMD)?;
-        if let Some(model) = parse_mdl_response(&mdl_resp) {
-            if let Ok(mut d) = state.device.write() {
-                d.model = Some(model);
-                d.port = Some(format!("usb:{:04x}:{:04x}", vid, pid));
-                d.connection_status = "connected".to_string();
-                d.diagnostic_code = None;
-                d.diagnostic_message = None;
-            }
-        }
-    }
+    let mdl_resp = transport.send(&mut session, MDL_CMD)?;
+    update_device_info_from_mdl(&state, &mdl_resp, &format!("usb:{:04x}:{:04x}", vid, pid));
 
     let mut commanded_mode: String = "SCAN".to_string();
     loop {
@@ -220,43 +166,64 @@ fn run_poll_loop_usb(
             }
         };
 
-        let map = parse_sts_response(&resp);
-        if map.is_empty() {
-            debug!("Empty STS response (usb)");
+        if !process_sts_frame(&state, &commanded_mode, &resp, "usb") {
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
             continue;
         }
-
-        let mut live = livestate_from_sts(&map);
-        live.mode = commanded_mode.clone();
-        let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
-
-        {
-            if let Ok(mut g) = state.live.write() {
-                *g = live.clone();
-            }
-        }
-
-        let msg = json!({
-            "type": "state_update",
-            "sequence": seq,
-            "timestamp": live.timestamp,
-            "data": {
-                "timestamp": live.timestamp,
-                "frequency": live.frequency,
-                "modulation": live.modulation,
-                "squelch_open": live.squelch_open,
-                "rssi": live.rssi,
-                "mode": live.mode,
-                "channel": live.channel,
-                "volume": live.volume,
-                "battery": live.battery,
-                "stale": live.stale,
-            }
-        });
-        let _ = state.ws_tx.send(msg.to_string());
         thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
+}
+
+fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &str) {
+    if let Some(model) = parse_mdl_response(mdl_resp) {
+        if let Ok(mut d) = state.device.write() {
+            d.model = Some(model);
+            d.port = Some(port_label.to_string());
+            d.connection_status = "connected".to_string();
+            d.diagnostic_code = None;
+            d.diagnostic_message = None;
+        }
+    }
+}
+
+fn process_sts_frame(state: &AppState, commanded_mode: &str, resp: &str, source: &str) -> bool {
+    let map = parse_sts_response(resp);
+    if map.is_empty() {
+        debug!("Empty STS response ({})", source);
+        return false;
+    }
+
+    let mut live = livestate_from_sts(&map);
+    live.mode = commanded_mode.to_string();
+    broadcast_live_update(state, live);
+    true
+}
+
+fn broadcast_live_update(state: &AppState, live: LiveState) {
+    let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
+
+    if let Ok(mut g) = state.live.write() {
+        *g = live.clone();
+    }
+
+    let msg = json!({
+        "type": "state_update",
+        "sequence": seq,
+        "timestamp": live.timestamp,
+        "data": {
+            "timestamp": live.timestamp,
+            "frequency": live.frequency,
+            "modulation": live.modulation,
+            "squelch_open": live.squelch_open,
+            "rssi": live.rssi,
+            "mode": live.mode,
+            "channel": live.channel,
+            "volume": live.volume,
+            "battery": live.battery,
+            "stale": live.stale,
+        }
+    });
+    let _ = state.ws_tx.send(msg.to_string());
 }
 
 fn send_progress(state: &AppState, task_id: &str, percent: u8, message: &str) {
