@@ -16,6 +16,7 @@ pub struct Config {
 pub struct DeviceConfig {
     pub port: Option<String>,
     pub baud: Option<u32>,
+    pub transport: Option<String>,
     #[serde(default = "default_auto_detect")]
     pub auto_detect: bool,
     pub usb_vid: Option<u16>,
@@ -78,21 +79,99 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
         return None;
     }
     let ports = serialport::available_ports().ok()?;
-    // Prefer VID/PID match when configured.
+    let candidates: Vec<_> = ports
+        .into_iter()
+        .filter(|p| !is_blocked_port(p))
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+
+    // Prefer VID/PID match when configured. If configured but not present, do not
+    // fall back to random ports (prevents opening debug/Bluetooth consoles).
     if let (Some(vid), Some(pid)) = (cfg.device.usb_vid, cfg.device.usb_pid) {
-        for p in &ports {
+        for p in &candidates {
             if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
                 if info.vid == vid && info.pid == pid {
                     return Some(p.port_name.clone());
                 }
             }
         }
+        return None;
     }
-    // Fallback to first USB port, then first available port.
-    for p in &ports {
-        if matches!(p.port_type, serialport::SerialPortType::UsbPort(_)) {
-            return Some(p.port_name.clone());
+
+    // If transport is explicitly USB, require a USB-ish serial endpoint.
+    let transport_usb = cfg
+        .device
+        .transport
+        .as_deref()
+        .map(|t| t.eq_ignore_ascii_case("usb"))
+        .unwrap_or(false);
+
+    let mut scored: Vec<(i32, String)> = candidates
+        .iter()
+        .filter_map(|p| score_port(p).map(|score| (score, p.port_name.clone())))
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    if let Some((score, name)) = scored.first() {
+        if *score > 0 {
+            return Some(name.clone());
         }
     }
-    ports.first().map(|p| p.port_name.clone())
+    if transport_usb {
+        return None;
+    }
+    None
+}
+
+fn is_blocked_port(p: &serialport::SerialPortInfo) -> bool {
+    let n = p.port_name.to_lowercase();
+    if n.contains("debug-console") || n.contains("bluetooth") || n.contains("incoming-port") {
+        return true;
+    }
+    if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
+        let product = info
+            .product
+            .as_deref()
+            .unwrap_or_default()
+            .to_lowercase();
+        if product.contains("bluetooth") || product.contains("debug") {
+            return true;
+        }
+    }
+    false
+}
+
+fn score_port(p: &serialport::SerialPortInfo) -> Option<i32> {
+    let n = p.port_name.to_lowercase();
+    let mut score = 0;
+    match &p.port_type {
+        serialport::SerialPortType::UsbPort(info) => {
+            score += 20;
+            let product = info
+                .product
+                .as_deref()
+                .unwrap_or_default()
+                .to_lowercase();
+            let manufacturer = info
+                .manufacturer
+                .as_deref()
+                .unwrap_or_default()
+                .to_lowercase();
+            if product.contains("uniden") || manufacturer.contains("uniden") {
+                score += 100;
+            }
+            if product.contains("usb") {
+                score += 10;
+            }
+        }
+        _ => {}
+    }
+    if n.contains("usbmodem") || n.contains("usbserial") || n.contains("/dev/cu.usb") || n.contains("/dev/tty.usb") {
+        score += 30;
+    }
+    if n.contains("soundcore") {
+        score -= 50;
+    }
+    Some(score)
 }
