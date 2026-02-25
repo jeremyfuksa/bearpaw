@@ -9,7 +9,7 @@ pub mod scheduler;
 pub mod state;
 pub mod transport;
 
-pub use api::{default_state, run_server};
+pub use api::{default_state, run_server, spawn_poll_loop};
 pub use config::Config;
 pub use state::{DeviceInfo, LiveState};
 pub use transport::SerialTransport;

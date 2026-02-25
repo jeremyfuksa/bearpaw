@@ -1,5 +1,6 @@
 //! Serial port transport: open, send command, read response.
 
+use std::thread;
 use std::time::Duration;
 
 use serialport::SerialPort;
@@ -58,5 +59,57 @@ impl SerialTransport {
             out.push(b[0]);
         }
         Ok(String::from_utf8_lossy(&out).trim().to_string())
+    }
+
+    /// Send command + `\r`, then read multiline response (until 50ms idle).
+    pub fn send_and_read_multiline(
+        &self,
+        port: &mut dyn SerialPort,
+        cmd: &str,
+    ) -> Result<String, TransportError> {
+        let mut buf = cmd.as_bytes().to_vec();
+        buf.push(b'\r');
+        port.write_all(&buf)?;
+        port.flush()?;
+        self.read_response_multiline(port)
+    }
+
+    /// Read a full multiline response: read bytes until idle for 50ms.
+    pub fn read_response_multiline(
+        &self,
+        port: &mut dyn SerialPort,
+    ) -> Result<String, TransportError> {
+        use std::time::Instant;
+        let idle_timeout = Duration::from_millis(50);
+        let mut out = Vec::new();
+        let mut last = Instant::now();
+        let mut b = [0u8; 64];
+        loop {
+            match port.read(&mut b) {
+                Ok(0) => {
+                    if !out.is_empty() && last.elapsed() >= idle_timeout {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                    continue;
+                }
+                Ok(n) => {
+                    out.extend_from_slice(&b[..n]);
+                    last = Instant::now();
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                    if !out.is_empty() && last.elapsed() >= idle_timeout {
+                        break;
+                    }
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(String::from_utf8_lossy(&out)
+            .trim()
+            .replace('\r', "\n")
+            .trim()
+            .to_string())
     }
 }
