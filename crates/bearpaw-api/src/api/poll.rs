@@ -14,6 +14,7 @@ use crate::api::AppState;
 use crate::protocol::{livestate_from_sts, parse_cin_response, parse_mdl_response, parse_sts_response};
 use crate::state::ChannelData;
 use crate::transport::{SerialTransport, TransportError};
+use crate::transport_usb::UsbTransport;
 
 const POLL_INTERVAL_MS: u64 = 200;
 const STS_CMD: &str = "STS";
@@ -47,6 +48,10 @@ fn run_poll_loop(
     baud: u32,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some((vid, pid)) = parse_usb_target(port_name) {
+        return run_poll_loop_usb(state, vid, pid, cmd_rx);
+    }
+
     let transport = SerialTransport::new(port_name, baud);
     let mut port = transport.open().map_err(|e| e.to_string())?;
 
@@ -154,6 +159,106 @@ fn run_poll_loop(
     }
 }
 
+fn run_poll_loop_usb(
+    state: AppState,
+    vid: u16,
+    pid: u16,
+    cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let transport = UsbTransport::new(vid, pid);
+    let mut session = transport.open().map_err(|e| e.to_string())?;
+
+    info!("USB opened: {:04x}:{:04x}", vid, pid);
+
+    {
+        let mdl_resp = transport.send(&mut session, MDL_CMD)?;
+        if let Some(model) = parse_mdl_response(&mdl_resp) {
+            if let Ok(mut d) = state.device.write() {
+                d.model = Some(model);
+                d.port = Some(format!("usb:{:04x}:{:04x}", vid, pid));
+                d.connection_status = "connected".to_string();
+                d.diagnostic_code = None;
+                d.diagnostic_message = None;
+            }
+        }
+    }
+
+    let mut commanded_mode: String = "SCAN".to_string();
+    loop {
+        while let Ok(cmd) = cmd_rx.try_recv() {
+            match cmd {
+                ControlCommand::Hold => {
+                    let _ = transport.send(&mut session, KEY_HOLD);
+                    commanded_mode = "HOLD".to_string();
+                }
+                ControlCommand::Scan => {
+                    let _ = transport.send(&mut session, KEY_SCAN);
+                    commanded_mode = "SCAN".to_string();
+                }
+                ControlCommand::Direct { frequency, modulation } => {
+                    let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
+                    let _ = transport.send(&mut session, &do_cmd);
+                    commanded_mode = "DIRECT".to_string();
+                }
+                ControlCommand::StartSync { task_id, max_channels } => {
+                    if let Err(e) =
+                        run_memory_sync_usb(&state, &transport, &mut session, &task_id, max_channels)
+                    {
+                        warn!("Memory sync failed: {}", e);
+                        send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
+                    }
+                }
+            }
+        }
+
+        let resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("STS read error (usb): {}", e);
+                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+                continue;
+            }
+        };
+
+        let map = parse_sts_response(&resp);
+        if map.is_empty() {
+            debug!("Empty STS response (usb)");
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+            continue;
+        }
+
+        let mut live = livestate_from_sts(&map);
+        live.mode = commanded_mode.clone();
+        let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
+
+        {
+            if let Ok(mut g) = state.live.write() {
+                *g = live.clone();
+            }
+        }
+
+        let msg = json!({
+            "type": "state_update",
+            "sequence": seq,
+            "timestamp": live.timestamp,
+            "data": {
+                "timestamp": live.timestamp,
+                "frequency": live.frequency,
+                "modulation": live.modulation,
+                "squelch_open": live.squelch_open,
+                "rssi": live.rssi,
+                "mode": live.mode,
+                "channel": live.channel,
+                "volume": live.volume,
+                "battery": live.battery,
+                "stale": live.stale,
+            }
+        });
+        let _ = state.ws_tx.send(msg.to_string());
+        thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+    }
+}
+
 fn send_progress(state: &AppState, task_id: &str, percent: u8, message: &str) {
     let msg = json!({
         "type": "progress",
@@ -208,4 +313,57 @@ fn run_memory_sync(
     }
     send_progress(state, task_id, 100, "Sync complete");
     Ok(())
+}
+
+fn run_memory_sync_usb(
+    state: &AppState,
+    transport: &UsbTransport,
+    session: &mut crate::transport_usb::UsbSession,
+    task_id: &str,
+    max_channels: u16,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    send_progress(state, task_id, 0, "Entering program mode...");
+    let _ = transport.send(session, PRG_CMD);
+    thread::sleep(Duration::from_millis(100));
+
+    let mut channels: HashMap<u16, ChannelData> = HashMap::new();
+    for idx in 1..=max_channels {
+        let cmd = format!("CIN,{}", idx);
+        let resp = transport.send(session, &cmd).unwrap_or_default();
+        if let Some(ch) = parse_cin_response(idx, &resp) {
+            channels.insert(idx, ch);
+        }
+        if idx % 10 == 0 {
+            let pct = ((idx as f64 / max_channels as f64) * 100.0) as u8;
+            send_progress(
+                state,
+                task_id,
+                pct,
+                &format!("Syncing channel {}/{}", idx, max_channels),
+            );
+        }
+    }
+
+    send_progress(state, task_id, 100, "Exiting program mode...");
+    let _ = transport.send(session, EPG_CMD);
+    thread::sleep(Duration::from_millis(100));
+
+    let now = std::time::SystemTime::UNIX_EPOCH
+        .elapsed()
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    if let Ok(mut shadow) = state.shadow.write() {
+        shadow.channels = channels;
+        shadow.last_sync = now;
+    }
+    send_progress(state, task_id, 100, "Sync complete");
+    Ok(())
+}
+
+fn parse_usb_target(target: &str) -> Option<(u16, u16)> {
+    let rest = target.strip_prefix("usb:")?;
+    let mut parts = rest.split(':');
+    let vid = u16::from_str_radix(parts.next()?, 16).ok()?;
+    let pid = u16::from_str_radix(parts.next()?, 16).ok()?;
+    Some((vid, pid))
 }

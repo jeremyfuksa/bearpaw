@@ -97,7 +97,9 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
                 }
             }
         }
-        return None;
+        // macOS may expose the USB device without creating a serial TTY.
+        // Return a USB pseudo-target so poll loop can use direct bulk endpoints.
+        return Some(format!("usb:{:04x}:{:04x}", vid, pid));
     }
 
     // If transport is explicitly USB, require a USB-ish serial endpoint.
