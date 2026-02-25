@@ -14,7 +14,6 @@ import uvicorn
 from bearpaw.api import create_app
 from bearpaw.config import AppConfig, load_config
 from bearpaw.middleware import add_cors_middleware
-from bearpaw.middleware import add_cors_middleware
 
 
 logger = logging.getLogger("bearpaw")
