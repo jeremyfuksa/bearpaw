@@ -1,4 +1,4 @@
-# Backend (Scanner Bridge) Todo List
+# Backend (Bearpaw) Todo List
 
 ## Phase 1: Foundation & Transport
 

@@ -4,7 +4,7 @@ import os
 import tempfile
 from typing import Iterable
 
-from scanner_bridge.models import LiveState
+from bearpaw.models import LiveState
 
 
 class TextFileExporter:

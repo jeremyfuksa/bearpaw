@@ -11,13 +11,13 @@ from typing import Optional
 
 import uvicorn
 
-from scanner_bridge.api import create_app
-from scanner_bridge.config import AppConfig, load_config
-from scanner_bridge.middleware import add_cors_middleware
-from scanner_bridge.middleware import add_cors_middleware
+from bearpaw.api import create_app
+from bearpaw.config import AppConfig, load_config
+from bearpaw.middleware import add_cors_middleware
+from bearpaw.middleware import add_cors_middleware
 
 
-logger = logging.getLogger("scanner_bridge")
+logger = logging.getLogger("bearpaw")
 
 _NOISY_LOG_MARKERS = (
     "GET /api/v1/status",
@@ -40,7 +40,7 @@ def _install_access_log_filters() -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Scanner Bridge backend")
+    parser = argparse.ArgumentParser(description="Bearpaw backend")
     parser.add_argument("--config", help="Path to YAML or TOML config")
     parser.add_argument("--port", help="Serial port override")
     parser.add_argument("--api-host", help="API host override")
@@ -53,8 +53,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--foreground", action="store_true", help="Run in foreground")
     parser.add_argument("--daemon", action="store_true", help="Run as daemon")
-    parser.add_argument("--pid-file", default="/var/run/scanner-bridge.pid")
-    parser.add_argument("--log-file", default="/var/log/scanner-bridge.log")
+    parser.add_argument("--pid-file", default="/var/run/bearpaw.pid")
+    parser.add_argument("--log-file", default="/var/log/bearpaw.log")
     return parser.parse_args()
 
 
@@ -62,7 +62,7 @@ async def _foreground_console(app) -> None:
     while not hasattr(app.state, "runtime"):
         await asyncio.sleep(0.1)
     runtime = app.state.runtime
-    print("Scanner Bridge foreground mode (h=hold, s=scan, q=quit)")
+    print("Bearpaw foreground mode (h=hold, s=scan, q=quit)")
     while True:
         try:
             line = await asyncio.to_thread(sys.stdin.read, 1)

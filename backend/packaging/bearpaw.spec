@@ -1,15 +1,15 @@
-# PyInstaller spec for Scanner Bridge
-# Build: pyinstaller --clean --noconfirm backend/packaging/scanner-bridge.spec
+# PyInstaller spec for Bearpaw
+# Build: pyinstaller --clean --noconfirm backend/packaging/bearpaw.spec
 
 from PyInstaller.utils.hooks import collect_submodules
 
-hiddenimports = collect_submodules("scanner_bridge")
+hiddenimports = collect_submodules("bearpaw")
 
 block_cipher = None
 
 
 a = Analysis(
-    ["backend/src/scanner_bridge/main.py"],
+    ["backend/src/bearpaw/main.py"],
     pathex=["."],
     binaries=[],
     datas=[("backend/config.example.yaml", "config")],
@@ -30,6 +30,6 @@ exe = EXE(
     a.binaries,
     a.zipfiles,
     a.datas,
-    name="scanner-bridge",
+    name="bearpaw",
     console=True,
 )

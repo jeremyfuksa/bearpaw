@@ -1,4 +1,4 @@
-# Scanner Bridge API Specification
+# Bearpaw API Specification
 
 **Version:** 1.0.0
 **Protocol:** HTTP REST + WebSocket
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-This document defines the API contract between the Scanner Bridge backend and all clients (including the web UI). The backend exposes scanner functionality via a REST API for control commands and queries, and a WebSocket API for real-time telemetry.
+This document defines the API contract between the Bearpaw backend and all clients (including the web UI). The backend exposes scanner functionality via a REST API for control commands and queries, and a WebSocket API for real-time telemetry.
 
 ### 1.1 Design Principles
 
@@ -740,7 +740,7 @@ Get activity log entries with optional filtering.
 const ws = new WebSocket('ws://localhost:8000/ws');
 
 ws.onopen = () => {
-  console.log('Connected to Scanner Bridge');
+  console.log('Connected to Bearpaw');
 };
 
 ws.onmessage = (event) => {

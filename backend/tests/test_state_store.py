@@ -7,8 +7,8 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from scanner_bridge.models import ChannelData, LiveState
-from scanner_bridge.state import StateStore
+from bearpaw.models import ChannelData, LiveState
+from bearpaw.state import StateStore
 
 
 class StateStoreTests(unittest.TestCase):

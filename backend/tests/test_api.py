@@ -9,11 +9,11 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from scanner_bridge.api import RuntimeState, create_app
-from scanner_bridge.config import AppConfig
-from scanner_bridge.models import ChannelData, DeviceInfo, LiveState
-from scanner_bridge.state import StateStore
-from scanner_bridge.websocket import WebSocketManager
+from bearpaw.api import RuntimeState, create_app
+from bearpaw.config import AppConfig
+from bearpaw.models import ChannelData, DeviceInfo, LiveState
+from bearpaw.state import StateStore
+from bearpaw.websocket import WebSocketManager
 
 
 class StubDriver:
@@ -98,8 +98,8 @@ class ApiTests(unittest.TestCase):
         )
 
 
-from scanner_bridge.websocket import WebSocketManager
-from scanner_bridge.config import WebSocketConfig, AppConfig
+from bearpaw.websocket import WebSocketManager
+from bearpaw.config import WebSocketConfig, AppConfig
 
 
 class TestCaseMixin:

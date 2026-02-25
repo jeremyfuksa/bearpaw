@@ -1,10 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi.testclient import TestClient
-from scanner_bridge.main import app
-from scanner_bridge.state import RuntimeState
-from scanner_bridge.scheduler import CommandScheduler
-from scanner_bridge.models import AppConfig
+from bearpaw.main import app
+from bearpaw.state import RuntimeState
+from bearpaw.scheduler import CommandScheduler
+from bearpaw.models import AppConfig
 from tests.stubs import MockDriver, MockScheduler, MockTransport
 
 

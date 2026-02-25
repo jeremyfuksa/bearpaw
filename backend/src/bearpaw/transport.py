@@ -120,7 +120,7 @@ class SerialTransport:
 
     def _lock_path(self) -> str:
         safe = self.port_name.replace("/", "_").replace("\\", "_").replace(":", "_")
-        return f"/tmp/scanner-bridge-{safe}.lock"
+        return f"/tmp/bearpaw-{safe}.lock"
 
     def _acquire_lock(self) -> None:
         path = self._lock_path()

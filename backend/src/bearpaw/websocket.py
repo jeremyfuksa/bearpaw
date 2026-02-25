@@ -7,7 +7,7 @@ from typing import Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from scanner_bridge.config import WebSocketConfig
+from bearpaw.config import WebSocketConfig
 
 logger = logging.getLogger(__name__)
 

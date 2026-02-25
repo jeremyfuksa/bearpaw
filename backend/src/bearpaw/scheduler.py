@@ -5,7 +5,7 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import Optional
 
-from scanner_bridge.transport import SerialTransport
+from bearpaw.transport import SerialTransport
 
 PRIORITY_CONTROL = 0
 PRIORITY_TELEMETRY = 1

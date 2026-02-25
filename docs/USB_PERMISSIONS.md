@@ -1,6 +1,6 @@
-# USB Permissions for Scanner Bridge
+# USB Permissions for Bearpaw
 
-`scanner-bridge` talks directly to the Uniden hardware over USB. Claiming the USB interface (see `backend/src/scanner_bridge/transport_usb.py`) requires kernel-level access, which is why the bridge fails with `usb.core.USBError: [Errno 13] Access denied`. The bridge has been working without `sudo` in the past because the OS granted permission to the scanner device; the change that started the failure is almost certainly a permissions change on `/dev/bus/usb`.
+The Bearpaw backend talks directly to the Uniden hardware over USB. Claiming the USB interface (see `backend/src/bearpaw/transport_usb.py`) requires kernel-level access, which is why the backend fails with `usb.core.USBError: [Errno 13] Access denied`. It has been working without `sudo` in the past because the OS granted permission to the scanner device; the change that started the failure is almost certainly a permissions change on `/dev/bus/usb`.
 
 To keep running as a regular user, add a permanent rule that gives your user or the `plugdev` group permission to touch the vendor/product pair configured in `backend/config.yaml`:
 
@@ -19,14 +19,14 @@ device:
    ```
 
 2. Reload the rules with `sudo udevadm control --reload-rules` and `sudo udevadm trigger` (or reboot).
-3. Unplug and replug the scanner. `scanner-bridge` should now be able to claim the interface as your non-root user.
+3. Unplug and replug the scanner. The backend should now be able to claim the interface as your non-root user.
 
 If you prefer to target your own user instead of `plugdev`, replace `GROUP="plugdev"` with `OWNER="your-username"`.
 
 ## macOS
 
-macOS permissions are managed differently. If you previously ran `scanner-bridge` successfully, the device should still be accessible. If you see the same error, try unplugging/replugging the scanner and restarting the bridge; macOS may have dropped the authorization. For persistent issues you can re-run the app with `sudo` until we build a Latin-based installer with proper USB entitlements.
+macOS permissions are managed differently. If you previously ran the backend successfully, the device should still be accessible. If you see the same error, try unplugging/replugging the scanner and restarting the app; macOS may have dropped the authorization. For persistent issues you can re-run the app with `sudo` until we build a Latin-based installer with proper USB entitlements.
 
 ## Validation
 
-After adding the rule, run the backend via `backend/.venv/bin/scanner-bridge --config ./config.yaml` without `sudo`. The `Access denied` error should disappear. Keep this doc handy if the team needs to reprovision their development machines.
+After adding the rule, run the backend via `backend/.venv/bin/bearpaw --config ./config.yaml` without `sudo`. The `Access denied` error should disappear. Keep this doc handy if the team needs to reprovision their development machines.

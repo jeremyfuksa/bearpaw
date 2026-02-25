@@ -33,6 +33,7 @@ backend/build/
 
 # Tauri / Rust
 src-tauri/target/
+frontend/src-tauri/target/
 *.log
 *.rs.bk
 Cargo.lock

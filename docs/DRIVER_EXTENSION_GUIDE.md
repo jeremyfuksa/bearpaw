@@ -2,15 +2,15 @@
 
 ## Overview
 
-Scanner drivers live in `backend/src/scanner_bridge/protocol/`. Each driver implements the `ScannerDriver` interface and is responsible for command formatting, response parsing, and mapping status fields into `LiveState`.
+Scanner drivers live in `backend/src/bearpaw/protocol/`. Each driver implements the `ScannerDriver` interface and is responsible for command formatting, response parsing, and mapping status fields into `LiveState`.
 
 ## Steps to Add a New Driver
 
-1) Create a new module in `backend/src/scanner_bridge/protocol/`.
+1) Create a new module in `backend/src/bearpaw/protocol/`.
 2) Implement the `ScannerDriver` abstract methods.
 3) Parse status responses into `LiveState`.
 4) Implement `read_channel()` for memory sync.
-5) Add model detection and selection in `backend/src/scanner_bridge/api.py`.
+5) Add model detection and selection in `backend/src/bearpaw/api.py`.
 
 ## Command/Response Template
 

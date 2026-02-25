@@ -1,4 +1,4 @@
-# Scanner Bridge Backend Specification
+# Bearpaw Backend Specification
 
 **Version:** 1.0.0
 **Target:** Cross-platform Python 3.10+ service
@@ -8,7 +8,7 @@
 
 ## 1. System Overview
 
-The Scanner Bridge is a headless, API-first service that provides exclusive control and telemetry access to Uniden analog scanners. It runs as a long-lived process and exposes scanner functionality via REST and WebSocket APIs.
+Bearpaw is a headless, API-first service that provides exclusive control and telemetry access to Uniden analog scanners. It runs as a long-lived process and exposes scanner functionality via REST and WebSocket APIs.
 
 ### 1.1 Core Principles
 
@@ -639,7 +639,7 @@ class TextExporterConfig:
 **Usage:**
 
 ```bash
-scanner-bridge --port /dev/ttyACM0 --foreground
+bearpaw --port /dev/ttyACM0 --foreground
 ```
 
 **Behavior:**
@@ -653,13 +653,13 @@ scanner-bridge --port /dev/ttyACM0 --foreground
 **Usage:**
 
 ```bash
-scanner-bridge --port /dev/ttyACM0 --daemon
+bearpaw --port /dev/ttyACM0 --daemon
 ```
 
 **Behavior:**
 - Detach from terminal
-- Write PID file (`/var/run/scanner-bridge.pid`)
-- Log to file (`/var/log/scanner-bridge.log`)
+- Write PID file (`/var/run/bearpaw.pid`)
+- Log to file (`/var/log/bearpaw.log`)
 - Signal handling:
   - SIGTERM: graceful shutdown
   - SIGHUP: reload configuration
@@ -812,7 +812,7 @@ exporters:
 
 ## 10. Deliverables
 
-- [ ] Python package (`scanner-bridge`)
+- [ ] Python package (Bearpaw backend)
 - [ ] Single-file executables for macOS, Windows, Linux
 - [ ] OpenAPI 3.0 specification (auto-generated from FastAPI)
 - [ ] WebSocket message schema (JSON Schema)

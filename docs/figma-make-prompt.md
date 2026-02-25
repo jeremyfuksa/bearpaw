@@ -1,7 +1,7 @@
-# Scanner Bridge UI Refinement Prompt
+# Bearpaw UI Refinement Prompt
 
 ## Context: What Already Works
-The current Scanner Bridge UI is strong. Keep these core elements:
+The current Bearpaw UI is strong. Keep these core elements:
 - VirtualDisplay as the primary scanner information display
 - Recent Hits table for activity logging
 - Dashboard analytics widgets (session stats, busiest channels, activity heatmap)

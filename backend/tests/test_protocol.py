@@ -5,9 +5,9 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
-from scanner_bridge.protocol.base import ScannerDriver
-from scanner_bridge.protocol.bc125at import BC125ATDriver
-from scanner_bridge.protocol.sr30c import SR30CDriver
+from bearpaw.protocol.base import ScannerDriver
+from bearpaw.protocol.bc125at import BC125ATDriver
+from bearpaw.protocol.sr30c import SR30CDriver
 
 
 class StubScheduler:

@@ -60,7 +60,7 @@ jobs:
         run: |
           cd backend
           source .venv/bin/activate
-          coverage run --source=scanner_bridge -m unittest discover -s tests
+          coverage run --source=bearpaw -m unittest discover -s tests
           coverage xml
       - name: Frontend coverage
         run: |

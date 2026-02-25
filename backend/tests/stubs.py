@@ -1,8 +1,8 @@
 import asyncio
 from typing import Optional
-from scanner_bridge.models import ChannelData, LiveState
-from scanner_bridge.protocol.base import ScannerDriver
-from scanner_bridge.scheduler import Command, CommandScheduler
+from bearpaw.models import ChannelData, LiveState
+from bearpaw.protocol.base import ScannerDriver
+from bearpaw.scheduler import Command, CommandScheduler
 
 
 class MockDriver(ScannerDriver):

@@ -6,10 +6,10 @@ import time
 import uuid
 from typing import Dict, Optional
 
-from scanner_bridge.models import ChannelData
-from scanner_bridge.protocol.base import ScannerDriver
-from scanner_bridge.state import StateStore
-from scanner_bridge.websocket import WebSocketManager
+from bearpaw.models import ChannelData
+from bearpaw.protocol.base import ScannerDriver
+from bearpaw.state import StateStore
+from bearpaw.websocket import WebSocketManager
 
 
 class MemorySyncTask:

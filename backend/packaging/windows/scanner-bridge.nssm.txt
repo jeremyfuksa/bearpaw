@@ -1,3 +1,0 @@
-# NSSM template for Windows Service
-# nssm install ScannerBridge "C:\\Program Files\\ScannerBridge\\scanner-bridge.exe" --config "C:\\ProgramData\\ScannerBridge\\config.yaml" --daemon
-# nssm start ScannerBridge

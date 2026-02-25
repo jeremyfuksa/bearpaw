@@ -5,8 +5,8 @@ import threading
 import time
 from typing import Dict, Optional
 
-from scanner_bridge.models import ChannelData, LiveState, ShadowState
-from scanner_bridge.persistence import JsonPersistence, SQLitePersistence
+from bearpaw.models import ChannelData, LiveState, ShadowState
+from bearpaw.persistence import JsonPersistence, SQLitePersistence
 
 logger = logging.getLogger(__name__)
 

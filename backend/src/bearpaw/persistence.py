@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 from typing import Dict
 
-from scanner_bridge.models import ChannelData, ShadowState
+from bearpaw.models import ChannelData, ShadowState
 
 
 class SQLitePersistence:
