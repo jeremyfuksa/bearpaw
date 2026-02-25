@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { ScannerAPIClient } from "./client";
 
 // Detect Tauri runtime only when the marker is truthy/object-like.
@@ -16,5 +14,18 @@ const defaultBaseURL = isTauri
 
 export function useAPI() {
   const baseURL = defaultBaseURL;
-  return useMemo(() => new ScannerAPIClient(baseURL), [baseURL]);
+  if (!(globalThis as { __bearpawApiClients?: Map<string, ScannerAPIClient> })
+    .__bearpawApiClients) {
+    (globalThis as { __bearpawApiClients?: Map<string, ScannerAPIClient> })
+      .__bearpawApiClients = new Map();
+  }
+
+  const clients = (globalThis as { __bearpawApiClients: Map<string, ScannerAPIClient> })
+    .__bearpawApiClients;
+  let client = clients.get(baseURL);
+  if (!client) {
+    client = new ScannerAPIClient(baseURL);
+    clients.set(baseURL, client);
+  }
+  return client;
 }
