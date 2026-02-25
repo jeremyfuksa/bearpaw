@@ -5,7 +5,6 @@
 pub mod api;
 pub mod config;
 pub mod protocol;
-pub mod scheduler;
 pub mod state;
 pub mod transport;
 pub mod transport_usb;
