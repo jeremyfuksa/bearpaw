@@ -11,6 +11,8 @@ pub enum ControlCommand {
         frequency: f64,
         modulation: String,
     },
+    /// Run full memory sync (PRG -> CIN 1..max_channels -> EPG); progress via WebSocket.
+    StartSync { task_id: String, max_channels: u16 },
 }
 
 /// Request body for POST /api/v1/frequency

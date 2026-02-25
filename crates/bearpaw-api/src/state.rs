@@ -1,5 +1,6 @@
-//! In-memory state: LiveState (current receiver), DeviceInfo (connection).
+//! In-memory state: LiveState (current receiver), DeviceInfo (connection), ShadowState (channels).
 
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// Current scanner receiver state (from STS/GLG poll).
@@ -35,4 +36,26 @@ pub struct DeviceInfo {
     pub diagnostic_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic_message: Option<String>,
+}
+
+/// One channel from scanner memory (CIN read).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ChannelData {
+    pub index: u16,
+    pub frequency: f64,
+    pub modulation: String,
+    pub alpha_tag: String,
+    pub delay: u8,
+    pub lockout: bool,
+    pub priority: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tone_squelch: Option<f64>,
+    pub bank: u8,
+}
+
+/// Cached channel memory from last sync.
+#[derive(Clone, Debug, Default)]
+pub struct ShadowState {
+    pub channels: HashMap<u16, ChannelData>,
+    pub last_sync: f64,
 }

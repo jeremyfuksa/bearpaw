@@ -7,9 +7,12 @@ use std::time::Duration;
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
+use std::collections::HashMap;
+
 use crate::api::ControlCommand;
 use crate::api::AppState;
-use crate::protocol::{livestate_from_sts, parse_mdl_response, parse_sts_response};
+use crate::protocol::{livestate_from_sts, parse_cin_response, parse_mdl_response, parse_sts_response};
+use crate::state::ChannelData;
 use crate::transport::{SerialTransport, TransportError};
 
 const POLL_INTERVAL_MS: u64 = 200;
@@ -17,6 +20,8 @@ const STS_CMD: &str = "STS";
 const MDL_CMD: &str = "MDL";
 const KEY_HOLD: &str = "KEY,H,P";
 const KEY_SCAN: &str = "KEY,S,P";
+const PRG_CMD: &str = "PRG";
+const EPG_CMD: &str = "EPG";
 
 /// Spawn a blocking thread: open serial, process command channel + STS poll, broadcast state.
 pub fn spawn_poll_loop(
@@ -64,7 +69,7 @@ fn run_poll_loop(
     let mut commanded_mode: String = "SCAN".to_string();
 
     loop {
-        // Drain control commands (hold, scan, direct)
+        // Drain control commands (hold, scan, direct, start sync)
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
                 ControlCommand::Hold => {
@@ -79,6 +84,18 @@ fn run_poll_loop(
                     let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
                     let _ = transport.send(port.as_mut(), &do_cmd);
                     commanded_mode = "DIRECT".to_string();
+                }
+                ControlCommand::StartSync { task_id, max_channels } => {
+                    if let Err(e) = run_memory_sync(
+                        &state,
+                        &transport,
+                        port.as_mut(),
+                        &task_id,
+                        max_channels,
+                    ) {
+                        warn!("Memory sync failed: {}", e);
+                        send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
+                    }
                 }
             }
         }
@@ -135,4 +152,60 @@ fn run_poll_loop(
 
         thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
+}
+
+fn send_progress(state: &AppState, task_id: &str, percent: u8, message: &str) {
+    let msg = json!({
+        "type": "progress",
+        "task_id": task_id,
+        "percent": percent,
+        "message": message,
+    });
+    let _ = state.ws_tx.send(msg.to_string());
+}
+
+/// Run full memory sync: PRG -> CIN 1..max_channels -> EPG; update shadow, broadcast progress.
+fn run_memory_sync(
+    state: &AppState,
+    transport: &SerialTransport,
+    port: &mut dyn serialport::SerialPort,
+    task_id: &str,
+    max_channels: u16,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    send_progress(state, task_id, 0, "Entering program mode...");
+    let _ = transport.send(port, PRG_CMD);
+    thread::sleep(Duration::from_millis(100));
+
+    let mut channels: HashMap<u16, ChannelData> = HashMap::new();
+    for idx in 1..=max_channels {
+        let cmd = format!("CIN,{}", idx);
+        let resp = transport.send(port, &cmd).unwrap_or_default();
+        if let Some(ch) = parse_cin_response(idx, &resp) {
+            channels.insert(idx, ch);
+        }
+        if idx % 10 == 0 {
+            let pct = ((idx as f64 / max_channels as f64) * 100.0) as u8;
+            send_progress(
+                state,
+                task_id,
+                pct,
+                &format!("Syncing channel {}/{}", idx, max_channels),
+            );
+        }
+    }
+
+    send_progress(state, task_id, 100, "Exiting program mode...");
+    let _ = transport.send(port, EPG_CMD);
+    thread::sleep(Duration::from_millis(100));
+
+    let now = std::time::SystemTime::UNIX_EPOCH
+        .elapsed()
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    if let Ok(mut shadow) = state.shadow.write() {
+        shadow.channels = channels;
+        shadow.last_sync = now;
+    }
+    send_progress(state, task_id, 100, "Sync complete");
+    Ok(())
 }
