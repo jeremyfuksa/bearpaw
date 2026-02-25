@@ -2,8 +2,12 @@ import { useMemo } from "react";
 
 import { ScannerAPIClient } from "./client";
 
-// Detect if running in Tauri
-const isTauri = '__TAURI__' in window;
+// Detect Tauri runtime only when the marker is truthy/object-like.
+// In browser builds, __TAURI__ may exist as a false boolean sentinel.
+const isTauri = (() => {
+  const marker = (window as Window & { __TAURI__?: unknown }).__TAURI__;
+  return typeof marker === "object" && marker !== null;
+})();
 
 // Backend URL configuration
 const defaultBaseURL = isTauri 
