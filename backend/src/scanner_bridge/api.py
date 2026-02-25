@@ -67,6 +67,18 @@ from scanner_bridge.preferences import PreferencesStore
 logger = logging.getLogger("scanner_bridge")
 
 
+def _set_device_diagnostic(
+    device_info: DeviceInfo, code: str, message: str
+) -> None:
+    device_info.diagnostic_code = code
+    device_info.diagnostic_message = message
+
+
+def _clear_device_diagnostic(device_info: DeviceInfo) -> None:
+    device_info.diagnostic_code = None
+    device_info.diagnostic_message = None
+
+
 def _safe_create_task(coro):
     """Create a task with error logging to prevent silent failures."""
     task = asyncio.create_task(coro)
@@ -176,16 +188,19 @@ def create_app(
 
     async def startup() -> None:
         device_port = port_override or config.device.port
-        transport: Optional[SerialTransport] = None
+        transport: Optional[Union[SerialTransport, UsbTransport]] = None
+        device_info = DeviceInfo(
+            model=None,
+            port=device_port,
+            vid=config.device.usb_vid,
+            pid=config.device.usb_pid,
+            serial_number=config.device.usb_serial,
+            description=None,
+            connection_status="disconnected",
+        )
         if config.device.transport == "usb":
-            device_info = DeviceInfo(
-                model=None,
-                port=None,
-                vid=config.device.usb_vid,
-                pid=config.device.usb_pid,
-                serial_number=config.device.usb_serial,
-                description="USB CDC",
-            )
+            device_info.port = None
+            device_info.description = "USB CDC"
             transport = UsbTransport(
                 config.device.usb_vid,
                 config.device.usb_pid,
@@ -195,94 +210,146 @@ def create_app(
             try:
                 transport.connect()
                 device_info.connection_status = "connected"
+                _clear_device_diagnostic(device_info)
             except ConnectionError as exc:
                 logger.warning("USB device not found: %s", exc)
                 device_info.connection_status = "disconnected"
+                _set_device_diagnostic(
+                    device_info,
+                    "usb_device_not_accessible",
+                    "No accessible USB scanner endpoint found. Verify cable, USB mode, and endpoint security policy.",
+                )
                 transport = None
         else:
             if not device_port and config.device.auto_detect:
-                devices = discover_devices()
+                try:
+                    devices = discover_devices()
+                except PermissionError as exc:
+                    logger.warning("Serial discovery failed: %s", exc)
+                    devices = []
+                    _set_device_diagnostic(
+                        device_info,
+                        "serial_enumeration_failed",
+                        str(exc),
+                    )
                 if devices:
                     device_port = devices[0].port
-                    device_info = DeviceInfo(
-                        model=None,
-                        port=device_port,
-                        vid=devices[0].vid,
-                        pid=devices[0].pid,
-                        serial_number=devices[0].serial_number,
-                        description=devices[0].description,
-                    )
+                    device_info.port = device_port
+                    device_info.vid = devices[0].vid
+                    device_info.pid = devices[0].pid
+                    device_info.serial_number = devices[0].serial_number
+                    device_info.description = devices[0].description
+                    _clear_device_diagnostic(device_info)
                 elif config.device.transport in ("auto", "usb"):
                     if os.getenv("NO_HARDWARE"):
-                        device_info = DeviceInfo(
-                            model="MOCK",
-                            port=None,
-                            vid=config.device.usb_vid,
-                            pid=config.device.usb_pid,
-                            serial_number=config.device.usb_serial,
-                            description="Mock Device",
-                        )
+                        device_info.model = "MOCK"
+                        device_info.port = None
+                        device_info.description = "Mock Device"
                         transport = None
+                        _clear_device_diagnostic(device_info)
                     else:
-                        device_info = DeviceInfo(
-                            model=None,
-                            port=None,
-                            vid=config.device.usb_vid,
-                            pid=config.device.usb_pid,
-                            serial_number=config.device.usb_serial,
-                            description="USB CDC",
-                        )
+                        device_info.port = None
+                        device_info.description = "USB CDC"
                         transport = UsbTransport(
                             config.device.usb_vid,
                             config.device.usb_pid,
                             serial_number=config.device.usb_serial,
                             timeout=0.5,
                         )
-                        transport.connect()
+                        try:
+                            transport.connect()
+                            device_info.connection_status = "connected"
+                            _clear_device_diagnostic(device_info)
+                        except ConnectionError as exc:
+                            logger.warning(
+                                "USB fallback connection failed during startup: %s",
+                                exc,
+                            )
+                            transport = None
+                            _set_device_diagnostic(
+                                device_info,
+                                "usb_detected_no_serial_endpoint",
+                                "Scanner USB device may be present, but no usable serial endpoint is available to the app.",
+                            )
                 else:
-                    raise RuntimeError("No scanner devices detected")
+                    _set_device_diagnostic(
+                        device_info,
+                        "no_scanner_detected",
+                        "No scanner device was detected.",
+                    )
             else:
-                device_info = DeviceInfo(
-                    model=None,
-                    port=device_port,
-                    vid=None,
-                    pid=None,
-                    serial_number=None,
-                    description=None,
-                )
+                device_info.port = device_port
+                device_info.vid = None
+                device_info.pid = None
+                device_info.serial_number = None
+                device_info.description = "Serial Port"
+                _clear_device_diagnostic(device_info)
 
             if not transport:
-                if not device_port:
-                    raise RuntimeError("No scanner port specified")
-
-                transport = SerialTransport(device_port, timeout=0.5)
-                transport.connect()
+                if device_port:
+                    transport = SerialTransport(device_port, timeout=0.5)
+                    try:
+                        transport.connect()
+                        device_info.connection_status = "connected"
+                        _clear_device_diagnostic(device_info)
+                    except Exception as exc:
+                        logger.warning("Serial connection failed on %s: %s", device_port, exc)
+                        transport = None
+                        device_info.connection_status = "disconnected"
+                        _set_device_diagnostic(
+                            device_info,
+                            "serial_open_failed",
+                            f"Unable to open scanner port {device_port}.",
+                        )
+                elif not os.getenv("NO_HARDWARE") and not device_info.diagnostic_code:
+                    _set_device_diagnostic(
+                        device_info,
+                        "no_scanner_detected",
+                        "No scanner device was detected.",
+                    )
 
         scheduler: Optional[CommandScheduler] = None
         driver: Optional[object] = None
         if transport:
-            scheduler = CommandScheduler(transport)
-            await scheduler.start()
+            try:
+                scheduler = CommandScheduler(transport)
+                await scheduler.start()
 
-            model = await asyncio.wrap_future(transport.send_command("MDL"))
-            model = (
-                model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
-            )
-            driver = (
-                SR30CDriver(scheduler) if "SR30C" in model else BC125ATDriver(scheduler)
-            )
-            device_info.model = model.strip()
-            device_info.connection_status = "connected"
+                model = await asyncio.wrap_future(transport.send_command("MDL"))
+                model = (
+                    model.split(",", 1)[1].strip() if model.startswith("MDL,") else model
+                )
+                driver = (
+                    SR30CDriver(scheduler) if "SR30C" in model else BC125ATDriver(scheduler)
+                )
+                device_info.model = model.strip()
+                device_info.connection_status = "connected"
+                _clear_device_diagnostic(device_info)
 
-            # Fetch firmware version if supported
-            firmware_getter = getattr(driver, "get_firmware_version", None)
-            if callable(firmware_getter):
-                try:
-                    firmware = await firmware_getter()
-                    device_info.firmware = firmware
-                except Exception as exc:
-                    logger.warning("Failed to read firmware during startup: %s", exc)
-                    device_info.firmware = None
+                # Fetch firmware version if supported
+                firmware_getter = getattr(driver, "get_firmware_version", None)
+                if callable(firmware_getter):
+                    try:
+                        firmware = await firmware_getter()
+                        device_info.firmware = firmware
+                    except Exception as exc:
+                        logger.warning("Failed to read firmware during startup: %s", exc)
+                        device_info.firmware = None
+            except Exception as exc:
+                logger.warning("Transport initialization failed: %s", exc)
+                if scheduler:
+                    await scheduler.stop()
+                transport.disconnect()
+                transport = None
+                scheduler = None
+                driver = None
+                device_info.connection_status = "disconnected"
+                if not device_info.diagnostic_code:
+                    _set_device_diagnostic(
+                        device_info,
+                        "transport_init_failed",
+                        "Scanner transport initialized but did not respond to control commands.",
+                    )
 
         persistence = build_persistence(config.state.persistence, config.state.db_path)
         state_store = StateStore(persistence)
@@ -1767,10 +1834,16 @@ async def _monitor_usb(app: FastAPI) -> None:
             )
             runtime.device_info.model = model.strip()
             runtime.device_info.connection_status = "connected"
+            _clear_device_diagnostic(runtime.device_info)
             if not runtime.poller_task or runtime.poller_task.done():
                 runtime.poller_task = asyncio.create_task(_poll_status(app))
         except Exception as exc:
             runtime.device_info.connection_status = "disconnected"
+            _set_device_diagnostic(
+                runtime.device_info,
+                "usb_device_not_accessible",
+                "USB scanner endpoint is not accessible yet. Verify cable, USB mode, and endpoint security policy.",
+            )
             logger.warning("USB reconnect failed: %s", exc)
 
 

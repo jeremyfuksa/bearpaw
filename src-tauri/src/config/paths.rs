@@ -3,7 +3,7 @@ use std::path::PathBuf;
 pub fn get_app_data_dir() -> PathBuf {
     let path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
     let mut result = PathBuf::from(&path);
-    result.push("Scanner Bridge");
+    result.push("Bearpaw");
     result
 }
 

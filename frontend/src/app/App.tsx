@@ -145,6 +145,7 @@ export default function App() {
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [preferencesLoading, setPreferencesLoading] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
+  const [hasFreshLiveFrame, setHasFreshLiveFrame] = useState(false);
 
   const syncInProgressRef = useRef(false);
   const syncTaskIdRef = useRef<string | null>(null);
@@ -202,6 +203,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribeState = ws.on("state_update", (message) => {
       const payload = message as StateUpdateMessage;
+      setHasFreshLiveFrame(true);
       updateLiveState(payload.data, payload.sequence);
       const squelchOpen = payload.data.squelch_open;
 
@@ -306,20 +308,43 @@ export default function App() {
   }, [addActivityLogEntry, addToFullActivityLog, api, currentTab, isRecording, setChannels, updateLiveState, ws, liveState?.mode]);
 
   useEffect(() => {
+    if (!connected) {
+      setHasFreshLiveFrame(false);
+    }
+  }, [connected]);
+
+  useEffect(() => {
     let active = true;
     const loadInitialData = async () => {
       try {
-        const [status, info, channelData, banksData] = await Promise.all([
-          api.getStatus(),
-          api.getDeviceInfo(),
-          api.getChannels(),
-          api.getBanks(),
-        ]);
+        const [statusResult, infoResult, channelsResult, banksResult] =
+          await Promise.allSettled([
+            api.getStatus(),
+            api.getDeviceInfo(),
+            api.getChannels(),
+            api.getBanks(),
+          ]);
         if (!active) return;
-        updateLiveState(status);
-        setDeviceInfo(info);
-        setChannels(channelData);
-        setBanks(banksData.banks);
+
+        if (statusResult.status === "fulfilled") {
+          updateLiveState(statusResult.value);
+        }
+
+        if (infoResult.status === "fulfilled") {
+          setDeviceInfo(infoResult.value);
+        }
+
+        if (channelsResult.status === "fulfilled") {
+          setChannels(channelsResult.value);
+        }
+
+        if (
+          banksResult.status === "fulfilled" &&
+          Array.isArray(banksResult.value.banks)
+        ) {
+          setBanks(banksResult.value.banks);
+        }
+
         try {
           const lockouts = await api.getLockouts({ includeFrequencies: false });
           if (!active) return;
@@ -532,9 +557,9 @@ export default function App() {
   }, [liveState?.mode, isInProgramMode, isMemorySyncing]);
 
   const getConnectionStatus = useCallback((): ConnectionStatus => {
+    if (connecting) return "connecting";
     if (!connected || deviceInfo?.connection_status === "disconnected" || liveState?.stale)
       return "disconnected";
-    if (connecting) return "connecting";
     return "connected";
   }, [connected, connecting, deviceInfo, liveState]);
 
@@ -569,6 +594,18 @@ export default function App() {
   };
 
   const { mainText, subText } = useMemo(() => {
+    if (
+      deviceInfo?.connection_status === "disconnected" &&
+      deviceInfo?.diagnostic_message
+    ) {
+      return {
+        mainText: "Scanner Offline",
+        subText: deviceInfo.diagnostic_message,
+      };
+    }
+    if (!hasFreshLiveFrame && deviceInfo?.connection_status !== "disconnected") {
+      return { mainText: "Scanning...", subText: "Searching for signals" };
+    }
     const isScanning = liveState?.mode === "SCAN" && !liveState?.squelch_open;
     if (isScanning) {
       return { mainText: "Scanning...", subText: "Searching for signals" };
@@ -582,7 +619,7 @@ export default function App() {
     if (liveState.modulation) parts.push(liveState.modulation);
     if (liveState.channel !== undefined) parts.push(`CH${liveState.channel}`);
     return { mainText: main, subText: parts.join(" • ") };
-  }, [liveState]);
+  }, [deviceInfo, hasFreshLiveFrame, liveState]);
 
   const handleToggle = useCallback(async () => {
     if (!connected || toggleBusy) return;

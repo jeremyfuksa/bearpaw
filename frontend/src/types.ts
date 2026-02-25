@@ -38,10 +38,16 @@ export interface ChannelDraft {
 }
 
 export interface DeviceInfo {
-  model: string;
+  model?: string | null;
+  port?: string | null;
+  vid?: number | null;
+  pid?: number | null;
   firmware?: string | null;
   serial_number?: string | null;
+  description?: string | null;
   connection_status: "connected" | "disconnected" | "connecting";
+  diagnostic_code?: string | null;
+  diagnostic_message?: string | null;
 }
 
 export type WSMessage = StateUpdateMessage | EventMessage | ProgressMessage | ErrorMessage | PingMessage;
