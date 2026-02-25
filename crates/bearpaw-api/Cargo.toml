@@ -1,0 +1,28 @@
+[package]
+name = "bearpaw-api"
+version = "0.1.0"
+edition = "2021"
+description = "Bearpaw backend API: serial/USB transport, scanner protocol, REST + WebSocket"
+authors = ["Bearpaw"]
+
+[lib]
+name = "bearpaw_api"
+path = "src/lib.rs"
+
+[[bin]]
+name = "bearpaw"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["json", "ws"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serialport = "4"
+thiserror = "1"
+anyhow = "1"
+
+[dev-dependencies]
+tokio-test = "0.4"
