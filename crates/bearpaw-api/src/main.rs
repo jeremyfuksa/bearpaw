@@ -14,5 +14,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let bind = format!("{}:{}", config.api.host, config.api.port);
     let state = default_state();
 
-    run_server(&bind, state).await
+    run_server(&bind, state, None).await
 }
