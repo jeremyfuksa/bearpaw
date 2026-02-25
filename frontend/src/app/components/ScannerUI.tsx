@@ -343,7 +343,8 @@ export function ScannerDisplay({
           variant === "hero" ? "border-t border-[rgba(43,48,59,0.3)] pt-4" : ""
         )}>
           <p className={cn(
-            "font-normal text-[rgba(28,31,39,0.9)] text-nowrap transition-all duration-500",
+            "font-normal text-[rgba(28,31,39,0.9)] transition-all duration-500",
+            isError ? "whitespace-normal leading-snug" : "text-nowrap",
             variant === "hero" ? "text-xl opacity-90 font-medium" : "text-lg"
           )}>
             {isScanning ? (

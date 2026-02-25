@@ -117,6 +117,18 @@ export function DeviceTab() {
     { id: 10, enabled: false, label: "Range 10", start: "0.0000", end: "0.0000" },
   ]);
 
+  const connectionStatusLabel =
+    deviceInfo?.connection_status === "connected"
+      ? "Connected"
+      : deviceInfo?.connection_status === "connecting"
+        ? "Connecting"
+        : "Disconnected";
+
+  const showUsbTroubleshooting =
+    deviceInfo?.connection_status !== "connected" &&
+    (deviceInfo?.diagnostic_code === "usb_detected_no_serial_endpoint" ||
+      deviceInfo?.diagnostic_code === "usb_device_not_accessible");
+
   const lockedChannels = useMemo(() => {
     if (!lockedChannelIds.length) return [];
     const channelMap = new Map(channels.map((ch) => [ch.index, ch]));
@@ -943,15 +955,29 @@ export function DeviceTab() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/50">Status</span>
-                  <span className="text-white">
-                    {deviceInfo?.connection_status === "connected" ? "Connected" : "Disconnected"}
-                  </span>
+                  <span className="text-white">{connectionStatusLabel}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/50">Firmware</span>
                   <span className="text-white">{deviceInfo?.firmware ?? "—"}</span>
                 </div>
               </div>
+              {deviceInfo?.diagnostic_message && (
+                <div className="mt-4 rounded-md border border-amber-400/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+                  <p className="font-semibold text-amber-200">Connection Diagnostic</p>
+                  <p className="mt-1 leading-relaxed">{deviceInfo.diagnostic_message}</p>
+                </div>
+              )}
+              {showUsbTroubleshooting && (
+                <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-3 text-xs text-white/80">
+                  <p className="font-semibold text-white">USB Troubleshooting</p>
+                  <ol className="mt-2 list-decimal space-y-1 pl-4">
+                    <li>Reconnect the scanner with a known data-capable USB cable.</li>
+                    <li>On the scanner, confirm USB mode is set for PC/Serial control.</li>
+                    <li>If endpoint security is installed, allow USB serial access for Bearpaw.</li>
+                  </ol>
+                </div>
+              )}
             </div>
           </div>
         )}

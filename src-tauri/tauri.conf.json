@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "Scanner Bridge",
+  "productName": "Bearpaw",
   "version": "1.0.0",
   "identifier": "com.uniden.scanner-bridge",
   "build": {
@@ -11,11 +11,11 @@
   },
   "app": {
     "windows": [{
-      "title": "Scanner Bridge",
+      "title": "Bearpaw",
       "width": 1100,
-      "height": 600,
+      "height": 640,
       "minWidth": 1100,
-      "minHeight": 600,
+      "minHeight": 640,
       "resizable": true,
       "center": true
     }],

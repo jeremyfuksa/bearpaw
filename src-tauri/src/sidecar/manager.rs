@@ -2,7 +2,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use crate::config::get_config_dir;
 
 pub struct SidecarManager {
@@ -24,6 +24,7 @@ impl SidecarManager {
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
 
         let config_path = config_dir.join("config.yaml");
+        ensure_default_config(&config_path)?;
         let sidecar_path = get_sidecar_path()?;
 
         let child = Command::new(&sidecar_path)
@@ -60,27 +61,54 @@ impl SidecarManager {
     }
 }
 
+fn yaml_single_quoted(path: &Path) -> String {
+    let value = path.to_string_lossy().replace('\'', "''");
+    format!("'{value}'")
+}
+
+fn ensure_default_config(config_path: &Path) -> Result<(), String> {
+    if config_path.exists() {
+        return Ok(());
+    }
+
+    let config_dir = config_path
+        .parent()
+        .ok_or_else(|| "Config path has no parent directory".to_string())?;
+
+    let scanner_db = config_dir.join("scanner.db");
+    let analytics_db = config_dir.join("analytics.db");
+
+    let yaml = format!(
+        "device:\n  auto_detect: true\n\
+api:\n  host: \"127.0.0.1\"\n  port: 8000\n\
+state:\n  persistence: \"sqlite\"\n  db_path: {}\n\
+analytics:\n  enabled: true\n  db_path: {}\n  retention_days: 30\n  cleanup_interval_hours: 24\n  min_hit_duration: 1.0\n\
+logging:\n  level: \"INFO\"\n  format: \"%(levelname)s %(message)s\"\n",
+        yaml_single_quoted(&scanner_db),
+        yaml_single_quoted(&analytics_db),
+    );
+
+    std::fs::write(config_path, yaml)
+        .map_err(|e| format!("Failed to write default config: {}", e))?;
+
+    Ok(())
+}
+
 fn get_sidecar_path() -> Result<std::path::PathBuf, String> {
-    let resource_dir = std::env::current_exe()
+    let exe_dir = std::env::current_exe()
         .map_err(|e| format!("Failed to get exe path: {}", e))?
         .parent()
         .ok_or("Failed to get parent directory")?
         .to_path_buf();
 
     #[cfg(target_os = "windows")]
-    let mut sidecar_path = resource_dir.join("binaries").join("scanner-bridge.exe");
+    let mut sidecar_path = exe_dir.join("scanner-bridge.exe");
 
     #[cfg(not(target_os = "windows"))]
-    let mut sidecar_path = resource_dir.join("binaries").join("scanner-bridge");
+    let mut sidecar_path = exe_dir.join("scanner-bridge");
 
     if !sidecar_path.exists() {
-        #[cfg(target_os = "windows")]
-        let _sidecar_name = "scanner-bridge.exe";
-
-        #[cfg(not(target_os = "windows"))]
-        let _sidecar_name = "scanner-bridge";
-
-        if let Ok(entries) = std::fs::read_dir(resource_dir.join("binaries")) {
+        if let Ok(entries) = std::fs::read_dir(exe_dir.join("binaries")) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.file_name().map_or(false, |n| n.to_string_lossy().contains("scanner-bridge")) {
@@ -89,6 +117,13 @@ fn get_sidecar_path() -> Result<std::path::PathBuf, String> {
                 }
             }
         }
+    }
+
+    if !sidecar_path.exists() {
+        return Err(format!(
+            "Sidecar binary not found. Looked for {}",
+            sidecar_path.display()
+        ));
     }
 
     Ok(sidecar_path)

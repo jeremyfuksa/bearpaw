@@ -25,6 +25,8 @@ class DeviceInfo:
     description: Optional[str]
     firmware: Optional[str] = None
     connection_status: str = "connecting"
+    diagnostic_code: Optional[str] = None
+    diagnostic_message: Optional[str] = None
 
 
 @dataclass
@@ -71,6 +73,8 @@ class DeviceInfoModel(BaseModel):
     description: Optional[str]
     firmware: Optional[str] = None
     connection_status: str = "connecting"
+    diagnostic_code: Optional[str] = None
+    diagnostic_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
