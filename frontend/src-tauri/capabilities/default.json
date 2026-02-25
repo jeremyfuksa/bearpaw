@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Default capability set for Bearpaw desktop.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
