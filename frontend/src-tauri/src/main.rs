@@ -3,9 +3,10 @@
 fn main() {
     // Start Bearpaw Rust API server in a background thread (127.0.0.1:8000).
     // Frontend dev server proxies /api and /ws to this port.
+    let cfg = bearpaw_api::load_config(Some("../../backend/config.yaml"));
     let state = bearpaw_api::default_state();
-    let bind = "127.0.0.1:8000".to_string();
-    let serial_port: Option<(String, u32)> = None; // TODO: from config or discovery
+    let bind = format!("{}:{}", cfg.api.host, cfg.api.port);
+    let serial_port = bearpaw_api::resolve_serial_port(&cfg).map(|p| (p, cfg.device.baud.unwrap_or(115200)));
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
