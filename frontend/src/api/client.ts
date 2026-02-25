@@ -36,8 +36,26 @@ export class ScannerAPIClient {
     this.baseURL = baseURL.replace(/\/$/, "");
   }
 
+  private buildUrl(endpoint: string): string {
+    const cleanedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const rawBase = (this.baseURL || "").trim();
+
+    // Absolute base URL (Tauri/runtime override)
+    if (rawBase.startsWith("http://") || rawBase.startsWith("https://")) {
+      return `${rawBase}${cleanedEndpoint}`;
+    }
+
+    // Browser-relative base URL (dev proxy /api/v1)
+    if (rawBase.startsWith("/")) {
+      return `${rawBase}${cleanedEndpoint}`;
+    }
+
+    // Last-resort fallback for malformed base values
+    return `/api/v1${cleanedEndpoint}`;
+  }
+
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
+    const response = await fetch(this.buildUrl(endpoint), {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -67,7 +85,7 @@ export class ScannerAPIClient {
   }
 
   private async requestText(endpoint: string, options?: RequestInit): Promise<string> {
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
+    const response = await fetch(this.buildUrl(endpoint), {
       ...options,
       headers: {
         ...options?.headers,
@@ -382,7 +400,7 @@ export class ScannerAPIClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${this.baseURL}/memory/import/csv`, {
+    const response = await fetch(this.buildUrl("/memory/import/csv"), {
       method: 'POST',
       body: formData,
     });
