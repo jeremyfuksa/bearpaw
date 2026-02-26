@@ -3279,7 +3279,9 @@ fn set_schema_version(conn: &rusqlite::Connection, version: i32) {
 
 fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) {
     let current = schema_version(conn);
-    backup_db_if_needed(path, "preferences", current, PREFERENCES_SCHEMA_VERSION);
+    if current > 0 || has_user_tables(conn) {
+        backup_db_if_needed(path, "preferences", current, PREFERENCES_SCHEMA_VERSION);
+    }
     if current < 1 {
         let _ = conn.execute(
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
@@ -3291,7 +3293,9 @@ fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) {
 
 fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) {
     let current = schema_version(conn);
-    backup_db_if_needed(path, "analytics", current, ANALYTICS_SCHEMA_VERSION);
+    if current > 0 || has_user_tables(conn) {
+        backup_db_if_needed(path, "analytics", current, ANALYTICS_SCHEMA_VERSION);
+    }
     if current < 1 {
         let _ = conn.execute_batch(
             "
@@ -3317,6 +3321,16 @@ fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) {
         );
         set_schema_version(conn, 1);
     }
+}
+
+fn has_user_tables(conn: &rusqlite::Connection) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        [],
+        |row| row.get::<usize, i64>(0),
+    )
+    .map(|count| count > 0)
+    .unwrap_or(false)
 }
 
 fn default_data_dir() -> PathBuf {

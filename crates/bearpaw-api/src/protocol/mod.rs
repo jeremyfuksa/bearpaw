@@ -15,8 +15,11 @@ pub enum ProtocolError {
 /// Parse STS key-value response (lines like "FRQ,146.9700") into a map.
 pub fn parse_sts_response(response: &str) -> HashMap<String, String> {
     let mut out = HashMap::new();
-    for line in response.lines() {
+    for line in response.split(['\r', '\n']) {
         let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
         if let Some((k, v)) = line.split_once(',') {
             out.insert(k.trim().to_uppercase(), v.trim().to_string());
         }
@@ -183,4 +186,33 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         tone_squelch,
         bank,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{livestate_from_sts, parse_sts_response};
+
+    #[test]
+    fn parse_sts_response_handles_cr_delimited_payload() {
+        let payload = "SQL,0\rRSSI,75\rFRQ,151.2500\rMOD,FM\rCH,025\rVOL,10\rBAT,100\r";
+        let fields = parse_sts_response(payload);
+
+        assert_eq!(fields.get("SQL").map(String::as_str), Some("0"));
+        assert_eq!(fields.get("RSSI").map(String::as_str), Some("75"));
+        assert_eq!(fields.get("FRQ").map(String::as_str), Some("151.2500"));
+    }
+
+    #[test]
+    fn livestate_from_sts_sets_squelch_open_for_sql_zero() {
+        let payload = "SQL,0\rRSSI,75\rFRQ,151.2500\rMOD,FM\rCH,025\rVOL,10\rBAT,100\r";
+        let fields = parse_sts_response(payload);
+        let state = livestate_from_sts(&fields);
+
+        assert!(state.squelch_open);
+        assert_eq!(state.frequency, 151.25);
+        assert_eq!(state.channel, Some(25));
+        assert_eq!(state.rssi, 75);
+        assert_eq!(state.volume, 10);
+        assert_eq!(state.battery, Some(100));
+    }
 }

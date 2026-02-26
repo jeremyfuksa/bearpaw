@@ -149,6 +149,9 @@ export default function App() {
   >(null);
   const [_temporaryLockoutChannels, setTemporaryLockoutChannels] = useState<number[]>([]);
   const [isMemorySyncing, setIsMemorySyncing] = useState(false);
+  const [syncProgressMessage, setSyncProgressMessage] = useState(
+    "Loading channels from device...",
+  );
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [preferencesLoading, setPreferencesLoading] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
@@ -360,6 +363,10 @@ export default function App() {
         /sync complete/i.test(payload.message) ||
         /sync cancelled/i.test(payload.message);
 
+      if (payload.message) {
+        setSyncProgressMessage(payload.message);
+      }
+
       // Detect sync in progress or just completed
       if (!syncInProgressRef.current && !isComplete && payload.message.includes("Syncing channel")) {
         syncInProgressRef.current = true;
@@ -371,6 +378,7 @@ export default function App() {
         syncInProgressRef.current = false;
         hasSyncedInitiallyRef.current = true;
         setIsMemorySyncing(false);
+        setSyncProgressMessage("Loading channels from device...");
         syncTaskIdRef.current = null;
 
         // Double-check PGM mode after a delay to account for mode transitions
@@ -475,6 +483,7 @@ export default function App() {
     let active = true;
     const startMemorySync = async () => {
       try {
+        setSyncProgressMessage("Loading channels from device...");
         const result = await api.syncMemory();
         if (!active) return;
         if (
@@ -514,6 +523,7 @@ export default function App() {
       return;
     }
     setIsMemorySyncing(true);
+    setSyncProgressMessage("Loading channels from device...");
     try {
       const result = await api.syncMemory({ force: true });
       if (result.status === "already_running") {
@@ -537,6 +547,7 @@ export default function App() {
       hasSyncedInitiallyRef.current = true;
       syncTaskIdRef.current = null;
       setIsMemorySyncing(false);
+      setSyncProgressMessage("Loading channels from device...");
     } catch (error) {
       console.warn("Failed to cancel sync", error);
       toast.error("Unable to cancel sync");
@@ -697,7 +708,15 @@ export default function App() {
     return "SCAN";
   };
 
+  const isInitialSyncing = isMemorySyncing && !hasSyncedInitiallyRef.current;
+
   const { mainText, subText } = useMemo(() => {
+    if (isInitialSyncing) {
+      return {
+        mainText: "Syncing Scanner Memory",
+        subText: syncProgressMessage || "Loading channels from device...",
+      };
+    }
     if (
       deviceInfo?.connection_status === "disconnected" &&
       deviceInfo?.diagnostic_message
@@ -723,7 +742,13 @@ export default function App() {
     if (liveState.modulation) parts.push(liveState.modulation);
     if (liveState.channel !== undefined) parts.push(`CH${liveState.channel}`);
     return { mainText: main, subText: parts.join(" • ") };
-  }, [deviceInfo, hasFreshLiveFrame, liveState]);
+  }, [
+    deviceInfo,
+    hasFreshLiveFrame,
+    isInitialSyncing,
+    liveState,
+    syncProgressMessage,
+  ]);
 
   const handleToggle = useCallback(async () => {
     if (!connected || toggleBusy) return;
@@ -990,32 +1015,6 @@ export default function App() {
         }}
       />
 
-      <AnimatePresence>
-        {isMemorySyncing && !hasSyncedInitiallyRef.current && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-[#1c1f26]/95 flex flex-col items-center justify-center z-50"
-          >
-            <div className="flex flex-col items-center gap-6">
-              <div className="w-16 h-16 border-4 border-[#4c627d] border-t-[#4c627d] rounded-full animate-spin" />
-              <div className="text-center space-y-2">
-                <h2 className="text-xl font-bold text-[#f5ebe8]">Syncing Scanner Memory</h2>
-                <p className="text-sm text-[#acbbcc]">Loading channels from device...</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCancelSync}
-                className="mt-4 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-white/10"
-              >
-                Cancel Sync
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="px-6 pt-4 pb-2">
         <TabNav
           currentTab={currentTab}
@@ -1068,7 +1067,9 @@ export default function App() {
                     mode={getScannerMode()}
                     signalStrength={normalizeSignal(liveState?.rssi)}
                     isScanning={
-                      liveState?.mode === "SCAN" && !liveState?.squelch_open
+                      !isInitialSyncing &&
+                      liveState?.mode === "SCAN" &&
+                      !liveState?.squelch_open
                     }
                     isError={getConnectionStatus() === "disconnected"}
                     errorType={
@@ -1077,7 +1078,19 @@ export default function App() {
                     variant={isDashboardMode ? "default" : "hero"}
                     className="flex-1 min-h-0 mb-3"
                   />
-                   <BankControls activeBanks={banks} onToggleBank={handleBankToggle} />
+                  {isInitialSyncing && (
+                    <div className="mb-3 flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-[#acbbcc]">
+                      <span>{syncProgressMessage || "Loading channels from device..."}</span>
+                      <button
+                        type="button"
+                        onClick={handleCancelSync}
+                        className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-[#f5ebe8] transition-colors hover:bg-white/20"
+                      >
+                        Cancel Sync
+                      </button>
+                    </div>
+                  )}
+                  <BankControls activeBanks={banks} onToggleBank={handleBankToggle} />
                   {!isDashboardMode && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
