@@ -46,7 +46,8 @@
    --bg-button-hover: #4c627d;
    --bg-semi-dark: rgba(43, 48, 59, 0.5);
    --border-button-light: #8098b0;
-     --text-scanner-light: #f5ebe8;
+   --text-scanner-light: #f5ebe8;
+   --text-display-dark: #1c1f27;
      --text-secondary-muted: #acbbcc;
      --border-inset: #b06105;
      --border-scanner: #1e2024;
@@ -57,6 +58,51 @@
    --led-green: #67E79E;
    --led-red: #DC3A38;
    --led-red-glow: rgba(239, 68, 68, 0.8);
+   --status-connecting: #F59E0B;
+   --status-disconnected: var(--led-red);
+   --status-connected: var(--led-green);
+   --chart-axis: #8098b0;
+   --chart-bar: #3b82f6;
+   --chart-label: #f5ebe8;
+   --heatmap-level-0: rgba(255, 255, 255, 0.05);
+   --heatmap-level-1: rgba(16, 185, 129, 0.2);
+   --heatmap-level-2: rgba(16, 185, 129, 0.4);
+   --heatmap-level-3: rgba(16, 185, 129, 0.6);
+   --heatmap-level-4: rgba(16, 185, 129, 0.8);
+   --heatmap-level-5: rgba(16, 185, 129, 1);
+   --layout-app-width: 100%;
+   --layout-app-height: 100%;
+   --layout-dashboard-main-height: 13.75rem;
+   --layout-dashboard-panel-width: 28.125rem;
+   --layout-dashboard-max-width: 37.5rem;
+   --layout-stats-sidebar-width: 6.875rem;
+   --layout-heatmap-cell-gap: 0.125rem;
+   --layout-modal-max-height: 80vh;
+   --layout-modal-channel-width: 25rem;
+   --layout-modal-activity-width: 31.25rem;
+   --layout-sidebar-channels-width: 10rem;
+   --layout-sidebar-device-width: 12.5rem;
+   --layout-search-max-width: 18.75rem;
+   --layout-empty-state-height: 15rem;
+   --layout-scroll-max-height: 32.5rem;
+   --layout-detail-max-height: 25.25rem;
+   --layout-detail-sidebar-width: 16.25rem;
+   --layout-monitor-bezel: 3rem;
+   --size-status-dot: 0.5rem;
+   --size-shell-status-text: 0.625rem;
+   --size-icon-sm: 1rem;
+   --size-signal-display-height: 5.0625rem;
+   --size-signal-display-min-height: 12.5rem;
+   --size-bank-control-height: 1.5rem;
+   --size-bank-control-spacing: 0.125rem;
+   --size-hit-frequency-width: 3.75rem;
+   --size-hit-time-width: 2.8125rem;
+   --size-hit-tag-max-width: 12.5rem;
+   --size-select-compact: 7.5rem;
+   --size-select-medium: 8.75rem;
+   --size-select-wide: 11.25rem;
+   --size-select-xl: 16.25rem;
+   --size-panel-stat-min-height: 2.25rem;
    --radius-xs: 1px;
    --radius-sm: 2px;
    --radius-md: 6px;
@@ -121,6 +167,7 @@
     --bg-button-hover: #4c627d;
     --bg-semi-dark: rgba(43, 48, 59, 0.5);
      --text-scanner-light: #f5ebe8;
+     --text-display-dark: #1c1f27;
      --text-secondary-muted: #acbbcc;
      --border-inset: #b06105;
      --border-scanner: #1e2024;
@@ -131,6 +178,51 @@
    --led-green: #67E79E;
    --led-red: #DC3A38;
    --led-red-glow: rgba(239, 68, 68, 0.8);
+   --status-connecting: #F59E0B;
+   --status-disconnected: var(--led-red);
+   --status-connected: var(--led-green);
+   --chart-axis: #8098b0;
+   --chart-bar: #3b82f6;
+   --chart-label: #f5ebe8;
+   --heatmap-level-0: rgba(255, 255, 255, 0.05);
+   --heatmap-level-1: rgba(16, 185, 129, 0.2);
+   --heatmap-level-2: rgba(16, 185, 129, 0.4);
+   --heatmap-level-3: rgba(16, 185, 129, 0.6);
+   --heatmap-level-4: rgba(16, 185, 129, 0.8);
+   --heatmap-level-5: rgba(16, 185, 129, 1);
+   --layout-app-width: 100%;
+   --layout-app-height: 100%;
+   --layout-dashboard-main-height: 13.75rem;
+   --layout-dashboard-panel-width: 28.125rem;
+   --layout-dashboard-max-width: 37.5rem;
+   --layout-stats-sidebar-width: 6.875rem;
+   --layout-heatmap-cell-gap: 0.125rem;
+   --layout-modal-max-height: 80vh;
+   --layout-modal-channel-width: 25rem;
+   --layout-modal-activity-width: 31.25rem;
+   --layout-sidebar-channels-width: 10rem;
+   --layout-sidebar-device-width: 12.5rem;
+   --layout-search-max-width: 18.75rem;
+   --layout-empty-state-height: 15rem;
+   --layout-scroll-max-height: 32.5rem;
+   --layout-detail-max-height: 25.25rem;
+   --layout-detail-sidebar-width: 16.25rem;
+   --layout-monitor-bezel: 3rem;
+   --size-status-dot: 0.5rem;
+   --size-shell-status-text: 0.625rem;
+   --size-icon-sm: 1rem;
+   --size-signal-display-height: 5.0625rem;
+   --size-signal-display-min-height: 12.5rem;
+   --size-bank-control-height: 1.5rem;
+   --size-bank-control-spacing: 0.125rem;
+   --size-hit-frequency-width: 3.75rem;
+   --size-hit-time-width: 2.8125rem;
+   --size-hit-tag-max-width: 12.5rem;
+   --size-select-compact: 7.5rem;
+   --size-select-medium: 8.75rem;
+   --size-select-wide: 11.25rem;
+   --size-select-xl: 16.25rem;
+   --size-panel-stat-min-height: 2.25rem;
    --radius-xs: 1px;
    --radius-sm: 2px;
    --radius-md: 6px;
@@ -199,6 +291,7 @@
     --color-bg-button-hover: var(--bg-button-hover);
     --color-bg-semi-dark: var(--bg-semi-dark);
     --color-text-scanner-light: var(--text-scanner-light);
+    --color-text-display-dark: var(--text-display-dark);
     --color-text-secondary-muted: var(--text-secondary-muted);
    --color-border-inset: var(--border-inset);
    --color-border-scanner: var(--border-scanner);
@@ -213,6 +306,18 @@
    --color-led-green: var(--led-green);
    --color-led-red: var(--led-red);
    --color-led-red-glow: var(--led-red-glow);
+   --color-status-connecting: var(--status-connecting);
+   --color-status-disconnected: var(--status-disconnected);
+   --color-status-connected: var(--status-connected);
+   --color-chart-axis: var(--chart-axis);
+   --color-chart-bar: var(--chart-bar);
+   --color-chart-label: var(--chart-label);
+   --color-heatmap-0: var(--heatmap-level-0);
+   --color-heatmap-1: var(--heatmap-level-1);
+   --color-heatmap-2: var(--heatmap-level-2);
+   --color-heatmap-3: var(--heatmap-level-3);
+   --color-heatmap-4: var(--heatmap-level-4);
+   --color-heatmap-5: var(--heatmap-level-5);
    --radius-xs: var(--radius-xs);
    --radius-scanner-sm: var(--radius-sm);
    --radius-scanner-md: var(--radius-md);
@@ -235,6 +340,8 @@
 
   html {
     font-size: var(--font-size);
+    width: 100%;
+    height: 100%;
   }
 
   h1 {
@@ -278,4 +385,78 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+@layer components {
+  .scanner-surface {
+    @apply rounded-lg border border-white/5 bg-black/20;
+  }
+
+  .scanner-surface-subtle {
+    @apply rounded-lg border border-white/5 bg-white/5;
+  }
+
+  .scanner-input {
+    @apply rounded border border-white/10 bg-black/40 text-white outline-none transition-colors focus:border-brand-primary;
+  }
+
+  .scanner-button-muted {
+    @apply rounded border border-white/5 bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white;
+  }
+
+  .scanner-button-primary {
+    @apply rounded border border-brand-primary/40 bg-brand-primary font-bold text-black transition-colors hover:bg-brand-hover;
+  }
+
+  .scanner-select-content {
+    @apply border-white/10 text-white;
+    background-color: var(--bg-scanner-dark);
+  }
+
+  .scanner-modal {
+    @apply fixed left-1/2 top-1/2 z-50 flex -translate-x-1/2 -translate-y-1/2 flex-col border border-white/10 shadow-2xl;
+    max-height: var(--layout-modal-max-height);
+    background-color: var(--bg-scanner-panel);
+  }
+
+  .scanner-app-shell {
+    @apply flex flex-col overflow-hidden font-sans select-none;
+    width: var(--layout-app-width);
+    height: var(--layout-app-height);
+    color: var(--text-scanner-light);
+    background-color: var(--bg-scanner-dark);
+    background-image: radial-gradient(circle at 50% 22%, rgba(61, 68, 84, 1) 0%, rgba(45, 50, 61, 1) 50%, rgba(28, 31, 38, 1) 100%);
+    background-size: cover;
+  }
+
+  .scanner-display-surface {
+    background-image: radial-gradient(circle at 50% 50%, rgba(239, 153, 31, 1) 0%, rgba(228, 136, 19, 1) 50%, rgba(217, 119, 6, 1) 100%);
+  }
+}
+
+@layer utilities {
+  .text-status-connecting {
+    color: var(--color-status-connecting);
+  }
+
+  .text-status-connected {
+    color: var(--color-status-connected);
+  }
+
+  .text-status-disconnected {
+    color: var(--color-status-disconnected);
+  }
+
+  .bg-heatmap-0 { background-color: var(--color-heatmap-0); }
+  .bg-heatmap-1 { background-color: var(--color-heatmap-1); }
+  .bg-heatmap-2 { background-color: var(--color-heatmap-2); }
+  .bg-heatmap-3 { background-color: var(--color-heatmap-3); }
+  .bg-heatmap-4 { background-color: var(--color-heatmap-4); }
+  .bg-heatmap-5 { background-color: var(--color-heatmap-5); }
 }

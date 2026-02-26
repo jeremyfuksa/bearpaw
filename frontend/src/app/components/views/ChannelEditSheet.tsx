@@ -118,7 +118,7 @@ export function ChannelEditSheet({
               damping: 25,
               stiffness: 300,
             }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] max-h-[80vh] bg-[#11131b] rounded-t-xl border border-white/10 shadow-2xl z-50 flex flex-col"
+            className="scanner-modal w-[var(--layout-modal-channel-width)] rounded-t-xl"
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
               <h3 className="text-lg font-bold text-white">Edit Channel {channel.index}</h3>
@@ -141,7 +141,7 @@ export function ChannelEditSheet({
                   value={draft.frequency}
                   onChange={(e) => handleFieldChange("frequency", e.target.value)}
                   className={cn(
-                    "w-full bg-black/40 border rounded px-3 py-2 text-white text-sm outline-none transition-colors",
+                    "scanner-input w-full px-3 py-2 text-sm",
                     errors.frequency ? "border-red-500" : "border-white/10 focus:border-brand-primary"
                   )}
                 />
@@ -158,7 +158,7 @@ export function ChannelEditSheet({
                   value={draft.alpha_tag}
                   onChange={(e) => handleFieldChange("alpha_tag", e.target.value)}
                   maxLength={16}
-                  className="w-full bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
+                  className="scanner-input w-full px-3 py-2 text-sm"
                 />
               </div>
 
@@ -167,11 +167,11 @@ export function ChannelEditSheet({
                 <Select value={draft.modulation} onValueChange={(value) => handleFieldChange("modulation", value)}>
                   <SelectTrigger
                     aria-label="Modulation"
-                    className="w-full h-10 bg-black/40 border-white/10 focus:border-brand-primary text-white text-sm"
+                    className="scanner-input h-10 w-full text-sm"
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#11131b] border-white/10 text-white">
+                  <SelectContent className="scanner-select-content">
                     {["AUTO", "FM", "AM", "NFM"].map((option) => (
                       <SelectItem key={option} value={option}>
                         {option}
@@ -191,7 +191,7 @@ export function ChannelEditSheet({
                   onChange={(e) => handleFieldChange("tone_squelch", e.target.value)}
                   placeholder="—"
                   className={cn(
-                    "w-full bg-black/40 border rounded px-3 py-2 text-white text-sm outline-none transition-colors",
+                    "scanner-input w-full px-3 py-2 text-sm",
                     errors.tone_squelch ? "border-red-500" : "border-white/10 focus:border-brand-primary"
                   )}
                 />
@@ -209,7 +209,7 @@ export function ChannelEditSheet({
                   value={draft.delay}
                   onChange={(e) => handleFieldChange("delay", e.target.value)}
                   className={cn(
-                    "w-full bg-black/40 border rounded px-3 py-2 text-white text-sm outline-none transition-colors",
+                    "scanner-input w-full px-3 py-2 text-sm",
                     errors.delay ? "border-red-500" : "border-white/10 focus:border-brand-primary"
                   )}
                 />
@@ -245,20 +245,20 @@ export function ChannelEditSheet({
             <div className="flex gap-3 px-6 py-4 border-t border-white/10 shrink-0">
               <button
                 onClick={onClose}
-                className="flex-1 py-2.5 rounded bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider border border-white/10 transition-colors"
+                className="scanner-button-muted flex-1 py-2.5 text-xs font-bold uppercase tracking-wider"
               >
                 Cancel
               </button>
               <button
                 onClick={onClear}
-                className="flex-1 py-2.5 rounded bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-wider border border-white/10 transition-colors"
+                className="flex-1 rounded border border-white/10 bg-white/10 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-white/20"
               >
                 Clear
               </button>
               <button
                 onClick={handleSave}
                 disabled={isSaving || Object.keys(errors).length > 0}
-                className="flex-1 py-2.5 rounded bg-brand-primary hover:bg-brand-hover text-black text-xs font-bold uppercase tracking-wider border border-brand-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="scanner-button-primary flex-1 py-2.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving ? "Saving..." : "Save Draft"}
               </button>

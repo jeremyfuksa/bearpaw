@@ -93,6 +93,14 @@ function normalizeSignal(value?: number) {
 }
 
 const defaultCloseCallBand = [false, false, false, false, false];
+const HEATMAP_INTENSITY_CLASSES = [
+  "bg-heatmap-0",
+  "bg-heatmap-1",
+  "bg-heatmap-2",
+  "bg-heatmap-3",
+  "bg-heatmap-4",
+  "bg-heatmap-5",
+] as const;
 
 export default function App() {
   useKeyboardShortcuts({
@@ -979,20 +987,14 @@ export default function App() {
       <span
         key={bar}
         className={cn(
-          "h-2 w-1 rounded-[1px]",
+          "h-2 w-1 rounded-scanner-xs",
           bar <= strength ? "bg-green-500" : "bg-white/10",
         )}
       />
     ));
 
-  const mainBg =
-    "url('data:image/svg+xml;utf8,<svg viewBox=\\'0 0 511 217\\' xmlns=\\'http://www.w3.org/2000/svg\\' preserveAspectRatio=\\'none\\'><rect x=\\'0\\' y=\\'0\\' height=\\'100%\\' width=\\'100%\\' fill=\\'url(%23grad)\\' opacity=\\'1\\'/><defs><radialGradient id=\\'grad\\' gradientUnits=\\'userSpaceOnUse\\' cx=\\'0\\' cy=\\'0\\' r=\\'10\\' gradientTransform=\\'matrix(-2.2512e-14 14.305 -33.685 8.0487e-15 255.5 49.662)\\'><stop stop-color=\\'rgba(61,68,84,1)\\' offset=\\'0\\'/><stop stop-color=\\'rgba(45,50,61,1)\\' offset=\\'0.5\\'/><stop stop-color=\\'rgba(28,31,38,1)\\' offset=\\'1\\'/></radialGradient></defs></svg>')";
-
   return (
-    <div
-      className="flex flex-col w-[1100px] h-[600px] bg-[#1c1f26] text-[#f5ebe8] font-sans overflow-hidden select-none"
-      style={{ backgroundImage: mainBg, backgroundSize: "cover" }}
-    >
+    <div className="scanner-app-shell">
       <Toaster
         position="top-right"
         theme="dark"
@@ -1000,11 +1002,11 @@ export default function App() {
           unstyled: true,
           classNames: {
             toast:
-              "bg-[#1c1f26] border border-white/10 shadow-lg rounded-lg p-4 flex gap-2 items-center w-full",
-            title: "font-bold text-sm text-[#f5ebe8]",
-            description: "text-xs text-[#acbbcc]",
+              "flex w-full items-center gap-2 rounded-lg border border-white/10 bg-scanner-bg-dark p-4 shadow-lg",
+            title: "text-sm font-bold text-scanner-text-light",
+            description: "text-xs text-scanner-text-secondary",
             actionButton:
-              "bg-[#4c627d] text-white text-xs px-2 py-1 rounded",
+              "rounded bg-scanner-bg-button-hover px-2 py-1 text-xs text-white",
             cancelButton:
               "bg-white/10 text-white text-xs px-2 py-1 rounded",
             error: "border-red-500/50",
@@ -1025,7 +1027,12 @@ export default function App() {
         />
       </div>
 
-      <div className="flex-1 p-6 pt-2 overflow-hidden relative">
+      <div
+        className={cn(
+          "relative flex-1 overflow-hidden",
+          currentTab === "Scan" && !isDashboardMode ? "p-0" : "p-6 pt-2",
+        )}
+      >
         <AnimatePresence mode="wait">
           {currentTab === "Scan" && (
             <motion.div
@@ -1036,18 +1043,12 @@ export default function App() {
               className="flex flex-col gap-6 h-full relative"
               layout
             >
-              <div
-                className={cn(
-                  "flex gap-6 transition-all duration-500 ease-in-out",
-                  isDashboardMode ? "h-[220px]" : "flex-1",
-                )}
-              >
+              {isDashboardMode ? (
+                <div className="flex h-[var(--layout-dashboard-main-height)] gap-6 transition-all duration-500 ease-in-out">
                 <div
                   className={cn(
                     "flex flex-col gap-3 h-full transition-all duration-500 ease-in-out",
-                    isDashboardMode
-                      ? "w-[450px]"
-                      : "w-full max-w-[600px]",
+                    "w-[var(--layout-dashboard-panel-width)]",
                   )}
                 >
                   <StatusHeader
@@ -1075,63 +1076,29 @@ export default function App() {
                     errorType={
                       getConnectionStatus() === "disconnected" ? "usb" : undefined
                     }
-                    variant={isDashboardMode ? "default" : "hero"}
+                    variant="default"
                     className="flex-1 min-h-0 mb-3"
                   />
                   {isInitialSyncing && (
-                    <div className="mb-3 flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-[#acbbcc]">
+                    <div className="mb-3 flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-scanner-text-secondary">
                       <span>{syncProgressMessage || "Loading channels from device..."}</span>
                       <button
                         type="button"
                         onClick={handleCancelSync}
-                        className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-[#f5ebe8] transition-colors hover:bg-white/20"
+                        className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-scanner-text-light transition-colors hover:bg-white/20"
                       >
                         Cancel Sync
                       </button>
                     </div>
                   )}
                   <BankControls activeBanks={banks} onToggleBank={handleBankToggle} />
-                  {!isDashboardMode && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex justify-between items-center bg-white/5 rounded-lg p-4 mt-auto border border-white/5"
-                    >
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
-                          Session Hits
-                        </span>
-                        <span className="text-2xl font-bold text-white">
-                          {sessionStatsDisplay.hits}
-                        </span>
-                      </div>
-                      <div className="w-px h-8 bg-white/10" />
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
-                          Unique Channels
-                        </span>
-                        <span className="text-2xl font-bold text-white">
-                          {sessionStatsDisplay.uniqueChannels}
-                        </span>
-                      </div>
-                      <div className="w-px h-8 bg-white/10" />
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-white/40 font-medium uppercase tracking-wider">
-                          Active Time
-                        </span>
-                        <span className="text-2xl font-bold text-white">
-                          {formatDuration(sessionStatsDisplay.activeTime)}
-                        </span>
-                      </div>
-                    </motion.div>
-                  )}
                 </div>
 
-                {/* Recent Hits - Always Visible */}
+                {/* Recent Hits */}
                 <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-4 overflow-hidden flex flex-col">
                   <h3 className="font-bold text-sm mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Radio className="w-4 h-4 text-orange-500" />
+                      <Radio className="h-4 w-4 text-brand-primary" />
                       <span>Recent Hits</span>
                     </div>
                     <Tooltip>
@@ -1152,8 +1119,8 @@ export default function App() {
                       <TooltipContent
                         side="bottom"
                         align="center"
-                        className="bg-neutral-950 border border-white/10 text-white"
-                        arrowClassName="bg-neutral-950 fill-neutral-950"
+                        className="scanner-select-content"
+                        arrowClassName="bg-background fill-background"
                       >
                         Export
                       </TooltipContent>
@@ -1165,7 +1132,7 @@ export default function App() {
                         <Activity className="w-8 h-8 opacity-20" />
                         Waiting for signals...
                       </div>
-                    ) : isDashboardMode ? (
+                    ) : (
                       recentHits.map((hit) => (
                         <div
                           key={hit.id}
@@ -1173,7 +1140,7 @@ export default function App() {
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             {hit.hasAudio && (
-                              <Play className="w-3 h-3 text-[#ef991f] shrink-0 fill-[#ef991f]/20" />
+                              <Play className="h-3 w-3 shrink-0 fill-brand-primary/20 text-brand-primary" />
                             )}
                             <span className="text-white/60 truncate" title={hit.tag}>
                               {hit.tag}
@@ -1182,52 +1149,20 @@ export default function App() {
                           <div className="flex gap-0.5 h-2 items-end">
                             {formatSignalBars(hit.strength)}
                           </div>
-                          <span className="font-mono text-orange-400 group-hover:text-orange-300 w-[60px] text-right">
+                          <span className="w-[var(--size-hit-frequency-width)] text-right font-mono text-brand-light group-hover:text-brand-primary">
                             {hit.frequency}
                           </span>
-                          <span className="text-white/30 text-xs w-[45px] text-right whitespace-nowrap">
+                          <span className="w-[var(--size-hit-time-width)] whitespace-nowrap text-right text-xs text-white/30">
                             {getRelativeTime(hit.time)}
                           </span>
                         </div>
-                      ))
-                    ) : (
-                      recentHits.map((hit) => (
-                        <motion.div
-                          key={hit.id}
-                          initial={{ opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="flex items-center justify-between bg-white/5 hover:bg-white/10 p-3 rounded-lg cursor-pointer group transition-all border border-transparent hover:border-white/10"
-                        >
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-bold text-orange-400 font-mono text-sm group-hover:text-orange-300 transition-colors">
-                              {hit.frequency}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              {hit.hasAudio && (
-                                <Play className="w-3 h-3 text-[#ef991f] shrink-0 fill-[#ef991f]/20" />
-                              )}
-                              <span className="text-white/70 text-xs font-medium truncate max-w-[200px]">
-                                {hit.tag}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <div className="flex gap-0.5 h-2 items-end">
-                              {formatSignalBars(hit.strength)}
-                            </div>
-                            <span className="text-white/30 text-xs whitespace-nowrap">
-                              {getRelativeTime(hit.time)}
-                            </span>
-                          </div>
-                        </motion.div>
                       ))
                     )}
                   </div>
                 </div>
 
                 {/* Stats Sidebar - Dashboard Mode Only */}
-                {isDashboardMode && (
-                  <div className="flex flex-col h-full w-[110px] gap-2">
+                  <div className="flex h-full w-[var(--layout-stats-sidebar-width)] flex-col gap-2">
                     <div className="flex flex-col justify-between flex-1 py-1">
                       <div className="flex flex-col">
                         <span className="text-xs text-white/40 font-medium uppercase">
@@ -1255,8 +1190,37 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="relative h-full w-full p-[var(--layout-monitor-bezel)]">
+                  <ScannerDisplay
+                    mainText={mainText}
+                    subText={subText}
+                    mode={getScannerMode()}
+                    signalStrength={normalizeSignal(liveState?.rssi)}
+                    isScanning={
+                      !isInitialSyncing &&
+                      liveState?.mode === "SCAN" &&
+                      !liveState?.squelch_open
+                    }
+                    isError={getConnectionStatus() === "disconnected"}
+                    errorType={
+                      getConnectionStatus() === "disconnected" ? "usb" : undefined
+                    }
+                    variant="monitor"
+                    className="h-full w-full"
+                  />
+                  <div className="pointer-events-none absolute inset-x-4 top-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleDashboardToggle}
+                      className="pointer-events-auto rounded border border-white/20 bg-black/30 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white/90 transition-colors hover:bg-black/40"
+                    >
+                      Dashboard
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Dashboard Widgets - Appear Below */}
               <AnimatePresence>
@@ -1285,12 +1249,12 @@ export default function App() {
                           <BarChart data={busiestChannels}>
                             <XAxis
                               dataKey="alpha_tag"
-                              tick={{ fill: "#888", fontSize: 10 }}
+                              tick={{ fill: "var(--color-chart-axis)", fontSize: 10 }}
                               interval={0}
                             />
                             <Bar
                               dataKey="hit_count"
-                              fill="#3b82f6"
+                              fill="var(--color-chart-bar)"
                               radius={[4, 4, 0, 0]}
                               isAnimationActive={chartAnimate}
                               animationDuration={600}
@@ -1298,7 +1262,7 @@ export default function App() {
                               <LabelList
                                 dataKey="hit_count"
                                 position="insideTop"
-                                style={{ fill: "#fff", fontSize: 10, fontWeight: 600 }}
+                                style={{ fill: "var(--color-chart-label)", fontSize: 10, fontWeight: 600 }}
                               />
                             </Bar>
                           </BarChart>
@@ -1311,13 +1275,13 @@ export default function App() {
                       <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
                         <Clock className="w-4 h-4 text-green-400" /> Activity Heatmap
                       </h3>
-                      <div className="flex-1 flex flex-col justify-center gap-[2px]">
+                      <div className="flex flex-1 flex-col justify-center gap-[var(--layout-heatmap-cell-gap)]">
                         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, row) => (
                           <div key={day} className="flex items-center gap-2">
                             <span className="text-xs text-white/30 w-5 text-right font-mono uppercase">
                               {day}
                             </span>
-                            <div className="flex-1 grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px]">
+                            <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[var(--layout-heatmap-cell-gap)]">
                               {Array.from({ length: 24 }).map((_, col) => {
                                 const heatmapData = hourlyHeatmap?.[row]?.[col] ?? 0;
                                 
@@ -1331,13 +1295,10 @@ export default function App() {
                                 return (
                                   <div
                                     key={col}
-                                    className="rounded-[1px] hover:ring-1 ring-white/50 transition-all w-full aspect-square cursor-pointer"
-                                    style={{
-                                      backgroundColor:
-                                        intensity === 0
-                                          ? "rgba(255,255,255,0.05)"
-                                          : `rgba(16, 185, 129, ${intensity * 0.2})`,
-                                    }}
+                                    className={cn(
+                                      "aspect-square w-full cursor-pointer rounded-scanner-xs ring-white/50 transition-all hover:ring-1",
+                                      HEATMAP_INTENSITY_CLASSES[intensity],
+                                    )}
                                     title={`${day} ${col}:00 - ${heatmapData} hits`}
                                   />
                                 );
