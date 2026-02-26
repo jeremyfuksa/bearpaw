@@ -32,6 +32,7 @@ backend/.pyinstaller/
 backend/build/
 
 # Tauri / Rust
+target/
 src-tauri/target/
 frontend/src-tauri/target/
 *.log
