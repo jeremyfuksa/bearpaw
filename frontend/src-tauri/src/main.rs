@@ -189,6 +189,8 @@ fn backend_status(state: tauri::State<'_, ShellState>) -> BackendStatus {
 }
 
 fn main() {
+    let _logging = bearpaw_api::init_backend_logging("bearpaw-desktop")
+        .expect("backend logging initialization failed");
     let backend_state = Arc::new(BackendRuntimeState::default());
 
     tauri::Builder::default()
