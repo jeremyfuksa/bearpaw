@@ -23,12 +23,12 @@ function getStatusDisplay(
   modelName: string,
 ) {
   if (connectionStatus === "connecting") {
-    return { statusColor: "#F59E0B", statusText: "Connecting..." };
+    return { statusColor: "var(--color-status-connecting)", statusText: "Connecting..." };
   }
   if (connectionStatus === "disconnected") {
-    return { statusColor: "#DC3A38", statusText: "Disconnected" };
+    return { statusColor: "var(--color-status-disconnected)", statusText: "Disconnected" };
   }
-  return { statusColor: "#67E79E", statusText: modelName };
+  return { statusColor: "var(--color-status-connected)", statusText: modelName };
 }
 
 export function TabNav({
@@ -78,11 +78,11 @@ export function TabNav({
       </div>
       <div className="flex gap-2 items-center justify-end">
         {shellStatusText ? (
-          <p className="font-sans font-normal text-[10px] text-white/40 text-nowrap mr-2">
+          <p className="mr-2 font-sans text-[length:var(--size-shell-status-text)] font-normal text-nowrap text-white/40">
             {shellStatusText}
           </p>
         ) : null}
-        <div className="relative shrink-0 size-[8px]">
+        <div className="relative shrink-0 size-[var(--size-status-dot)]">
           <svg
             className="block size-full"
             fill="none"
@@ -147,8 +147,8 @@ export function StatusHeader({
           <TooltipContent
             side="bottom"
             align="center"
-            className="bg-neutral-950 border border-white/10 text-white"
-            arrowClassName="bg-neutral-950 fill-neutral-950"
+            className="scanner-select-content"
+            arrowClassName="bg-background fill-background"
           >
             {isDashboardMode ? "Dashboard view" : "Monitor view"}
           </TooltipContent>
@@ -177,7 +177,7 @@ export function StatusHeader({
               </p>
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-40 bg-neutral-950 border border-white/10 p-4" side="bottom" align="center">
+          <PopoverContent className="scanner-select-content w-40 p-4" side="bottom" align="center">
              <div className="flex flex-col">
                <span className="sr-only">Volume {volume}</span>
                <Slider
@@ -229,7 +229,7 @@ function SignalIcon({ strength }: { strength: number }) {
     <div className="relative shrink-0 size-[16px]">
       <svg className="block size-full" fill="none" viewBox="0 0 16 14.0694">
         <g id="signal">
-          <path d={svgPaths.p3025b700} fill="var(--fill-0, #1C1F27)" fillOpacity="0.9" />
+          <path d={svgPaths.p3025b700} fill="var(--bg-scanner-dark)" fillOpacity="0.9" />
           {strength > 0 && <path d={svgPaths.p31141000} fill="black" />}
           {strength > 1 && <path d={svgPaths.p30ee9a00} fill="black" />}
           {strength > 2 && <path d={svgPaths.pd4593f0} fill="black" />}
@@ -246,7 +246,7 @@ function UsbErrorIcon() {
   return (
     <div className="relative shrink-0 size-[16px]">
       <svg className="block size-full" fill="none" viewBox="0 0 16 16">
-        <path d={usbSvgPaths.p26c64136} fill="var(--fill-0, #1C1F27)" fillOpacity="0.9" />
+        <path d={usbSvgPaths.p26c64136} fill="var(--bg-scanner-dark)" fillOpacity="0.9" />
       </svg>
     </div>
   );
@@ -256,7 +256,7 @@ function SocketErrorIcon() {
   return (
     <div className="relative shrink-0 size-[16px]">
       <svg className="block size-full" fill="none" viewBox="0 0 16 16">
-        <path d={socketSvgPaths.p530b80} fill="var(--fill-0, #1C1F27)" fillOpacity="0.9" />
+        <path d={socketSvgPaths.p530b80} fill="var(--bg-scanner-dark)" fillOpacity="0.9" />
       </svg>
     </div>
   );
@@ -273,7 +273,7 @@ interface ScannerDisplayProps {
   errorType?: "usb" | "socket";
   isScanning?: boolean;
   className?: string;
-  variant?: "default" | "hero";
+  variant?: "default" | "hero" | "monitor";
 }
 
 export function ScannerDisplay({
@@ -287,33 +287,39 @@ export function ScannerDisplay({
   className,
   variant = "default",
 }: ScannerDisplayProps) {
-  // Gradient background from Figma
-  const bgStyle = {
-    backgroundImage:
-      "url('data:image/svg+xml;utf8,<svg viewBox=\\\'0 0 291 81\\\' xmlns=\\\'http://www.w3.org/2000/svg\\\' preserveAspectRatio=\\\'none\\\'><rect x=\\\'0\\\' y=\\\'0\\\' height=\\\'100%\\\' width=\\\'100%\\\' fill=\\\'url(%23grad)\\\' opacity=\\\'1\\\'/><defs><radialGradient id=\\\'grad\\\' gradientUnits=\\\'userSpaceOnUse\\\' cx=\\\'0\\\' cy=\\\'0\\\' r=\\\'10\\\' gradientTransform=\\\'matrix(14.55 0 0 4.05 145.5 40.5)\\\'><stop stop-color=\\\'rgba(239,153,31,1)\\\' offset=\\\'0\\\'/><stop stop-color=\\\'rgba(228,136,19,1)\\\' offset=\\\'0.5\\\'/><stop stop-color=\\\'rgba(217,119,6,1)\\\' offset=\\\'1\\\'/></radialGradient></defs></svg>')",
-  };
-
   return (
     <div
       className={cn(
-        "relative rounded-[6px] shrink-0 w-full overflow-hidden transition-all duration-500 ease-in-out",
-        !className?.includes("h-") && (variant === "hero" ? "h-full min-h-[200px]" : "h-[81px]"),
+        "scanner-display-surface relative shrink-0 w-full overflow-hidden rounded-scanner-md transition-all duration-500 ease-in-out",
+        !className?.includes("h-") &&
+          (variant === "hero" || variant === "monitor"
+            ? "h-full min-h-[var(--size-signal-display-min-height)]"
+            : "h-[var(--size-signal-display-height)]"),
         className
       )}
-      style={bgStyle}
     >
       <div className={cn(
         "flex flex-col gap-2 items-start px-3 py-2.5 relative w-full h-full",
-        variant === "hero" ? "justify-between py-8 px-8" : "justify-center"
+        variant === "hero"
+          ? "justify-between px-8 py-8"
+          : variant === "monitor"
+            ? "justify-center px-12 py-10"
+            : "justify-center"
       )}>
         {/* Main Row */}
         <div className={cn(
-          "flex items-center justify-between w-full relative pb-[4px]",
-          variant === "hero" ? "border-none flex-1 items-center" : "border-b border-[rgba(43,48,59,0.7)]"
+          "relative flex w-full items-center justify-between pb-1",
+          variant === "hero" || variant === "monitor"
+            ? "flex-1 items-center border-none"
+            : "border-b border-scanner-border/70"
         )}>
           <p className={cn(
-            "font-bold text-[rgba(28,31,39,0.9)] text-nowrap truncate max-w-[90%] transition-all duration-500",
-            variant === "hero" ? "text-4xl leading-tight tracking-tight" : "text-3xl"
+            "max-w-full truncate text-nowrap font-bold text-text-display-dark/90 transition-all duration-500",
+            variant === "monitor"
+              ? "text-7xl leading-none tracking-tight"
+              : variant === "hero"
+                ? "text-4xl leading-tight tracking-tight"
+                : "text-3xl"
           )}>
             {isScanning ? (
               <span className="animate-pulse">Scanning...</span>
@@ -323,7 +329,11 @@ export function ScannerDisplay({
           </p>
           <div className={cn(
             "shrink-0 transition-all duration-500",
-            variant === "hero" ? "size-[64px] opacity-80" : "size-[16px]"
+            variant === "monitor"
+              ? "size-20 opacity-80"
+              : variant === "hero"
+                ? "size-16 opacity-80"
+                : "size-[var(--size-icon-sm)]"
           )}>
             {isError ? (
               errorType === "usb" ? <UsbErrorIcon /> : <SocketErrorIcon />
@@ -334,12 +344,18 @@ export function ScannerDisplay({
         {/* Sub Row */}
         <div className={cn(
           "flex gap-2 items-start w-full relative transition-all duration-500",
-          variant === "hero" ? "border-t border-[rgba(43,48,59,0.3)] pt-4" : ""
+          variant === "hero" || variant === "monitor"
+            ? "border-t border-scanner-border/30 pt-4"
+            : ""
         )}>
           <p className={cn(
-            "font-normal text-[rgba(28,31,39,0.9)] transition-all duration-500",
+            "font-normal text-text-display-dark/90 transition-all duration-500",
             isError ? "whitespace-normal leading-snug" : "text-nowrap",
-            variant === "hero" ? "text-xl opacity-90 font-medium" : "text-lg"
+            variant === "monitor"
+              ? "text-3xl font-medium opacity-90"
+              : variant === "hero"
+                ? "text-xl font-medium opacity-90"
+                : "text-lg"
           )}>
             {isScanning ? (
               <span className="opacity-50">Searching for signal...</span>
@@ -381,7 +397,7 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
             key={bank}
             onClick={() => onToggleBank(index)}
              className={cn(
-               "flex items-center justify-center h-[24px] flex-1 min-w-0 mx-[2px] rounded-scanner-sm relative transition-all border",
+               "relative mx-[var(--size-bank-control-spacing)] flex h-[var(--size-bank-control-height)] min-w-0 flex-1 items-center justify-center rounded-scanner-sm border transition-all",
                isActive
                  ? "bg-scanner-bg-semiDark border-brand-primary"
                  : "bg-scanner-default border-scanner-border shadow-button"

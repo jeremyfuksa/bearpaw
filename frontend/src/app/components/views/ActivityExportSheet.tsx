@@ -163,7 +163,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
               damping: 25,
               stiffness: 300,
             }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] max-h-[80vh] bg-[#11131b] rounded-t-xl border border-white/10 shadow-2xl z-50 flex flex-col"
+            className="scanner-modal w-[var(--layout-modal-activity-width)] rounded-t-xl"
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
               <h3 className="text-lg font-bold text-white">Export Activity Log</h3>
@@ -187,8 +187,8 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                       className={cn(
                         "flex items-center gap-2 px-4 py-3 rounded text-sm font-medium transition-colors",
                         selectedTimeframe === timeframe
-                          ? "bg-brand-primary/20 text-brand-primary border border-brand-primary/30"
-                          : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white border border-white/5"
+                          ? "border border-brand-primary/30 bg-brand-primary/20 text-brand-primary"
+                          : "scanner-button-muted border"
                       )}
                     >
                       <Calendar size={16} />
@@ -210,7 +210,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                         type="date"
                         value={customStartDate ? customStartDate.toISOString().slice(0, 10) : ""}
                         onChange={(e) => setCustomStartDate(e.target.value ? new Date(e.target.value) : null)}
-                        className="w-full bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
+                        className="scanner-input w-full px-3 py-2 text-sm"
                       />
                     </div>
                     <div className="space-y-2">
@@ -222,7 +222,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                         type="date"
                         value={customEndDate ? customEndDate.toISOString().slice(0, 10) : ""}
                         onChange={(e) => setCustomEndDate(e.target.value ? new Date(e.target.value) : null)}
-                        className="w-full bg-black/40 border border-white/10 focus:border-brand-primary rounded px-3 py-2 text-white text-sm outline-none transition-colors"
+                        className="scanner-input w-full px-3 py-2 text-sm"
                       />
                     </div>
                   </div>
@@ -234,7 +234,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
               <button
                 onClick={handleExport}
                 disabled={!hasActivity || isExporting}
-                className="w-full py-3 rounded bg-brand-primary hover:bg-brand-hover text-black text-sm font-bold uppercase tracking-wider border border-brand-primary/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="scanner-button-primary flex w-full items-center justify-center gap-2 py-3 text-sm uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download size={16} />
                 {isExporting ? "Exporting..." : "Download CSV"}
@@ -242,7 +242,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
               <button
                 onClick={handleCleanup}
                 disabled={isExporting}
-                className="w-full py-3 rounded bg-red-600 hover:bg-red-700 text-white text-sm font-bold uppercase tracking-wider border border-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex w-full items-center justify-center gap-2 rounded border border-destructive bg-destructive py-3 text-sm font-bold uppercase tracking-wider text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 size={16} />
                 {isExporting ? "Cleaning..." : "Cleanup Analytics"}

@@ -623,7 +623,7 @@ export function DeviceTab() {
       className="flex h-full gap-6"
     >
       {/* Side Nav */}
-      <div className="w-[200px] flex flex-col gap-1 bg-black/20 rounded-lg p-2 border border-white/5 h-full">
+      <div className="scanner-surface h-full w-[var(--layout-sidebar-device-width)] p-2">
         {["Locked Channels", "Device Config", "Close Call", "Service Search", "Custom Search"].map((cat) => (
           <button
             key={cat}
@@ -717,10 +717,10 @@ export function DeviceTab() {
                     value={bankFilter === "all" ? "all" : String(bankFilter)}
                     onValueChange={(val) => setBankFilter(val === "all" ? "all" : Number(val))}
                   >
-                    <SelectTrigger className="w-[120px] h-8 text-xs bg-black/20 border-white/10">
+                    <SelectTrigger className="scanner-input h-8 w-[var(--size-select-compact)] text-xs">
                       <SelectValue placeholder="All Banks" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                    <SelectContent className="scanner-select-content">
                       <SelectItem value="all">All Banks</SelectItem>
                       {Array.from({ length: 10 }, (_, i) => i + 1).map((bank) => (
                         <SelectItem key={bank} value={String(bank)}>
@@ -765,7 +765,7 @@ export function DeviceTab() {
                 <div className="text-center">Action</div>
               </div>
 
-              <div className="divide-y divide-white/5 max-h-[520px] overflow-y-auto">
+              <div className="max-h-[var(--layout-scroll-max-height)] divide-y divide-white/5 overflow-y-auto">
                 {filteredLockedChannels.map((channel) => {
                   const isSelected = selectedChannels.includes(channel.index);
                   return (
@@ -817,7 +817,7 @@ export function DeviceTab() {
               {/* Audio Control */}
               <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-brand-primary/20 rounded text-orange-400">
+                  <div className="rounded bg-brand-primary/20 p-1.5 text-brand-primary">
                     <Radio size={16} />
                   </div>
                   <h3 className="font-bold text-white">Audio & Power</h3>
@@ -863,11 +863,11 @@ export function DeviceTab() {
                     <Select value={backlight} onValueChange={handleBacklightChange}>
                       <SelectTrigger
                         aria-label="Backlight"
-                        className="w-[140px] h-7 text-xs bg-black/20 border-white/10"
+                        className="scanner-input h-7 w-[var(--size-select-medium)] text-xs"
                       >
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                      <SelectContent className="scanner-select-content">
                         <SelectItem value="AO">Always On</SelectItem>
                         <SelectItem value="AF">Always Off</SelectItem>
                         <SelectItem value="KY">Keypress</SelectItem>
@@ -879,7 +879,7 @@ export function DeviceTab() {
 
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-white/70">Contrast</span>
-                    <Slider value={[contrast]} max={15} step={1} className="w-[140px]" onValueChange={handleContrastChange} />
+                    <Slider value={[contrast]} max={15} step={1} className="w-[var(--size-select-medium)]" onValueChange={handleContrastChange} />
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
@@ -912,11 +912,11 @@ export function DeviceTab() {
                   <Select value={priorityMode} onValueChange={handlePriorityModeChange}>
                     <SelectTrigger
                       aria-label="Priority Mode"
-                      className="w-[140px] h-7 text-xs bg-black/20 border-white/10"
+                      className="scanner-input h-7 w-[var(--size-select-medium)] text-xs"
                     >
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                    <SelectContent className="scanner-select-content">
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="on">On</SelectItem>
                       <SelectItem value="plus">Plus</SelectItem>
@@ -997,11 +997,11 @@ export function DeviceTab() {
                   <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
                   <SelectTrigger
                     aria-label="Mode"
-                    className="w-[180px] h-8 text-xs bg-white/5 border-white/10"
+                    className="h-8 w-[var(--size-select-wide)] border-white/10 bg-white/5 text-xs"
                   >
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                    <SelectContent className="scanner-select-content">
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="cc_dnd">CC DND</SelectItem>
                       <SelectItem value="cc_priority">CC Priority</SelectItem>
@@ -1197,7 +1197,7 @@ export function DeviceTab() {
                   <div
                     key={range.id}
                     className={cn(
-                      "flex-1 grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 items-center border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors group min-h-[36px]",
+                      "group flex-1 grid min-h-[var(--size-panel-stat-min-height)] grid-cols-[50px_60px_1fr_100px_100px] items-center gap-2 border-b border-white/5 px-4 transition-colors last:border-0 hover:bg-white/5",
                       range.enabled && "bg-brand-primary/5",
                     )}
                   >
@@ -1264,9 +1264,9 @@ export function DeviceTab() {
 
         {/* Preferences */}
         {selectedCategory === "Preferences" && (
-          <div className="flex max-h-[404px] gap-6 overflow-hidden">
+          <div className="flex max-h-[var(--layout-detail-max-height)] gap-6 overflow-hidden">
             {/* Info Sidebar (Left) */}
-            <div className="w-[260px] flex flex-col gap-4 overflow-y-auto shrink-0 pb-4 pr-4 border-r border-white/5">
+            <div className="w-[var(--layout-detail-sidebar-width)] shrink-0 space-y-4 overflow-y-auto border-r border-white/5 pb-4 pr-4">
               <div className="space-y-3">
                 <div className="bg-white/5 rounded-lg border border-white/5 p-4 space-y-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -1303,7 +1303,7 @@ export function DeviceTab() {
                 <div className="relative p-4 space-y-3 border border-orange-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-brand-primary/20 rounded-full">
-                      <Coffee className="w-3.5 h-3.5 text-orange-400" />
+                      <Coffee className="h-3.5 w-3.5 text-brand-primary" />
                     </div>
                     <h3 className="text-xs font-bold text-white">Support Dev</h3>
                   </div>
@@ -1322,7 +1322,7 @@ export function DeviceTab() {
             </div>
 
             {/* Main Settings Area (Right) */}
-            <div className="flex-1 overflow-y-auto pr-2 space-y-6 max-h-[404px]">
+            <div className="max-h-[var(--layout-detail-max-height)] flex-1 space-y-6 overflow-y-auto pr-2">
               <div className="flex items-center justify-between border-b border-white/5 pb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Application Settings</h2>
@@ -1380,7 +1380,7 @@ export function DeviceTab() {
                         min={0.5}
                         max={10}
                         step={0.5}
-                        className="w-[180px]"
+                        className="w-[var(--size-select-wide)]"
                       />
                       <span className="text-xs text-white/70 w-12 text-right font-mono">
                         {preferences.hitMinDuration}s
@@ -1430,7 +1430,7 @@ export function DeviceTab() {
                       <SelectTrigger className="w-full bg-white/5 border-white/10 text-xs">
                         <SelectValue placeholder="Select device" />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                      <SelectContent className="scanner-select-content">
                         <SelectItem value="default">System Default</SelectItem>
                         <SelectItem value="speakers">Speakers (Realtek Audio)</SelectItem>
                         <SelectItem value="headphones">Headphones (USB Audio)</SelectItem>
@@ -1515,7 +1515,7 @@ export function DeviceTab() {
                             <SelectTrigger className="w-full bg-white/5 border-white/10 text-white h-9 text-sm">
                               <SelectValue placeholder="Select QoS" />
                             </SelectTrigger>
-                            <SelectContent className="bg-[#1c1f26] border-white/10 text-white">
+                            <SelectContent className="scanner-select-content">
                               <SelectItem value="0">0 - At most once</SelectItem>
                               <SelectItem value="1">1 - At least once</SelectItem>
                               <SelectItem value="2">2 - Exactly once</SelectItem>
@@ -1570,7 +1570,7 @@ export function DeviceTab() {
                       <p className="text-xs text-white/40">Auto-delete older recordings & logs</p>
                     </div>
                     <Select defaultValue="forever">
-                      <SelectTrigger className="w-[140px] bg-white/5 border-white/10 text-white h-8 text-xs">
+                      <SelectTrigger className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-xs text-white">
                         <SelectValue placeholder="Select retention" />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-900 border-white/10 text-white">

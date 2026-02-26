@@ -82,7 +82,7 @@ function ChannelRow({
       ref={ref}
       onClick={onClick}
       className={cn(
-        "grid grid-cols-[36px_50px_90px_1fr_60px_60px_50px_50px_50px_50px] gap-2 px-4 py-1.5 text-xs border-b border-white/5 items-center group transition-colors cursor-pointer min-h-[36px]",
+        "group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_50px_90px_1fr_60px_60px_50px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors",
         isEditing ? "bg-brand-primary/20 border-brand-primary/30" : "hover:bg-white/5",
         isPending && "bg-brand-primary/10 border-l-2 border-brand-primary/60",
         isDragging && "opacity-60",
@@ -133,7 +133,7 @@ function ChannelRow({
       </div>
       <div className="flex justify-center">
         {displayPriority ? (
-          <div className="w-1.5 h-1.5 bg-orange-500 rounded-full shadow-glow" />
+          <div className="h-1.5 w-1.5 rounded-full bg-orange-500 bg-brand-primary shadow-glow" />
         ) : (
           <div className="w-1 h-1 rounded-full bg-white/5" />
         )}
@@ -605,8 +605,8 @@ export function ChannelsTab() {
       className="flex h-full gap-6"
     >
       {/* Side Nav: Banks */}
-      <div className="w-[160px] flex flex-col gap-1 bg-black/20 rounded-lg p-2 border border-white/5 h-full overflow-y-auto shrink-0">
-        <h3 className="px-3 py-2 text-xs font-bold text-white/40 uppercase tracking-wider sticky top-0 bg-[#1c1f26]/90 backdrop-blur-sm z-10">
+      <div className="scanner-surface h-full w-[var(--layout-sidebar-channels-width)] shrink-0 overflow-y-auto p-2">
+        <h3 className="sticky top-0 z-10 bg-scanner-bg-dark/90 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/40 backdrop-blur-sm">
           Bank Select
         </h3>
         {bankTabs.map((bank) => (
@@ -640,12 +640,12 @@ export function ChannelsTab() {
               Bank Channels
             </h2>
             <div className="h-4 w-px bg-white/10 shrink-0" />
-            <div className="relative max-w-[300px] flex-1">
+            <div className="relative max-w-[var(--layout-search-max-width)] flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 w-3.5 h-3.5" />
               <input
                 type="text"
                 placeholder="Search frequency or tag..."
-                className="w-full bg-black/40 border border-white/5 focus:border-brand-primary/50 rounded text-xs pl-8 pr-4 py-1.5 text-white placeholder:text-white/20 outline-none transition-colors"
+                className="scanner-input w-full border-white/5 py-1.5 pl-8 pr-4 text-xs placeholder:text-white/20 focus:border-brand-primary/50"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -656,25 +656,25 @@ export function ChannelsTab() {
             <button
               onClick={handleClearSelected}
               disabled={selectedChannelIds.length === 0}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
               Clear Selected
             </button>
             <button
               onClick={handleImportCSV}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white"
+              className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider"
             >
               Import CSV
             </button>
             <button
               onClick={handleExportCSV}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white"
+              className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider"
              >
               Export CSV
             </button>
             <button
               onClick={handleExportBc125atSs}
-              className="px-3 py-1.5 rounded bg-brand-primary hover:bg-brand-hover text-black font-bold uppercase tracking-wider border border-brand-primary/40 transition-colors"
+              className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider"
             >
               BC125AT (.ss)
             </button>
@@ -691,14 +691,14 @@ export function ChannelsTab() {
             <button
               onClick={handleDiscardDrafts}
               disabled={draftChanges.length === 0 || isUploading}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-xs font-medium uppercase tracking-wider border border-white/5 transition-colors text-white/70 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
               Discard Changes
             </button>
             <button
               onClick={handleUploadDrafts}
               disabled={draftChanges.length === 0 || isUploading}
-              className="px-3 py-1.5 bg-brand-primary hover:bg-brand-hover rounded text-xs font-bold uppercase tracking-wider border border-brand-primary/40 transition-colors text-black disabled:opacity-40 disabled:cursor-not-allowed"
+              className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isUploading ? "Uploading..." : "Upload Changes"}
             </button>
@@ -741,7 +741,7 @@ export function ChannelsTab() {
               editingChannelIndex !== null && "opacity-50 pointer-events-none"
             )}>
               {orderedFilteredChannels.length === 0 ? (
-                <div className="flex h-[240px] items-center justify-center text-xs text-white/50">
+                <div className="flex h-[var(--layout-empty-state-height)] items-center justify-center text-xs text-white/50">
                   No channels match your filters
                 </div>
               ) : (

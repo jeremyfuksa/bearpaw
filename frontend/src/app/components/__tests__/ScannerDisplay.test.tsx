@@ -61,7 +61,7 @@ describe("ScannerDisplay", () => {
   describe("variants", () => {
     it("should use hero variant styles when variant is 'hero'", () => {
       const { container } = render(<ScannerDisplay {...defaultProps} variant="hero" />);
-      const display = container.querySelector(".rounded-\\[6px\\]");
+      const display = container.querySelector(".scanner-display-surface");
       expect(display).toHaveClass("h-full");
     });
 
