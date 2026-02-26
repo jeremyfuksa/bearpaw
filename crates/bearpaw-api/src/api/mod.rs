@@ -27,6 +27,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
+use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 
 use crate::protocol::parse_cin_response;
 use crate::state::{ChannelData, DeviceInfo, LiveState, ShadowState};
@@ -52,6 +53,8 @@ pub struct AppState {
     pub ws_tx: broadcast::Sender<String>,
     pub sequence: Arc<AtomicU64>,
     pub command_tx: Arc<Mutex<Option<std::sync::mpsc::Sender<ControlCommand>>>>,
+    pub program_mode_forced_hold: Arc<AtomicBool>,
+    pub program_mode_active: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -195,6 +198,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/v1/analytics/cleanup", post(analytics_cleanup))
         .route("/ws", get(ws_handler))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO))
+                .on_request(DefaultOnRequest::new().level(tracing::Level::INFO))
+                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
+        )
         .with_state(state)
 }
 
@@ -226,7 +235,9 @@ async fn send_raw_command(
     multiline: bool,
 ) -> Result<String, ApiError> {
     let sender = command_sender(state)?;
+    let started = std::time::Instant::now();
     let command = command.to_string();
+    let command_for_log = command.clone();
     tokio::task::spawn_blocking(move || {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         sender
@@ -243,7 +254,30 @@ async fn send_raw_command(
         }
     })
     .await
-    .map_err(|_| ApiError::BadRequest("command_task_failed".to_string()))?
+    .map_err(|_| ApiError::BadRequest("command_task_failed".to_string()))
+    .map(|result| {
+        match &result {
+            Ok(response) => {
+                info!(
+                    command = %command_for_log,
+                    multiline = multiline,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    response_len = response.len(),
+                    "scanner command completed"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    command = %command_for_log,
+                    multiline = multiline,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    error = ?err,
+                    "scanner command failed"
+                );
+            }
+        }
+        result
+    })?
 }
 
 #[derive(Serialize)]
@@ -297,18 +331,40 @@ async fn set_banks(
 }
 
 async fn post_hold(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let tx = state.command_tx.lock().unwrap();
-    let tx = tx.as_ref().ok_or(ApiError::NoScanner)?;
-    tx.send(ControlCommand::Hold)
-        .map_err(|_| ApiError::SendFailed)?;
+    let _ = command_sender(&state)?;
+    let response = send_raw_command(&state, "KEY,H,P", false).await;
+    let response = match response {
+        Ok(value) => value,
+        Err(_) => send_raw_command(&state, "KEY,H", false).await?,
+    };
+    let upper = response.trim().to_uppercase();
+    if !(upper == "OK" || upper.ends_with(",OK")) {
+        return Err(ApiError::BadRequest("hold_failed".to_string()));
+    }
+    if let Ok(mut live) = state.live.write() {
+        live.mode = "HOLD".to_string();
+    }
     Ok(Json(json!({ "status": "ok" })))
 }
 
 async fn post_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let tx = state.command_tx.lock().unwrap();
-    let tx = tx.as_ref().ok_or(ApiError::NoScanner)?;
-    tx.send(ControlCommand::Scan)
-        .map_err(|_| ApiError::SendFailed)?;
+    let _ = command_sender(&state)?;
+    let response = send_raw_command(&state, "KEY,S,P", false).await;
+    let response = match response {
+        Ok(value) => value,
+        Err(_) => send_raw_command(&state, "KEY,S", false).await?,
+    };
+    let upper = response.trim().to_uppercase();
+    if !(upper == "OK" || upper.ends_with(",OK")) {
+        return Err(ApiError::BadRequest("scan_failed".to_string()));
+    }
+    if let Ok(mut live) = state.live.write() {
+        live.mode = if state.program_mode_forced_hold.load(Ordering::Relaxed) {
+            "SCAN".to_string()
+        } else {
+            "HOLD".to_string()
+        };
+    }
     Ok(Json(json!({ "status": "ok" })))
 }
 
@@ -588,7 +644,22 @@ async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
     let _ = command_sender(&state)?;
+    let pre_mode = state
+        .live
+        .read()
+        .map(|live| live.mode.to_uppercase())
+        .unwrap_or_else(|_| "SCAN".to_string());
+    let forced_hold = pre_mode == "SCAN";
+    if forced_hold {
+        if send_raw_command(&state, "KEY,H,P", false).await.is_err() {
+            let _ = send_raw_command(&state, "KEY,H", false).await;
+        }
+    }
     let _ = send_raw_command(&state, "PRG", false).await?;
+    state
+        .program_mode_forced_hold
+        .store(forced_hold, Ordering::Relaxed);
+    state.program_mode_active.store(true, Ordering::Relaxed);
     if let Ok(mut live) = state.live.write() {
         live.mode = "PGM".to_string();
     }
@@ -598,8 +669,17 @@ async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>
 async fn program_mode_end(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     let _ = send_raw_command(&state, "EPG", false).await?;
+    state.program_mode_active.store(false, Ordering::Relaxed);
+    let forced_hold = state
+        .program_mode_forced_hold
+        .swap(false, Ordering::Relaxed);
+    if forced_hold {
+        if send_raw_command(&state, "KEY,S,P", false).await.is_err() {
+            let _ = send_raw_command(&state, "KEY,S", false).await;
+        }
+    }
     if let Ok(mut live) = state.live.write() {
-        live.mode = "SCAN".to_string();
+        live.mode = if forced_hold { "SCAN" } else { "HOLD" }.to_string();
     }
     Ok(Json(json!({ "status": "ok" })))
 }
@@ -805,6 +885,14 @@ async fn set_volume(
     }
     let mut live = state.live.write().unwrap();
     live.volume = body.volume;
+    let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
+    let msg = json!({
+        "type": "state_update",
+        "timestamp": live.timestamp,
+        "sequence": seq,
+        "data": { "volume": body.volume }
+    });
+    let _ = state.ws_tx.send(msg.to_string());
     Ok(Json(json!({ "status": "ok" })))
 }
 
@@ -2773,6 +2861,8 @@ pub fn default_state() -> AppState {
         ws_tx,
         sequence: Arc::new(AtomicU64::new(0)),
         command_tx: Arc::new(Mutex::new(None)),
+        program_mode_forced_hold: Arc::new(AtomicBool::new(false)),
+        program_mode_active: Arc::new(AtomicBool::new(false)),
     }
 }
 
@@ -3374,9 +3464,14 @@ async fn read_settings_snapshot_from_scanner(state: &AppState) -> Result<Value, 
 }
 
 async fn read_channel_from_scanner(state: &AppState, index: u16) -> Result<ChannelData, ApiError> {
-    let _ = send_raw_command(state, "PRG", false).await?;
+    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
+    if !in_program_mode {
+        let _ = send_raw_command(state, "PRG", false).await?;
+    }
     let response = send_raw_command(state, &format!("CIN,{}", index), false).await;
-    let _ = send_raw_command(state, "EPG", false).await;
+    if !in_program_mode {
+        let _ = send_raw_command(state, "EPG", false).await;
+    }
     let response = response?;
     parse_cin_response(index, &response)
         .ok_or_else(|| ApiError::BadRequest("channel_read_failed".to_string()))
@@ -3386,42 +3481,153 @@ async fn write_channel_to_scanner(
     state: &AppState,
     channel: &ChannelData,
 ) -> Result<ChannelData, ApiError> {
-    let _ = send_raw_command(state, "PRG", false).await?;
-    let tone = channel
-        .tone_squelch
-        .map(|v| {
-            if v.fract() == 0.0 {
-                (v as i64).to_string()
+    fn looks_like_frequency(value: &str) -> bool {
+        if value.is_empty() {
+            return false;
+        }
+        value.contains('.') || (value.chars().all(|c| c.is_ascii_digit()) && value.parse::<i64>().unwrap_or(0) >= 10000)
+    }
+    fn format_frequency(value: f64, template: &str) -> String {
+        if template.contains('.') {
+            format!("{:.4}", value)
+        } else {
+            let raw = (value * 10000.0).round() as i64;
+            let width = if template.chars().all(|c| c.is_ascii_digit()) {
+                std::cmp::max(8, template.len())
             } else {
-                v.to_string()
-            }
-        })
-        .unwrap_or_else(|| "0".to_string());
-    let write_cmd = format!(
-        "CIN,{},{},{:08},{},{},{},{},{},{}",
-        channel.index,
-        channel
-            .alpha_tag
-            .replace(',', " ")
-            .chars()
-            .take(16)
-            .collect::<String>(),
-        (channel.frequency * 10000.0).round() as i64,
-        channel.modulation.to_uppercase(),
-        tone,
-        channel.delay,
-        if channel.lockout { 1 } else { 0 },
-        if channel.priority { 1 } else { 0 },
-        channel.bank
-    );
+                8
+            };
+            format!("{:0width$}", raw, width = width)
+        }
+    }
+    fn format_tone_value(value: Option<f64>) -> String {
+        match value {
+            None => "0".to_string(),
+            Some(v) if v.fract() == 0.0 => format!("{}", v as i64),
+            Some(v) => format!("{}", v),
+        }
+    }
+
+    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
+    if !in_program_mode {
+        let _ = send_raw_command(state, "PRG", false).await?;
+    }
+    let raw = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
+    let raw = raw?;
+    let mut parts = raw
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect::<Vec<String>>();
+    if parts
+        .first()
+        .map(|p| p.eq_ignore_ascii_case("CIN"))
+        .unwrap_or(false)
+    {
+        parts.remove(0);
+    }
+    if parts
+        .first()
+        .and_then(|v| v.parse::<u16>().ok())
+        .map(|v| v == channel.index)
+        .unwrap_or(false)
+    {
+        parts.remove(0);
+    }
+    if parts.is_empty() {
+        if !in_program_mode {
+            let _ = send_raw_command(state, "EPG", false).await;
+        }
+        return Err(ApiError::BadRequest("channel_read_failed".to_string()));
+    }
+
+    let has_bank = parts.len() >= 8
+        && parts
+            .last()
+            .and_then(|v| v.parse::<u8>().ok())
+            .map(|v| v <= 10)
+            .unwrap_or(false);
+    let has_tone = if parts.len() == 7 {
+        let lockout_candidate = parts.get(3).map(|s| s.as_str()).unwrap_or("");
+        let delay_candidate = parts.get(4).map(|s| s.as_str()).unwrap_or("");
+        let priority_candidate = parts.get(5).map(|s| s.as_str()).unwrap_or("");
+        let bank_candidate = parts.get(6).map(|s| s.as_str()).unwrap_or("");
+        !(matches!(lockout_candidate, "0" | "1")
+            && delay_candidate.parse::<u8>().is_ok()
+            && matches!(priority_candidate, "0" | "1")
+            && bank_candidate
+                .parse::<u8>()
+                .map(|v| v <= 10)
+                .unwrap_or(false))
+    } else {
+        parts.len() >= 8
+    };
+
+    let template_freq = if parts.len() > 1 && looks_like_frequency(&parts[1]) {
+        parts[1].clone()
+    } else {
+        parts.first().cloned().unwrap_or_else(|| "00000000".to_string())
+    };
+
+    let alpha_tag = channel
+        .alpha_tag
+        .replace(',', " ")
+        .trim()
+        .chars()
+        .take(16)
+        .collect::<String>();
+    let modulation = if channel.modulation.is_empty() {
+        "AUTO".to_string()
+    } else {
+        channel.modulation.to_uppercase()
+    };
+    let delay_value = channel.delay.to_string();
+    let lockout_value = if channel.lockout { "1" } else { "0" }.to_string();
+    let priority_value = if channel.priority { "1" } else { "0" }.to_string();
+    let bank_value = channel.bank.to_string();
+    let tone_value = format_tone_value(channel.tone_squelch);
+
+    let mut values = if has_tone {
+        vec![
+            alpha_tag,
+            format_frequency(channel.frequency, &template_freq),
+            modulation,
+            tone_value,
+            delay_value,
+            lockout_value,
+            priority_value,
+        ]
+    } else {
+        vec![
+            alpha_tag,
+            format_frequency(channel.frequency, &template_freq),
+            modulation,
+            lockout_value,
+            delay_value,
+            priority_value,
+            bank_value.clone(),
+        ]
+    };
+    if has_tone && has_bank {
+        values.push(bank_value);
+    }
+
+    let write_cmd = format!("CIN,{},{}", channel.index, values.join(","));
     let write_response = send_raw_command(state, &write_cmd, false).await;
     let read_response = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
-    let _ = send_raw_command(state, "EPG", false).await;
+    if !in_program_mode {
+        let _ = send_raw_command(state, "EPG", false).await;
+    }
 
     let write_response = write_response?;
     let upper = write_response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK")) {
-        return Err(ApiError::BadRequest("channel_write_failed".to_string()));
+    if !(upper == "OK" || upper.ends_with(",OK") || upper.contains("OK")) {
+        return Err(ApiError::BadRequest(
+            if write_response.trim().is_empty() {
+                "channel_write_failed".to_string()
+            } else {
+                write_response.trim().to_string()
+            },
+        ));
     }
     let read_response = read_response?;
     parse_cin_response(channel.index, &read_response)
@@ -3433,7 +3639,10 @@ async fn set_channel_lockout_on_scanner(
     index: u16,
     locked: bool,
 ) -> Result<ChannelData, ApiError> {
-    let _ = send_raw_command(state, "PRG", false).await?;
+    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
+    if !in_program_mode {
+        let _ = send_raw_command(state, "PRG", false).await?;
+    }
     let response = send_raw_command(state, &format!("CIN,{}", index), false).await;
     let response = response?;
 
@@ -3474,7 +3683,9 @@ async fn set_channel_lockout_on_scanner(
     };
     let lockout_idx = if has_tone { 5 } else { 3 };
     if parts.len() <= lockout_idx {
-        let _ = send_raw_command(state, "EPG", false).await;
+        if !in_program_mode {
+            let _ = send_raw_command(state, "EPG", false).await;
+        }
         return Err(ApiError::BadRequest("lockout_failed".to_string()));
     }
     parts[lockout_idx] = if locked { "1" } else { "0" }.to_string();
@@ -3482,7 +3693,9 @@ async fn set_channel_lockout_on_scanner(
     let write_cmd = format!("CIN,{},{}", index, parts.join(","));
     let write_response = send_raw_command(state, &write_cmd, false).await;
     let read_response = send_raw_command(state, &format!("CIN,{}", index), false).await;
-    let _ = send_raw_command(state, "EPG", false).await;
+    if !in_program_mode {
+        let _ = send_raw_command(state, "EPG", false).await;
+    }
 
     let write_response = write_response?;
     let upper = write_response.trim().to_uppercase();

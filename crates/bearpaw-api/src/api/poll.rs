@@ -59,10 +59,37 @@ fn run_poll_loop(
     let mut port = transport.open().map_err(|e| e.to_string())?;
 
     info!("Serial opened: {} @ {} baud", port_name, baud);
+    if let Ok(mut d) = state.device.write() {
+        d.port = Some(port_name.to_string());
+        d.connection_status = "connected".to_string();
+    }
 
-    // Device info: model from MDL
-    let mdl_resp = transport.send(port.as_mut(), MDL_CMD)?;
-    update_device_info_from_mdl(&state, &mdl_resp, port_name);
+    // Device info: model from MDL (with retry because some scanners can return
+    // stale command echoes immediately after connection).
+    let mut mdl_set = false;
+    for attempt in 1..=5 {
+        match transport.send(port.as_mut(), MDL_CMD) {
+            Ok(mdl_resp) => {
+                if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
+                    update_device_info_from_mdl(&state, &mdl_resp, port_name);
+                    mdl_set = true;
+                    break;
+                }
+                warn!(
+                    "Invalid MDL response on serial attempt {}: {}",
+                    attempt,
+                    mdl_resp.trim()
+                );
+            }
+            Err(err) => {
+                warn!("MDL read failed on serial attempt {}: {}", attempt, err);
+            }
+        }
+        thread::sleep(Duration::from_millis(120));
+    }
+    if !mdl_set {
+        warn!("Unable to read valid MDL response after retries (serial)");
+    }
 
     let mut commanded_mode: String = "SCAN".to_string();
 
@@ -147,9 +174,36 @@ fn run_poll_loop_usb(
     let mut session = transport.open().map_err(|e| e.to_string())?;
 
     info!("USB opened: {:04x}:{:04x}", vid, pid);
+    if let Ok(mut d) = state.device.write() {
+        d.port = Some(format!("usb:{:04x}:{:04x}", vid, pid));
+        d.connection_status = "connected".to_string();
+    }
 
-    let mdl_resp = transport.send(&mut session, MDL_CMD)?;
-    update_device_info_from_mdl(&state, &mdl_resp, &format!("usb:{:04x}:{:04x}", vid, pid));
+    let port_label = format!("usb:{:04x}:{:04x}", vid, pid);
+    let mut mdl_set = false;
+    for attempt in 1..=5 {
+        match transport.send(&mut session, MDL_CMD) {
+            Ok(mdl_resp) => {
+                if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
+                    update_device_info_from_mdl(&state, &mdl_resp, &port_label);
+                    mdl_set = true;
+                    break;
+                }
+                warn!(
+                    "Invalid MDL response on usb attempt {}: {}",
+                    attempt,
+                    mdl_resp.trim()
+                );
+            }
+            Err(err) => {
+                warn!("MDL read failed on usb attempt {}: {}", attempt, err);
+            }
+        }
+        thread::sleep(Duration::from_millis(120));
+    }
+    if !mdl_set {
+        warn!("Unable to read valid MDL response after retries (usb)");
+    }
 
     let mut commanded_mode: String = "SCAN".to_string();
     loop {
@@ -232,6 +286,8 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             d.diagnostic_code = None;
             d.diagnostic_message = None;
         }
+    } else {
+        warn!("Invalid MDL response ignored: {}", mdl_resp.trim());
     }
 }
 

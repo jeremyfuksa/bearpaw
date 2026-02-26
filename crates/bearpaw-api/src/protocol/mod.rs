@@ -63,8 +63,21 @@ pub fn livestate_from_sts(map: &HashMap<String, String>) -> LiveState {
 /// MDL response: "MDL,BC125AT" -> "BC125AT"
 pub fn parse_mdl_response(response: &str) -> Option<String> {
     let line = response.lines().next()?.trim();
-    let (_cmd, model) = line.split_once(',')?;
-    Some(model.trim().to_string())
+    let (cmd, model) = line.split_once(',')?;
+    if !cmd.trim().eq_ignore_ascii_case("MDL") {
+        return None;
+    }
+    let model = model.trim();
+    if model.is_empty() || model.len() > 32 {
+        return None;
+    }
+    if !model
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    Some(model.to_string())
 }
 
 /// Parse CIN response into ChannelData.
@@ -103,7 +116,7 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         }
         s.parse().unwrap_or(0.0)
     };
-    let alpha_tag = p.get(0).unwrap_or(&"").to_string();
+    let alpha_tag = p.first().unwrap_or(&"").to_string();
     let freq_raw = p.get(1).copied().unwrap_or("");
     let frequency = parse_freq(freq_raw);
     let modulation = p
@@ -111,10 +124,48 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         .map(|s| s.to_uppercase())
         .filter(|s| ["FM", "AM", "NFM", "AUTO"].contains(&s.as_str()))
         .unwrap_or_else(|| "FM".to_string());
-    let lockout = p.get(3).map(|s| *s == "1").unwrap_or(false);
-    let delay = p.get(4).and_then(|s| s.parse().ok()).unwrap_or(2) as u8;
-    let priority = p.get(5).map(|s| *s == "1").unwrap_or(false);
-    let bank = p.get(6).and_then(|s| s.parse().ok()).unwrap_or(0) as u8;
+
+    let has_bank = p
+        .last()
+        .and_then(|s| s.parse::<u8>().ok())
+        .map(|v| v <= 10)
+        .unwrap_or(false)
+        && p.len() >= 8;
+    let has_tone = if p.len() == 7 {
+        let lockout_candidate = p.get(3).copied().unwrap_or("");
+        let delay_candidate = p.get(4).copied().unwrap_or("");
+        let priority_candidate = p.get(5).copied().unwrap_or("");
+        let bank_candidate = p.get(6).copied().unwrap_or("");
+        !(matches!(lockout_candidate, "0" | "1")
+            && delay_candidate.parse::<u8>().is_ok()
+            && matches!(priority_candidate, "0" | "1")
+            && bank_candidate
+                .parse::<u8>()
+                .map(|v| v <= 10)
+                .unwrap_or(false))
+    } else {
+        p.len() >= 8
+    };
+
+    let (tone_squelch, lockout_idx, delay_idx, priority_idx, bank_idx) = if has_tone {
+        (p.get(3).copied(), 5usize, 4usize, 6usize, if has_bank { Some(7usize) } else { None })
+    } else {
+        (None, 3usize, 4usize, 5usize, Some(6usize))
+    };
+
+    let tone_squelch = tone_squelch
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|v| *v > 0.0);
+    let lockout = p.get(lockout_idx).map(|s| *s == "1").unwrap_or(false);
+    let delay = p
+        .get(delay_idx)
+        .and_then(|s| s.parse::<u8>().ok())
+        .unwrap_or(2);
+    let priority = p.get(priority_idx).map(|s| *s == "1").unwrap_or(false);
+    let bank = bank_idx
+        .and_then(|idx| p.get(idx))
+        .and_then(|s| s.parse::<u8>().ok())
+        .unwrap_or(0);
     Some(ChannelData {
         index,
         frequency,
@@ -123,7 +174,7 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         delay,
         lockout,
         priority,
-        tone_squelch: None,
+        tone_squelch,
         bank,
     })
 }
