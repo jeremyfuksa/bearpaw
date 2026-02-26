@@ -355,6 +355,22 @@ describe("useWebSocket hook", () => {
 
       expect(global.WebSocket).toHaveBeenCalledWith("ws://test");
     });
+
+    it("should resolve a default ws URL when url prop is omitted", () => {
+      const TestComponent = () => {
+        useWebSocket();
+        return <div>Mounted</div>;
+      };
+
+      render(
+        <WebSocketProvider>
+          <TestComponent />
+        </WebSocketProvider>
+      );
+
+      const firstCall = (global.WebSocket as any).mock.calls[0]?.[0] as string;
+      expect(firstCall).toMatch(/^wss?:\/\/.+\/ws$/);
+    });
   });
 
   describe("useWebSocket", () => {

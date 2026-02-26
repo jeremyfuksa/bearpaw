@@ -12,6 +12,7 @@
 - **[FRONTEND_SPEC.md](./FRONTEND_SPEC.md)** - Frontend architecture & implementation spec
 - **[API_SPEC.md](./API_SPEC.md)** - API contract specification (REST + WebSocket)
 - **[SCANNER_PROTOCOL_REFERENCE.md](./SCANNER_PROTOCOL_REFERENCE.md)** - Protocol reference and commands
+- **[DATA_LIFECYCLE.md](./DATA_LIFECYCLE.md)** - Database persistence, migration, and retention policy
 
 ### 🗂️ Archive (Non-Daily)
 

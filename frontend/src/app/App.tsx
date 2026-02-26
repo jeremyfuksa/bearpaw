@@ -164,6 +164,49 @@ export default function App() {
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
   const analyticsLoadedRef = useRef(false);
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scanResumeInFlightRef = useRef(false);
+  const scanResumeTimerRef = useRef<number | null>(null);
+
+  const requestScanResume = useCallback(
+    (
+      reason: string,
+      options: { delayMs?: number; toastOnError?: boolean } = {},
+    ) => {
+      const delayMs = options.delayMs ?? 0;
+      const toastOnError = options.toastOnError ?? false;
+      if (!connected) return;
+
+      const runResume = async () => {
+        if (scanResumeInFlightRef.current) return;
+        scanResumeInFlightRef.current = true;
+        try {
+          await api.sendScan();
+        } catch (error) {
+          console.warn(`Failed to resume scan (${reason})`, error);
+          if (toastOnError) {
+            toast.error("Failed to resume scan");
+          }
+        } finally {
+          scanResumeTimerRef.current = window.setTimeout(() => {
+            scanResumeInFlightRef.current = false;
+            scanResumeTimerRef.current = null;
+          }, 250);
+        }
+      };
+
+      if (delayMs > 0) {
+        if (scanResumeTimerRef.current !== null) {
+          window.clearTimeout(scanResumeTimerRef.current);
+        }
+        scanResumeTimerRef.current = window.setTimeout(() => {
+          void runResume();
+        }, delayMs);
+      } else {
+        void runResume();
+      }
+    },
+    [api, connected],
+  );
 
   useEffect(() => {
     setConnected(connected);
@@ -254,7 +297,11 @@ export default function App() {
   useEffect(() => {
     const unsubscribeState = ws.on("state_update", (message) => {
       const payload = message as StateUpdateMessage;
-      setHasFreshLiveFrame(true);
+      if (payload.data.stale === true) {
+        setHasFreshLiveFrame(false);
+      } else {
+        setHasFreshLiveFrame(true);
+      }
       updateLiveState(payload.data, payload.sequence);
       const squelchOpen = payload.data.squelch_open;
 
@@ -286,6 +333,7 @@ export default function App() {
     const unsubscribeEvent = ws.on("event", (message) => {
       const payload = message as EventMessage;
       if (payload.event === "state_stale") {
+        setHasFreshLiveFrame(false);
         updateLiveState({ stale: true });
       }
       if (payload.event === "scan_hit") {
@@ -336,10 +384,7 @@ export default function App() {
           .then((channelData) => setChannels(channelData))
           .then(() => {
             if (currentTab === "Scan") {
-              api.sendScan().catch((error) => {
-                console.warn("Failed to resume scan after sync", error);
-                toast.error("Failed to resume scan");
-              });
+              requestScanResume("sync completion", { toastOnError: true });
             }
           })
           .catch((error) =>
@@ -355,8 +400,11 @@ export default function App() {
       if (programModeEntryTimeoutRef.current) {
         clearTimeout(programModeEntryTimeoutRef.current);
       }
+      if (scanResumeTimerRef.current !== null) {
+        window.clearTimeout(scanResumeTimerRef.current);
+      }
     };
-  }, [addActivityLogEntry, addToFullActivityLog, api, currentTab, isRecording, setChannels, updateLiveState, ws, liveState?.mode]);
+  }, [addActivityLogEntry, addToFullActivityLog, api, currentTab, isRecording, requestScanResume, setChannels, updateLiveState, ws, liveState?.mode]);
 
   useEffect(() => {
     if (!connected) {
@@ -379,7 +427,7 @@ export default function App() {
 
         if (statusResult.status === "fulfilled") {
           updateLiveState(statusResult.value);
-          setHasFreshLiveFrame(true);
+          setHasFreshLiveFrame(!statusResult.value.stale);
         }
 
         if (infoResult.status === "fulfilled") {
@@ -628,13 +676,9 @@ export default function App() {
       const newTab = tab as Tab;
       if (newTab === "Scan") {
         if (isInProgramMode) {
-          api.sendScan().catch((error) => {
-            console.warn("Failed to exit program mode", error);
-            toast.error("Failed to exit program mode");
-          });
+          requestScanResume("exit program mode", { toastOnError: true });
         }
         setCurrentTab(newTab);
-        setIsInProgramMode(false);
         return;
       }
 
@@ -642,7 +686,7 @@ export default function App() {
         setCurrentTab(newTab);
       }
     },
-    [isInProgramMode, api],
+    [isInProgramMode, requestScanResume],
   );
 
   const getScannerMode = () => {
@@ -731,17 +775,13 @@ export default function App() {
             : "Temporary lockout cleared",
       );
       if (getScannerMode() === "HOLD") {
-        window.setTimeout(() => {
-          api.sendScan().catch((error) => {
-            console.warn("Failed to resume scan after temporary lockout", error);
-          });
-        }, 1000);
+        requestScanResume("temporary lockout", { delayMs: 1000 });
       }
     } catch (error) {
       console.warn("Failed to toggle lockout", error);
       toast.error("Failed to toggle lockout");
     }
-  }, [api, connected, getScannerMode, liveState?.channel, liveState?.frequency]);
+  }, [api, connected, getScannerMode, liveState?.channel, liveState?.frequency, requestScanResume]);
 
   const triggerPermanentLockout = useCallback(async () => {
     if (!connected) return;
@@ -764,17 +804,13 @@ export default function App() {
         `Permanent lockout ${updated.lockout ? "enabled" : "cleared"} for CH ${updated.index}`,
       );
       if (getScannerMode() === "HOLD") {
-        window.setTimeout(() => {
-          api.sendScan().catch((error) => {
-            console.warn("Failed to resume scan after permanent lockout", error);
-          });
-        }, 1000);
+        requestScanResume("permanent lockout", { delayMs: 1000 });
       }
     } catch (error) {
       console.warn("Failed to toggle lockout", error);
       toast.error("Failed to toggle lockout");
     }
-  }, [api, channels, connected, getScannerMode, liveState?.channel, setChannels]);
+  }, [api, channels, connected, getScannerMode, liveState?.channel, requestScanResume, setChannels]);
 
   const handleLockout = useCallback(
     (type: "temporary" | "permanent") => {

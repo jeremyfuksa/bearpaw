@@ -21,6 +21,12 @@ docs/op-spec.pdf
 backend/analytics.db
 backend/analytics.db-wal
 backend/analytics.db-shm
+crates/bearpaw-api/scanner.db
+crates/bearpaw-api/scanner.db-wal
+crates/bearpaw-api/scanner.db-shm
+crates/bearpaw-api/analytics.db
+crates/bearpaw-api/analytics.db-wal
+crates/bearpaw-api/analytics.db-shm
 bearpaw-figma/
 bearpaw-refactor/
 

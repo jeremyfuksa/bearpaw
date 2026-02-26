@@ -8,6 +8,7 @@ use std::{env, path::PathBuf};
 
 use serde::Serialize;
 use tauri::Emitter;
+use tauri::Manager;
 
 #[derive(Default)]
 struct BackendRuntimeState {
@@ -198,6 +199,10 @@ fn main() {
             backend: backend_state.clone(),
         })
         .setup(move |app| {
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                let _ = std::fs::create_dir_all(&data_dir);
+                env::set_var("BEARPAW_DATA_DIR", data_dir.to_string_lossy().to_string());
+            }
             start_backend_runtime(backend_state.clone());
             start_status_broadcaster(app.handle().clone(), backend_state.clone());
             Ok(())

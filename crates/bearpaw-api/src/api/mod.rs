@@ -22,12 +22,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tracing::{info, warn};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
+use tracing::{info, warn};
 
 use crate::protocol::parse_cin_response;
 use crate::state::{ChannelData, DeviceInfo, LiveState, ShadowState};
@@ -85,6 +86,9 @@ pub struct ActiveHit {
     pub bank: Option<u8>,
 }
 
+const PREFERENCES_SCHEMA_VERSION: i32 = 1;
+const ANALYTICS_SCHEMA_VERSION: i32 = 1;
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/status", get(get_status))
@@ -132,7 +136,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/settings/custom-search/ranges/:index",
-            get(stub_custom_range).post(set_custom_range),
+            get(get_custom_range).post(set_custom_range),
         )
         .route(
             "/api/v1/settings/weather",
@@ -165,7 +169,10 @@ pub fn router(state: AppState) -> Router {
             post(program_mode_start),
         )
         .route("/api/v1/memory/program-mode/end", post(program_mode_end))
-        .route("/api/v1/memory/export/bc125at_ss", get(export_stub))
+        .route(
+            "/api/v1/memory/export/bc125at_ss",
+            get(export_bc125at_ss_file),
+        )
         .route("/api/v1/memory/export/csv", get(export_csv))
         .route("/api/v1/memory/import/csv", post(import_csv))
         .route(
@@ -1517,7 +1524,7 @@ async fn set_custom_search(
     Ok(Json(json!({ "status": "ok" })))
 }
 
-async fn stub_custom_range(
+async fn get_custom_range(
     State(state): State<AppState>,
     Path(index): Path<u8>,
 ) -> Result<Json<Value>, ApiError> {
@@ -1557,9 +1564,9 @@ async fn stub_custom_range(
         .and_then(Value::as_array)
         .and_then(|ranges| ranges.get(index.saturating_sub(1) as usize))
         .cloned();
-    Ok(Json(
-        from_snapshot.unwrap_or_else(|| json!({ "index": index, "lower": 0, "upper": 0 })),
-    ))
+    Ok(Json(from_snapshot.unwrap_or_else(
+        || json!({ "index": index, "lower": 0, "upper": 0 }),
+    )))
 }
 
 async fn set_custom_range(
@@ -1949,7 +1956,9 @@ fn ctcss_dcs_to_string(code: &str) -> String {
     "Off".to_string()
 }
 
-async fn export_stub(State(state): State<AppState>) -> Result<impl IntoResponse, ApiError> {
+async fn export_bc125at_ss_file(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
     let _ = command_sender(&state)?;
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
@@ -1995,10 +2004,7 @@ async fn export_stub(State(state): State<AppState>) -> Result<impl IntoResponse,
         let cc_mode = clc.first().cloned().unwrap_or_else(|| "0".to_string());
         let cc_beep = clc.get(1).cloned().unwrap_or_else(|| "0".to_string());
         let cc_light = clc.get(2).cloned().unwrap_or_else(|| "0".to_string());
-        let cc_bands = clc
-            .get(3)
-            .cloned()
-            .unwrap_or_else(|| "11111".to_string());
+        let cc_bands = clc.get(3).cloned().unwrap_or_else(|| "11111".to_string());
         let cc_lockout = clc.get(4).cloned().unwrap_or_else(|| "0".to_string());
         let service_flags = split_command_parts(&send_raw_command(&state, "SSG", false).await?)
             .first()
@@ -2027,8 +2033,9 @@ async fn export_stub(State(state): State<AppState>) -> Result<impl IntoResponse,
 
         let mut custom_ranges = Vec::new();
         for idx in 1..=10 {
-            let csp =
-                split_command_parts(&send_raw_command(&state, &format!("CSP,{}", idx), false).await?);
+            let csp = split_command_parts(
+                &send_raw_command(&state, &format!("CSP,{}", idx), false).await?,
+            );
             let lower_hz = csp
                 .get(1)
                 .and_then(|v| v.parse::<i64>().ok())
@@ -2044,7 +2051,9 @@ async fn export_stub(State(state): State<AppState>) -> Result<impl IntoResponse,
 
         let mut channels = Vec::new();
         for idx in 1..=500 {
-            let cin = split_command_parts(&send_raw_command(&state, &format!("CIN,{}", idx), false).await?);
+            let cin = split_command_parts(
+                &send_raw_command(&state, &format!("CIN,{}", idx), false).await?,
+            );
             let mut parts = cin;
             if parts
                 .first()
@@ -2196,7 +2205,11 @@ async fn export_stub(State(state): State<AppState>) -> Result<impl IntoResponse,
             }
         ));
 
-        lines.push(format!("GeneralSearch\t{}\t{}", search_delay, on_off(&search_code)));
+        lines.push(format!(
+            "GeneralSearch\t{}\t{}",
+            search_delay,
+            on_off(&search_code)
+        ));
 
         let scan_enabled = flags_to_bools(&scan_flags);
         for idx in 1..=10 {
@@ -2817,6 +2830,25 @@ pub async fn run_server(
         }
     }
 
+    let cleanup_state = state.clone();
+    tokio::spawn(async move {
+        loop {
+            let retention_days = analytics_retention_days(&cleanup_state);
+            let deleted = tokio::task::spawn_blocking({
+                let path = (*cleanup_state.analytics_db_path).clone();
+                move || cleanup_analytics_db(&path, retention_days)
+            })
+            .await
+            .unwrap_or(0);
+            info!(
+                retention_days = retention_days,
+                deleted_records = deleted,
+                "analytics cleanup run complete"
+            );
+            tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
+        }
+    });
+
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!("Bearpaw API listening on http://{}", bind);
     axum::serve(listener, router(state).into_make_service()).await?;
@@ -2824,14 +2856,14 @@ pub async fn run_server(
 }
 
 pub fn default_state() -> AppState {
-    let preferences_db_path =
-        std::env::var("BEARPAW_PREFERENCES_DB").unwrap_or_else(|_| "scanner.db".to_string());
-    let analytics_db_path =
-        std::env::var("BEARPAW_ANALYTICS_DB").unwrap_or_else(|_| "analytics.db".to_string());
+    let preferences_db_path = resolve_db_path("BEARPAW_PREFERENCES_DB", "scanner.db");
+    let analytics_db_path = resolve_db_path("BEARPAW_ANALYTICS_DB", "analytics.db");
     init_preferences_db(&preferences_db_path);
     init_analytics_db(&analytics_db_path);
     let loaded_preferences = load_preferences_from_db(&preferences_db_path);
     let loaded_hits = load_analytics_hits_from_db(&analytics_db_path);
+    let retention_days = extract_retention_days(&loaded_preferences);
+    let _ = cleanup_analytics_db(&analytics_db_path, retention_days);
     let next_hit_id = loaded_hits
         .last()
         .and_then(|h| h.id.parse::<u64>().ok())
@@ -3007,21 +3039,34 @@ fn min_hit_duration(state: &AppState) -> f64 {
         .unwrap_or(2.0)
 }
 
+fn extract_retention_days(prefs: &Map<String, Value>) -> u32 {
+    prefs
+        .get("data_retention_days")
+        .and_then(Value::as_u64)
+        .map(|v| v as u32)
+        .or_else(|| {
+            prefs
+                .get("data_retention_days")
+                .and_then(Value::as_i64)
+                .map(|v| if v < 0 { 0 } else { v as u32 })
+        })
+        .unwrap_or(30)
+}
+
+fn analytics_retention_days(state: &AppState) -> u32 {
+    let prefs = state.preferences.lock().unwrap();
+    extract_retention_days(&prefs)
+}
+
 fn init_preferences_db(path: &str) {
-    if let Some(parent) = std::path::Path::new(path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(conn) = rusqlite::Connection::open(path) {
-        let _ = conn.execute(
-            "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
-            [],
-        );
+    if let Some(conn) = open_sqlite(path) {
+        migrate_preferences_db(path, &conn);
     }
 }
 
 fn load_preferences_from_db(path: &str) -> Map<String, Value> {
     let mut prefs = default_preferences();
-    if let Ok(conn) = rusqlite::Connection::open(path) {
+    if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
             [],
@@ -3045,7 +3090,7 @@ fn load_preferences_from_db(path: &str) -> Map<String, Value> {
 }
 
 fn save_preference_to_db(path: &str, key: &str, value: &Value) {
-    if let Ok(conn) = rusqlite::Connection::open(path) {
+    if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
             [],
@@ -3058,7 +3103,7 @@ fn save_preference_to_db(path: &str, key: &str, value: &Value) {
 }
 
 fn reset_preferences_db(path: &str) {
-    if let Ok(conn) = rusqlite::Connection::open(path) {
+    if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
             [],
@@ -3068,38 +3113,14 @@ fn reset_preferences_db(path: &str) {
 }
 
 fn init_analytics_db(path: &str) {
-    if let Some(parent) = std::path::Path::new(path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(conn) = rusqlite::Connection::open(path) {
-        let _ = conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS scan_hits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp REAL NOT NULL,
-                frequency REAL NOT NULL,
-                channel INTEGER,
-                alpha_tag TEXT,
-                modulation TEXT NOT NULL,
-                rssi INTEGER NOT NULL,
-                duration REAL,
-                mode TEXT NOT NULL,
-                bank INTEGER,
-                session_id TEXT NOT NULL,
-                ended_at REAL
-            );
-            CREATE INDEX IF NOT EXISTS idx_hits_timestamp ON scan_hits(timestamp DESC);
-            CREATE INDEX IF NOT EXISTS idx_hits_channel ON scan_hits(channel);
-            CREATE INDEX IF NOT EXISTS idx_hits_frequency ON scan_hits(frequency);
-            CREATE INDEX IF NOT EXISTS idx_hits_session ON scan_hits(session_id);
-            ",
-        );
+    if let Some(conn) = open_sqlite(path) {
+        migrate_analytics_db(path, &conn);
     }
 }
 
 fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
     let mut out = Vec::new();
-    if let Ok(conn) = rusqlite::Connection::open(path) {
+    if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS scan_hits (
@@ -3164,7 +3185,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
 }
 
 fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
-    if let Ok(conn) = rusqlite::Connection::open(path) {
+    if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
             "INSERT INTO scan_hits (timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -3186,7 +3207,7 @@ fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
 }
 
 fn cleanup_analytics_db(path: &str, retention_days: u32) -> usize {
-    if let Ok(conn) = rusqlite::Connection::open(path) {
+    if let Some(conn) = open_sqlite(path) {
         let cutoff = epoch_now() - (retention_days as f64 * 24.0 * 3600.0);
         if let Ok(deleted) = conn.execute(
             "DELETE FROM scan_hits WHERE timestamp < ?1",
@@ -3196,6 +3217,162 @@ fn cleanup_analytics_db(path: &str, retention_days: u32) -> usize {
         }
     }
     0
+}
+
+fn resolve_db_path(env_key: &str, default_file: &str) -> String {
+    if let Ok(raw) = std::env::var(env_key) {
+        if !raw.trim().is_empty() {
+            let candidate = PathBuf::from(raw);
+            if candidate.is_absolute() {
+                return candidate.to_string_lossy().into_owned();
+            }
+            return default_data_dir()
+                .join(candidate)
+                .to_string_lossy()
+                .into_owned();
+        }
+    }
+    default_data_dir()
+        .join(default_file)
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn backup_db_if_needed(path: &str, label: &str, from_version: i32, target_version: i32) {
+    if from_version >= target_version {
+        return;
+    }
+    let source = PathBuf::from(path);
+    if !source.exists() {
+        return;
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let backup_name = format!(
+        "{}.v{}-to-v{}.{}.{}.bak",
+        source
+            .file_name()
+            .and_then(|v| v.to_str())
+            .unwrap_or("database.db"),
+        from_version,
+        target_version,
+        label,
+        ts
+    );
+    let backup_path = source
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join(backup_name);
+    let _ = std::fs::copy(source, backup_path);
+}
+
+fn schema_version(conn: &rusqlite::Connection) -> i32 {
+    conn.pragma_query_value(None, "user_version", |row| row.get::<usize, i32>(0))
+        .unwrap_or(0)
+}
+
+fn set_schema_version(conn: &rusqlite::Connection, version: i32) {
+    let _ = conn.pragma_update(None, "user_version", version);
+}
+
+fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) {
+    let current = schema_version(conn);
+    backup_db_if_needed(path, "preferences", current, PREFERENCES_SCHEMA_VERSION);
+    if current < 1 {
+        let _ = conn.execute(
+            "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
+            [],
+        );
+        set_schema_version(conn, 1);
+    }
+}
+
+fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) {
+    let current = schema_version(conn);
+    backup_db_if_needed(path, "analytics", current, ANALYTICS_SCHEMA_VERSION);
+    if current < 1 {
+        let _ = conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS scan_hits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                frequency REAL NOT NULL,
+                channel INTEGER,
+                alpha_tag TEXT,
+                modulation TEXT NOT NULL,
+                rssi INTEGER NOT NULL,
+                duration REAL,
+                mode TEXT NOT NULL,
+                bank INTEGER,
+                session_id TEXT NOT NULL,
+                ended_at REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_hits_timestamp ON scan_hits(timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_hits_channel ON scan_hits(channel);
+            CREATE INDEX IF NOT EXISTS idx_hits_frequency ON scan_hits(frequency);
+            CREATE INDEX IF NOT EXISTS idx_hits_session ON scan_hits(session_id);
+            ",
+        );
+        set_schema_version(conn, 1);
+    }
+}
+
+fn default_data_dir() -> PathBuf {
+    if let Ok(raw) = std::env::var("BEARPAW_DATA_DIR") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    if cfg!(test) {
+        return std::env::temp_dir().join("bearpaw-tests");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("Bearpaw");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("Bearpaw");
+        }
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        if let Ok(xdg_data_home) = std::env::var("XDG_DATA_HOME") {
+            return PathBuf::from(xdg_data_home).join("bearpaw");
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("bearpaw");
+        }
+    }
+
+    std::env::temp_dir().join("bearpaw")
+}
+
+fn open_sqlite(path: &str) -> Option<rusqlite::Connection> {
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let conn = rusqlite::Connection::open(path).ok()?;
+    let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let _ = conn.pragma_update(None, "synchronous", "NORMAL");
+    let _ = conn.busy_timeout(Duration::from_secs(5));
+    Some(conn)
 }
 
 fn broadcast_state_update(state: &AppState, live: &LiveState) {
@@ -3485,7 +3662,9 @@ async fn write_channel_to_scanner(
         if value.is_empty() {
             return false;
         }
-        value.contains('.') || (value.chars().all(|c| c.is_ascii_digit()) && value.parse::<i64>().unwrap_or(0) >= 10000)
+        value.contains('.')
+            || (value.chars().all(|c| c.is_ascii_digit())
+                && value.parse::<i64>().unwrap_or(0) >= 10000)
     }
     fn format_frequency(value: f64, template: &str) -> String {
         if template.contains('.') {
@@ -3565,7 +3744,10 @@ async fn write_channel_to_scanner(
     let template_freq = if parts.len() > 1 && looks_like_frequency(&parts[1]) {
         parts[1].clone()
     } else {
-        parts.first().cloned().unwrap_or_else(|| "00000000".to_string())
+        parts
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "00000000".to_string())
     };
 
     let alpha_tag = channel
@@ -3621,13 +3803,11 @@ async fn write_channel_to_scanner(
     let write_response = write_response?;
     let upper = write_response.trim().to_uppercase();
     if !(upper == "OK" || upper.ends_with(",OK") || upper.contains("OK")) {
-        return Err(ApiError::BadRequest(
-            if write_response.trim().is_empty() {
-                "channel_write_failed".to_string()
-            } else {
-                write_response.trim().to_string()
-            },
-        ));
+        return Err(ApiError::BadRequest(if write_response.trim().is_empty() {
+            "channel_write_failed".to_string()
+        } else {
+            write_response.trim().to_string()
+        }));
     }
     let read_response = read_response?;
     parse_cin_response(channel.index, &read_response)
@@ -3722,6 +3902,7 @@ mod tests {
     use super::*;
     use axum::body::{to_bytes, Body};
     use axum::http::{Method, Request};
+    use std::path::PathBuf;
     use tower::util::ServiceExt;
 
     async fn json_body(response: axum::response::Response) -> Value {
@@ -3820,5 +4001,56 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = json_body(response).await;
         assert!(body.as_array().is_some());
+    }
+
+    fn temp_db_file(name: &str) -> PathBuf {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("bearpaw-test-{}-{}.db", name, ts))
+    }
+
+    #[test]
+    fn preferences_db_migration_sets_schema_version() {
+        let path = temp_db_file("prefs-migration");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create temp prefs db");
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
+                [],
+            )
+            .expect("create legacy prefs table");
+        }
+        init_preferences_db(path.to_str().expect("path to string"));
+        let conn = rusqlite::Connection::open(&path).expect("reopen prefs db");
+        let user_version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(user_version, PREFERENCES_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn analytics_db_migration_sets_schema_version_and_table() {
+        let path = temp_db_file("analytics-migration");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create temp analytics db");
+            conn.execute("PRAGMA user_version = 0", [])
+                .expect("set legacy version");
+        }
+        init_analytics_db(path.to_str().expect("path to string"));
+        let conn = rusqlite::Connection::open(&path).expect("reopen analytics db");
+        let user_version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(user_version, ANALYTICS_SCHEMA_VERSION);
+        let table_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='scan_hits'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query table");
+        assert_eq!(table_exists, 1);
     }
 }
