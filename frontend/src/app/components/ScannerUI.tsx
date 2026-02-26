@@ -15,6 +15,7 @@ interface TabNavProps {
   onTabChange: (tab: string) => void;
   connectionStatus: "connected" | "connecting" | "disconnected";
   modelName?: string;
+  shellStatusText?: string | null;
 }
 
 function getStatusDisplay(
@@ -35,6 +36,7 @@ export function TabNav({
   onTabChange,
   connectionStatus,
   modelName = "BC125AT",
+  shellStatusText,
 }: TabNavProps) {
   const tabs = ["Scan", "Device", "Channels"];
   const { statusColor, statusText } = getStatusDisplay(
@@ -75,6 +77,11 @@ export function TabNav({
         })}
       </div>
       <div className="flex gap-2 items-center justify-end">
+        {shellStatusText ? (
+          <p className="font-sans font-normal text-[10px] text-white/40 text-nowrap mr-2">
+            {shellStatusText}
+          </p>
+        ) : null}
         <div className="relative shrink-0 size-[8px]">
           <svg
             className="block size-full"

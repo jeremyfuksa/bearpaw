@@ -200,6 +200,11 @@ fn process_sts_frame(state: &AppState, commanded_mode: &str, resp: &str, source:
 }
 
 fn broadcast_live_update(state: &AppState, live: LiveState) {
+    let prev_squelch_open = state
+        .live
+        .read()
+        .map(|g| g.squelch_open)
+        .unwrap_or(false);
     let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
 
     if let Ok(mut g) = state.live.write() {
@@ -218,12 +223,28 @@ fn broadcast_live_update(state: &AppState, live: LiveState) {
             "rssi": live.rssi,
             "mode": live.mode,
             "channel": live.channel,
+            "alpha_tag": live.alpha_tag,
             "volume": live.volume,
             "battery": live.battery,
             "stale": live.stale,
         }
     });
     let _ = state.ws_tx.send(msg.to_string());
+
+    if live.squelch_open && !prev_squelch_open {
+        let event = json!({
+            "type": "event",
+            "timestamp": live.timestamp,
+            "event": "scan_hit",
+            "data": {
+                "frequency": live.frequency,
+                "channel": live.channel,
+                "alpha_tag": live.alpha_tag,
+                "rssi": live.rssi,
+            }
+        });
+        let _ = state.ws_tx.send(event.to_string());
+    }
 }
 
 fn send_progress(state: &AppState, task_id: &str, percent: u8, message: &str) {

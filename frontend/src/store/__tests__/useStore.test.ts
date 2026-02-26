@@ -25,14 +25,20 @@ describe('useStore', () => {
       expect(result.current.liveState?.frequency).toBe(145.5);
     });
 
-    it('should require frequency and modulation for initial state', () => {
+    it('should bootstrap initial state from partial updates', () => {
       const { result } = renderHook(() => useStore());
       
       act(() => {
         result.current.updateLiveState({ mode: 'SCAN' }, 1);
       });
 
-      expect(result.current.liveState).toBeNull();
+      expect(result.current.liveState).toEqual(
+        expect.objectContaining({
+          mode: 'SCAN',
+          frequency: 0,
+          modulation: 'FM',
+        })
+      );
     });
 
     it('should merge partial updates when liveState exists', () => {
@@ -50,12 +56,14 @@ describe('useStore', () => {
         result.current.updateLiveState({ rssi: 80 }, 2);
       });
 
-      expect(result.current.liveState).toEqual({
-        frequency: 145.5,
-        modulation: 'FM',
-        mode: 'SCAN',
-        rssi: 80,
-      });
+      expect(result.current.liveState).toEqual(
+        expect.objectContaining({
+          frequency: 145.5,
+          modulation: 'FM',
+          mode: 'SCAN',
+          rssi: 80,
+        })
+      );
     });
   });
 

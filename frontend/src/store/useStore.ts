@@ -76,6 +76,20 @@ const defaultPreferences: Preferences = {
   mqttRetain: false,
 };
 
+const defaultLiveState: LiveState = {
+  timestamp: 0,
+  frequency: 0,
+  modulation: "FM",
+  squelch_open: false,
+  rssi: 0,
+  mode: "SCAN",
+  channel: null,
+  alpha_tag: null,
+  volume: 0,
+  battery: null,
+  stale: true,
+};
+
 export const useStore = create<AppState>((set) => ({
   liveState: null,
   deviceInfo: null,
@@ -96,15 +110,10 @@ export const useStore = create<AppState>((set) => ({
         return prev;
       }
 
-      const requiredFields = ['frequency', 'modulation'] as const;
-      const hasRequired = prev.liveState || requiredFields.every(f => f in state);
-      
-      if (!hasRequired) {
-        return prev;
-      }
-
       return {
-        liveState: prev.liveState ? { ...prev.liveState, ...state } : (state as LiveState),
+        liveState: prev.liveState
+          ? { ...prev.liveState, ...state }
+          : { ...defaultLiveState, ...state },
         lastSequence: sequence ?? prev.lastSequence,
       };
     }),

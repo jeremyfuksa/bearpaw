@@ -42,6 +42,13 @@ import { useStore } from "../store/useStore";
 import { useWebSocket } from "../websocket/useWebSocket";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { stepToChannel } from "../utils/channelNavigation";
+import {
+  getBackendStatus,
+  getShellInfo,
+  isTauriRuntime,
+  subscribeBackendStatus,
+  type BackendStatus,
+} from "../tauri-shell";
 import type {
   ActivityLogEntry,
   ChannelData,
@@ -146,6 +153,8 @@ export default function App() {
   const [preferencesLoading, setPreferencesLoading] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const [hasFreshLiveFrame, setHasFreshLiveFrame] = useState(false);
+  const [shellStatus, setShellStatus] = useState<BackendStatus | null>(null);
+  const [shellLabel, setShellLabel] = useState<string | null>(null);
 
   const syncInProgressRef = useRef(false);
   const syncTaskIdRef = useRef<string | null>(null);
@@ -160,6 +169,48 @@ export default function App() {
     setConnected(connected);
     setConnecting(connecting);
   }, [connected, connecting, setConnected, setConnecting]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      setShellStatus(null);
+      setShellLabel(null);
+      return;
+    }
+    let active = true;
+    let cleanup: (() => void) | null = null;
+
+    getShellInfo()
+      .then((info) => {
+        if (!active || !info) return;
+        setShellLabel(`${info.product_name} ${info.version}`);
+      })
+      .catch(() => {
+        // Ignore shell metadata failures in UI.
+      });
+
+    getBackendStatus()
+      .then((status) => {
+        if (active) setShellStatus(status);
+      })
+      .catch(() => {
+        // Ignore initial status failures; event stream may still provide updates.
+      });
+
+    subscribeBackendStatus((status) => {
+      if (active) setShellStatus(status);
+    })
+      .then((unlisten) => {
+        cleanup = unlisten;
+      })
+      .catch(() => {
+        // Non-fatal in browser or restricted runtime.
+      });
+
+    return () => {
+      active = false;
+      if (cleanup) cleanup();
+    };
+  }, []);
 
   useEffect(() => {
     const loadPreferences = async () => {
@@ -328,6 +379,7 @@ export default function App() {
 
         if (statusResult.status === "fulfilled") {
           updateLiveState(statusResult.value);
+          setHasFreshLiveFrame(true);
         }
 
         if (infoResult.status === "fulfilled") {
@@ -562,6 +614,14 @@ export default function App() {
       return "disconnected";
     return "connected";
   }, [connected, connecting, deviceInfo, liveState]);
+
+  const shellStatusText = useMemo(() => {
+    if (!isTauriRuntime()) return null;
+    const server = shellStatus?.running ? "Backend up" : "Backend down";
+    if (shellStatus?.last_error) return `${server} (error)`;
+    if (shellLabel) return `${shellLabel} • ${server}`;
+    return server;
+  }, [shellLabel, shellStatus]);
 
   const handleTabChange = useCallback(
     (tab: string) => {
@@ -926,6 +986,7 @@ export default function App() {
           onTabChange={handleTabChange}
           connectionStatus={getConnectionStatus()}
           modelName={deviceInfo?.model || "BC125AT"}
+          shellStatusText={shellStatusText}
         />
       </div>
 
