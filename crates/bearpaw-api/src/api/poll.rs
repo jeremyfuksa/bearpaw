@@ -9,9 +9,12 @@ use tracing::{debug, error, info, warn};
 
 use std::collections::HashMap;
 
-use crate::api::ControlCommand;
+use crate::api::track_analytics_transition;
 use crate::api::AppState;
-use crate::protocol::{livestate_from_sts, parse_cin_response, parse_mdl_response, parse_sts_response};
+use crate::api::ControlCommand;
+use crate::protocol::{
+    livestate_from_sts, parse_cin_response, parse_mdl_response, parse_sts_response,
+};
 use crate::state::{ChannelData, LiveState};
 use crate::transport::{SerialTransport, TransportError};
 use crate::transport_usb::UsbTransport;
@@ -75,22 +78,41 @@ fn run_poll_loop(
                     let _ = transport.send(port.as_mut(), KEY_SCAN);
                     commanded_mode = "SCAN".to_string();
                 }
-                ControlCommand::Direct { frequency, modulation } => {
+                ControlCommand::Direct {
+                    frequency,
+                    modulation,
+                } => {
                     let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
                     let _ = transport.send(port.as_mut(), &do_cmd);
                     commanded_mode = "DIRECT".to_string();
                 }
-                ControlCommand::StartSync { task_id, max_channels } => {
-                    if let Err(e) = run_memory_sync(
-                        &state,
-                        &transport,
-                        port.as_mut(),
-                        &task_id,
-                        max_channels,
-                    ) {
+                ControlCommand::StartSync {
+                    task_id,
+                    max_channels,
+                } => {
+                    if let Err(e) =
+                        run_memory_sync(&state, &transport, port.as_mut(), &task_id, max_channels)
+                    {
                         warn!("Memory sync failed: {}", e);
+                        finish_sync(&state);
                         send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
                     }
+                }
+                ControlCommand::Raw {
+                    command,
+                    multiline,
+                    reply,
+                } => {
+                    let response = if multiline {
+                        transport
+                            .send_and_read_multiline(port.as_mut(), &command)
+                            .map_err(|e| e.to_string())
+                    } else {
+                        transport
+                            .send(port.as_mut(), &command)
+                            .map_err(|e| e.to_string())
+                    };
+                    let _ = reply.send(response);
                 }
             }
         }
@@ -141,18 +163,45 @@ fn run_poll_loop_usb(
                     let _ = transport.send(&mut session, KEY_SCAN);
                     commanded_mode = "SCAN".to_string();
                 }
-                ControlCommand::Direct { frequency, modulation } => {
+                ControlCommand::Direct {
+                    frequency,
+                    modulation,
+                } => {
                     let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
                     let _ = transport.send(&mut session, &do_cmd);
                     commanded_mode = "DIRECT".to_string();
                 }
-                ControlCommand::StartSync { task_id, max_channels } => {
-                    if let Err(e) =
-                        run_memory_sync_usb(&state, &transport, &mut session, &task_id, max_channels)
-                    {
+                ControlCommand::StartSync {
+                    task_id,
+                    max_channels,
+                } => {
+                    if let Err(e) = run_memory_sync_usb(
+                        &state,
+                        &transport,
+                        &mut session,
+                        &task_id,
+                        max_channels,
+                    ) {
                         warn!("Memory sync failed: {}", e);
+                        finish_sync(&state);
                         send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
                     }
+                }
+                ControlCommand::Raw {
+                    command,
+                    multiline,
+                    reply,
+                } => {
+                    let response = if multiline {
+                        transport
+                            .send_and_read_multiline(&mut session, &command)
+                            .map_err(|e| e.to_string())
+                    } else {
+                        transport
+                            .send(&mut session, &command)
+                            .map_err(|e| e.to_string())
+                    };
+                    let _ = reply.send(response);
                 }
             }
         }
@@ -200,12 +249,10 @@ fn process_sts_frame(state: &AppState, commanded_mode: &str, resp: &str, source:
 }
 
 fn broadcast_live_update(state: &AppState, live: LiveState) {
-    let prev_squelch_open = state
-        .live
-        .read()
-        .map(|g| g.squelch_open)
-        .unwrap_or(false);
+    let prev_squelch_open = state.live.read().map(|g| g.squelch_open).unwrap_or(false);
     let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
+
+    track_analytics_transition(state, &live, prev_squelch_open);
 
     if let Ok(mut g) = state.live.write() {
         *g = live.clone();
@@ -271,6 +318,15 @@ fn run_memory_sync(
 
     let mut channels: HashMap<u16, ChannelData> = HashMap::new();
     for idx in 1..=max_channels {
+        if state
+            .sync_cancel_requested
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            let _ = transport.send(port, EPG_CMD);
+            finish_sync(state);
+            send_progress(state, task_id, 0, "Sync cancelled");
+            return Ok(());
+        }
         let cmd = format!("CIN,{}", idx);
         let resp = transport.send(port, &cmd).unwrap_or_default();
         if let Some(ch) = parse_cin_response(idx, &resp) {
@@ -299,6 +355,7 @@ fn run_memory_sync(
         shadow.channels = channels;
         shadow.last_sync = now;
     }
+    finish_sync(state);
     send_progress(state, task_id, 100, "Sync complete");
     Ok(())
 }
@@ -316,6 +373,15 @@ fn run_memory_sync_usb(
 
     let mut channels: HashMap<u16, ChannelData> = HashMap::new();
     for idx in 1..=max_channels {
+        if state
+            .sync_cancel_requested
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            let _ = transport.send(session, EPG_CMD);
+            finish_sync(state);
+            send_progress(state, task_id, 0, "Sync cancelled");
+            return Ok(());
+        }
         let cmd = format!("CIN,{}", idx);
         let resp = transport.send(session, &cmd).unwrap_or_default();
         if let Some(ch) = parse_cin_response(idx, &resp) {
@@ -344,8 +410,16 @@ fn run_memory_sync_usb(
         shadow.channels = channels;
         shadow.last_sync = now;
     }
+    finish_sync(state);
     send_progress(state, task_id, 100, "Sync complete");
     Ok(())
+}
+
+fn finish_sync(state: &AppState) {
+    state
+        .sync_cancel_requested
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    state.sync_task_id.lock().unwrap().take();
 }
 
 fn parse_usb_target(target: &str) -> Option<(u16, u16)> {

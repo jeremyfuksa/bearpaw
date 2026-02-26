@@ -1,7 +1,7 @@
 //! In-memory state: LiveState (current receiver), DeviceInfo (connection), ShadowState (channels).
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Current scanner receiver state (from STS/GLG poll).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -27,6 +27,12 @@ pub struct LiveState {
 pub struct DeviceInfo {
     pub model: Option<String>,
     pub port: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vid: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub connection_status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub firmware: Option<String>,

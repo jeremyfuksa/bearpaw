@@ -77,7 +77,8 @@ fn resolve_config_path() -> Option<String> {
         }
     }
 
-    let mut candidates = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../backend/config.yaml")];
+    let mut candidates =
+        vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../backend/config.yaml")];
     if let Ok(cwd) = env::current_dir() {
         candidates.push(cwd.join("../../backend/config.yaml"));
         candidates.push(cwd.join("../backend/config.yaml"));
@@ -104,9 +105,8 @@ fn start_backend_runtime(state: Arc<BackendRuntimeState>) {
 
     let mut startup_issue = None;
     if config_path.is_none() {
-        startup_issue = Some(
-            "Config file not found; using defaults and auto-detect scanner".to_string(),
-        );
+        startup_issue =
+            Some("Config file not found; using defaults and auto-detect scanner".to_string());
     }
     if resolved_serial.is_none() {
         startup_issue = Some(
@@ -147,7 +147,8 @@ fn start_backend_runtime(state: Arc<BackendRuntimeState>) {
             }
         };
 
-        let result = runtime.block_on(async { bearpaw_api::run_server(&bind, api_state, serial_port).await });
+        let result = runtime
+            .block_on(async { bearpaw_api::run_server(&bind, api_state, serial_port).await });
         state.running.store(false, Ordering::Relaxed);
         if let Err(err) = result {
             if let Ok(mut slot) = state.last_error.lock() {

@@ -14,7 +14,7 @@ name = "bearpaw"
 path = "src/main.rs"
 
 [dependencies]
-axum = { version = "0.7", features = ["json", "ws"] }
+axum = { version = "0.7", features = ["json", "ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -26,6 +26,9 @@ serialport = "4"
 rusb = "0.9"
 thiserror = "1"
 anyhow = "1"
+csv = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
+tower = "0.5"
