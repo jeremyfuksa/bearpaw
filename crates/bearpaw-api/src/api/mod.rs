@@ -26,7 +26,7 @@ use serde_json::{json, Map, Value};
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::state::{ChannelData, DeviceInfo, LiveState, ShadowState};
 
@@ -465,6 +465,21 @@ pub async fn run_server(
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
         state.command_tx = Arc::new(Mutex::new(Some(cmd_tx)));
         spawn_poll_loop(state.clone(), port_name, baud, cmd_rx);
+        if let Ok(mut d) = state.device.write() {
+            d.connection_status = "connecting".to_string();
+            d.diagnostic_code = None;
+            d.diagnostic_message = None;
+        }
+    } else {
+        warn!("No scanner port resolved; API starting without poll loop");
+        if let Ok(mut d) = state.device.write() {
+            d.connection_status = "disconnected".to_string();
+            d.diagnostic_code = Some("scanner_not_found".to_string());
+            d.diagnostic_message = Some(
+                "No scanner port resolved from config/auto-detect. Check USB/serial settings."
+                    .to_string(),
+            );
+        }
     }
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!("Bearpaw API listening on http://{}", bind);
