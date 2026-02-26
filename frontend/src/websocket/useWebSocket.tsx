@@ -1,9 +1,38 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ScannerWebSocket } from "./ScannerWebSocket";
 
-// WebSocket URL configuration
-// For development, always use the backend on port 8000
-const defaultWsURL = 'ws://localhost:8000/ws';
+function resolveDefaultWsURL(): string {
+  const tauriMarker = (window as Window & { __TAURI__?: unknown }).__TAURI__;
+  const isTauri = typeof tauriMarker === "object" && tauriMarker !== null;
+  if (isTauri) {
+    return "ws://localhost:8000/ws";
+  }
+
+  const envWsURL = (import.meta.env?.VITE_WS_URL as string | undefined)?.trim();
+  if (envWsURL) {
+    return envWsURL;
+  }
+
+  const envApiBase = (import.meta.env?.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (envApiBase) {
+    if (envApiBase.startsWith("http://") || envApiBase.startsWith("https://")) {
+      const parsed = new URL(envApiBase);
+      const wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+      return `${wsProtocol}//${parsed.host}/ws`;
+    }
+    if (envApiBase.startsWith("/") && typeof window !== "undefined") {
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      return `${wsProtocol}//${window.location.host}/ws`;
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProtocol}//${window.location.host}/ws`;
+  }
+
+  return "ws://localhost:8000/ws";
+}
 
 interface WebSocketContextValue {
   ws: ScannerWebSocket;
@@ -14,7 +43,7 @@ interface WebSocketContextValue {
 const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
 export function WebSocketProvider({ children, url }: { children: React.ReactNode; url?: string }) {
-  const wsURL = url ?? defaultWsURL;
+  const wsURL = url ?? resolveDefaultWsURL();
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
 

@@ -76,10 +76,26 @@ crates/
 
 ### Phase 4: Parity + polish
 
-- [ ] **API parity:** Remaining endpoints (lockouts, settings, firmware, analytics, preferences, activity log, etc.) ported or stubbed with 501 where out of scope.
-- [ ] **Exporters (optional):** Text file, MQTT, JSON stream if still desired in desktop build.
-- [ ] **Config:** YAML/TOML config load; device selection (port, VID/PID); logging.
-- [ ] **Standalone binary:** `bearpaw-api --config config.yaml` for headless or server use; same binary as “backend only” build.
+- [x] **API parity:** REST method/path parity verified against Python backend route surface (normalized path params).
+- [x] **Exporters (optional):** Covered where required for parity (`/api/v1/memory/export/csv`, `/api/v1/memory/export/bc125at_ss`).
+- [x] **Config:** Config load + device selection + logging are implemented for standalone and desktop runtime.
+- [x] **Standalone binary:** `bearpaw-api --config config.yaml` supported.
+
+**Verification commands (2026-02-26):**
+
+```bash
+python scripts/verify_backend_parity.py
+cargo test -p bearpaw-api -- --nocapture
+cargo check
+```
+
+**Observed parity result (2026-02-26):**
+- Python method/path count: 66
+- Rust method/path count: 70
+- Missing in Rust: 0
+- Rust extras: `GET /api/v1/volume`, `GET /ws`, `POST /api/v1/frequency`, `POST /api/v1/preferences`
+
+Rust extras are intentional additive compatibility endpoints and do not break parity.
 
 ---
 
@@ -121,4 +137,4 @@ crates/
 
 ---
 
-*Last updated: 2026-02-25*
+*Last updated: 2026-02-26*

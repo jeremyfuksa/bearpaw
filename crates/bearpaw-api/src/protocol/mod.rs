@@ -148,7 +148,13 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
     };
 
     let (tone_squelch, lockout_idx, delay_idx, priority_idx, bank_idx) = if has_tone {
-        (p.get(3).copied(), 5usize, 4usize, 6usize, if has_bank { Some(7usize) } else { None })
+        (
+            p.get(3).copied(),
+            5usize,
+            4usize,
+            6usize,
+            if has_bank { Some(7usize) } else { None },
+        )
     } else {
         (None, 3usize, 4usize, 5usize, Some(6usize))
     };
