@@ -89,10 +89,11 @@ impl UsbTransport {
         let mut out = Vec::new();
         let mut buf = [0u8; 64];
         loop {
-            match session
-                .handle
-                .read_bulk(self.ep_in, &mut buf, Duration::from_millis(self.timeout_ms))
-            {
+            match session.handle.read_bulk(
+                self.ep_in,
+                &mut buf,
+                Duration::from_millis(self.timeout_ms),
+            ) {
                 Ok(n) => {
                     out.extend_from_slice(&buf[..n]);
                     if out.contains(&b'\r') {
@@ -148,4 +149,3 @@ fn sanitize_usb_ascii(bytes: &[u8]) -> String {
     }
     out
 }
-

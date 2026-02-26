@@ -79,10 +79,7 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
         return None;
     }
     let ports = serialport::available_ports().ok()?;
-    let candidates: Vec<_> = ports
-        .into_iter()
-        .filter(|p| !is_blocked_port(p))
-        .collect();
+    let candidates: Vec<_> = ports.into_iter().filter(|p| !is_blocked_port(p)).collect();
     if candidates.is_empty() {
         return None;
     }
@@ -132,11 +129,7 @@ fn is_blocked_port(p: &serialport::SerialPortInfo) -> bool {
         return true;
     }
     if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
-        let product = info
-            .product
-            .as_deref()
-            .unwrap_or_default()
-            .to_lowercase();
+        let product = info.product.as_deref().unwrap_or_default().to_lowercase();
         if product.contains("bluetooth") || product.contains("debug") {
             return true;
         }
@@ -150,11 +143,7 @@ fn score_port(p: &serialport::SerialPortInfo) -> Option<i32> {
     match &p.port_type {
         serialport::SerialPortType::UsbPort(info) => {
             score += 20;
-            let product = info
-                .product
-                .as_deref()
-                .unwrap_or_default()
-                .to_lowercase();
+            let product = info.product.as_deref().unwrap_or_default().to_lowercase();
             let manufacturer = info
                 .manufacturer
                 .as_deref()
@@ -169,7 +158,11 @@ fn score_port(p: &serialport::SerialPortInfo) -> Option<i32> {
         }
         _ => {}
     }
-    if n.contains("usbmodem") || n.contains("usbserial") || n.contains("/dev/cu.usb") || n.contains("/dev/tty.usb") {
+    if n.contains("usbmodem")
+        || n.contains("usbserial")
+        || n.contains("/dev/cu.usb")
+        || n.contains("/dev/tty.usb")
+    {
         score += 30;
     }
     if n.contains("soundcore") {

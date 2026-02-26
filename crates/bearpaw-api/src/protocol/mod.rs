@@ -31,25 +31,19 @@ pub fn livestate_from_sts(map: &HashMap<String, String>) -> LiveState {
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
 
-    let frequency = map
-        .get("FRQ")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0.0);
-    let modulation = map
-        .get("MOD")
-        .cloned()
-        .unwrap_or_else(|| "FM".to_string());
+    let frequency = map.get("FRQ").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let modulation = map.get("MOD").cloned().unwrap_or_else(|| "FM".to_string());
     let squelch_open = map.get("SQL").map(|s| s.trim() == "0").unwrap_or(false);
-    let rssi = map
-        .get("RSSI")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0) as u8;
+    let rssi = map.get("RSSI").and_then(|s| s.parse().ok()).unwrap_or(0) as u8;
     let channel = map.get("CH").and_then(|s| s.parse().ok());
     let volume = map.get("VOL").and_then(|s| s.parse().ok()).unwrap_or(0) as u8;
     let battery = map.get("BAT").and_then(|s| s.parse().ok());
 
     // Mode: infer from other state if needed; default SCAN
-    let mode = map.get("MODE").cloned().unwrap_or_else(|| "SCAN".to_string());
+    let mode = map
+        .get("MODE")
+        .cloned()
+        .unwrap_or_else(|| "SCAN".to_string());
 
     LiveState {
         timestamp: now,
@@ -77,11 +71,7 @@ pub fn parse_mdl_response(response: &str) -> Option<String> {
 /// Format: CIN,67,Police Dispatch,01469700,NFM,0,2,1,5 (index, alpha_tag, freq*10000, mod, lockout, delay, priority, bank).
 /// Also accepts name-first: CIN,67,Police Dispatch,146.9700,NFM,... or fewer fields.
 pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
-    let parts: Vec<&str> = response
-        .trim()
-        .split(',')
-        .map(|s| s.trim())
-        .collect();
+    let parts: Vec<&str> = response.trim().split(',').map(|s| s.trim()).collect();
     let mut p = parts.as_slice();
     if p.first().map(|s| *s == "CIN") == Some(true) {
         p = &p[1..];

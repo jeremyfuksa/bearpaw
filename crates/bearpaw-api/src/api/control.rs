@@ -12,7 +12,16 @@ pub enum ControlCommand {
         modulation: String,
     },
     /// Run full memory sync (PRG -> CIN 1..max_channels -> EPG); progress via WebSocket.
-    StartSync { task_id: String, max_channels: u16 },
+    StartSync {
+        task_id: String,
+        max_channels: u16,
+    },
+    /// Send a raw scanner command and return raw response to API caller.
+    Raw {
+        command: String,
+        multiline: bool,
+        reply: std::sync::mpsc::Sender<Result<String, String>>,
+    },
 }
 
 /// Request body for POST /api/v1/frequency
@@ -48,9 +57,6 @@ pub fn validate_modulation(modulation: &str) -> Result<(), String> {
     if MODES.iter().any(|&s| s == m) {
         Ok(())
     } else {
-        Err(format!(
-            "Modulation must be one of: {}",
-            MODES.join(", ")
-        ))
+        Err(format!("Modulation must be one of: {}", MODES.join(", ")))
     }
 }
