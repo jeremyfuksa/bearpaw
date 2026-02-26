@@ -64,7 +64,7 @@ class StubTransport:
 
 class ApiTests(unittest.TestCase):
     def setUp(self) -> None:
-        app = create_app(AppConfig(), startup_enabled=False)
+        self.app = create_app(AppConfig(), startup_enabled=False)
         state_store = StateStore()
         state_store.update_live_state(
             LiveState(
@@ -96,17 +96,18 @@ class ApiTests(unittest.TestCase):
                 )
             }
         )
+        self.client = TestClient(self.app)
 
 
-from bearpaw.websocket import WebSocketManager
-from bearpaw.config import WebSocketConfig, AppConfig
+from bearpaw.config import WebSocketConfig
 
 
 class TestCaseMixin:
     def setUp(self) -> None:
+        self.app = create_app(AppConfig(), startup_enabled=False)
         state_store = StateStore(persistence=None)
         ws_config = WebSocketConfig()
-        app.state.runtime = RuntimeState(
+        self.app.state.runtime = RuntimeState(
             config=AppConfig(),
             transport=StubTransport(),
             scheduler=StubScheduler(),
@@ -123,7 +124,7 @@ class TestCaseMixin:
             ),
             session_id="test-session",
         )
-        self.client = TestClient(app)
+        self.client = TestClient(self.app)
 
     def test_status(self) -> None:
         response = self.client.get("/api/v1/status")
