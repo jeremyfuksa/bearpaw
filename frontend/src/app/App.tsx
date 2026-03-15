@@ -37,7 +37,7 @@ import {
   SelectValue,
 } from "./components/ui/select";
 import { type WindowWithImportMeta } from "../types";
-import { useAPI } from "../api/useApi";
+import { useAPI, API_BASE } from "../api/useApi";
 import { useStore } from "../store/useStore";
 import { useWebSocket } from "../websocket/useWebSocket";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -62,7 +62,7 @@ import { DeviceTab } from "./components/views/DeviceTab";
 import { ChannelsTab } from "./components/views/ChannelsTab";
 import { ActivityExportSheet } from "./components/views/ActivityExportSheet";
 
-const API_BASE = (import.meta.env?.VITE_API_BASE_URL as string) || "/api/v1";
+// API_BASE is imported from ../api/useApi (Tauri-aware)
 
 export type Tab = "Scan" | "Device" | "Channels";
 export type ConnectionStatus = "connected" | "connecting" | "disconnected";
@@ -895,32 +895,10 @@ export default function App() {
   );
 
   const handleRecordingToggle = useCallback(async () => {
-    try {
-      if (typeof __TAURI__ !== 'undefined' && __TAURI__) {
-        const { invoke } = await import('@tauri-apps/api/core');
-
-        if (isRecording) {
-          const info = await invoke('stop_recording');
-          console.log('Recording stopped:', info);
-          toast.success('Recording saved');
-        } else {
-          const live = liveState || useStore.getState().liveState;
-          const recordingId = await invoke('start_recording', {
-            frequency: live?.frequency,
-            alphaTag: live?.alpha_tag,
-          });
-          console.log('Recording started:', recordingId);
-          toast.success('Recording started');
-        }
-        setRecording(!isRecording);
-      } else {
-        toast.error('Recording is only available in Tauri desktop app');
-      }
-    } catch (error) {
-      console.error('Recording toggle failed', error);
-      toast.error('Failed to toggle recording');
-    }
-  }, [isRecording, liveState, setRecording]);
+    // Recording requires Tauri desktop shell commands (start_recording / stop_recording)
+    // which are not yet implemented in the Rust backend.
+    toast.error('Recording is not yet available');
+  }, []);
 
   const handleDashboardToggle = useCallback(async () => {
     const newValue = !isDashboardMode;

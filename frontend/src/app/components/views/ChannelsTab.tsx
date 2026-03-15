@@ -6,7 +6,7 @@ import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 
 import { cn } from "../../../lib/utils";
-import { useAPI } from "../../../api/useApi";
+import { useAPI, API_BASE } from "../../../api/useApi";
 import { useStore } from "../../../store/useStore";
 import type { ChannelData, ChannelDraft } from "../../../types";
 import { ChannelEditSheet } from "./ChannelEditSheet";
@@ -518,7 +518,7 @@ export function ChannelsTab() {
 
   const handleExportCSV = async () => {
     try {
-      const response = await fetch('/api/v1/memory/export/csv');
+      const response = await fetch(`${API_BASE}/memory/export/csv`);
       if (!response.ok) {
         throw new Error('Failed to export CSV');
       }
@@ -538,7 +538,7 @@ export function ChannelsTab() {
 
   const handleExportBc125atSs = async () => {
     try {
-      const response = await fetch('/api/v1/memory/export/bc125at_ss');
+      const response = await fetch(`${API_BASE}/memory/export/bc125at_ss`);
       if (!response.ok) {
         throw new Error('Failed to export BC125AT format');
       }
@@ -568,7 +568,7 @@ export function ChannelsTab() {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch('/api/v1/memory/import/csv', {
+        const response = await fetch(`${API_BASE}/memory/import/csv`, {
           method: 'POST',
           body: formData,
         });
