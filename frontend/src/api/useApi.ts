@@ -7,10 +7,13 @@ const isTauri = (() => {
   return typeof marker === "object" && marker !== null;
 })();
 
-// Backend URL configuration
-const defaultBaseURL = isTauri 
-  ? 'http://localhost:8000/api/v1'  // Sidecar runs on localhost
+// Backend URL configuration — exported so non-hook code can resolve API URLs
+// without hardcoding paths that break in Tauri's file:// context.
+export const API_BASE = isTauri
+  ? 'http://localhost:8000/api/v1'
   : import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+const defaultBaseURL = API_BASE;
 
 export function useAPI() {
   const baseURL = defaultBaseURL;

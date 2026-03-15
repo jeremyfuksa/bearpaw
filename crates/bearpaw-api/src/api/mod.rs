@@ -27,6 +27,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{info, warn};
 
@@ -205,6 +206,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/v1/analytics/cleanup", post(analytics_cleanup))
         .route("/ws", get(ws_handler))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO))
@@ -2809,6 +2816,17 @@ pub async fn run_server(
     mut state: AppState,
     serial_port: Option<(String, u32)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    run_server_with_shutdown(bind, state, serial_port, std::future::pending()).await
+}
+
+/// Like `run_server` but accepts a shutdown future. When the future resolves,
+/// the server drains in-flight requests and exits cleanly.
+pub async fn run_server_with_shutdown(
+    bind: &str,
+    mut state: AppState,
+    serial_port: Option<(String, u32)>,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some((port_name, baud)) = serial_port {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
         state.command_tx = Arc::new(Mutex::new(Some(cmd_tx)));
@@ -2851,7 +2869,10 @@ pub async fn run_server(
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!("Bearpaw API listening on http://{}", bind);
-    axum::serve(listener, router(state).into_make_service()).await?;
+    axum::serve(listener, router(state).into_make_service())
+        .with_graceful_shutdown(shutdown)
+        .await?;
+    info!("Bearpaw API server shut down gracefully");
     Ok(())
 }
 

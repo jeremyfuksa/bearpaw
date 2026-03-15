@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
-import { useAPI } from "../../../api/useApi";
+import { useAPI, API_BASE } from "../../../api/useApi";
 import { useStore } from "../../../store/useStore";
 import { Slider } from "../ui/slider";
 import { Switch } from "../ui/switch";
@@ -68,7 +68,7 @@ export function DeviceTab() {
       : key;
     updatePreferences({ [key]: value } as any);
     try {
-      await fetch(`/api/v1/preferences`, {
+      await fetch(`${API_BASE}/preferences`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [backendKey]: value }),
@@ -1331,7 +1331,7 @@ export function DeviceTab() {
                 <button
                   onClick={() => {
                     if (window.confirm('Reset all preferences to default values? This cannot be undone.')) {
-                      fetch('/api/v1/preferences/reset', { method: 'POST' })
+                      fetch(`${API_BASE}/preferences/reset`, { method: 'POST' })
                         .then(r => r.json())
                         .then(() => {
                           toast.success('Preferences reset to defaults');

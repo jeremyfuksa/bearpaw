@@ -3,7 +3,7 @@ import { X, Download, Calendar, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { cn } from "../../../lib/utils";
-import { useAPI } from "../../../api/useApi";
+import { useAPI, API_BASE } from "../../../api/useApi";
 
 interface ActivityExportSheetProps {
   isOpen: boolean;
@@ -96,7 +96,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
     setIsExporting(true);
     try {
       const params = buildQueryParams();
-      const response = await fetch(`/api/v1/analytics/activity-log?${params.toString()}`);
+      const response = await fetch(`${API_BASE}/analytics/activity-log?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error("Failed to export activity log");

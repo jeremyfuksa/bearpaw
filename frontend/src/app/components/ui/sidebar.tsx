@@ -26,7 +26,6 @@ import {
 } from "./tooltip";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -71,7 +70,14 @@ function SidebarProvider({
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen);
+  // Restore persisted state from localStorage if available.
+  const [_open, _setOpen] = React.useState(() => {
+    try {
+      const stored = window.localStorage?.getItem(SIDEBAR_COOKIE_NAME);
+      if (stored !== null) return stored === "true";
+    } catch { /* ignore */ }
+    return defaultOpen;
+  });
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -82,8 +88,12 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+      // Persist sidebar state (localStorage works in both browser and Tauri webview)
+      try {
+        window.localStorage?.setItem(SIDEBAR_COOKIE_NAME, String(openState));
+      } catch {
+        // Storage unavailable — non-critical
+      }
     },
     [setOpenProp, open],
   );

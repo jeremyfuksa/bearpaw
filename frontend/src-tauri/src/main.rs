@@ -78,12 +78,28 @@ fn resolve_config_path() -> Option<String> {
         }
     }
 
+    // In production bundles, check the app data directory for user config
+    if let Ok(data_dir) = env::var("BEARPAW_DATA_DIR") {
+        let user_cfg = PathBuf::from(&data_dir).join("config.yaml");
+        if user_cfg.exists() {
+            return Some(user_cfg.to_string_lossy().into_owned());
+        }
+    }
+
+    // Dev-time paths relative to the source tree
     let mut candidates =
         vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../backend/config.yaml")];
     if let Ok(cwd) = env::current_dir() {
         candidates.push(cwd.join("../../backend/config.yaml"));
         candidates.push(cwd.join("../backend/config.yaml"));
         candidates.push(cwd.join("backend/config.yaml"));
+    }
+
+    // Check next to the running executable (bundled installs)
+    if let Ok(exe) = env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            candidates.push(exe_dir.join("config.yaml"));
+        }
     }
 
     for candidate in candidates {
@@ -94,7 +110,10 @@ fn resolve_config_path() -> Option<String> {
     None
 }
 
-fn start_backend_runtime(state: Arc<BackendRuntimeState>) {
+fn start_backend_runtime(
+    state: Arc<BackendRuntimeState>,
+    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+) {
     let config_path = resolve_config_path();
     let cfg = bearpaw_api::load_config(config_path.as_deref());
     let api_state = bearpaw_api::default_state();
@@ -148,8 +167,13 @@ fn start_backend_runtime(state: Arc<BackendRuntimeState>) {
             }
         };
 
-        let result = runtime
-            .block_on(async { bearpaw_api::run_server(&bind, api_state, serial_port).await });
+        let shutdown = async move {
+            let _ = shutdown_rx.await;
+        };
+
+        let result = runtime.block_on(async {
+            bearpaw_api::run_server_with_shutdown(&bind, api_state, serial_port, shutdown).await
+        });
         state.running.store(false, Ordering::Relaxed);
         if let Err(err) = result {
             if let Ok(mut slot) = state.last_error.lock() {
@@ -190,9 +214,9 @@ fn backend_status(state: tauri::State<'_, ShellState>) -> BackendStatus {
 }
 
 fn main() {
-    let _logging = bearpaw_api::init_backend_logging("bearpaw-desktop")
-        .expect("backend logging initialization failed");
     let backend_state = Arc::new(BackendRuntimeState::default());
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
 
     tauri::Builder::default()
         .manage(ShellState {
@@ -202,10 +226,32 @@ fn main() {
             if let Ok(data_dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(&data_dir);
                 env::set_var("BEARPAW_DATA_DIR", data_dir.to_string_lossy().to_string());
+
+                // Set log dir inside app data so logs don't scatter to CWD
+                let log_dir = data_dir.join("logs");
+                let _ = std::fs::create_dir_all(&log_dir);
+                env::set_var("BEARPAW_LOG_DIR", log_dir.to_string_lossy().to_string());
             }
-            start_backend_runtime(backend_state.clone());
+
+            // Initialize logging after env vars are set so BEARPAW_LOG_DIR is resolved
+            let _logging = bearpaw_api::init_backend_logging("bearpaw-desktop")
+                .expect("backend logging initialization failed");
+            // Leak the guard so it lives for the process lifetime
+            std::mem::forget(_logging);
+
+            start_backend_runtime(backend_state.clone(), shutdown_rx);
             start_status_broadcaster(app.handle().clone(), backend_state.clone());
             Ok(())
+        })
+        .on_event(move |_app, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = &event {
+                // Signal the backend to shut down gracefully
+                if let Ok(mut tx) = shutdown_tx.lock() {
+                    if let Some(tx) = tx.take() {
+                        let _ = tx.send(());
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![shell_info, backend_status])
         .run(tauri::generate_context!())
