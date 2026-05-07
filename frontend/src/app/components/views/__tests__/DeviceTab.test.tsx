@@ -7,7 +7,7 @@ import {
   createTestDeviceInfo,
   createTestLiveState,
 } from '../../../../test/fixtures';
-import { useAPI } from '../../../../api/useApi';
+import { getAPI } from '../../../../api/useApi';
 import { useStore } from '../../../../store/useStore';
 
 vi.mock('sonner', () => ({
@@ -19,7 +19,7 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('../../../../api/useApi', () => ({
-  useAPI: vi.fn(() => createMockApiClient()),
+  getAPI: vi.fn(() => createMockApiClient()),
 }));
 
 describe('DeviceTab', () => {
@@ -28,7 +28,7 @@ describe('DeviceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockApiClient = createMockApiClient();
-    vi.mocked(useAPI).mockReturnValue(mockApiClient as unknown as ReturnType<typeof useAPI>);
+    vi.mocked(getAPI).mockReturnValue(mockApiClient as unknown as ReturnType<typeof getAPI>);
     useStore.setState({
       channels: [],
       liveState: createTestLiveState(),

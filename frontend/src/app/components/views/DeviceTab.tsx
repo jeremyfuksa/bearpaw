@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
-import { useAPI, API_BASE } from '../../../api/useApi';
+import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
@@ -39,7 +39,7 @@ interface SearchRange {
 }
 
 export function DeviceTab() {
-  const api = useAPI();
+  const api = getAPI();
   const deviceInfo = useStore((state) => state.deviceInfo);
   const liveState = useStore((state) => state.liveState);
   const channels = useStore((state) => state.channels) ?? [];

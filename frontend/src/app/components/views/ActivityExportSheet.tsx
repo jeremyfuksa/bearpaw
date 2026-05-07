@@ -3,7 +3,7 @@ import { X, Download, Calendar, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../../../lib/utils';
-import { useAPI, API_BASE } from '../../../api/useApi';
+import { getAPI, API_BASE } from '../../../api/useApi';
 
 interface ActivityExportSheetProps {
   isOpen: boolean;
@@ -43,7 +43,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const api = useAPI();
+  const api = getAPI();
 
   const getTimeframeLabel = (timeframe: Timeframe): string => {
     switch (timeframe) {

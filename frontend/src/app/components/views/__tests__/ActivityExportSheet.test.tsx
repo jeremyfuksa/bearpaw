@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ActivityExportSheet } from '../ActivityExportSheet';
-import { useAPI } from '../../../../api/useApi';
+import { getAPI } from '../../../../api/useApi';
 import type { ActivityLogEntry } from '../../../../types';
 import {
   mockFetch,
@@ -12,7 +12,7 @@ import {
 } from '../../../../test/utils';
 
 vi.mock('../../../../api/useApi', () => ({
-  useAPI: vi.fn(),
+  getAPI: vi.fn(),
   API_BASE: 'http://localhost:8000/api/v1',
 }));
 
@@ -31,7 +31,7 @@ describe('ActivityExportSheet', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useAPI).mockReturnValue({
+    vi.mocked(getAPI).mockReturnValue({
       cleanupAnalytics: vi.fn().mockResolvedValue(undefined),
     } as any);
     mockFetch([]);

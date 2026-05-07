@@ -1,11 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
 import { useStore } from '../../store/useStore';
-import { useAPI } from '../../api/useApi';
+import { getAPI } from '../../api/useApi';
 import { vi } from 'vitest';
 
 vi.mock('../../api/useApi', () => ({
-  useAPI: vi.fn(),
+  getAPI: vi.fn(),
 }));
 
 vi.mock('../../store/useStore', () => ({
@@ -16,7 +16,7 @@ describe('useKeyboardShortcuts', () => {
   let mockApi: any;
   let mockHandlers: any;
 
-  const mockedUseAPI = vi.mocked(useAPI);
+  const mockedGetAPI = vi.mocked(getAPI);
   const mockedGetState = vi.mocked(useStore.getState);
 
   beforeEach(() => {
@@ -34,7 +34,7 @@ describe('useKeyboardShortcuts', () => {
       closeOverlays: vi.fn(),
     };
 
-    mockedUseAPI.mockReturnValue(mockApi);
+    mockedGetAPI.mockReturnValue(mockApi);
     mockedGetState.mockReturnValue({
       liveState: {
         timestamp: 0,
