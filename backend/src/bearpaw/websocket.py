@@ -95,6 +95,8 @@ def _topic_for_message(message: dict) -> Optional[str]:
     msg_type = message.get("type")
     if msg_type == "state_update":
         return "state"
+    if msg_type == "device_info":
+        return "device_info"
     if msg_type == "event":
         return "events"
     if msg_type == "progress":

@@ -348,6 +348,13 @@ export default function App() {
       }
     });
 
+    const unsubscribeDeviceInfo = ws.on('device_info', (message) => {
+      const payload = message as unknown as { data?: import('../types').DeviceInfo };
+      if (payload?.data) {
+        setDeviceInfo(payload.data);
+      }
+    });
+
     const unsubscribeProgress = ws.on('progress', (message) => {
       const payload = message as ProgressMessage;
       const isComplete =
@@ -400,6 +407,7 @@ export default function App() {
     return () => {
       unsubscribeState();
       unsubscribeEvent();
+      unsubscribeDeviceInfo();
       unsubscribeProgress();
       if (programModeEntryTimeoutRef.current) {
         clearTimeout(programModeEntryTimeoutRef.current);
@@ -415,6 +423,7 @@ export default function App() {
     currentTab,
     requestScanResume,
     setChannels,
+    setDeviceInfo,
     updateLiveState,
     ws,
     liveState?.mode,
@@ -550,24 +559,19 @@ export default function App() {
   }, [api]);
 
   useEffect(() => {
+    // One-shot fetch on mount as fallback in case the client connects
+    // before the first device_info broadcast arrives over the WebSocket.
     let active = true;
-    const refreshDeviceInfo = async () => {
-      try {
-        const info = await api.getDeviceInfo();
-        if (active) {
-          setDeviceInfo(info);
-        }
-      } catch (error) {
-        if (active) {
-          console.warn('Failed to refresh device info', error);
-        }
-      }
-    };
-    refreshDeviceInfo();
-    const interval = window.setInterval(refreshDeviceInfo, 5000);
+    api
+      .getDeviceInfo()
+      .then((info) => {
+        if (active) setDeviceInfo(info);
+      })
+      .catch((error) => {
+        if (active) console.warn('Failed to load initial device info', error);
+      });
     return () => {
       active = false;
-      window.clearInterval(interval);
     };
   }, [api, setDeviceInfo]);
 
