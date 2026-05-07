@@ -1,16 +1,10 @@
-import { useState, useEffect } from "react";
-import { X } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { cn } from "../../../lib/utils";
-import { Switch } from "../ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import type { ChannelData, ChannelDraft } from "../../../types";
+import { useState, useEffect } from 'react';
+import { X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { cn } from '../../../lib/utils';
+import { Switch } from '../ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import type { ChannelData, ChannelDraft } from '../../../types';
 
 interface ChannelEditSheetProps {
   channel: ChannelData;
@@ -41,19 +35,19 @@ export function ChannelEditSheet({
   }, [isOpen]);
 
   const validateField = (field: keyof ChannelDraft, value: string | boolean): string | null => {
-    if (field === "frequency" && typeof value === "string") {
+    if (field === 'frequency' && typeof value === 'string') {
       const freq = parseFloat(value);
-      if (isNaN(freq)) return "Invalid frequency";
+      if (isNaN(freq)) return 'Invalid frequency';
       if (freq === 0) return null;
-      if (freq < 25 || freq > 512) return "Frequency must be 25-512 MHz";
+      if (freq < 25 || freq > 512) return 'Frequency must be 25-512 MHz';
     }
-    if (field === "delay" && typeof value === "string") {
+    if (field === 'delay' && typeof value === 'string') {
       const delay = parseInt(value, 10);
-      if (isNaN(delay) || delay < 0 || delay > 30) return "Delay must be 0-30 seconds";
+      if (isNaN(delay) || delay < 0 || delay > 30) return 'Delay must be 0-30 seconds';
     }
-    if (field === "tone_squelch" && typeof value === "string" && value.trim() !== "") {
+    if (field === 'tone_squelch' && typeof value === 'string' && value.trim() !== '') {
       const tone = parseFloat(value);
-      if (isNaN(tone) || tone < 0 || tone > 999) return "Tone must be 0-999";
+      if (isNaN(tone) || tone < 0 || tone > 999) return 'Tone must be 0-999';
     }
     return null;
   };
@@ -110,11 +104,11 @@ export function ChannelEditSheet({
             onClick={onClose}
           />
           <motion.div
-            initial={{ y: "100%", opacity: 0 }}
-            animate={{ y: "0%", opacity: 1 }}
-            exit={{ y: "100%", opacity: 0 }}
+            initial={{ y: '100%', opacity: 0 }}
+            animate={{ y: '0%', opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
             transition={{
-              type: "spring",
+              type: 'spring',
               damping: 25,
               stiffness: 300,
             }}
@@ -139,15 +133,15 @@ export function ChannelEditSheet({
                   inputMode="decimal"
                   aria-label="Frequency"
                   value={draft.frequency}
-                  onChange={(e) => handleFieldChange("frequency", e.target.value)}
+                  onChange={(e) => handleFieldChange('frequency', e.target.value)}
                   className={cn(
-                    "scanner-input w-full px-3 py-2 text-sm",
-                    errors.frequency ? "border-red-500" : "border-white/10 focus:border-brand-primary"
+                    'scanner-input w-full px-3 py-2 text-sm',
+                    errors.frequency
+                      ? 'border-red-500'
+                      : 'border-white/10 focus:border-brand-primary',
                   )}
                 />
-                {errors.frequency && (
-                  <p className="text-xs text-red-400">{errors.frequency}</p>
-                )}
+                {errors.frequency && <p className="text-xs text-red-400">{errors.frequency}</p>}
               </div>
 
               <div className="space-y-2">
@@ -156,7 +150,7 @@ export function ChannelEditSheet({
                   type="text"
                   aria-label="Alpha Tag"
                   value={draft.alpha_tag}
-                  onChange={(e) => handleFieldChange("alpha_tag", e.target.value)}
+                  onChange={(e) => handleFieldChange('alpha_tag', e.target.value)}
                   maxLength={16}
                   className="scanner-input w-full px-3 py-2 text-sm"
                 />
@@ -164,7 +158,10 @@ export function ChannelEditSheet({
 
               <div className="space-y-2">
                 <label className="text-xs font-medium text-white/70">Modulation</label>
-                <Select value={draft.modulation} onValueChange={(value) => handleFieldChange("modulation", value)}>
+                <Select
+                  value={draft.modulation}
+                  onValueChange={(value) => handleFieldChange('modulation', value)}
+                >
                   <SelectTrigger
                     aria-label="Modulation"
                     className="scanner-input h-10 w-full text-sm"
@@ -172,7 +169,7 @@ export function ChannelEditSheet({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="scanner-select-content">
-                    {["AUTO", "FM", "AM", "NFM"].map((option) => (
+                    {['AUTO', 'FM', 'AM', 'NFM'].map((option) => (
                       <SelectItem key={option} value={option}>
                         {option}
                       </SelectItem>
@@ -188,11 +185,13 @@ export function ChannelEditSheet({
                   inputMode="decimal"
                   aria-label="Tone Squelch"
                   value={draft.tone_squelch}
-                  onChange={(e) => handleFieldChange("tone_squelch", e.target.value)}
+                  onChange={(e) => handleFieldChange('tone_squelch', e.target.value)}
                   placeholder="—"
                   className={cn(
-                    "scanner-input w-full px-3 py-2 text-sm",
-                    errors.tone_squelch ? "border-red-500" : "border-white/10 focus:border-brand-primary"
+                    'scanner-input w-full px-3 py-2 text-sm',
+                    errors.tone_squelch
+                      ? 'border-red-500'
+                      : 'border-white/10 focus:border-brand-primary',
                   )}
                 />
                 {errors.tone_squelch && (
@@ -207,15 +206,13 @@ export function ChannelEditSheet({
                   inputMode="numeric"
                   aria-label="Delay"
                   value={draft.delay}
-                  onChange={(e) => handleFieldChange("delay", e.target.value)}
+                  onChange={(e) => handleFieldChange('delay', e.target.value)}
                   className={cn(
-                    "scanner-input w-full px-3 py-2 text-sm",
-                    errors.delay ? "border-red-500" : "border-white/10 focus:border-brand-primary"
+                    'scanner-input w-full px-3 py-2 text-sm',
+                    errors.delay ? 'border-red-500' : 'border-white/10 focus:border-brand-primary',
                   )}
                 />
-                {errors.delay && (
-                  <p className="text-xs text-red-400">{errors.delay}</p>
-                )}
+                {errors.delay && <p className="text-xs text-red-400">{errors.delay}</p>}
               </div>
 
               <div className="flex items-center justify-between pt-2 border-t border-white/5">
@@ -224,7 +221,7 @@ export function ChannelEditSheet({
                     <Switch
                       aria-label="Lockout"
                       checked={draft.lockout}
-                      onCheckedChange={(checked) => handleFieldChange("lockout", checked)}
+                      onCheckedChange={(checked) => handleFieldChange('lockout', checked)}
                       className="data-[state=checked]:bg-brand-primary"
                     />
                     <label className="text-xs font-medium text-white/70">Lockout</label>
@@ -233,7 +230,7 @@ export function ChannelEditSheet({
                     <Switch
                       aria-label="Priority"
                       checked={draft.priority}
-                      onCheckedChange={(checked) => handleFieldChange("priority", checked)}
+                      onCheckedChange={(checked) => handleFieldChange('priority', checked)}
                       className="data-[state=checked]:bg-brand-primary"
                     />
                     <label className="text-xs font-medium text-white/70">Priority</label>
@@ -260,7 +257,7 @@ export function ChannelEditSheet({
                 disabled={isSaving || Object.keys(errors).length > 0}
                 className="scanner-button-primary flex-1 py-2.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSaving ? "Saving..." : "Save Draft"}
+                {isSaving ? 'Saving...' : 'Save Draft'}
               </button>
             </div>
           </motion.div>

@@ -1,4 +1,4 @@
-import type { WSMessage } from "../types";
+import type { WSMessage } from '../types';
 
 type Listener = (data: WSMessage | { status: string; error?: unknown }) => void;
 
@@ -15,51 +15,50 @@ export class ScannerWebSocket {
     this.url = url;
   }
 
-    connect(): void {
-        if (
-          this.ws &&
-          (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
-        ) {
-          return;
-        }
+  connect(): void {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
 
-        this.shouldReconnect = true;
-        this.debug =
-          typeof window !== "undefined" && window.localStorage?.getItem("ws_debug") === "1";
-        console.log('[ws] Connecting to:', this.url);
-        this.emit("connection", { status: "connecting" });
-        this.ws = new WebSocket(this.url);
+    this.shouldReconnect = true;
+    this.debug = typeof window !== 'undefined' && window.localStorage?.getItem('ws_debug') === '1';
+    console.log('[ws] Connecting to:', this.url);
+    this.emit('connection', { status: 'connecting' });
+    this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
-      console.info("[ws] connected");
-      this.emit("connection", { status: "connected" });
+      console.info('[ws] connected');
+      this.emit('connection', { status: 'connected' });
     };
 
     this.ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as WSMessage;
-        if (message.type === "ping") {
-          this.ws?.send(JSON.stringify({ type: "pong" }));
+        if (message.type === 'ping') {
+          this.ws?.send(JSON.stringify({ type: 'pong' }));
           return;
         }
         if (this.debug) {
-          console.info("[ws]", message);
+          console.info('[ws]', message);
         }
         this.emit(message.type, message);
       } catch (error) {
-        this.emit("error", { status: "error", error });
+        this.emit('error', { status: 'error', error });
       }
     };
 
     this.ws.onerror = (error) => {
-      console.warn("[ws] error", error);
-      this.emit("error", { status: "error", error });
+      console.warn('[ws] error', error);
+      this.emit('error', { status: 'error', error });
     };
 
     this.ws.onclose = () => {
-      console.info("[ws] disconnected");
-      this.emit("connection", { status: "disconnected" });
+      console.info('[ws] disconnected');
+      this.emit('connection', { status: 'disconnected' });
       this.scheduleReconnect();
     };
   }

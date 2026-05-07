@@ -1,5 +1,5 @@
-import { vi } from "vitest";
-import type { WSMessage } from "../../types";
+import { vi } from 'vitest';
+import type { WSMessage } from '../../types';
 
 export type MockWebSocketState = {
   connected: boolean;
@@ -39,12 +39,12 @@ export const mockWebSocket = () => {
       state.subscribedTopics = [...new Set([...state.subscribedTopics, ...topics])];
     }),
     unsubscribe: vi.fn((topics: string[]) => {
-      state.subscribedTopics = state.subscribedTopics.filter(t => !topics.includes(t));
+      state.subscribedTopics = state.subscribedTopics.filter((t) => !topics.includes(t));
     }),
     emit: vi.fn((topic: string, message: WSMessage) => {
       const handlers = state.handlers.get(topic);
       if (handlers) {
-        handlers.forEach(handler => handler(message));
+        handlers.forEach((handler) => handler(message));
       }
     }),
     getState: () => ({ ...state }),

@@ -1,6 +1,6 @@
-import { vi } from "vitest";
-import type { AppStore } from "../../store/useStore";
-import { createTestLiveState, createTestDeviceInfo } from "../fixtures/data";
+import { vi } from 'vitest';
+import type { AppStore } from '../../store/useStore';
+import { createTestLiveState, createTestDeviceInfo } from '../fixtures/data';
 
 export const createMockStore = (overrides: Partial<AppStore> = {}) => {
   const mockStore = {
@@ -12,8 +12,8 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     activityLog: overrides.activityLog ?? [],
     fullActivityLog: overrides.fullActivityLog ?? [],
     preferences: overrides.preferences ?? {
-      theme: "night",
-      displayMode: "frequency",
+      theme: 'night',
+      displayMode: 'frequency',
       reducedMotion: false,
       hitMinDuration: 2,
       startInDashboardMode: false,
@@ -21,8 +21,8 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
       checkUpdates: true,
       recordingBufferSize: 30,
       dataRetentionDays: 30,
-      audioOutputDevice: "default",
-      recordingsPath: "./recordings",
+      audioOutputDevice: 'default',
+      recordingsPath: './recordings',
     },
     lastSequence: overrides.lastSequence ?? 0,
     memoryDrafts: overrides.memoryDrafts ?? {},

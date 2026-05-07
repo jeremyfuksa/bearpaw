@@ -1,6 +1,6 @@
-import { vi } from "vitest";
-import { APIError } from "../../api/client";
-import { mockApiResponses, mockApiErrors } from "../fixtures/apiResponses";
+import { vi } from 'vitest';
+import { APIError } from '../../api/client';
+import { mockApiResponses, mockApiErrors } from '../fixtures/apiResponses';
 
 type MockResponse<T> = {
   data: T;
@@ -13,7 +13,7 @@ export const createMockApiClient = () => {
 
   const mockClient = {
     sendHold: vi.fn(async () => {
-      const response = responses.get("/commands/hold");
+      const response = responses.get('/commands/hold');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -21,7 +21,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     sendScan: vi.fn(async () => {
-      const response = responses.get("/commands/scan");
+      const response = responses.get('/commands/scan');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -29,7 +29,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     sendKey: vi.fn(async (key: string) => {
-      const response = responses.get("/commands/key");
+      const response = responses.get('/commands/key');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -37,7 +37,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getStatus: vi.fn(async () => {
-      const response = responses.get("/status");
+      const response = responses.get('/status');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -45,7 +45,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.status;
     }),
     getDeviceInfo: vi.fn(async () => {
-      const response = responses.get("/device/info");
+      const response = responses.get('/device/info');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -53,7 +53,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.deviceInfo;
     }),
     getBanks: vi.fn(async () => {
-      const response = responses.get("/banks");
+      const response = responses.get('/banks');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -61,7 +61,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.banks;
     }),
     setBanks: vi.fn(async (banks: boolean[]) => {
-      const response = responses.get("/banks");
+      const response = responses.get('/banks');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -69,7 +69,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.banks;
     }),
     getChannels: vi.fn(async (bank?: number) => {
-      const response = responses.get("/memory/channels");
+      const response = responses.get('/memory/channels');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -93,7 +93,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.channel;
     }),
     startProgramMode: vi.fn(async () => {
-      const response = responses.get("/memory/program-mode/start");
+      const response = responses.get('/memory/program-mode/start');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -101,7 +101,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     endProgramMode: vi.fn(async () => {
-      const response = responses.get("/memory/program-mode/end");
+      const response = responses.get('/memory/program-mode/end');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -109,7 +109,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     toggleTemporaryLockout: vi.fn(async (options?: unknown) => {
-      const response = responses.get("/commands/lockout");
+      const response = responses.get('/commands/lockout');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -117,7 +117,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.toggleTemporaryLockout;
     }),
     togglePermanentLockout: vi.fn(async (channel?: number) => {
-      const response = responses.get("/commands/lockout");
+      const response = responses.get('/commands/lockout');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -125,7 +125,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.togglePermanentLockout;
     }),
     setVolume: vi.fn(async (volume: number) => {
-      const response = responses.get("/volume");
+      const response = responses.get('/volume');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -133,7 +133,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getSquelch: vi.fn(async () => {
-      const response = responses.get("/squelch");
+      const response = responses.get('/squelch');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -141,7 +141,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.squelch;
     }),
     setSquelch: vi.fn(async (level: number) => {
-      const response = responses.get("/squelch");
+      const response = responses.get('/squelch');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -149,7 +149,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getConfig: vi.fn(async () => {
-      const response = responses.get("/config");
+      const response = responses.get('/config');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -157,7 +157,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.config;
     }),
     getAllSettings: vi.fn(async () => {
-      const response = responses.get("/settings/all");
+      const response = responses.get('/settings/all');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -165,7 +165,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.config;
     }),
     getBacklight: vi.fn(async () => {
-      const response = responses.get("/settings/backlight");
+      const response = responses.get('/settings/backlight');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -173,7 +173,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.backlight;
     }),
     setBacklight: vi.fn(async (event: string) => {
-      const response = responses.get("/settings/backlight");
+      const response = responses.get('/settings/backlight');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -181,7 +181,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getBatterySettings: vi.fn(async () => {
-      const response = responses.get("/settings/battery");
+      const response = responses.get('/settings/battery');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -189,7 +189,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.battery;
     }),
     setBatterySettings: vi.fn(async (charge_time: number) => {
-      const response = responses.get("/settings/battery");
+      const response = responses.get('/settings/battery');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -197,7 +197,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getKeyBeepSettings: vi.fn(async () => {
-      const response = responses.get("/settings/key-beep");
+      const response = responses.get('/settings/key-beep');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -205,7 +205,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.keyBeep;
     }),
     setKeyBeepSettings: vi.fn(async (level: number, lock: boolean) => {
-      const response = responses.get("/settings/key-beep");
+      const response = responses.get('/settings/key-beep');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -213,7 +213,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getPrioritySettings: vi.fn(async () => {
-      const response = responses.get("/settings/priority");
+      const response = responses.get('/settings/priority');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -221,7 +221,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.priority;
     }),
     setPrioritySettings: vi.fn(async (mode: number) => {
-      const response = responses.get("/settings/priority");
+      const response = responses.get('/settings/priority');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -229,7 +229,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getSearchSettings: vi.fn(async () => {
-      const response = responses.get("/settings/search");
+      const response = responses.get('/settings/search');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -237,7 +237,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.search;
     }),
     setSearchSettings: vi.fn(async (delay: number, code_search: boolean) => {
-      const response = responses.get("/settings/search");
+      const response = responses.get('/settings/search');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -245,7 +245,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getCloseCallSettings: vi.fn(async () => {
-      const response = responses.get("/settings/close-call");
+      const response = responses.get('/settings/close-call');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -253,7 +253,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.closeCall;
     }),
     setCloseCallSettings: vi.fn(async (payload: unknown) => {
-      const response = responses.get("/settings/close-call");
+      const response = responses.get('/settings/close-call');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -261,7 +261,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getServiceSearchSettings: vi.fn(async () => {
-      const response = responses.get("/settings/service-search");
+      const response = responses.get('/settings/service-search');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -269,7 +269,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.serviceSearch;
     }),
     setServiceSearchSettings: vi.fn(async (groups: boolean[]) => {
-      const response = responses.get("/settings/service-search");
+      const response = responses.get('/settings/service-search');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -277,7 +277,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getCustomSearchSettings: vi.fn(async () => {
-      const response = responses.get("/settings/custom-search");
+      const response = responses.get('/settings/custom-search');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -285,7 +285,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.customSearch;
     }),
     setCustomSearchSettings: vi.fn(async (groups: boolean[]) => {
-      const response = responses.get("/settings/custom-search");
+      const response = responses.get('/settings/custom-search');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -309,7 +309,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getWeatherSettings: vi.fn(async () => {
-      const response = responses.get("/settings/weather");
+      const response = responses.get('/settings/weather');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -317,7 +317,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.weather;
     }),
     setWeatherSettings: vi.fn(async (priority: boolean) => {
-      const response = responses.get("/settings/weather");
+      const response = responses.get('/settings/weather');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -325,7 +325,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getContrastSettings: vi.fn(async () => {
-      const response = responses.get("/settings/contrast");
+      const response = responses.get('/settings/contrast');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -333,7 +333,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.contrast;
     }),
     setContrastSettings: vi.fn(async (level: number) => {
-      const response = responses.get("/settings/contrast");
+      const response = responses.get('/settings/contrast');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -341,7 +341,7 @@ export const createMockApiClient = () => {
       return undefined;
     }),
     getLockouts: vi.fn(async (options?: unknown) => {
-      const response = responses.get("/lockouts");
+      const response = responses.get('/lockouts');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -349,7 +349,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.lockouts;
     }),
     clearTemporaryLockouts: vi.fn(async () => {
-      const response = responses.get("/lockouts/temporary/clear");
+      const response = responses.get('/lockouts/temporary/clear');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -357,7 +357,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.clearTempLockouts;
     }),
     clearGlobalLockouts: vi.fn(async () => {
-      const response = responses.get("/lockouts/clear");
+      const response = responses.get('/lockouts/clear');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -365,7 +365,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.clearGlobalLockouts;
     }),
     clearChannelLockouts: vi.fn(async (channels?: number[]) => {
-      const response = responses.get("/lockouts/channels/clear");
+      const response = responses.get('/lockouts/channels/clear');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -373,7 +373,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.clearChannelLockouts;
     }),
     syncMemory: vi.fn(async (options?: unknown) => {
-      const response = responses.get("/memory/sync");
+      const response = responses.get('/memory/sync');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -381,7 +381,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.syncStarted;
     }),
     exportBc125atSs: vi.fn(async () => {
-      const response = responses.get("/memory/export/bc125at_ss");
+      const response = responses.get('/memory/export/bc125at_ss');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -389,7 +389,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.bc125atSsExport;
     }),
     exportCsv: vi.fn(async () => {
-      const response = responses.get("/memory/export/csv");
+      const response = responses.get('/memory/export/csv');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -397,7 +397,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.csvExport;
     }),
     importCsv: vi.fn(async (file: File) => {
-      const response = responses.get("/memory/import/csv");
+      const response = responses.get('/memory/import/csv');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -405,7 +405,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.importCsv;
     }),
     getAllPreferences: vi.fn(async () => {
-      const response = responses.get("/preferences");
+      const response = responses.get('/preferences');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -429,7 +429,7 @@ export const createMockApiClient = () => {
       return { key, value };
     }),
     setPreferences: vi.fn(async (prefs: unknown) => {
-      const response = responses.get("/preferences");
+      const response = responses.get('/preferences');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -437,7 +437,7 @@ export const createMockApiClient = () => {
       return mockApiResponses.preferences;
     }),
     resetPreferences: vi.fn(async () => {
-      const response = responses.get("/preferences");
+      const response = responses.get('/preferences');
       if (response?.error) {
         throw new APIError(response.error.message, response.error.status, response.error);
       }
@@ -456,7 +456,7 @@ export const createMockApiClient = () => {
     reset: () => {
       responses.clear();
       Object.values(mockClient).forEach((method) => {
-        if (typeof method === "function" && "mockClear" in method) {
+        if (typeof method === 'function' && 'mockClear' in method) {
           (method as any).mockClear();
         }
       });

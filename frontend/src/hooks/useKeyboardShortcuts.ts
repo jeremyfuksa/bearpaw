@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
-import { useAPI } from "../api/useApi";
-import { useStore } from "../store/useStore";
+import { useAPI } from '../api/useApi';
+import { useStore } from '../store/useStore';
 
 interface ShortcutHandlers {
   openActivityLog: () => void;
@@ -15,7 +15,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === 'Escape') {
         handlers.closeOverlays();
         return;
       }
@@ -24,26 +24,23 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       if (!modifierPressed) return;
 
       switch (event.key.toLowerCase()) {
-        case "s":
+        case 's':
           event.preventDefault();
           api.sendScan();
           break;
-        case "h":
+        case 'h':
           event.preventDefault();
           api.sendHold();
           break;
-        case "c": {
+        case 'c': {
           event.preventDefault();
           const liveState = useStore.getState().liveState;
           if (liveState && navigator.clipboard?.writeText) {
-            navigator.clipboard
-              .writeText(liveState.frequency.toFixed(4))
-              .catch(() => {
-              });
+            navigator.clipboard.writeText(liveState.frequency.toFixed(4)).catch(() => {});
           }
           break;
         }
-        case "l": {
+        case 'l': {
           event.preventDefault();
           if (event.shiftKey) {
             handlers.openActivityLog();
@@ -58,28 +55,28 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           }
           break;
         }
-        case "?":
+        case '?':
           event.preventDefault();
           handlers.openShortcuts();
           break;
-        case "m":
+        case 'm':
           event.preventDefault();
           handlers.openMemoryBrowser();
           break;
-        case "arrowup":
+        case 'arrowup':
           event.preventDefault();
-          api.sendKey("UP");
+          api.sendKey('UP');
           break;
-        case "arrowdown":
+        case 'arrowdown':
           event.preventDefault();
-          api.sendKey("DOWN");
+          api.sendKey('DOWN');
           break;
         default:
           break;
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [api, handlers]);
 }
