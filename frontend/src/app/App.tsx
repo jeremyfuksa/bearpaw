@@ -4,22 +4,12 @@ import { cn } from '../lib/utils';
 import { Toaster, toast } from 'sonner';
 import { TabNav, StatusHeader, ScannerDisplay, BankControls } from './components/ScannerUI';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
-import { Activity, Clock, FileText, HelpCircle, Lock, Play, Radio, Signal, X } from 'lucide-react';
-import { Slider } from './components/ui/slider';
-import { Switch } from './components/ui/switch';
+import { Activity, Clock, FileText, Play, Radio, Signal } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './components/ui/select';
 import { useAPI, API_BASE } from '../api/useApi';
 import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import { stepToChannel } from '../utils/channelNavigation';
 import {
   getBackendStatus,
   getShellInfo,
@@ -27,15 +17,7 @@ import {
   subscribeBackendStatus,
   type BackendStatus,
 } from '../tauri-shell';
-import type {
-  ActivityLogEntry,
-  ChannelData,
-  ChannelDraft,
-  CustomSearchRange,
-  EventMessage,
-  ProgressMessage,
-  StateUpdateMessage,
-} from '../types';
+import type { ActivityLogEntry, EventMessage, ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
@@ -70,7 +52,6 @@ function normalizeSignal(value?: number) {
   return Math.min(5, Math.round(value / 20));
 }
 
-const defaultCloseCallBand = [false, false, false, false, false];
 const HEATMAP_INTENSITY_CLASSES = [
   'bg-heatmap-0',
   'bg-heatmap-1',
@@ -136,11 +117,9 @@ export default function App() {
     unique_channels?: number;
     active_time_seconds?: number;
   } | null>(null);
-  const [_temporaryLockoutChannels, setTemporaryLockoutChannels] = useState<number[]>([]);
   const [isMemorySyncing, setIsMemorySyncing] = useState(false);
   const [syncProgressMessage, setSyncProgressMessage] = useState('Loading channels from device...');
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
-  const [preferencesLoading, setPreferencesLoading] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const [hasFreshLiveFrame, setHasFreshLiveFrame] = useState(false);
   const [shellStatus, setShellStatus] = useState<BackendStatus | null>(null);
@@ -454,16 +433,6 @@ export default function App() {
         if (banksResult.status === 'fulfilled' && Array.isArray(banksResult.value.banks)) {
           setBanks(banksResult.value.banks);
         }
-
-        try {
-          const lockouts = await api.getLockouts({ includeFrequencies: false });
-          if (!active) return;
-          setTemporaryLockoutChannels(lockouts.temporary_channels.map((entry) => entry.channel));
-        } catch (error) {
-          if (active) {
-            console.warn('Failed to load initial lockouts', error);
-          }
-        }
       } catch (error) {
         if (!active) return;
         console.warn('Failed to load initial scanner data', error);
@@ -513,27 +482,6 @@ export default function App() {
     return () => window.clearTimeout(timeout);
   }, [isDashboardMode]);
 
-  const handleMemorySync = useCallback(async () => {
-    if (syncInProgressRef.current || isMemorySyncing) {
-      return;
-    }
-    setIsMemorySyncing(true);
-    setSyncProgressMessage('Loading channels from device...');
-    try {
-      const result = await api.syncMemory({ force: true });
-      if (result.status === 'already_running') {
-        syncInProgressRef.current = true;
-        return;
-      }
-      toast.success('Channel sync started');
-      syncInProgressRef.current = true;
-    } catch (error) {
-      console.warn('Failed to start channel sync', error);
-      toast.error('Unable to start channel sync');
-      setIsMemorySyncing(false);
-    }
-  }, [api, isMemorySyncing]);
-
   const handleCancelSync = useCallback(async () => {
     try {
       await api.cancelSync(syncTaskIdRef.current || undefined);
@@ -570,28 +518,6 @@ export default function App() {
       window.clearInterval(interval);
     };
   }, [api, setDeviceInfo]);
-
-  useEffect(() => {
-    if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
-    let active = true;
-    const refreshLockouts = async () => {
-      try {
-        const lockouts = await api.getLockouts({ includeFrequencies: false });
-        if (!active) return;
-        setTemporaryLockoutChannels(lockouts.temporary_channels.map((entry) => entry.channel));
-      } catch (error) {
-        if (active) {
-          console.warn('Failed to refresh lockouts', error);
-        }
-      }
-    };
-    refreshLockouts();
-    const interval = window.setInterval(refreshLockouts, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [api, deviceInfo]);
 
   useEffect(() => {
     if (currentTab !== 'Scan') return;
@@ -763,15 +689,6 @@ export default function App() {
         frequency,
         channel: liveState?.channel ?? undefined,
       });
-      if (result.channel) {
-        setTemporaryLockoutChannels((prev) =>
-          result.locked
-            ? prev.includes(result.channel!)
-              ? prev
-              : [...prev, result.channel!]
-            : prev.filter((channelId) => channelId !== result.channel),
-        );
-      }
       const lockoutChannel = result.channel ?? liveState?.channel;
       toast.info(
         result.locked
@@ -801,7 +718,6 @@ export default function App() {
       }
       const updated = await api.togglePermanentLockout(channelId);
       setChannels(channels.map((channel) => (channel.index === updated.index ? updated : channel)));
-      setTemporaryLockoutChannels((prev) => prev.filter((channel) => channel !== updated.index));
       toast.info(
         `Permanent lockout ${updated.lockout ? 'enabled' : 'cleared'} for CH ${updated.index}`,
       );
@@ -901,31 +817,6 @@ export default function App() {
     uniqueChannels: sessionStats?.unique_channels ?? 0,
     activeTime: sessionStats?.active_time_seconds ?? 0,
   };
-
-  const handleExportActivityLog = useCallback(() => {
-    if (fullActivityLog.length === 0) {
-      toast.info('No activity to export');
-      return;
-    }
-    const header = ['timestamp', 'frequency', 'tag', 'channel', 'rssi'].join(',');
-    const rows = fullActivityLog.map((entry) => {
-      const timestamp = new Date(entry.timestamp * 1000).toISOString();
-      const frequency = entry.frequency.toFixed(4);
-      const tag = entry.alpha_tag ?? '';
-      const channel = entry.channel ?? '';
-      const rssi = entry.rssi ?? '';
-      return [timestamp, frequency, `"${tag.replace(/"/g, '""')}"`, channel, rssi].join(',');
-    });
-    const blob = new Blob([[header, ...rows].join('\n')], {
-      type: 'text/csv',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `activity-log-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [fullActivityLog]);
 
   const formatSignalBars = (strength: number) =>
     [1, 2, 3, 4, 5].map((bar) => (
