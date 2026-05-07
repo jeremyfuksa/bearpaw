@@ -7,8 +7,6 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     liveState: overrides.liveState ?? createTestLiveState(),
     deviceInfo: overrides.deviceInfo ?? createTestDeviceInfo(),
     channels: overrides.channels ?? [],
-    connected: overrides.connected ?? true,
-    connecting: overrides.connecting ?? false,
     activityLog: overrides.activityLog ?? [],
     fullActivityLog: overrides.fullActivityLog ?? [],
     preferences: overrides.preferences ?? {
@@ -29,8 +27,6 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     updateLiveState: vi.fn(),
     setDeviceInfo: vi.fn(),
     setChannels: vi.fn(),
-    setConnected: vi.fn(),
-    setConnecting: vi.fn(),
     addActivityLogEntry: vi.fn(),
     addToFullActivityLog: vi.fn(),
     clearActivityLog: vi.fn(),

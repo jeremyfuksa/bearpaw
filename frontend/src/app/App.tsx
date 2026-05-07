@@ -90,8 +90,6 @@ export default function App() {
   const updateLiveState = useStore((state) => state.updateLiveState);
   const setDeviceInfo = useStore((state) => state.setDeviceInfo);
   const setChannels = useStore((state) => state.setChannels);
-  const setConnected = useStore((state) => state.setConnected);
-  const setConnecting = useStore((state) => state.setConnecting);
   const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
   const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
   const setPreferences = useStore((state) => state.setPreferences);
@@ -173,11 +171,6 @@ export default function App() {
     },
     [api, connected],
   );
-
-  useEffect(() => {
-    setConnected(connected);
-    setConnecting(connecting);
-  }, [connected, connecting, setConnected, setConnecting]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
