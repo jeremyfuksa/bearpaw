@@ -19,15 +19,12 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
       startInDashboardMode: false,
       autoConnect: false,
       checkUpdates: true,
-      recordingBufferSize: 30,
       dataRetentionDays: 30,
       audioOutputDevice: 'default',
-      recordingsPath: './recordings',
     },
     lastSequence: overrides.lastSequence ?? 0,
     memoryDrafts: overrides.memoryDrafts ?? {},
     memoryEditingIndex: overrides.memoryEditingIndex ?? null,
-    isRecording: overrides.isRecording ?? false,
 
     updateLiveState: vi.fn(),
     setDeviceInfo: vi.fn(),
@@ -41,7 +38,6 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     updatePreferences: vi.fn(),
     setMemoryEditingIndex: vi.fn(),
     setMemoryDraft: vi.fn(),
-    setRecording: vi.fn(),
   };
 
   return mockStore;
