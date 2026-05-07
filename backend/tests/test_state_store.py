@@ -55,6 +55,28 @@ class StateStoreTests(unittest.TestCase):
             changes, {"squelch_open": False, "rssi": 60, "timestamp": now + 1}
         )
 
+    def test_first_poll_marks_changes_with_first_poll_flag(self) -> None:
+        store = StateStore()
+        state = LiveState(
+            timestamp=time.time(),
+            frequency=151.25,
+            modulation="FM",
+            squelch_open=True,
+            rssi=75,
+            mode="SCAN",
+            channel=1,
+            alpha_tag="TEST",
+            volume=10,
+            battery=100,
+            stale=False,
+        )
+        changes = store.update_live_state(state)
+        self.assertTrue(changes.get("_first_poll"))
+        self.assertIn("squelch_open", changes)
+        # Subsequent identical poll should not flag _first_poll
+        changes2 = store.update_live_state(state)
+        self.assertNotIn("_first_poll", changes2)
+
     def test_mark_live_state_stale(self) -> None:
         store = StateStore()
         state = LiveState(

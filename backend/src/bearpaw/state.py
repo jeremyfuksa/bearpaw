@@ -38,20 +38,16 @@ class StateStore:
     def update_live_state(self, state: LiveState) -> Dict[str, object]:
         with self._lock:
             changes: Dict[str, object] = {}
-            if not self._live_state:
-                self._live_state = LiveState(
-                    timestamp=0.0,
-                    frequency=0.0,
-                    modulation="AUTO",
-                    squelch_open=False,
-                    rssi=0,
-                    mode="SCAN",
-                    channel=None,
-                    alpha_tag=None,
-                    volume=0,
-                    battery=None,
-                    stale=True,
-                )
+            is_first_poll = self._live_state is None
+            if is_first_poll:
+                # On first poll, return all fields as "changes" for broadcast,
+                # but mark squelch_open as not-a-transition so callers don't
+                # interpret an initial True as a fresh hit.
+                for field, value in state.__dict__.items():
+                    changes[field] = value
+                self._live_state = state
+                changes["_first_poll"] = True
+                return changes
             for field, value in state.__dict__.items():
                 if getattr(self._live_state, field) != value:
                     changes[field] = value
