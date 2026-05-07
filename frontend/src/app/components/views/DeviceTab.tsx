@@ -12,7 +12,6 @@ import {
   Heart,
   Code,
   ExternalLink,
-  RefreshCcw,
   Wifi,
 } from 'lucide-react';
 
@@ -668,15 +667,6 @@ export function DeviceTab() {
   const activeRangeCount = searchRanges.filter((r) => r.enabled).length;
 
   const volume = liveState?.volume ?? 0;
-
-  const categories: DeviceCategory[] = [
-    'Locked Channels',
-    'Device Config',
-    'Close Call',
-    'Service Search',
-    'Custom Search',
-    'Preferences',
-  ];
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full gap-6">
