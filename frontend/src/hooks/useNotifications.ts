@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState } from 'react';
 
-import type { Notification } from "../types";
+import type { Notification } from '../types';
 
 export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -10,7 +10,7 @@ export function useNotifications() {
   }, []);
 
   const addNotification = useCallback(
-    (notification: Omit<Notification, "id">) => {
+    (notification: Omit<Notification, 'id'>) => {
       const id = crypto.randomUUID();
       const payload: Notification = { id, ...notification };
       setNotifications((prev) => [...prev, payload]);
@@ -19,7 +19,7 @@ export function useNotifications() {
         window.setTimeout(() => removeNotification(id), notification.duration);
       }
     },
-    [removeNotification]
+    [removeNotification],
   );
 
   return { notifications, addNotification, removeNotification };

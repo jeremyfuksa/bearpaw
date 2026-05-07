@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
-import { motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { motion } from 'motion/react';
 import {
   Lock,
   Radio,
@@ -14,28 +14,22 @@ import {
   ExternalLink,
   RefreshCcw,
   Wifi,
-} from "lucide-react";
+} from 'lucide-react';
 
-import { cn } from "../../../lib/utils";
-import { useAPI, API_BASE } from "../../../api/useApi";
-import { useStore } from "../../../store/useStore";
-import { Slider } from "../ui/slider";
-import { Switch } from "../ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { cn } from '../../../lib/utils';
+import { useAPI, API_BASE } from '../../../api/useApi';
+import { useStore } from '../../../store/useStore';
+import { Slider } from '../ui/slider';
+import { Switch } from '../ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 
 type DeviceCategory =
-  | "Locked Channels"
-  | "Device Config"
-  | "Close Call"
-  | "Service Search"
-  | "Custom Search"
-  | "Preferences";
+  | 'Locked Channels'
+  | 'Device Config'
+  | 'Close Call'
+  | 'Service Search'
+  | 'Custom Search'
+  | 'Preferences';
 
 interface SearchRange {
   id: number;
@@ -56,78 +50,95 @@ export function DeviceTab() {
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>("Device Config");
+  const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>('Device Config');
   const [selectedChannels, setSelectedChannels] = useState<number[]>([]);
   const [isClearing, setIsClearing] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [bankFilter, setBankFilter] = useState<number | "all">("all");
+  const [searchTerm, setSearchTerm] = useState('');
+  const [bankFilter, setBankFilter] = useState<number | 'all'>('all');
 
-  const handlePreferenceChange = useCallback(async (key: string, value: any) => {
-    const backendKey = key === "startInDashboardMode" ? "start_dashboard_mode"
-      : key === "hitMinDuration" ? "hit_min_duration"
-      : key;
-    updatePreferences({ [key]: value } as any);
-    try {
-      await fetch(`${API_BASE}/preferences`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [backendKey]: value }),
-      });
-    } catch (error) {
-      console.error("Failed to save preference", error);
-      toast.error("Failed to save preference");
-    }
-  }, [updatePreferences]);
+  const handlePreferenceChange = useCallback(
+    async (key: string, value: any) => {
+      const backendKey =
+        key === 'startInDashboardMode'
+          ? 'start_dashboard_mode'
+          : key === 'hitMinDuration'
+            ? 'hit_min_duration'
+            : key;
+      updatePreferences({ [key]: value } as any);
+      try {
+        await fetch(`${API_BASE}/preferences`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [backendKey]: value }),
+        });
+      } catch (error) {
+        console.error('Failed to save preference', error);
+        toast.error('Failed to save preference');
+      }
+    },
+    [updatePreferences],
+  );
 
   // Device Config Settings
   const [squelch, setSquelch] = useState(2);
   const [batterySaver, setBatterySaver] = useState(1);
-  const [backlight, setBacklight] = useState("AO");
+  const [backlight, setBacklight] = useState('AO');
   const [contrast, setContrast] = useState(7);
   const [keyBeepEnabled, setKeyBeepEnabled] = useState(true);
-  const [priorityMode, setPriorityMode] = useState("off");
+  const [priorityMode, setPriorityMode] = useState('off');
   const [weatherAlert, setWeatherAlert] = useState(false);
   const [keyBeepLock, setKeyBeepLock] = useState(false);
 
   // Close Call Settings
-  const [closeCallMode, setCloseCallMode] = useState("off");
+  const [closeCallMode, setCloseCallMode] = useState('off');
   const [closeCallLockout, setCloseCallLockout] = useState(false);
   const [closeCallBeep, setCloseCallBeep] = useState(false);
   const [closeCallLight, setCloseCallLight] = useState(false);
-  const [closeCallBands, setCloseCallBands] = useState<boolean[]>([false, false, false, false, false]);
+  const [closeCallBands, setCloseCallBands] = useState<boolean[]>([
+    false,
+    false,
+    false,
+    false,
+    false,
+  ]);
 
   // Service Search Settings
   const [serviceSearchGroups, setServiceSearchGroups] = useState<boolean[]>([
-    false, false, false, false, false, false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
   ]);
   const [searchDelay, setSearchDelay] = useState(3);
   const [codeSearchEnabled, setCodeSearchEnabled] = useState(false);
 
   // Custom Search Settings
   const [searchRanges, setSearchRanges] = useState<SearchRange[]>([
-    { id: 1, enabled: true, label: "VHF Low", start: "25.0000", end: "54.0000" },
-    { id: 2, enabled: true, label: "Civil Air", start: "108.0000", end: "136.9916" },
-    { id: 3, enabled: true, label: "VHF High", start: "137.0000", end: "174.0000" },
-    { id: 4, enabled: false, label: "UHF Air", start: "225.0000", end: "380.0000" },
-    { id: 5, enabled: false, label: "UHF", start: "400.0000", end: "512.0000" },
-    { id: 6, enabled: false, label: "800 MHz", start: "806.0000", end: "960.0000" },
-    { id: 7, enabled: false, label: "Range 7", start: "1240.0000", end: "1300.0000" },
-    { id: 8, enabled: false, label: "Range 8", start: "0.0000", end: "0.0000" },
-    { id: 9, enabled: false, label: "Range 9", start: "0.0000", end: "0.0000" },
-    { id: 10, enabled: false, label: "Range 10", start: "0.0000", end: "0.0000" },
+    { id: 1, enabled: true, label: 'VHF Low', start: '25.0000', end: '54.0000' },
+    { id: 2, enabled: true, label: 'Civil Air', start: '108.0000', end: '136.9916' },
+    { id: 3, enabled: true, label: 'VHF High', start: '137.0000', end: '174.0000' },
+    { id: 4, enabled: false, label: 'UHF Air', start: '225.0000', end: '380.0000' },
+    { id: 5, enabled: false, label: 'UHF', start: '400.0000', end: '512.0000' },
+    { id: 6, enabled: false, label: '800 MHz', start: '806.0000', end: '960.0000' },
+    { id: 7, enabled: false, label: 'Range 7', start: '1240.0000', end: '1300.0000' },
+    { id: 8, enabled: false, label: 'Range 8', start: '0.0000', end: '0.0000' },
+    { id: 9, enabled: false, label: 'Range 9', start: '0.0000', end: '0.0000' },
+    { id: 10, enabled: false, label: 'Range 10', start: '0.0000', end: '0.0000' },
   ]);
 
   const connectionStatusLabel =
-    deviceInfo?.connection_status === "connected"
-      ? "Connected"
-      : deviceInfo?.connection_status === "connecting"
-        ? "Connecting"
-        : "Disconnected";
+    deviceInfo?.connection_status === 'connected'
+      ? 'Connected'
+      : deviceInfo?.connection_status === 'connecting'
+        ? 'Connecting'
+        : 'Disconnected';
 
   const showUsbTroubleshooting =
-    deviceInfo?.connection_status !== "connected" &&
-    (deviceInfo?.diagnostic_code === "usb_detected_no_serial_endpoint" ||
-      deviceInfo?.diagnostic_code === "usb_device_not_accessible");
+    deviceInfo?.connection_status !== 'connected' &&
+    (deviceInfo?.diagnostic_code === 'usb_detected_no_serial_endpoint' ||
+      deviceInfo?.diagnostic_code === 'usb_device_not_accessible');
 
   const lockedChannels = useMemo(() => {
     if (!lockedChannelIds.length) return [];
@@ -140,7 +151,7 @@ export function DeviceTab() {
   const filteredLockedChannels = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return lockedChannels.filter((channel) => {
-      const matchesBank = bankFilter === "all" || channel.bank === bankFilter;
+      const matchesBank = bankFilter === 'all' || channel.bank === bankFilter;
       const matchesTerm =
         term.length === 0 ||
         channel.alpha_tag.toLowerCase().includes(term) ||
@@ -160,7 +171,7 @@ export function DeviceTab() {
   }, [filteredLockedChannels]);
 
   useEffect(() => {
-    if (selectedCategory !== "Locked Channels") return;
+    if (selectedCategory !== 'Locked Channels') return;
     let active = true;
     api
       .getLockouts({ includeFrequencies: false })
@@ -170,7 +181,7 @@ export function DeviceTab() {
         setLockedFetchedAt(Date.now());
       })
       .catch((error) => {
-        console.error("Failed to load lockouts", error);
+        console.error('Failed to load lockouts', error);
       });
     return () => {
       active = false;
@@ -197,7 +208,7 @@ export function DeviceTab() {
           setBatterySaver(batteryValue);
         }
         if (settings.backlight) {
-          setBacklight(settings.backlight.event || "AO");
+          setBacklight(settings.backlight.event || 'AO');
         }
         if (settings.contrast) {
           setContrast(settings.contrast.level);
@@ -207,8 +218,8 @@ export function DeviceTab() {
           setKeyBeepEnabled(settings.key_beep.level !== 99);
         }
         if (settings.priority) {
-          const priorityMap: Record<number, string> = { 0: "off", 1: "on", 2: "plus" };
-          setPriorityMode(priorityMap[settings.priority.mode] || "off");
+          const priorityMap: Record<number, string> = { 0: 'off', 1: 'on', 2: 'plus' };
+          setPriorityMode(priorityMap[settings.priority.mode] || 'off');
         }
         if (settings.weather) {
           setWeatherAlert(settings.weather.priority);
@@ -216,8 +227,12 @@ export function DeviceTab() {
 
         // Populate close call settings
         if (settings.close_call) {
-          const closeCallModeMap: Record<number, string> = { 0: "off", 1: "cc_dnd", 2: "cc_priority" };
-          setCloseCallMode(closeCallModeMap[settings.close_call.mode] || "off");
+          const closeCallModeMap: Record<number, string> = {
+            0: 'off',
+            1: 'cc_dnd',
+            2: 'cc_priority',
+          };
+          setCloseCallMode(closeCallModeMap[settings.close_call.mode] || 'off');
           setCloseCallLockout(settings.close_call.lockout);
           setCloseCallBeep(settings.close_call.alert_beep);
           setCloseCallLight(settings.close_call.alert_light);
@@ -238,23 +253,33 @@ export function DeviceTab() {
         // Populate custom search settings and ranges
         if (settings.custom_search && settings.custom_search_ranges) {
           const defaultLabels = [
-            "VHF Low", "Civil Air", "VHF High", "UHF Air", "UHF",
-            "800 MHz", "Range 7", "Range 8", "Range 9", "Range 10"
+            'VHF Low',
+            'Civil Air',
+            'VHF High',
+            'UHF Air',
+            'UHF',
+            '800 MHz',
+            'Range 7',
+            'Range 8',
+            'Range 9',
+            'Range 10',
           ];
 
-          setSearchRanges(settings.custom_search_ranges.map((r, idx) => ({
-            id: r.index,
-            enabled: settings.custom_search?.groups[idx] || false,
-            label: defaultLabels[idx] || `Range ${r.index}`,
-            start: r.lower.toFixed(4),
-            end: r.upper.toFixed(4),
-          })));
+          setSearchRanges(
+            settings.custom_search_ranges.map((r, idx) => ({
+              id: r.index,
+              enabled: settings.custom_search?.groups[idx] || false,
+              label: defaultLabels[idx] || `Range ${r.index}`,
+              start: r.lower.toFixed(4),
+              end: r.upper.toFixed(4),
+            })),
+          );
         }
 
         programModeSettingsLoaded.current = true;
       } catch (error) {
-        console.error("Failed to load all settings", error);
-        toast.error("Failed to load device settings");
+        console.error('Failed to load all settings', error);
+        toast.error('Failed to load device settings');
       }
     };
 
@@ -267,9 +292,7 @@ export function DeviceTab() {
 
   const toggleSelection = useCallback((channelId: number) => {
     setSelectedChannels((prev) =>
-      prev.includes(channelId)
-        ? prev.filter((value) => value !== channelId)
-        : [...prev, channelId],
+      prev.includes(channelId) ? prev.filter((value) => value !== channelId) : [...prev, channelId],
     );
   }, []);
 
@@ -280,36 +303,39 @@ export function DeviceTab() {
     [lockedChannels],
   );
 
-  const handleUnlockSelected = useCallback(async (targetIds?: number[]) => {
-    const targets = targetIds ?? selectedChannels;
-    if (targets.length === 0) {
-      toast.info("Select channels to unlock");
-      return;
-    }
-    setIsClearing(true);
-    try {
-      const result = await api.clearChannelLockouts(targets);
-      const clearedIds = targets.length > 0 ? targets : result.cleared;
-      const clearedSet = new Set(clearedIds);
-      setChannels((prev) =>
-        prev.map((channel) =>
-          clearedSet.has(channel.index) ? { ...channel, lockout: false } : channel,
-        ),
-      );
-      setLockedChannelIds((prev) => prev.filter((id) => !clearedSet.has(id)));
-      setSelectedChannels((prev) => prev.filter((id) => !clearedSet.has(id)));
-      toast.success(`${clearedIds.length} channel${clearedIds.length === 1 ? "" : "s"} unlocked`);
-    } catch (error) {
-      console.error("Failed to unlock channels", error);
-      toast.error("Unable to unlock channels");
-    } finally {
-      setIsClearing(false);
-    }
-  }, [api, selectedChannels, setChannels]);
+  const handleUnlockSelected = useCallback(
+    async (targetIds?: number[]) => {
+      const targets = targetIds ?? selectedChannels;
+      if (targets.length === 0) {
+        toast.info('Select channels to unlock');
+        return;
+      }
+      setIsClearing(true);
+      try {
+        const result = await api.clearChannelLockouts(targets);
+        const clearedIds = targets.length > 0 ? targets : result.cleared;
+        const clearedSet = new Set(clearedIds);
+        setChannels((prev) =>
+          prev.map((channel) =>
+            clearedSet.has(channel.index) ? { ...channel, lockout: false } : channel,
+          ),
+        );
+        setLockedChannelIds((prev) => prev.filter((id) => !clearedSet.has(id)));
+        setSelectedChannels((prev) => prev.filter((id) => !clearedSet.has(id)));
+        toast.success(`${clearedIds.length} channel${clearedIds.length === 1 ? '' : 's'} unlocked`);
+      } catch (error) {
+        console.error('Failed to unlock channels', error);
+        toast.error('Unable to unlock channels');
+      } finally {
+        setIsClearing(false);
+      }
+    },
+    [api, selectedChannels, setChannels],
+  );
 
   const handleUnlockAll = useCallback(async () => {
     if (lockedChannelIds.length === 0) {
-      toast.info("No locked channels");
+      toast.info('No locked channels');
       return;
     }
     setIsClearing(true);
@@ -325,44 +351,53 @@ export function DeviceTab() {
       setSelectedChannels([]);
       toast.success(`${result.cleared.length} channels unlocked`);
     } catch (error) {
-      console.error("Failed to unlock channels", error);
-      toast.error("Unable to unlock channels");
+      console.error('Failed to unlock channels', error);
+      toast.error('Unable to unlock channels');
     } finally {
       setIsClearing(false);
     }
   }, [api, lockedChannelIds.length, setChannels]);
 
   // Setting handlers
-  const handleVolumeChange = useCallback(async (value: number[]) => {
-    try {
-      await api.setVolume(value[0]);
-    } catch (error) {
-      console.error("Failed to set volume", error);
-      toast.error("Failed to set volume");
-    }
-  }, [api]);
+  const handleVolumeChange = useCallback(
+    async (value: number[]) => {
+      try {
+        await api.setVolume(value[0]);
+      } catch (error) {
+        console.error('Failed to set volume', error);
+        toast.error('Failed to set volume');
+      }
+    },
+    [api],
+  );
 
-  const handleSquelchChange = useCallback(async (value: number[]) => {
-    const level = value[0];
-    try {
-      await api.setSquelch(level);
-      setSquelch(level);
-    } catch (error) {
-      console.error("Failed to set squelch", error);
-      toast.error("Failed to set squelch");
-    }
-  }, [api]);
+  const handleSquelchChange = useCallback(
+    async (value: number[]) => {
+      const level = value[0];
+      try {
+        await api.setSquelch(level);
+        setSquelch(level);
+      } catch (error) {
+        console.error('Failed to set squelch', error);
+        toast.error('Failed to set squelch');
+      }
+    },
+    [api],
+  );
 
-  const handleBatterySaverChange = useCallback(async (value: number[]) => {
-    const chargeTime = value[0];
-    try {
-      await api.setBatterySettings(chargeTime);
-      setBatterySaver(chargeTime);
-    } catch (error) {
-      console.error("Failed to set battery saver", error);
-      toast.error("Failed to set battery saver");
-    }
-  }, [api]);
+  const handleBatterySaverChange = useCallback(
+    async (value: number[]) => {
+      const chargeTime = value[0];
+      try {
+        await api.setBatterySettings(chargeTime);
+        setBatterySaver(chargeTime);
+      } catch (error) {
+        console.error('Failed to set battery saver', error);
+        toast.error('Failed to set battery saver');
+      }
+    },
+    [api],
+  );
 
   const handleBacklightChange = useCallback(
     async (value: string) => {
@@ -370,23 +405,26 @@ export function DeviceTab() {
         await api.setBacklight(value);
         setBacklight(value);
       } catch (error) {
-        console.error("Failed to set backlight", error);
-        toast.error("Failed to set backlight");
+        console.error('Failed to set backlight', error);
+        toast.error('Failed to set backlight');
       }
     },
     [api],
   );
 
-  const handleContrastChange = useCallback(async (value: number[]) => {
-    const level = value[0];
-    try {
-      await api.setContrastSettings(level);
-      setContrast(level);
-    } catch (error) {
-      console.error("Failed to set contrast", error);
-      toast.error("Failed to set contrast");
-    }
-  }, [api]);
+  const handleContrastChange = useCallback(
+    async (value: number[]) => {
+      const level = value[0];
+      try {
+        await api.setContrastSettings(level);
+        setContrast(level);
+      } catch (error) {
+        console.error('Failed to set contrast', error);
+        toast.error('Failed to set contrast');
+      }
+    },
+    [api],
+  );
 
   const refreshKeyBeep = useCallback(async () => {
     try {
@@ -395,7 +433,7 @@ export function DeviceTab() {
       setKeyBeepEnabled(res.level !== 99);
       return res;
     } catch (error) {
-      console.error("Failed to refresh key beep", error);
+      console.error('Failed to refresh key beep', error);
       return null;
     }
   }, [api]);
@@ -409,23 +447,21 @@ export function DeviceTab() {
         const refreshed = await refreshKeyBeep();
 
         if (!refreshed) {
-          toast.error("Failed to set key beep");
+          toast.error('Failed to set key beep');
           return;
         }
 
-        const matches =
-          (enabled && refreshed.level !== 99) ||
-          (!enabled && refreshed.level === 99);
+        const matches = (enabled && refreshed.level !== 99) || (!enabled && refreshed.level === 99);
 
         if (matches) {
           return;
         }
 
-        console.error("Key beep verification failed", { enabled, actualLevel: refreshed.level });
-        toast.error("Failed to set key beep");
+        console.error('Key beep verification failed', { enabled, actualLevel: refreshed.level });
+        toast.error('Failed to set key beep');
       } catch (error) {
-        console.error("Failed to set key beep", { payload, error });
-        toast.error("Failed to set key beep");
+        console.error('Failed to set key beep', { payload, error });
+        toast.error('Failed to set key beep');
       }
     },
     [api, keyBeepLock, refreshKeyBeep],
@@ -439,215 +475,239 @@ export function DeviceTab() {
     [applyKeyBeep],
   );
 
-  const handlePriorityModeChange = useCallback(async (value: string) => {
-    setPriorityMode(value);
-    const modeMap: Record<string, number> = { "off": 0, "on": 1, "plus": 2 };
-    try {
-      await api.setPrioritySettings(modeMap[value] || 0);
-    } catch (error) {
-      console.error("Failed to set priority mode", error);
-      toast.error("Failed to set priority mode");
-    }
-  }, [api]);
-
-  const handleWeatherAlertChange = useCallback(async (checked: boolean) => {
-    setWeatherAlert(checked);
-    try {
-      await api.setWeatherSettings(checked);
-    } catch (error) {
-      console.error("Failed to set weather alert", error);
-      toast.error("Failed to set weather alert");
-    }
-  }, [api]);
-
-  const handleCloseCallModeChange = useCallback(async (value: string) => {
-    setCloseCallMode(value);
-    const modeMap: Record<string, number> = { "off": 0, "cc_dnd": 1, "cc_priority": 2 };
-    try {
-      await api.setCloseCallSettings({
-        mode: modeMap[value] || 0,
-        alert_beep: closeCallBeep,
-        alert_light: closeCallLight,
-        band: closeCallBands,
-        lockout: closeCallLockout,
-      });
-    } catch (error) {
-      console.error("Failed to set close call mode", error);
-      toast.error("Failed to set close call mode");
-    }
-  }, [api, closeCallBeep, closeCallLight, closeCallBands, closeCallLockout]);
-
-  const handleCloseCallSettingChange = useCallback(async (setting: string, value: boolean) => {
-    const modeMap: Record<string, number> = { "off": 0, "cc_dnd": 1, "cc_priority": 2 };
-    const updates: Record<string, boolean> = {
-      lockout: closeCallLockout,
-      alert_beep: closeCallBeep,
-      alert_light: closeCallLight,
-      [setting]: value,
-    };
-
-    try {
-      await api.setCloseCallSettings({
-        mode: modeMap[closeCallMode] || 0,
-        alert_beep: updates.alert_beep,
-        alert_light: updates.alert_light,
-        band: closeCallBands,
-        lockout: updates.lockout,
-      });
-      if (setting === "lockout") setCloseCallLockout(value);
-      if (setting === "alert_beep") setCloseCallBeep(value);
-      if (setting === "alert_light") setCloseCallLight(value);
-    } catch (error) {
-      console.error("Failed to update close call setting", error);
-      toast.error("Failed to update close call setting");
-    }
-  }, [api, closeCallMode, closeCallLockout, closeCallBeep, closeCallLight, closeCallBands]);
-
-  const handleCloseCallBandToggle = useCallback(async (index: number) => {
-    const newBands = [...closeCallBands];
-    newBands[index] = !newBands[index];
-
-    const modeMap: Record<string, number> = { "off": 0, "cc_dnd": 1, "cc_priority": 2 };
-    try {
-      await api.setCloseCallSettings({
-        mode: modeMap[closeCallMode] || 0,
-        alert_beep: closeCallBeep,
-        alert_light: closeCallLight,
-        band: newBands,
-        lockout: closeCallLockout,
-      });
-      setCloseCallBands(newBands);
-    } catch (error) {
-      console.error("Failed to toggle close call band", error);
-      toast.error("Failed to toggle close call band");
-    }
-  }, [api, closeCallMode, closeCallBeep, closeCallLight, closeCallBands, closeCallLockout]);
-
-  const handleServiceSearchToggle = useCallback(async (index: number) => {
-    const newGroups = [...serviceSearchGroups];
-    newGroups[index] = !newGroups[index];
-
-    try {
-      await api.setServiceSearchSettings(newGroups);
-      setServiceSearchGroups(newGroups);
-    } catch (error) {
-      console.error("Failed to toggle service search", error);
-      toast.error("Failed to toggle service search");
-    }
-  }, [api, serviceSearchGroups]);
-
-  const handleSearchDelayChange = useCallback(async (value: number[]) => {
-    const delay = value[0];
-    setSearchDelay(delay);
-    try {
-      await api.setSearchSettings(delay, codeSearchEnabled);
-    } catch (error) {
-      console.error("Failed to set search delay", error);
-      toast.error("Failed to set search delay");
-    }
-  }, [api, codeSearchEnabled]);
-
-  const handleCodeSearchToggle = useCallback(async (checked: boolean) => {
-    setCodeSearchEnabled(checked);
-    try {
-      await api.setSearchSettings(searchDelay, checked);
-    } catch (error) {
-      console.error("Failed to toggle code search", error);
-      toast.error("Failed to toggle code search");
-    }
-  }, [api, searchDelay]);
-
-  const toggleRange = useCallback(async (id: number) => {
-    const newRanges = searchRanges.map((r) =>
-      r.id === id ? { ...r, enabled: !r.enabled } : r
-    );
-    setSearchRanges(newRanges);
-
-    try {
-      await api.setCustomSearchSettings(newRanges.map(r => r.enabled));
-    } catch (error) {
-      console.error("Failed to toggle search range", error);
-      toast.error("Failed to toggle search range");
-    }
-  }, [api, searchRanges]);
-
-  const updateRange = useCallback(async (id: number, field: "start" | "end" | "label", value: string) => {
-    if (field === "start" || field === "end") {
-      const num = parseFloat(value);
-      if (isNaN(num) || num < 0) {
-        return;
+  const handlePriorityModeChange = useCallback(
+    async (value: string) => {
+      setPriorityMode(value);
+      const modeMap: Record<string, number> = { off: 0, on: 1, plus: 2 };
+      try {
+        await api.setPrioritySettings(modeMap[value] || 0);
+      } catch (error) {
+        console.error('Failed to set priority mode', error);
+        toast.error('Failed to set priority mode');
       }
-    }
-    
-    const newRanges = searchRanges.map((r) =>
-      r.id === id ? { ...r, [field]: value } : r
-    );
-    setSearchRanges(newRanges);
-    
-    if (field === "start" || field === "end") {
-      const range = newRanges.find(r => r.id === id);
-      if (range) {
-        try {
-          const startVal = parseFloat(range.start);
-          const endVal = parseFloat(range.end);
-          if (isNaN(startVal) || isNaN(endVal)) {
-            console.error("Invalid frequency range");
-            return;
-          }
-          await api.setCustomSearchRange(id, startVal, endVal);
-        } catch (error) {
-          console.error("Failed to update search range", error);
-          toast.error("Failed to update search range");
+    },
+    [api],
+  );
+
+  const handleWeatherAlertChange = useCallback(
+    async (checked: boolean) => {
+      setWeatherAlert(checked);
+      try {
+        await api.setWeatherSettings(checked);
+      } catch (error) {
+        console.error('Failed to set weather alert', error);
+        toast.error('Failed to set weather alert');
+      }
+    },
+    [api],
+  );
+
+  const handleCloseCallModeChange = useCallback(
+    async (value: string) => {
+      setCloseCallMode(value);
+      const modeMap: Record<string, number> = { off: 0, cc_dnd: 1, cc_priority: 2 };
+      try {
+        await api.setCloseCallSettings({
+          mode: modeMap[value] || 0,
+          alert_beep: closeCallBeep,
+          alert_light: closeCallLight,
+          band: closeCallBands,
+          lockout: closeCallLockout,
+        });
+      } catch (error) {
+        console.error('Failed to set close call mode', error);
+        toast.error('Failed to set close call mode');
+      }
+    },
+    [api, closeCallBeep, closeCallLight, closeCallBands, closeCallLockout],
+  );
+
+  const handleCloseCallSettingChange = useCallback(
+    async (setting: string, value: boolean) => {
+      const modeMap: Record<string, number> = { off: 0, cc_dnd: 1, cc_priority: 2 };
+      const updates: Record<string, boolean> = {
+        lockout: closeCallLockout,
+        alert_beep: closeCallBeep,
+        alert_light: closeCallLight,
+        [setting]: value,
+      };
+
+      try {
+        await api.setCloseCallSettings({
+          mode: modeMap[closeCallMode] || 0,
+          alert_beep: updates.alert_beep,
+          alert_light: updates.alert_light,
+          band: closeCallBands,
+          lockout: updates.lockout,
+        });
+        if (setting === 'lockout') setCloseCallLockout(value);
+        if (setting === 'alert_beep') setCloseCallBeep(value);
+        if (setting === 'alert_light') setCloseCallLight(value);
+      } catch (error) {
+        console.error('Failed to update close call setting', error);
+        toast.error('Failed to update close call setting');
+      }
+    },
+    [api, closeCallMode, closeCallLockout, closeCallBeep, closeCallLight, closeCallBands],
+  );
+
+  const handleCloseCallBandToggle = useCallback(
+    async (index: number) => {
+      const newBands = [...closeCallBands];
+      newBands[index] = !newBands[index];
+
+      const modeMap: Record<string, number> = { off: 0, cc_dnd: 1, cc_priority: 2 };
+      try {
+        await api.setCloseCallSettings({
+          mode: modeMap[closeCallMode] || 0,
+          alert_beep: closeCallBeep,
+          alert_light: closeCallLight,
+          band: newBands,
+          lockout: closeCallLockout,
+        });
+        setCloseCallBands(newBands);
+      } catch (error) {
+        console.error('Failed to toggle close call band', error);
+        toast.error('Failed to toggle close call band');
+      }
+    },
+    [api, closeCallMode, closeCallBeep, closeCallLight, closeCallBands, closeCallLockout],
+  );
+
+  const handleServiceSearchToggle = useCallback(
+    async (index: number) => {
+      const newGroups = [...serviceSearchGroups];
+      newGroups[index] = !newGroups[index];
+
+      try {
+        await api.setServiceSearchSettings(newGroups);
+        setServiceSearchGroups(newGroups);
+      } catch (error) {
+        console.error('Failed to toggle service search', error);
+        toast.error('Failed to toggle service search');
+      }
+    },
+    [api, serviceSearchGroups],
+  );
+
+  const handleSearchDelayChange = useCallback(
+    async (value: number[]) => {
+      const delay = value[0];
+      setSearchDelay(delay);
+      try {
+        await api.setSearchSettings(delay, codeSearchEnabled);
+      } catch (error) {
+        console.error('Failed to set search delay', error);
+        toast.error('Failed to set search delay');
+      }
+    },
+    [api, codeSearchEnabled],
+  );
+
+  const handleCodeSearchToggle = useCallback(
+    async (checked: boolean) => {
+      setCodeSearchEnabled(checked);
+      try {
+        await api.setSearchSettings(searchDelay, checked);
+      } catch (error) {
+        console.error('Failed to toggle code search', error);
+        toast.error('Failed to toggle code search');
+      }
+    },
+    [api, searchDelay],
+  );
+
+  const toggleRange = useCallback(
+    async (id: number) => {
+      const newRanges = searchRanges.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r));
+      setSearchRanges(newRanges);
+
+      try {
+        await api.setCustomSearchSettings(newRanges.map((r) => r.enabled));
+      } catch (error) {
+        console.error('Failed to toggle search range', error);
+        toast.error('Failed to toggle search range');
+      }
+    },
+    [api, searchRanges],
+  );
+
+  const updateRange = useCallback(
+    async (id: number, field: 'start' | 'end' | 'label', value: string) => {
+      if (field === 'start' || field === 'end') {
+        const num = parseFloat(value);
+        if (isNaN(num) || num < 0) {
+          return;
         }
       }
-    }
-  }, [api, searchRanges]);
+
+      const newRanges = searchRanges.map((r) => (r.id === id ? { ...r, [field]: value } : r));
+      setSearchRanges(newRanges);
+
+      if (field === 'start' || field === 'end') {
+        const range = newRanges.find((r) => r.id === id);
+        if (range) {
+          try {
+            const startVal = parseFloat(range.start);
+            const endVal = parseFloat(range.end);
+            if (isNaN(startVal) || isNaN(endVal)) {
+              console.error('Invalid frequency range');
+              return;
+            }
+            await api.setCustomSearchRange(id, startVal, endVal);
+          } catch (error) {
+            console.error('Failed to update search range', error);
+            toast.error('Failed to update search range');
+          }
+        }
+      }
+    },
+    [api, searchRanges],
+  );
 
   const activeRangeCount = searchRanges.filter((r) => r.enabled).length;
 
   const volume = liveState?.volume ?? 0;
 
   const categories: DeviceCategory[] = [
-    "Locked Channels",
-    "Device Config",
-    "Close Call",
-    "Service Search",
-    "Custom Search",
-    "Preferences",
+    'Locked Channels',
+    'Device Config',
+    'Close Call',
+    'Service Search',
+    'Custom Search',
+    'Preferences',
   ];
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="flex h-full gap-6"
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full gap-6">
       {/* Side Nav */}
       <div className="scanner-surface h-full w-[var(--layout-sidebar-device-width)] p-2">
-        {["Locked Channels", "Device Config", "Close Call", "Service Search", "Custom Search"].map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat as DeviceCategory)}
-            className={cn(
-              "text-left px-3 py-2 rounded text-xs font-medium transition-colors",
-              selectedCategory === cat
-                ? "bg-brand-hover/20 text-brand-hover"
-                : "text-white/60 hover:bg-white/5 hover:text-white",
-            )}
-          >
-            {cat}
-          </button>
-        ))}
+        {['Locked Channels', 'Device Config', 'Close Call', 'Service Search', 'Custom Search'].map(
+          (cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat as DeviceCategory)}
+              className={cn(
+                'text-left px-3 py-2 rounded text-xs font-medium transition-colors',
+                selectedCategory === cat
+                  ? 'bg-brand-hover/20 text-brand-hover'
+                  : 'text-white/60 hover:bg-white/5 hover:text-white',
+              )}
+            >
+              {cat}
+            </button>
+          ),
+        )}
         <div className="mt-2 border-t border-white/10" />
 
         {/* Preferences at bottom */}
         <button
-          onClick={() => setSelectedCategory("Preferences")}
+          onClick={() => setSelectedCategory('Preferences')}
           className={cn(
-            "text-left px-3 py-2 rounded text-xs font-medium transition-colors mt-auto border-t border-white/10 pt-3",
-            selectedCategory === "Preferences"
-              ? "bg-brand-hover/20 text-brand-hover"
-              : "text-white/60 hover:bg-white/5 hover:text-white",
+            'text-left px-3 py-2 rounded text-xs font-medium transition-colors mt-auto border-t border-white/10 pt-3',
+            selectedCategory === 'Preferences'
+              ? 'bg-brand-hover/20 text-brand-hover'
+              : 'text-white/60 hover:bg-white/5 hover:text-white',
           )}
         >
           Preferences
@@ -656,10 +716,10 @@ export function DeviceTab() {
 
       {/* Content */}
       <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-6 h-full overflow-y-auto">
-        {selectedCategory !== "Locked Channels" && (
+        {selectedCategory !== 'Locked Channels' && (
           <h2 className="text-lg font-bold mb-6 border-b border-white/10 pb-2 flex items-center justify-between">
             <span>{selectedCategory}</span>
-            {selectedCategory === "Custom Search" && (
+            {selectedCategory === 'Custom Search' && (
               <span className="text-xs font-normal text-white/50">
                 {activeRangeCount} of 10 active
               </span>
@@ -668,7 +728,7 @@ export function DeviceTab() {
         )}
 
         {/* Locked Channels */}
-        {selectedCategory === "Locked Channels" && (
+        {selectedCategory === 'Locked Channels' && (
           <div className="flex flex-col h-full max-w-5xl mx-auto gap-4">
             <div className="flex flex-col gap-4 rounded-lg border border-white/5 bg-white/5 p-4">
               <div className="flex flex-wrap items-center gap-4">
@@ -698,7 +758,7 @@ export function DeviceTab() {
                   <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
                     Selected: {selectedChannels.length}
                   </span>
-                  {bankFilter !== "all" && (
+                  {bankFilter !== 'all' && (
                     <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
                       Bank {bankFilter}
                     </span>
@@ -714,8 +774,8 @@ export function DeviceTab() {
                     className="w-56 bg-black/30 border border-white/10 rounded px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-brand-primary"
                   />
                   <Select
-                    value={bankFilter === "all" ? "all" : String(bankFilter)}
-                    onValueChange={(val) => setBankFilter(val === "all" ? "all" : Number(val))}
+                    value={bankFilter === 'all' ? 'all' : String(bankFilter)}
+                    onValueChange={(val) => setBankFilter(val === 'all' ? 'all' : Number(val))}
                   >
                     <SelectTrigger className="scanner-input h-8 w-[var(--size-select-compact)] text-xs">
                       <SelectValue placeholder="All Banks" />
@@ -734,7 +794,7 @@ export function DeviceTab() {
                       onClick={() => toggleAllSelected(!allSelected)}
                       className="px-3 py-2 text-xs font-medium text-white/70 bg-white/10 hover:bg-white/20 rounded border border-white/10 transition-colors"
                     >
-                      {allSelected ? "Deselect" : "Select Page"}
+                      {allSelected ? 'Deselect' : 'Select Page'}
                     </button>
                     <button
                       onClick={() => handleUnlockSelected()}
@@ -772,8 +832,8 @@ export function DeviceTab() {
                     <div
                       key={channel.index}
                       className={cn(
-                        "grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-sm",
-                        isSelected ? "bg-brand-primary/10" : "hover:bg-white/5",
+                        'grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-sm',
+                        isSelected ? 'bg-brand-primary/10' : 'hover:bg-white/5',
                       )}
                     >
                       <div className="flex justify-center">
@@ -784,9 +844,15 @@ export function DeviceTab() {
                           className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
                         />
                       </div>
-                      <div className="text-center text-xs text-white/70 font-mono">CH {channel.index}</div>
-                      <div className="text-xs font-mono text-white">{channel.frequency.toFixed(4)}</div>
-                      <div className="text-xs text-white/80 truncate">{channel.alpha_tag || "Untitled"}</div>
+                      <div className="text-center text-xs text-white/70 font-mono">
+                        CH {channel.index}
+                      </div>
+                      <div className="text-xs font-mono text-white">
+                        {channel.frequency.toFixed(4)}
+                      </div>
+                      <div className="text-xs text-white/80 truncate">
+                        {channel.alpha_tag || 'Untitled'}
+                      </div>
                       <div className="text-center text-xs text-white/60">{channel.bank}</div>
                       <div className="flex justify-center">
                         <button
@@ -802,7 +868,7 @@ export function DeviceTab() {
 
                 {filteredLockedChannels.length === 0 && (
                   <div className="py-16 text-center text-white/40 text-sm">
-                    {lockedChannelIds.length === 0 ? "No locked channels" : "No matches"}
+                    {lockedChannelIds.length === 0 ? 'No locked channels' : 'No matches'}
                   </div>
                 )}
               </div>
@@ -811,7 +877,7 @@ export function DeviceTab() {
         )}
 
         {/* Device Config */}
-        {selectedCategory === "Device Config" && (
+        {selectedCategory === 'Device Config' && (
           <div className="space-y-6 max-w-4xl">
             <div className="grid grid-cols-2 gap-6">
               {/* Audio Control */}
@@ -844,7 +910,13 @@ export function DeviceTab() {
                     <span>Battery Saver</span>
                     <span className="text-white">{`${batterySaver}h`}</span>
                   </div>
-                  <Slider value={[batterySaver]} min={1} max={16} step={1} onValueChange={handleBatterySaverChange} />
+                  <Slider
+                    value={[batterySaver]}
+                    min={1}
+                    max={16}
+                    step={1}
+                    onValueChange={handleBatterySaverChange}
+                  />
                 </div>
               </div>
 
@@ -879,11 +951,20 @@ export function DeviceTab() {
 
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-white/70">Contrast</span>
-                    <Slider value={[contrast]} max={15} step={1} className="w-[var(--size-select-medium)]" onValueChange={handleContrastChange} />
+                    <Slider
+                      value={[contrast]}
+                      max={15}
+                      step={1}
+                      className="w-[var(--size-select-medium)]"
+                      onValueChange={handleContrastChange}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                    <label htmlFor="key-beep" className="text-xs font-medium text-white/70 cursor-pointer">
+                    <label
+                      htmlFor="key-beep"
+                      className="text-xs font-medium text-white/70 cursor-pointer"
+                    >
                       Key Beep
                     </label>
                     <Switch
@@ -947,11 +1028,11 @@ export function DeviceTab() {
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div className="flex justify-between">
                   <span className="text-white/50">Model</span>
-                  <span className="text-white">{deviceInfo?.model ?? "BC125AT"}</span>
+                  <span className="text-white">{deviceInfo?.model ?? 'BC125AT'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/50">Port</span>
-                  <span className="text-white">{deviceInfo?.port ?? "USB"}</span>
+                  <span className="text-white">{deviceInfo?.port ?? 'USB'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/50">Status</span>
@@ -959,7 +1040,7 @@ export function DeviceTab() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/50">Firmware</span>
-                  <span className="text-white">{deviceInfo?.firmware ?? "—"}</span>
+                  <span className="text-white">{deviceInfo?.firmware ?? '—'}</span>
                 </div>
               </div>
               {deviceInfo?.diagnostic_message && (
@@ -983,7 +1064,7 @@ export function DeviceTab() {
         )}
 
         {/* Close Call */}
-        {selectedCategory === "Close Call" && (
+        {selectedCategory === 'Close Call' && (
           <div className="grid grid-cols-2 gap-8 max-w-4xl">
             <div className="space-y-8">
               <section className="space-y-4">
@@ -995,10 +1076,10 @@ export function DeviceTab() {
                     <span className="text-xs text-white/40">Operation mode</span>
                   </div>
                   <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
-                  <SelectTrigger
-                    aria-label="Mode"
-                    className="h-8 w-[var(--size-select-wide)] border-white/10 bg-white/5 text-xs"
-                  >
+                    <SelectTrigger
+                      aria-label="Mode"
+                      className="h-8 w-[var(--size-select-wide)] border-white/10 bg-white/5 text-xs"
+                    >
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
                     <SelectContent className="scanner-select-content">
@@ -1014,14 +1095,14 @@ export function DeviceTab() {
                     id="cc-lockout"
                     className="data-[state=checked]:bg-brand-primary"
                     checked={closeCallLockout}
-                    disabled={closeCallMode === "off"}
-                    onCheckedChange={(checked) => handleCloseCallSettingChange("lockout", checked)}
+                    disabled={closeCallMode === 'off'}
+                    onCheckedChange={(checked) => handleCloseCallSettingChange('lockout', checked)}
                   />
                   <label
                     htmlFor="cc-lockout"
                     className={cn(
-                      "text-xs font-medium cursor-pointer",
-                      closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                      'text-xs font-medium cursor-pointer',
+                      closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                     )}
                   >
                     Lockout Hits While Scanning
@@ -1037,14 +1118,16 @@ export function DeviceTab() {
                     id="cc-beep"
                     className="data-[state=checked]:bg-brand-primary"
                     checked={closeCallBeep}
-                    disabled={closeCallMode === "off"}
-                    onCheckedChange={(checked) => handleCloseCallSettingChange("alert_beep", checked)}
+                    disabled={closeCallMode === 'off'}
+                    onCheckedChange={(checked) =>
+                      handleCloseCallSettingChange('alert_beep', checked)
+                    }
                   />
                   <label
                     htmlFor="cc-beep"
                     className={cn(
-                      "text-xs font-medium cursor-pointer",
-                      closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                      'text-xs font-medium cursor-pointer',
+                      closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                     )}
                   >
                     Alert Beep
@@ -1056,14 +1139,16 @@ export function DeviceTab() {
                     id="cc-light"
                     className="data-[state=checked]:bg-brand-primary"
                     checked={closeCallLight}
-                    disabled={closeCallMode === "off"}
-                    onCheckedChange={(checked) => handleCloseCallSettingChange("alert_light", checked)}
+                    disabled={closeCallMode === 'off'}
+                    onCheckedChange={(checked) =>
+                      handleCloseCallSettingChange('alert_light', checked)
+                    }
                   />
                   <label
                     htmlFor="cc-light"
                     className={cn(
-                      "text-xs font-medium cursor-pointer",
-                      closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                      'text-xs font-medium cursor-pointer',
+                      closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                     )}
                   >
                     Alert Light
@@ -1075,13 +1160,13 @@ export function DeviceTab() {
             <section className="space-y-4">
               <h3 className="text-lg font-bold text-white">Enabled Bands</h3>
               <div className="bg-white/5 rounded-lg p-4 space-y-4 border border-white/10">
-                {["VHF Low", "Air", "VHF High 1", "VHF High 2", "UHF"].map((band, index) => (
+                {['VHF Low', 'Air', 'VHF High 1', 'VHF High 2', 'UHF'].map((band, index) => (
                   <div key={band} className="flex items-center justify-between">
                     <label
                       htmlFor={`band-${band}`}
                       className={cn(
-                        "text-xs font-medium cursor-pointer",
-                        closeCallMode === "off" ? "text-white/30" : "text-white/70"
+                        'text-xs font-medium cursor-pointer',
+                        closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                       )}
                     >
                       {band}
@@ -1090,7 +1175,7 @@ export function DeviceTab() {
                       id={`band-${band}`}
                       className="data-[state=checked]:bg-brand-primary"
                       checked={closeCallBands[index]}
-                      disabled={closeCallMode === "off"}
+                      disabled={closeCallMode === 'off'}
                       onCheckedChange={() => handleCloseCallBandToggle(index)}
                     />
                   </div>
@@ -1101,58 +1186,55 @@ export function DeviceTab() {
         )}
 
         {/* Service Search */}
-        {selectedCategory === "Service Search" && (
+        {selectedCategory === 'Service Search' && (
           <div className="max-w-3xl">
             <div className="bg-white/5 rounded-lg border border-white/10 p-8">
               <p className="text-sm text-white/60 mb-6">
-                Service Search runs on the scanner itself. Enable the service banks you want to
-                use, then start Service Search directly on the device.
+                Service Search runs on the scanner itself. Enable the service banks you want to use,
+                then start Service Search directly on the device.
               </p>
-           <div className="grid grid-cols-2 gap-x-16 gap-y-6">
-                 {[
-                   "Police",
-                   "Fire/Emergency",
-                   "Ham",
-                   "Marine",
-                   "Railroad",
-                   "Civil Air",
-                   "Military Air",
-                   "CB",
-                 ].map((service, index) => (
-                   <div key={service} className="flex items-center justify-between group">
-                     <label
-                       htmlFor={`service-${service}`}
-                       className="text-sm font-medium text-white/70 group-hover:text-white transition-colors cursor-pointer"
-                     >
-                       {service}
-                     </label>
-                     <Switch
-                       id={`service-${service}`}
-                       className="data-[state=checked]:bg-brand-primary"
-                       checked={serviceSearchGroups[index]}
-                       onCheckedChange={() => handleServiceSearchToggle(index)}
-                     />
-                   </div>
-                 ))}
-               </div>
+              <div className="grid grid-cols-2 gap-x-16 gap-y-6">
+                {[
+                  'Police',
+                  'Fire/Emergency',
+                  'Ham',
+                  'Marine',
+                  'Railroad',
+                  'Civil Air',
+                  'Military Air',
+                  'CB',
+                ].map((service, index) => (
+                  <div key={service} className="flex items-center justify-between group">
+                    <label
+                      htmlFor={`service-${service}`}
+                      className="text-sm font-medium text-white/70 group-hover:text-white transition-colors cursor-pointer"
+                    >
+                      {service}
+                    </label>
+                    <Switch
+                      id={`service-${service}`}
+                      className="data-[state=checked]:bg-brand-primary"
+                      checked={serviceSearchGroups[index]}
+                      onCheckedChange={() => handleServiceSearchToggle(index)}
+                    />
+                  </div>
+                ))}
+              </div>
 
-               <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
-                 <h3 className="text-sm font-bold text-white">Search Settings</h3>
-                 
-                 <div className="flex items-center justify-between">
-                   <label
-                     htmlFor="code-search"
-                     className="text-sm font-medium text-white/70"
-                   >
-                     Code Search
-                   </label>
-                   <Switch
-                     id="code-search"
-                     className="data-[state=checked]:bg-brand-primary"
-                     checked={codeSearchEnabled}
-                     onCheckedChange={handleCodeSearchToggle}
-                   />
-                 </div>
+              <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
+                <h3 className="text-sm font-bold text-white">Search Settings</h3>
+
+                <div className="flex items-center justify-between">
+                  <label htmlFor="code-search" className="text-sm font-medium text-white/70">
+                    Code Search
+                  </label>
+                  <Switch
+                    id="code-search"
+                    className="data-[state=checked]:bg-brand-primary"
+                    checked={codeSearchEnabled}
+                    onCheckedChange={handleCodeSearchToggle}
+                  />
+                </div>
 
                 <div>
                   <div className="flex justify-between text-xs font-medium text-white/70 mb-2">
@@ -1169,13 +1251,13 @@ export function DeviceTab() {
                     className="w-full"
                   />
                 </div>
-               </div>
-             </div>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Custom Search */}
-        {selectedCategory === "Custom Search" && (
+        {selectedCategory === 'Custom Search' && (
           <div className="flex flex-col max-w-5xl mx-auto overflow-hidden gap-4">
             <p className="text-sm text-white/60">
               Custom Search runs on the scanner itself. Configure these ranges here, then start
@@ -1197,8 +1279,8 @@ export function DeviceTab() {
                   <div
                     key={range.id}
                     className={cn(
-                      "group flex-1 grid min-h-[var(--size-panel-stat-min-height)] grid-cols-[50px_60px_1fr_100px_100px] items-center gap-2 border-b border-white/5 px-4 transition-colors last:border-0 hover:bg-white/5",
-                      range.enabled && "bg-brand-primary/5",
+                      'group flex-1 grid min-h-[var(--size-panel-stat-min-height)] grid-cols-[50px_60px_1fr_100px_100px] items-center gap-2 border-b border-white/5 px-4 transition-colors last:border-0 hover:bg-white/5',
+                      range.enabled && 'bg-brand-primary/5',
                     )}
                   >
                     <div className="flex justify-center">
@@ -1206,8 +1288,8 @@ export function DeviceTab() {
                         checked={range.enabled}
                         onCheckedChange={() => toggleRange(range.id)}
                         className={cn(
-                          "scale-[0.6] data-[state=checked]:bg-brand-primary",
-                          !range.enabled && "opacity-50",
+                          'scale-[0.6] data-[state=checked]:bg-brand-primary',
+                          !range.enabled && 'opacity-50',
                         )}
                       />
                     </div>
@@ -1219,10 +1301,10 @@ export function DeviceTab() {
                     <div className="relative">
                       <input
                         value={range.label}
-                        onChange={(e) => updateRange(range.id, "label", e.target.value)}
+                        onChange={(e) => updateRange(range.id, 'label', e.target.value)}
                         className={cn(
-                          "w-full bg-transparent border-none outline-none text-xs font-medium tracking-wide transition-colors placeholder:text-white/10",
-                          range.enabled ? "text-white/80" : "text-white/30",
+                          'w-full bg-transparent border-none outline-none text-xs font-medium tracking-wide transition-colors placeholder:text-white/10',
+                          range.enabled ? 'text-white/80' : 'text-white/30',
                         )}
                         placeholder="Label..."
                       />
@@ -1232,12 +1314,12 @@ export function DeviceTab() {
                       <input
                         type="text"
                         value={range.start}
-                        onChange={(e) => updateRange(range.id, "start", e.target.value)}
+                        onChange={(e) => updateRange(range.id, 'start', e.target.value)}
                         className={cn(
-                          "w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0",
+                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0',
                           range.enabled
-                            ? "text-brand-primary group-hover:text-brand-light"
-                            : "text-white/30 group-hover:border-white/10",
+                            ? 'text-brand-primary group-hover:text-brand-light'
+                            : 'text-white/30 group-hover:border-white/10',
                         )}
                       />
                     </div>
@@ -1246,12 +1328,12 @@ export function DeviceTab() {
                       <input
                         type="text"
                         value={range.end}
-                        onChange={(e) => updateRange(range.id, "end", e.target.value)}
+                        onChange={(e) => updateRange(range.id, 'end', e.target.value)}
                         className={cn(
-                          "w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0",
+                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0',
                           range.enabled
-                            ? "text-brand-primary group-hover:text-brand-light"
-                            : "text-white/30 group-hover:border-white/10",
+                            ? 'text-brand-primary group-hover:text-brand-light'
+                            : 'text-white/30 group-hover:border-white/10',
                         )}
                       />
                     </div>
@@ -1263,7 +1345,7 @@ export function DeviceTab() {
         )}
 
         {/* Preferences */}
-        {selectedCategory === "Preferences" && (
+        {selectedCategory === 'Preferences' && (
           <div className="flex max-h-[var(--layout-detail-max-height)] gap-6 overflow-hidden">
             {/* Info Sidebar (Left) */}
             <div className="w-[var(--layout-detail-sidebar-width)] shrink-0 space-y-4 overflow-y-auto border-r border-white/5 pb-4 pr-4">
@@ -1283,13 +1365,25 @@ export function DeviceTab() {
                   </p>
                   <div className="flex gap-2 pt-2">
                     <button
-                      onClick={() => window.open('https://bearpaw-scanner.github.io', '_blank', 'noopener,noreferrer')}
+                      onClick={() =>
+                        window.open(
+                          'https://bearpaw-scanner.github.io',
+                          '_blank',
+                          'noopener,noreferrer',
+                        )
+                      }
                       className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
                     >
                       <ExternalLink size={10} /> Website
                     </button>
                     <button
-                      onClick={() => window.open('https://github.com/bearpaw-scanner', '_blank', 'noopener,noreferrer')}
+                      onClick={() =>
+                        window.open(
+                          'https://github.com/bearpaw-scanner',
+                          '_blank',
+                          'noopener,noreferrer',
+                        )
+                      }
                       className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
                     >
                       <Code size={10} /> Github
@@ -1311,7 +1405,13 @@ export function DeviceTab() {
                     Enjoying the app? A $10 donation helps keep updates coming!
                   </p>
                   <button
-                    onClick={() => window.open('https://github.com/sponsors/bearpaw-scanner', '_blank', 'noopener,noreferrer')}
+                    onClick={() =>
+                      window.open(
+                        'https://github.com/sponsors/bearpaw-scanner',
+                        '_blank',
+                        'noopener,noreferrer',
+                      )
+                    }
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
                   >
                     <Heart className="w-3 h-3 fill-white/20" />
@@ -1330,9 +1430,13 @@ export function DeviceTab() {
                 </div>
                 <button
                   onClick={() => {
-                    if (window.confirm('Reset all preferences to default values? This cannot be undone.')) {
+                    if (
+                      window.confirm(
+                        'Reset all preferences to default values? This cannot be undone.',
+                      )
+                    ) {
                       fetch(`${API_BASE}/preferences/reset`, { method: 'POST' })
-                        .then(r => r.json())
+                        .then((r) => r.json())
                         .then(() => {
                           toast.success('Preferences reset to defaults');
                           window.location.reload();
@@ -1366,9 +1470,7 @@ export function DeviceTab() {
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">
-                        Hit Minimum Duration
-                      </label>
+                      <label className="text-sm font-medium text-white">Hit Minimum Duration</label>
                       <p className="text-xs text-white/40">
                         Minimum seconds a transmission must last to be logged as a hit
                       </p>
@@ -1376,7 +1478,9 @@ export function DeviceTab() {
                     <div className="flex items-center gap-3">
                       <Slider
                         value={[preferences.hitMinDuration]}
-                        onValueChange={(values) => handlePreferenceChange("hitMinDuration", values[0])}
+                        onValueChange={(values) =>
+                          handlePreferenceChange('hitMinDuration', values[0])
+                        }
                         min={0.5}
                         max={10}
                         step={0.5}
@@ -1387,21 +1491,23 @@ export function DeviceTab() {
                       </span>
                     </div>
                   </div>
-                   <div className="h-px bg-white/5" />
-                   <div className="flex items-center justify-between">
-                     <div className="space-y-0.5">
-                       <label className="text-sm font-medium text-white">
-                         Start in Dashboard Mode
-                       </label>
-                       <p className="text-xs text-white/40">
-                         Launch directly into widget-based dashboard view
-                       </p>
-                     </div>
-                     <Switch
-                       checked={preferences.startInDashboardMode}
-                       onCheckedChange={(checked) => handlePreferenceChange("startInDashboardMode", checked)}
-                     />
-                   </div>
+                  <div className="h-px bg-white/5" />
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <label className="text-sm font-medium text-white">
+                        Start in Dashboard Mode
+                      </label>
+                      <p className="text-xs text-white/40">
+                        Launch directly into widget-based dashboard view
+                      </p>
+                    </div>
+                    <Switch
+                      checked={preferences.startInDashboardMode}
+                      onCheckedChange={(checked) =>
+                        handlePreferenceChange('startInDashboardMode', checked)
+                      }
+                    />
+                  </div>
                   <div className="h-px bg-white/5" />
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
@@ -1440,7 +1546,9 @@ export function DeviceTab() {
 
                   <div className="space-y-3">
                     <div className="flex justify-between">
-                      <label className="text-sm font-medium text-white">Recording Buffer Size</label>
+                      <label className="text-sm font-medium text-white">
+                        Recording Buffer Size
+                      </label>
                       <span className="text-xs text-white/40">2048 samples</span>
                     </div>
                     <Slider defaultValue={[50]} max={100} step={1} />
@@ -1457,13 +1565,11 @@ export function DeviceTab() {
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <label className="text-sm font-medium text-white">Enable MQTT</label>
-                      <p className="text-xs text-white/40">
-                        Publish scanner state to MQTT broker
-                      </p>
+                      <p className="text-xs text-white/40">Publish scanner state to MQTT broker</p>
                     </div>
                     <Switch
                       checked={preferences.mqttEnabled}
-                      onCheckedChange={(checked) => handlePreferenceChange("mqttEnabled", checked)}
+                      onCheckedChange={(checked) => handlePreferenceChange('mqttEnabled', checked)}
                     />
                   </div>
 
@@ -1476,7 +1582,7 @@ export function DeviceTab() {
                           <input
                             type="text"
                             value={preferences.mqttHost}
-                            onChange={(e) => handlePreferenceChange("mqttHost", e.target.value)}
+                            onChange={(e) => handlePreferenceChange('mqttHost', e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
                             placeholder="127.0.0.1"
                           />
@@ -1487,7 +1593,9 @@ export function DeviceTab() {
                           <input
                             type="number"
                             value={preferences.mqttPort}
-                            onChange={(e) => handlePreferenceChange("mqttPort", parseInt(e.target.value))}
+                            onChange={(e) =>
+                              handlePreferenceChange('mqttPort', parseInt(e.target.value))
+                            }
                             className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
                             placeholder="1883"
                             min="1"
@@ -1500,7 +1608,9 @@ export function DeviceTab() {
                           <input
                             type="text"
                             value={preferences.mqttTopicPrefix}
-                            onChange={(e) => handlePreferenceChange("mqttTopicPrefix", e.target.value)}
+                            onChange={(e) =>
+                              handlePreferenceChange('mqttTopicPrefix', e.target.value)
+                            }
                             className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
                             placeholder="scanner"
                           />
@@ -1510,7 +1620,9 @@ export function DeviceTab() {
                           <label className="text-sm font-medium text-white">QoS Level</label>
                           <Select
                             value={String(preferences.mqttQos)}
-                            onValueChange={(value) => handlePreferenceChange("mqttQos", parseInt(value))}
+                            onValueChange={(value) =>
+                              handlePreferenceChange('mqttQos', parseInt(value))
+                            }
                           >
                             <SelectTrigger className="w-full bg-white/5 border-white/10 text-white h-9 text-sm">
                               <SelectValue placeholder="Select QoS" />
@@ -1525,12 +1637,16 @@ export function DeviceTab() {
 
                         <div className="flex items-center justify-between">
                           <div className="space-y-0.5">
-                            <label className="text-sm font-medium text-white">Retain Messages</label>
+                            <label className="text-sm font-medium text-white">
+                              Retain Messages
+                            </label>
                             <p className="text-xs text-white/40">Keep last message on broker</p>
                           </div>
                           <Switch
                             checked={preferences.mqttRetain}
-                            onCheckedChange={(checked) => handlePreferenceChange("mqttRetain", checked)}
+                            onCheckedChange={(checked) =>
+                              handlePreferenceChange('mqttRetain', checked)
+                            }
                           />
                         </div>
                       </div>

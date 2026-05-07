@@ -13,11 +13,11 @@ describe('useStore', () => {
   describe('updateLiveState', () => {
     it('should not update with stale sequence number', () => {
       const { result } = renderHook(() => useStore());
-      
+
       act(() => {
         result.current.updateLiveState({ frequency: 145.5, modulation: 'FM' }, 5);
       });
-      
+
       act(() => {
         result.current.updateLiveState({ frequency: 146.0, modulation: 'FM' }, 3);
       });
@@ -27,7 +27,7 @@ describe('useStore', () => {
 
     it('should bootstrap initial state from partial updates', () => {
       const { result } = renderHook(() => useStore());
-      
+
       act(() => {
         result.current.updateLiveState({ mode: 'SCAN' }, 1);
       });
@@ -37,19 +37,22 @@ describe('useStore', () => {
           mode: 'SCAN',
           frequency: 0,
           modulation: 'FM',
-        })
+        }),
       );
     });
 
     it('should merge partial updates when liveState exists', () => {
       const { result } = renderHook(() => useStore());
-      
+
       act(() => {
-        result.current.updateLiveState({ 
-          frequency: 145.5, 
-          modulation: 'FM',
-          mode: 'SCAN'
-        }, 1);
+        result.current.updateLiveState(
+          {
+            frequency: 145.5,
+            modulation: 'FM',
+            mode: 'SCAN',
+          },
+          1,
+        );
       });
 
       act(() => {
@@ -62,7 +65,7 @@ describe('useStore', () => {
           modulation: 'FM',
           mode: 'SCAN',
           rssi: 80,
-        })
+        }),
       );
     });
   });
@@ -70,7 +73,7 @@ describe('useStore', () => {
   describe('addActivityLogEntry', () => {
     it('should limit log to 5 entries', () => {
       const { result } = renderHook(() => useStore());
-      
+
       for (let i = 1; i <= 7; i++) {
         act(() => {
           result.current.addActivityLogEntry({
@@ -90,7 +93,7 @@ describe('useStore', () => {
   describe('addToFullActivityLog', () => {
     it('should keep all entries', () => {
       const { result } = renderHook(() => useStore());
-      
+
       for (let i = 1; i <= 7; i++) {
         act(() => {
           result.current.addToFullActivityLog({
@@ -109,7 +112,7 @@ describe('useStore', () => {
   describe('setChannels', () => {
     it('should handle undefined channels', () => {
       const { result } = renderHook(() => useStore());
-      
+
       act(() => {
         result.current.setChannels(undefined as any);
       });
@@ -119,7 +122,7 @@ describe('useStore', () => {
 
     it('should handle null channels', () => {
       const { result } = renderHook(() => useStore());
-      
+
       act(() => {
         result.current.setChannels(null as any);
       });

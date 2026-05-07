@@ -2,18 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main, develop ]
-    paths-ignore:
-      - 'frontend/node_modules'
-      - 'frontend/.nitro'
-      - 'frontend/playwright-report'
-      - 'frontend/coverage'
-      - 'backend/.venv'
-      - 'backend/__pycache__'
-      '*.egg-info'
-      '*.dist'
-      'build'
-      'dist-ssr'
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   test-backend:
@@ -23,10 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install backend
         run: |
           cd backend
           python -m venv .venv
           source .venv/bin/activate
+          pip install --upgrade pip
           pip install -e .
       - name: Run backend tests
         run: |
@@ -40,31 +36,80 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Install Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend
         run: |
           cd frontend
           npm ci
       - name: Run frontend tests
         run: |
           cd frontend
-          npm test --run
+          npm test
 
-  test-coverage:
-    name: Test Coverage
+  lint-frontend:
+    name: Frontend Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    needs: [test-backend, test-frontend]
+    timeout-minutes: 5
     steps:
-      - name: Backend coverage
-        run: |
-          cd backend
-          source .venv/bin/activate
-          coverage run --source=bearpaw -m unittest discover -s tests
-          coverage xml
-      - name: Frontend coverage
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend
         run: |
           cd frontend
-          npm run test:coverage
-      - name: Upload coverage reports
+          npm ci
+      - name: Run ESLint
         run: |
-          echo "Coverage upload not configured"
+          cd frontend
+          npm run lint
+
+  type-check-frontend:
+    name: Frontend Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend
+        run: |
+          cd frontend
+          npm ci
+      - name: Run tsc
+        run: |
+          cd frontend
+          npm run type-check
+
+  format-check-frontend:
+    name: Frontend Format Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend
+        run: |
+          cd frontend
+          npm ci
+      - name: Run Prettier
+        run: |
+          cd frontend
+          npm run format:check

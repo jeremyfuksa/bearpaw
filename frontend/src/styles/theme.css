@@ -1,18 +1,18 @@
 @custom-variant dark (&:is(.dark *));
 
- :root {
-      --font-size: 16px;
-      --font-sans: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --font-mono: "JetBrains Mono", "Fira Code", monospace;
-     --text-xs: 0.8125rem;
-     --text-sm: 0.9375rem;
-     --text-base: 1rem;
-     --text-lg: 1.25rem;
-     --text-xl: 1.5rem;
-     --text-2xl: 2rem;
-     --text-3xl: 2.5rem;
-     --text-4xl: 3rem;
-    --background: #ffffff;
+:root {
+  --font-size: 16px;
+  --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.5rem;
+  --text-4xl: 3rem;
+  --background: #ffffff;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
@@ -28,85 +28,85 @@
   --accent-foreground: #030213;
   --destructive: #d4183d;
   --destructive-foreground: #ffffff;
-   --border: rgba(0, 0, 0, 0.1);
-   --input: transparent;
-   --input-background: #f3f3f5;
-   --switch-background: #cbced4;
-   --font-weight-medium: 500;
-   --font-weight-normal: 400;
-   --ring: oklch(0.708 0 0);
-   --brand-primary: #ef991f;
-   --brand-hover: #d97706;
-   --brand-light: #f9c574;
-   --brand-glow: rgba(239, 153, 31, 0.5);
-   --bg-scanner-dark: #1c1f26;
-   --bg-scanner-panel: #11131b;
-   --bg-button-muted: #4c627d;
-   --bg-button-default: #607a97;
-   --bg-button-hover: #4c627d;
-   --bg-semi-dark: rgba(43, 48, 59, 0.5);
-   --border-button-light: #8098b0;
-   --text-scanner-light: #f5ebe8;
-   --text-display-dark: #1c1f27;
-     --text-secondary-muted: #acbbcc;
-     --border-inset: #b06105;
-     --border-scanner: #1e2024;
-     --border-button-light: #8098b0;
-     --shadow-button: 1px 1px 0px 0px rgba(0, 0, 0, 0.25);
-   --shadow-inset: inset 4px 4px 4px 0px #b06105;
-   --shadow-glow: 0 0 5px currentColor;
-   --led-green: #67E79E;
-   --led-red: #DC3A38;
-   --led-red-glow: rgba(239, 68, 68, 0.8);
-   --status-connecting: #F59E0B;
-   --status-disconnected: var(--led-red);
-   --status-connected: var(--led-green);
-   --chart-axis: #8098b0;
-   --chart-bar: #3b82f6;
-   --chart-label: #f5ebe8;
-   --heatmap-level-0: rgba(255, 255, 255, 0.05);
-   --heatmap-level-1: rgba(16, 185, 129, 0.2);
-   --heatmap-level-2: rgba(16, 185, 129, 0.4);
-   --heatmap-level-3: rgba(16, 185, 129, 0.6);
-   --heatmap-level-4: rgba(16, 185, 129, 0.8);
-   --heatmap-level-5: rgba(16, 185, 129, 1);
-   --layout-app-width: 100%;
-   --layout-app-height: 100%;
-   --layout-dashboard-main-height: 13.75rem;
-   --layout-dashboard-panel-width: 28.125rem;
-   --layout-dashboard-max-width: 37.5rem;
-   --layout-stats-sidebar-width: 6.875rem;
-   --layout-heatmap-cell-gap: 0.125rem;
-   --layout-modal-max-height: 80vh;
-   --layout-modal-channel-width: 25rem;
-   --layout-modal-activity-width: 31.25rem;
-   --layout-sidebar-channels-width: 10rem;
-   --layout-sidebar-device-width: 12.5rem;
-   --layout-search-max-width: 18.75rem;
-   --layout-empty-state-height: 15rem;
-   --layout-scroll-max-height: 32.5rem;
-   --layout-detail-max-height: 25.25rem;
-   --layout-detail-sidebar-width: 16.25rem;
-   --layout-monitor-bezel: 3rem;
-   --size-status-dot: 0.5rem;
-   --size-shell-status-text: 0.625rem;
-   --size-icon-sm: 1rem;
-   --size-signal-display-height: 5.0625rem;
-   --size-signal-display-min-height: 12.5rem;
-   --size-bank-control-height: 1.5rem;
-   --size-bank-control-spacing: 0.125rem;
-   --size-hit-frequency-width: 3.75rem;
-   --size-hit-time-width: 2.8125rem;
-   --size-hit-tag-max-width: 12.5rem;
-   --size-select-compact: 7.5rem;
-   --size-select-medium: 8.75rem;
-   --size-select-wide: 11.25rem;
-   --size-select-xl: 16.25rem;
-   --size-panel-stat-min-height: 2.25rem;
-   --radius-xs: 1px;
-   --radius-sm: 2px;
-   --radius-md: 6px;
-   --radius-display: 7px;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: transparent;
+  --input-background: #f3f3f5;
+  --switch-background: #cbced4;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: oklch(0.708 0 0);
+  --brand-primary: #ef991f;
+  --brand-hover: #d97706;
+  --brand-light: #f9c574;
+  --brand-glow: rgba(239, 153, 31, 0.5);
+  --bg-scanner-dark: #1c1f26;
+  --bg-scanner-panel: #11131b;
+  --bg-button-muted: #4c627d;
+  --bg-button-default: #607a97;
+  --bg-button-hover: #4c627d;
+  --bg-semi-dark: rgba(43, 48, 59, 0.5);
+  --border-button-light: #8098b0;
+  --text-scanner-light: #f5ebe8;
+  --text-display-dark: #1c1f27;
+  --text-secondary-muted: #acbbcc;
+  --border-inset: #b06105;
+  --border-scanner: #1e2024;
+  --border-button-light: #8098b0;
+  --shadow-button: 1px 1px 0px 0px rgba(0, 0, 0, 0.25);
+  --shadow-inset: inset 4px 4px 4px 0px #b06105;
+  --shadow-glow: 0 0 5px currentColor;
+  --led-green: #67e79e;
+  --led-red: #dc3a38;
+  --led-red-glow: rgba(239, 68, 68, 0.8);
+  --status-connecting: #f59e0b;
+  --status-disconnected: var(--led-red);
+  --status-connected: var(--led-green);
+  --chart-axis: #8098b0;
+  --chart-bar: #3b82f6;
+  --chart-label: #f5ebe8;
+  --heatmap-level-0: rgba(255, 255, 255, 0.05);
+  --heatmap-level-1: rgba(16, 185, 129, 0.2);
+  --heatmap-level-2: rgba(16, 185, 129, 0.4);
+  --heatmap-level-3: rgba(16, 185, 129, 0.6);
+  --heatmap-level-4: rgba(16, 185, 129, 0.8);
+  --heatmap-level-5: rgba(16, 185, 129, 1);
+  --layout-app-width: 100%;
+  --layout-app-height: 100%;
+  --layout-dashboard-main-height: 13.75rem;
+  --layout-dashboard-panel-width: 28.125rem;
+  --layout-dashboard-max-width: 37.5rem;
+  --layout-stats-sidebar-width: 6.875rem;
+  --layout-heatmap-cell-gap: 0.125rem;
+  --layout-modal-max-height: 80vh;
+  --layout-modal-channel-width: 25rem;
+  --layout-modal-activity-width: 31.25rem;
+  --layout-sidebar-channels-width: 10rem;
+  --layout-sidebar-device-width: 12.5rem;
+  --layout-search-max-width: 18.75rem;
+  --layout-empty-state-height: 15rem;
+  --layout-scroll-max-height: 32.5rem;
+  --layout-detail-max-height: 25.25rem;
+  --layout-detail-sidebar-width: 16.25rem;
+  --layout-monitor-bezel: 3rem;
+  --size-status-dot: 0.5rem;
+  --size-shell-status-text: 0.625rem;
+  --size-icon-sm: 1rem;
+  --size-signal-display-height: 5.0625rem;
+  --size-signal-display-min-height: 12.5rem;
+  --size-bank-control-height: 1.5rem;
+  --size-bank-control-spacing: 0.125rem;
+  --size-hit-frequency-width: 3.75rem;
+  --size-hit-time-width: 2.8125rem;
+  --size-hit-tag-max-width: 12.5rem;
+  --size-select-compact: 7.5rem;
+  --size-select-medium: 8.75rem;
+  --size-select-wide: 11.25rem;
+  --size-select-xl: 16.25rem;
+  --size-panel-stat-min-height: 2.25rem;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-display: 7px;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -123,18 +123,18 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
- .dark {
-      --font-sans: "Manrope", sans-serif;
-      --font-mono: "JetBrains Mono", "Fira Code", monospace;
-     --text-xs: 0.8125rem;
-     --text-sm: 0.9375rem;
-     --text-base: 1rem;
-     --text-lg: 1.25rem;
-     --text-xl: 1.5rem;
-     --text-2xl: 2rem;
-     --text-3xl: 2.5rem;
-     --text-4xl: 3rem;
-    --background: oklch(0.145 0 0);
+.dark {
+  --font-sans: 'Manrope', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.5rem;
+  --text-4xl: 3rem;
+  --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.145 0 0);
   --card-foreground: oklch(0.985 0 0);
@@ -150,83 +150,83 @@
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.396 0.141 25.723);
   --destructive-foreground: oklch(0.637 0.237 25.331);
-   --border: oklch(0.269 0 0);
-   --input: oklch(0.269 0 0);
-   --ring: oklch(0.439 0 0);
-   --font-weight-medium: 500;
-   --font-weight-normal: 400;
-   --chart-1: oklch(0.488 0.243 264.376);
-    --brand-primary: #ef991f;
-    --brand-hover: #d97706;
-    --brand-light: #f9c574;
-    --brand-glow: rgba(239, 153, 31, 0.5);
-    --bg-scanner-dark: #1c1f26;
-    --bg-scanner-panel: #11131b;
-    --bg-button-muted: #4c627d;
-    --bg-button-default: #607a97;
-    --bg-button-hover: #4c627d;
-    --bg-semi-dark: rgba(43, 48, 59, 0.5);
-     --text-scanner-light: #f5ebe8;
-     --text-display-dark: #1c1f27;
-     --text-secondary-muted: #acbbcc;
-     --border-inset: #b06105;
-     --border-scanner: #1e2024;
-     --border-button-light: #8098b0;
-    --shadow-button: 1px 1px 0px 0px rgba(0, 0, 0, 0.25);
-   --shadow-inset: inset 4px 4px 4px 0px #b06105;
-   --shadow-glow: 0 0 5px currentColor;
-   --led-green: #67E79E;
-   --led-red: #DC3A38;
-   --led-red-glow: rgba(239, 68, 68, 0.8);
-   --status-connecting: #F59E0B;
-   --status-disconnected: var(--led-red);
-   --status-connected: var(--led-green);
-   --chart-axis: #8098b0;
-   --chart-bar: #3b82f6;
-   --chart-label: #f5ebe8;
-   --heatmap-level-0: rgba(255, 255, 255, 0.05);
-   --heatmap-level-1: rgba(16, 185, 129, 0.2);
-   --heatmap-level-2: rgba(16, 185, 129, 0.4);
-   --heatmap-level-3: rgba(16, 185, 129, 0.6);
-   --heatmap-level-4: rgba(16, 185, 129, 0.8);
-   --heatmap-level-5: rgba(16, 185, 129, 1);
-   --layout-app-width: 100%;
-   --layout-app-height: 100%;
-   --layout-dashboard-main-height: 13.75rem;
-   --layout-dashboard-panel-width: 28.125rem;
-   --layout-dashboard-max-width: 37.5rem;
-   --layout-stats-sidebar-width: 6.875rem;
-   --layout-heatmap-cell-gap: 0.125rem;
-   --layout-modal-max-height: 80vh;
-   --layout-modal-channel-width: 25rem;
-   --layout-modal-activity-width: 31.25rem;
-   --layout-sidebar-channels-width: 10rem;
-   --layout-sidebar-device-width: 12.5rem;
-   --layout-search-max-width: 18.75rem;
-   --layout-empty-state-height: 15rem;
-   --layout-scroll-max-height: 32.5rem;
-   --layout-detail-max-height: 25.25rem;
-   --layout-detail-sidebar-width: 16.25rem;
-   --layout-monitor-bezel: 3rem;
-   --size-status-dot: 0.5rem;
-   --size-shell-status-text: 0.625rem;
-   --size-icon-sm: 1rem;
-   --size-signal-display-height: 5.0625rem;
-   --size-signal-display-min-height: 12.5rem;
-   --size-bank-control-height: 1.5rem;
-   --size-bank-control-spacing: 0.125rem;
-   --size-hit-frequency-width: 3.75rem;
-   --size-hit-time-width: 2.8125rem;
-   --size-hit-tag-max-width: 12.5rem;
-   --size-select-compact: 7.5rem;
-   --size-select-medium: 8.75rem;
-   --size-select-wide: 11.25rem;
-   --size-select-xl: 16.25rem;
-   --size-panel-stat-min-height: 2.25rem;
-   --radius-xs: 1px;
-   --radius-sm: 2px;
-   --radius-md: 6px;
-   --radius-display: 7px;
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --chart-1: oklch(0.488 0.243 264.376);
+  --brand-primary: #ef991f;
+  --brand-hover: #d97706;
+  --brand-light: #f9c574;
+  --brand-glow: rgba(239, 153, 31, 0.5);
+  --bg-scanner-dark: #1c1f26;
+  --bg-scanner-panel: #11131b;
+  --bg-button-muted: #4c627d;
+  --bg-button-default: #607a97;
+  --bg-button-hover: #4c627d;
+  --bg-semi-dark: rgba(43, 48, 59, 0.5);
+  --text-scanner-light: #f5ebe8;
+  --text-display-dark: #1c1f27;
+  --text-secondary-muted: #acbbcc;
+  --border-inset: #b06105;
+  --border-scanner: #1e2024;
+  --border-button-light: #8098b0;
+  --shadow-button: 1px 1px 0px 0px rgba(0, 0, 0, 0.25);
+  --shadow-inset: inset 4px 4px 4px 0px #b06105;
+  --shadow-glow: 0 0 5px currentColor;
+  --led-green: #67e79e;
+  --led-red: #dc3a38;
+  --led-red-glow: rgba(239, 68, 68, 0.8);
+  --status-connecting: #f59e0b;
+  --status-disconnected: var(--led-red);
+  --status-connected: var(--led-green);
+  --chart-axis: #8098b0;
+  --chart-bar: #3b82f6;
+  --chart-label: #f5ebe8;
+  --heatmap-level-0: rgba(255, 255, 255, 0.05);
+  --heatmap-level-1: rgba(16, 185, 129, 0.2);
+  --heatmap-level-2: rgba(16, 185, 129, 0.4);
+  --heatmap-level-3: rgba(16, 185, 129, 0.6);
+  --heatmap-level-4: rgba(16, 185, 129, 0.8);
+  --heatmap-level-5: rgba(16, 185, 129, 1);
+  --layout-app-width: 100%;
+  --layout-app-height: 100%;
+  --layout-dashboard-main-height: 13.75rem;
+  --layout-dashboard-panel-width: 28.125rem;
+  --layout-dashboard-max-width: 37.5rem;
+  --layout-stats-sidebar-width: 6.875rem;
+  --layout-heatmap-cell-gap: 0.125rem;
+  --layout-modal-max-height: 80vh;
+  --layout-modal-channel-width: 25rem;
+  --layout-modal-activity-width: 31.25rem;
+  --layout-sidebar-channels-width: 10rem;
+  --layout-sidebar-device-width: 12.5rem;
+  --layout-search-max-width: 18.75rem;
+  --layout-empty-state-height: 15rem;
+  --layout-scroll-max-height: 32.5rem;
+  --layout-detail-max-height: 25.25rem;
+  --layout-detail-sidebar-width: 16.25rem;
+  --layout-monitor-bezel: 3rem;
+  --size-status-dot: 0.5rem;
+  --size-shell-status-text: 0.625rem;
+  --size-icon-sm: 1rem;
+  --size-signal-display-height: 5.0625rem;
+  --size-signal-display-min-height: 12.5rem;
+  --size-bank-control-height: 1.5rem;
+  --size-bank-control-spacing: 0.125rem;
+  --size-hit-frequency-width: 3.75rem;
+  --size-hit-time-width: 2.8125rem;
+  --size-hit-tag-max-width: 12.5rem;
+  --size-select-compact: 7.5rem;
+  --size-select-medium: 8.75rem;
+  --size-select-wide: 11.25rem;
+  --size-select-xl: 16.25rem;
+  --size-panel-stat-min-height: 2.25rem;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-display: 7px;
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
@@ -241,93 +241,93 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
- @theme inline {
-   --color-background: var(--background);
-   --color-foreground: var(--foreground);
-   --color-card: var(--card);
-   --color-card-foreground: var(--card-foreground);
-   --color-popover: var(--popover);
-   --color-popover-foreground: var(--popover-foreground);
-   --color-primary: var(--primary);
-   --color-primary-foreground: var(--primary-foreground);
-   --color-secondary: var(--secondary);
-   --color-secondary-foreground: var(--secondary-foreground);
-   --color-muted: var(--muted);
-   --color-muted-foreground: var(--muted-foreground);
-   --color-accent: var(--accent);
-   --color-accent-foreground: var(--accent-foreground);
-   --color-destructive: var(--destructive);
-   --color-destructive-foreground: var(--destructive-foreground);
-   --color-border: var(--border);
-   --color-input: var(--input);
-   --color-input-background: var(--input-background);
-   --color-switch-background: var(--switch-background);
-   --color-ring: var(--ring);
-   --color-chart-1: var(--chart-1);
-   --color-chart-2: var(--chart-2);
-   --color-chart-3: var(--chart-3);
-   --color-chart-4: var(--chart-4);
-   --color-chart-5: var(--chart-5);
-   --radius-sm: calc(var(--radius) - 4px);
-   --radius-md: calc(var(--radius) - 2px);
-   --radius-lg: var(--radius);
-   --radius-xl: calc(var(--radius) + 4px);
-   --color-sidebar: var(--sidebar);
-   --color-sidebar-foreground: var(--sidebar-foreground);
-   --color-sidebar-primary: var(--sidebar-primary);
-   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-   --color-sidebar-accent: var(--sidebar-accent);
-   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-   --color-sidebar-border: var(--sidebar-border);
-   --color-sidebar-ring: var(--sidebar-ring);
-   --color-brand-primary: var(--brand-primary);
-   --color-brand-hover: var(--brand-hover);
-   --color-brand-light: var(--brand-light);
-   --color-brand-glow: var(--brand-glow);
-    --color-bg-scanner-dark: var(--bg-scanner-dark);
-    --color-bg-scanner-panel: var(--bg-scanner-panel);
-    --color-bg-button-muted: var(--bg-button-muted);
-    --color-bg-button-default: var(--bg-button-default);
-    --color-bg-button-hover: var(--bg-button-hover);
-    --color-bg-semi-dark: var(--bg-semi-dark);
-    --color-text-scanner-light: var(--text-scanner-light);
-    --color-text-display-dark: var(--text-display-dark);
-    --color-text-secondary-muted: var(--text-secondary-muted);
-   --color-border-inset: var(--border-inset);
-   --color-border-scanner: var(--border-scanner);
-   --color-border-button-light: var(--border-button-light);
-   --color-scanner-default: #3e4f66;
-   --color-scanner-hover: #4c627d;
-   --color-scanner-border: #8098b0;
-   --color-scanner-text: #acbbcc;
-   --shadow-button: var(--shadow-button);
-   --shadow-inset: var(--shadow-inset);
-   --shadow-glow: var(--shadow-glow);
-   --color-led-green: var(--led-green);
-   --color-led-red: var(--led-red);
-   --color-led-red-glow: var(--led-red-glow);
-   --color-status-connecting: var(--status-connecting);
-   --color-status-disconnected: var(--status-disconnected);
-   --color-status-connected: var(--status-connected);
-   --color-chart-axis: var(--chart-axis);
-   --color-chart-bar: var(--chart-bar);
-   --color-chart-label: var(--chart-label);
-   --color-heatmap-0: var(--heatmap-level-0);
-   --color-heatmap-1: var(--heatmap-level-1);
-   --color-heatmap-2: var(--heatmap-level-2);
-   --color-heatmap-3: var(--heatmap-level-3);
-   --color-heatmap-4: var(--heatmap-level-4);
-   --color-heatmap-5: var(--heatmap-level-5);
-   --radius-xs: var(--radius-xs);
-   --radius-scanner-sm: var(--radius-sm);
-   --radius-scanner-md: var(--radius-md);
-   --radius-scanner-display: var(--radius-display);
- }
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-light: var(--brand-light);
+  --color-brand-glow: var(--brand-glow);
+  --color-bg-scanner-dark: var(--bg-scanner-dark);
+  --color-bg-scanner-panel: var(--bg-scanner-panel);
+  --color-bg-button-muted: var(--bg-button-muted);
+  --color-bg-button-default: var(--bg-button-default);
+  --color-bg-button-hover: var(--bg-button-hover);
+  --color-bg-semi-dark: var(--bg-semi-dark);
+  --color-text-scanner-light: var(--text-scanner-light);
+  --color-text-display-dark: var(--text-display-dark);
+  --color-text-secondary-muted: var(--text-secondary-muted);
+  --color-border-inset: var(--border-inset);
+  --color-border-scanner: var(--border-scanner);
+  --color-border-button-light: var(--border-button-light);
+  --color-scanner-default: #3e4f66;
+  --color-scanner-hover: #4c627d;
+  --color-scanner-border: #8098b0;
+  --color-scanner-text: #acbbcc;
+  --shadow-button: var(--shadow-button);
+  --shadow-inset: var(--shadow-inset);
+  --shadow-glow: var(--shadow-glow);
+  --color-led-green: var(--led-green);
+  --color-led-red: var(--led-red);
+  --color-led-red-glow: var(--led-red-glow);
+  --color-status-connecting: var(--status-connecting);
+  --color-status-disconnected: var(--status-disconnected);
+  --color-status-connected: var(--status-connected);
+  --color-chart-axis: var(--chart-axis);
+  --color-chart-bar: var(--chart-bar);
+  --color-chart-label: var(--chart-label);
+  --color-heatmap-0: var(--heatmap-level-0);
+  --color-heatmap-1: var(--heatmap-level-1);
+  --color-heatmap-2: var(--heatmap-level-2);
+  --color-heatmap-3: var(--heatmap-level-3);
+  --color-heatmap-4: var(--heatmap-level-4);
+  --color-heatmap-5: var(--heatmap-level-5);
+  --radius-xs: var(--radius-xs);
+  --radius-scanner-sm: var(--radius-sm);
+  --radius-scanner-md: var(--radius-md);
+  --radius-scanner-display: var(--radius-display);
+}
 
- @layer base {
-   * {
-     @apply border-border outline-ring/50;
-   }
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
 
   body {
     @apply bg-background text-foreground font-sans;
@@ -431,12 +431,22 @@
     height: var(--layout-app-height);
     color: var(--text-scanner-light);
     background-color: var(--bg-scanner-dark);
-    background-image: radial-gradient(circle at 50% 22%, rgba(61, 68, 84, 1) 0%, rgba(45, 50, 61, 1) 50%, rgba(28, 31, 38, 1) 100%);
+    background-image: radial-gradient(
+      circle at 50% 22%,
+      rgba(61, 68, 84, 1) 0%,
+      rgba(45, 50, 61, 1) 50%,
+      rgba(28, 31, 38, 1) 100%
+    );
     background-size: cover;
   }
 
   .scanner-display-surface {
-    background-image: radial-gradient(circle at 50% 50%, rgba(239, 153, 31, 1) 0%, rgba(228, 136, 19, 1) 50%, rgba(217, 119, 6, 1) 100%);
+    background-image: radial-gradient(
+      circle at 50% 50%,
+      rgba(239, 153, 31, 1) 0%,
+      rgba(228, 136, 19, 1) 50%,
+      rgba(217, 119, 6, 1) 100%
+    );
   }
 }
 
@@ -453,10 +463,22 @@
     color: var(--color-status-disconnected);
   }
 
-  .bg-heatmap-0 { background-color: var(--color-heatmap-0); }
-  .bg-heatmap-1 { background-color: var(--color-heatmap-1); }
-  .bg-heatmap-2 { background-color: var(--color-heatmap-2); }
-  .bg-heatmap-3 { background-color: var(--color-heatmap-3); }
-  .bg-heatmap-4 { background-color: var(--color-heatmap-4); }
-  .bg-heatmap-5 { background-color: var(--color-heatmap-5); }
+  .bg-heatmap-0 {
+    background-color: var(--color-heatmap-0);
+  }
+  .bg-heatmap-1 {
+    background-color: var(--color-heatmap-1);
+  }
+  .bg-heatmap-2 {
+    background-color: var(--color-heatmap-2);
+  }
+  .bg-heatmap-3 {
+    background-color: var(--color-heatmap-3);
+  }
+  .bg-heatmap-4 {
+    background-color: var(--color-heatmap-4);
+  }
+  .bg-heatmap-5 {
+    background-color: var(--color-heatmap-5);
+  }
 }

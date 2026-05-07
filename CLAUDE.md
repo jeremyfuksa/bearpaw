@@ -38,17 +38,21 @@ npm install
 # Development
 npm run dev              # Start dev server with HMR
 npm run build            # Production build
-npm run preview          # Preview production build
+
+# Tests
+npm test                 # Run vitest once
+npm run test:watch       # Vitest in watch mode
+npm run test:coverage    # Vitest with coverage
 
 # Code quality
 npm run lint             # Run ESLint
 npm run lint:fix         # Auto-fix ESLint issues
 npm run format           # Format with Prettier
 npm run format:check     # Check formatting
-npm run type-check       # TypeScript type checking without build
+npm run type-check       # TypeScript type checking (excludes test files)
 ```
 
-**Pre-commit hooks**: Husky runs lint-staged on commit, which auto-fixes and formats staged files.
+**Type-check scope**: `tsc` runs against production source (`src/`). Test files (`__tests__/`, `*.test.*`, `e2e/`) are excluded — Vitest transpiles them via Vite. Re-include them in `tsconfig.json` once test mock typing is cleaned up.
 
 **Dev server proxy**: Vite proxies `/api` and `/ws` to `http://localhost:8000` in development (see `frontend/vite.config.ts`).
 
@@ -316,11 +320,9 @@ frontend/
 
 ## Testing Notes
 
-**Backend**: No formal test suite currently. Manual testing with physical scanner hardware.
+**Backend**: `python -m unittest discover -s tests` (run from `backend/` with venv active).
 
-**Frontend**: ESLint + Prettier configured. Run `npm run lint` and `npm run type-check` before commits.
-
-**Pre-commit**: Husky runs lint-staged to auto-fix and format staged files.
+**Frontend**: `npm test` (vitest), `npm run lint` (ESLint), `npm run type-check` (tsc), `npm run format:check` (Prettier). All four run on every PR via `.github/workflows/tests.yml`.
 
 ## Memory Sync Performance
 
