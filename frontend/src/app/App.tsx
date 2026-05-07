@@ -106,7 +106,6 @@ export default function App() {
   const fullActivityLog = useStore((state) => state.fullActivityLog);
   const preferences = useStore((state) => state.preferences);
   const isDashboardMode = preferences.startInDashboardMode;
-  const isRecording = useStore((state) => state.isRecording);
   const updateLiveState = useStore((state) => state.updateLiveState);
   const setDeviceInfo = useStore((state) => state.setDeviceInfo);
   const setChannels = useStore((state) => state.setChannels);
@@ -115,7 +114,6 @@ export default function App() {
   const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
   const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
   const setPreferences = useStore((state) => state.setPreferences);
-  const setRecording = useStore((state) => state.setRecording);
   const updatePreferences = useStore((state) => state.updatePreferences);
 
   const [currentTab, setCurrentTab] = useState<Tab>('Scan');
@@ -261,10 +259,8 @@ export default function App() {
             startInDashboardMode: prefs.start_dashboard_mode ?? false,
             autoConnect: prefs.auto_connect ?? false,
             checkUpdates: prefs.check_updates ?? true,
-            recordingBufferSize: prefs.recording_buffer_size || 30,
             dataRetentionDays: prefs.data_retention_days || 30,
             audioOutputDevice: prefs.audio_output_device || 'default',
-            recordingsPath: prefs.recordings_path || './recordings',
             mqttEnabled: prefs.mqtt_enabled ?? false,
             mqttHost: prefs.mqtt_host || '127.0.0.1',
             mqttPort: prefs.mqtt_port || 1883,
@@ -345,7 +341,7 @@ export default function App() {
           alpha_tag: payload.data.alpha_tag ?? null,
           type: 'hit',
           rssi: payload.data.rssi,
-          hasAudio: isRecording,
+          hasAudio: false,
           duration: 0,
           ended_at: 0,
         };
@@ -417,7 +413,6 @@ export default function App() {
     addToFullActivityLog,
     api,
     currentTab,
-    isRecording,
     requestScanResume,
     setChannels,
     updateLiveState,
@@ -872,12 +867,6 @@ export default function App() {
     [api],
   );
 
-  const handleRecordingToggle = useCallback(async () => {
-    // Recording requires Tauri desktop shell commands (start_recording / stop_recording)
-    // which are not yet implemented in the Rust backend.
-    toast.error('Recording is not yet available');
-  }, []);
-
   const handleDashboardToggle = useCallback(async () => {
     const newValue = !isDashboardMode;
     updatePreferences({ startInDashboardMode: newValue });
@@ -1011,8 +1000,6 @@ export default function App() {
                       isHolding={getScannerMode() === 'HOLD'}
                       onHoldToggle={handleToggle}
                       onLockout={handleLockout}
-                      isRecording={isRecording}
-                      onRecordingToggle={handleRecordingToggle}
                       isDashboardMode={isDashboardMode}
                       onDashboardToggle={handleDashboardToggle}
                     />
