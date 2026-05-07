@@ -1,15 +1,15 @@
 import { renderHook, act } from '@testing-library/react';
-import { renderHook, act } from "@testing-library/react";
-import { useKeyboardShortcuts } from "../useKeyboardShortcuts";
-import { useStore } from "../../store/useStore";
-import { useAPI } from "../../api/useApi";
-import { vi } from "vitest";
+import { renderHook, act } from '@testing-library/react';
+import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
+import { useStore } from '../../store/useStore';
+import { useAPI } from '../../api/useApi';
+import { vi } from 'vitest';
 
-vi.mock("../../api/useApi", () => ({
+vi.mock('../../api/useApi', () => ({
   useAPI: vi.fn(),
 }));
 
-vi.mock("../../store/useStore", () => ({
+vi.mock('../../store/useStore', () => ({
   useStore: Object.assign(vi.fn(), { getState: vi.fn() }),
 }));
 
@@ -41,7 +41,7 @@ describe('useKeyboardShortcuts', () => {
         frequency: 145.5,
         channel: 1,
         mode: 'SCAN',
-      }
+      },
     });
 
     vi.clearAllMocks();

@@ -15,15 +15,15 @@ import type {
   CustomSearchSettings,
   WeatherSettings,
   ContrastSettings,
-} from "../types";
-import { createTestLiveState, createTestChannel, createTestDeviceInfo } from "./data";
+} from '../types';
+import { createTestLiveState, createTestChannel, createTestDeviceInfo } from './data';
 
 export const mockApiResponses = {
   status: createTestLiveState(),
   deviceInfo: createTestDeviceInfo(),
   banks: { banks: [true, true, true, true, true, true, true, true, true, true] },
   channels: Array.from({ length: 10 }, (_, i) =>
-    createTestChannel({ index: i + 1, frequency: 140 + i * 0.5 })
+    createTestChannel({ index: i + 1, frequency: 140 + i * 0.5 }),
   ),
   channel: createTestChannel({ index: 1, frequency: 151.25 }),
   lockouts: {
@@ -33,9 +33,9 @@ export const mockApiResponses = {
   },
   squelch: { level: 5 },
   config: {
-    firmware: "1.0.12",
+    firmware: '1.0.12',
     squelch: { level: 5 },
-    backlight: { event: "AO" },
+    backlight: { event: 'AO' },
     battery: { charge_time: 10 },
     key_beep: { level: 2, lock: false },
     priority: { mode: 1 },
@@ -57,7 +57,7 @@ export const mockApiResponses = {
     weather: { priority: true },
     contrast: { level: 8 },
   },
-  backlight: { event: "AO" },
+  backlight: { event: 'AO' },
   battery: { charge_time: 10 },
   keyBeep: { level: 2, lock: false },
   priority: { mode: 1 },
@@ -74,8 +74,8 @@ export const mockApiResponses = {
   customSearchRange: { index: 1, lower: 140, upper: 149 },
   weather: { priority: true },
   contrast: { level: 8 },
-  syncStarted: { status: "started", task_id: "test-task-123" },
-  syncAlreadyRunning: { status: "already_running" },
+  syncStarted: { status: 'started', task_id: 'test-task-123' },
+  syncAlreadyRunning: { status: 'already_running' },
   clearTempLockouts: { cleared: [1, 2, 3], failed: [] },
   clearGlobalLockouts: { cleared: [151.25, 151.5], failed: [] },
   clearChannelLockouts: { cleared: [5, 10], failed: [] },
@@ -85,13 +85,11 @@ export const mockApiResponses = {
   importCsv: { imported: 10, errors: [] },
   importCsvWithErrors: {
     imported: 5,
-    errors: [
-      { row: { freq: "abc", tag: "Test" }, error: "Invalid frequency" },
-    ],
+    errors: [{ row: { freq: 'abc', tag: 'Test' }, error: 'Invalid frequency' }],
   },
   preferences: {
-    theme: "night",
-    display_mode: "frequency",
+    theme: 'night',
+    display_mode: 'frequency',
     reduced_motion: false,
     hit_min_duration: 2,
     start_dashboard_mode: false,
@@ -99,12 +97,12 @@ export const mockApiResponses = {
     check_updates: true,
     recording_buffer_size: 30,
     data_retention_days: 30,
-    audio_output_device: "default",
-    recordings_path: "./recordings",
+    audio_output_device: 'default',
+    recordings_path: './recordings',
   },
   preferencesReset: {
-    theme: "night",
-    display_mode: "frequency",
+    theme: 'night',
+    display_mode: 'frequency',
     reduced_motion: false,
     hit_min_duration: 2,
     start_dashboard_mode: false,
@@ -112,16 +110,16 @@ export const mockApiResponses = {
     check_updates: true,
     recording_buffer_size: 30,
     data_retention_days: 30,
-    audio_output_device: "default",
-    recordings_path: "./recordings",
+    audio_output_device: 'default',
+    recordings_path: './recordings',
   },
   analyticsBusiestChannels: {
     channels: [
-      { alpha_tag: "Channel 1", hit_count: 25 },
-      { alpha_tag: "Channel 2", hit_count: 18 },
-      { alpha_tag: "Channel 3", hit_count: 12 },
-      { alpha_tag: "Channel 4", hit_count: 8 },
-      { alpha_tag: "Channel 5", hit_count: 5 },
+      { alpha_tag: 'Channel 1', hit_count: 25 },
+      { alpha_tag: 'Channel 2', hit_count: 18 },
+      { alpha_tag: 'Channel 3', hit_count: 12 },
+      { alpha_tag: 'Channel 4', hit_count: 8 },
+      { alpha_tag: 'Channel 5', hit_count: 5 },
     ],
   },
   analyticsHourlyHeatmap: {
@@ -143,7 +141,7 @@ export const mockApiResponses = {
       frequency: 140 + i * 0.5,
       channel: i + 1,
       alpha_tag: `Channel ${i + 1}`,
-      type: "hit" as const,
+      type: 'hit' as const,
       rssi: 60 + Math.floor(Math.random() * 20),
       hasAudio: false,
       duration: 2.5,
@@ -151,20 +149,20 @@ export const mockApiResponses = {
     })),
     total: 10,
   },
-  csvExport: "frequency,alpha_tag,modulation,delay,bank\n151.2500,Test Channel,FM,2,1\n",
-  bc125atSsExport: "BC125AT CSV format export\n",
-  health: { status: "ok" },
+  csvExport: 'frequency,alpha_tag,modulation,delay,bank\n151.2500,Test Channel,FM,2,1\n',
+  bc125atSsExport: 'BC125AT CSV format export\n',
+  health: { status: 'ok' },
 };
 
 export const mockApiErrors = {
-  disconnected: { status: 503, message: "Device not connected" },
-  invalidValue: { status: 400, message: "Invalid value" },
-  notFound: { status: 404, message: "Not found" },
-  serverError: { status: 500, message: "Internal server error" },
-  unsupported: { status: 400, message: "Operation not supported" },
-  channelOutOfRange: { status: 400, message: "Channel index out of range" },
-  delayOutOfRange: { status: 400, message: "Delay out of range" },
-  bankOutOfRange: { status: 400, message: "Bank out of range" },
-  alphaTagTooLong: { status: 400, message: "Alpha tag too long" },
-  syncInProgress: { status: 409, message: "Sync already in progress" },
+  disconnected: { status: 503, message: 'Device not connected' },
+  invalidValue: { status: 400, message: 'Invalid value' },
+  notFound: { status: 404, message: 'Not found' },
+  serverError: { status: 500, message: 'Internal server error' },
+  unsupported: { status: 400, message: 'Operation not supported' },
+  channelOutOfRange: { status: 400, message: 'Channel index out of range' },
+  delayOutOfRange: { status: 400, message: 'Delay out of range' },
+  bankOutOfRange: { status: 400, message: 'Bank out of range' },
+  alphaTagTooLong: { status: 400, message: 'Alpha tag too long' },
+  syncInProgress: { status: 409, message: 'Sync already in progress' },
 };

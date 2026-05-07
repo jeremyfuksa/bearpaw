@@ -1,11 +1,11 @@
-import { defineConfig } from 'vite'
-import fs from 'fs'
-import path from 'path'
-import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import fs from 'fs';
+import path from 'path';
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
 
 function fixCampfireSpacing() {
-  const patch = (code: string) => code.replace(/--spacing\((\d+)\)/g, 'calc(var(--spacing) * $1)')
+  const patch = (code: string) => code.replace(/--spacing\((\d+)\)/g, 'calc(var(--spacing) * $1)');
 
   return {
     name: 'campfire-spacing-fix',
@@ -15,11 +15,11 @@ function fixCampfireSpacing() {
         id.includes('@jeremyfuksa/campfire/dist/index.css') ||
         id.includes('@jeremyfuksa/campfire/styles.css')
       ) {
-        const code = await fs.promises.readFile(id, 'utf-8')
-        return patch(code)
+        const code = await fs.promises.readFile(id, 'utf-8');
+        return patch(code);
       }
     },
-  }
+  };
 }
 
 function mockTauriAPI() {
@@ -31,24 +31,24 @@ function mockTauriAPI() {
         return {
           id: '@tauri-apps/api/core',
           external: false,
-        }
+        };
       }
       if (id.startsWith('@tauri-apps/')) {
         return {
           id,
           external: false,
-        }
+        };
       }
     },
     load(id: string) {
       if (id === '@tauri-apps/api/core') {
-        return 'export const invoke = () => Promise.reject(new Error("Tauri API not available"));'
+        return 'export const invoke = () => Promise.reject(new Error("Tauri API not available"));';
       }
       if (id.startsWith('@tauri-apps/')) {
-        return 'export {}'
+        return 'export {}';
       }
     },
-  }
+  };
 }
 
 export default defineConfig({
@@ -92,4 +92,4 @@ export default defineConfig({
   define: {
     __TAURI__: process.env.TAURI === 'true',
   },
-})
+});

@@ -20,11 +20,11 @@ test.describe('Basic Scanner UI Workflow', () => {
     await expect(deviceTab).toHaveAttribute('aria-selected', 'true');
 
     await channelsTab.click();
-    await expect(page).toHaveURL(/.*channels/ /);
+    await expect(page).toHaveURL(/.*channels/);
     await expect(channelsTab).toHaveAttribute('aria-selected', 'true');
 
     await scanTab.click();
-    await expect(page).toHaveURL(/.*/);  // Back to root
+    await expect(page).toHaveURL(/.*/); // Back to root
     await expect(scanTab).toHaveAttribute('aria-selected', 'true');
   });
 
@@ -83,10 +83,10 @@ test.describe('Channel Management', () => {
   test('should switch between banks', async ({ page }) => {
     const bank5 = page.getByRole('button', { name: /bank 5/i });
     const bank3 = page.getByRole('button', { name: /bank 3/i });
-    
+
     await bank5.click();
     await expect(bank5).toHaveClass(/active/i);
-    
+
     await bank3.click();
     await expect(bank3).toHaveClass(/active/i);
   });
@@ -94,7 +94,7 @@ test.describe('Channel Management', () => {
   test('should filter channels by search', async ({ page }) => {
     const searchInput = page.getByPlaceholder(/search frequency or tag/i);
     await searchInput.fill('151.2500');
-    const results = page.getAllByRole('row').filter(row => row.textContent.includes('151.2500'));
+    const results = page.getAllByRole('row').filter((row) => row.textContent.includes('151.2500'));
     expect(results.length).toBeGreaterThan(0);
   });
 
@@ -107,7 +107,7 @@ test.describe('Channel Management', () => {
 
   test('should export channels to CSV', async ({ page }) => {
     const exportButton = page.getByRole('button', { name: /export csv/i });
-    
+
     const downloadPromise = page.waitForEvent('download');
     await exportButton.click();
     await downloadPromise;
@@ -123,7 +123,7 @@ test.describe('Device Configuration', () => {
     const syncButton = page.getByRole('button', { name: /sync memory/i });
     await syncButton.click();
     await expect(syncButton).toHaveText(/syncing|/i);
-    });
+  });
 
   test('should adjust volume setting', async ({ page }) => {
     const volumeSlider = page.getByRole('slider', { name: /volume/i });
@@ -155,7 +155,7 @@ test.describe('Device Configuration', () => {
   test('should manage service search groups', async ({ page }) => {
     const serviceGroups = page.getAllByRole('checkbox', { name: /service group \d+/i });
     expect(serviceGroups).toHaveLength(8);
-    
+
     await serviceGroups[0].check();
     await serviceGroups[0].setChecked(false);
   });
@@ -163,7 +163,7 @@ test.describe('Device Configuration', () => {
   test('should manage custom search ranges', async ({ page }) => {
     const rangeSelects = page.getAllByRole('combobox');
     expect(rangeSelects.length).toBeGreaterThan(0);
-    });
+  });
 });
 
 test.describe('Activity Export', () => {
@@ -179,7 +179,7 @@ test.describe('Activity Export', () => {
     const downloadButton = page.getByRole('button', { name: /download csv/i });
     await downloadButton.click();
   });
-  });
+});
 
 test.describe('Keyboard Shortcuts', () => {
   test.beforeEach(async ({ page }) => {

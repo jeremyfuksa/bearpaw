@@ -1,15 +1,9 @@
-import { create } from "zustand";
-import type {
-  ActivityLogEntry,
-  ChannelData,
-  ChannelDraft,
-  DeviceInfo,
-  LiveState,
-} from "../types";
+import { create } from 'zustand';
+import type { ActivityLogEntry, ChannelData, ChannelDraft, DeviceInfo, LiveState } from '../types';
 
-interface Preferences {
-  theme: "night" | "field";
-  displayMode: "frequency" | "alpha";
+export interface Preferences {
+  theme: 'night' | 'field';
+  displayMode: 'frequency' | 'alpha';
   reducedMotion: boolean;
   hitMinDuration: number;
   startInDashboardMode: boolean;
@@ -43,12 +37,12 @@ interface AppState {
 
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
   setDeviceInfo: (info: DeviceInfo | null) => void;
-  setChannels: (channels: ChannelData[]) => void;
+  setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
   setConnected: (connected: boolean) => void;
   setConnecting: (connecting: boolean) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
-  setPreferences: (prefs: Preferences) => void;
+  setPreferences: (prefs: Partial<Preferences>) => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
   setMemoryEditingIndex: (index: number | null) => void;
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
@@ -57,8 +51,8 @@ interface AppState {
 }
 
 const defaultPreferences: Preferences = {
-  theme: "night",
-  displayMode: "frequency",
+  theme: 'night',
+  displayMode: 'frequency',
   reducedMotion: false,
   hitMinDuration: 2,
   startInDashboardMode: false,
@@ -66,12 +60,12 @@ const defaultPreferences: Preferences = {
   checkUpdates: true,
   recordingBufferSize: 30,
   dataRetentionDays: 30,
-  audioOutputDevice: "default",
-  recordingsPath: "./recordings",
+  audioOutputDevice: 'default',
+  recordingsPath: './recordings',
   mqttEnabled: false,
-  mqttHost: "127.0.0.1",
+  mqttHost: '127.0.0.1',
   mqttPort: 1883,
-  mqttTopicPrefix: "scanner",
+  mqttTopicPrefix: 'scanner',
   mqttQos: 0,
   mqttRetain: false,
 };
@@ -79,10 +73,10 @@ const defaultPreferences: Preferences = {
 const defaultLiveState: LiveState = {
   timestamp: 0,
   frequency: 0,
-  modulation: "FM",
+  modulation: 'FM',
   squelch_open: false,
   rssi: 0,
-  mode: "SCAN",
+  mode: 'SCAN',
   channel: null,
   alpha_tag: null,
   volume: 0,
@@ -119,7 +113,15 @@ export const useStore = create<AppState>((set) => ({
     }),
 
   setDeviceInfo: (deviceInfo) => set({ deviceInfo }),
-  setChannels: (channels) => set({ channels: Array.isArray(channels) ? channels : [] }),
+  setChannels: (channels) =>
+    set((prev) => ({
+      channels:
+        typeof channels === 'function'
+          ? channels(prev.channels)
+          : Array.isArray(channels)
+            ? channels
+            : [],
+    })),
   setConnected: (connected) => set({ connected }),
   setConnecting: (connecting) => set({ connecting }),
 
