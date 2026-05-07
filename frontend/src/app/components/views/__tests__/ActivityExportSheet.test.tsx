@@ -431,7 +431,7 @@ describe('ActivityExportSheet', () => {
       const fetchPromise = new Promise((resolve) => {
         resolveFetch = resolve;
       });
-      global.fetch = vi.fn(() => fetchPromise);
+      global.fetch = vi.fn(() => fetchPromise) as unknown as typeof fetch;
 
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole('button', { name: /download/i });
@@ -511,7 +511,7 @@ describe('ActivityExportSheet', () => {
           ok: true,
           json: () => Promise.reject(new Error('Invalid JSON')),
         }),
-      );
+      ) as unknown as typeof fetch;
 
       render(<ActivityExportSheet {...mockProps} />);
       const downloadButton = screen.getByRole('button', { name: /download/i });

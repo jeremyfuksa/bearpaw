@@ -1,5 +1,4 @@
 import { renderHook, act } from '@testing-library/react';
-import { renderHook, act } from '@testing-library/react';
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
 import { useStore } from '../../store/useStore';
 import { useAPI } from '../../api/useApi';
@@ -38,11 +37,19 @@ describe('useKeyboardShortcuts', () => {
     mockedUseAPI.mockReturnValue(mockApi);
     mockedGetState.mockReturnValue({
       liveState: {
+        timestamp: 0,
         frequency: 145.5,
-        channel: 1,
+        modulation: 'FM',
+        squelch_open: false,
+        rssi: 0,
         mode: 'SCAN',
+        channel: 1,
+        alpha_tag: null,
+        volume: 0,
+        battery: null,
+        stale: false,
       },
-    });
+    } as ReturnType<typeof useStore.getState>);
 
     vi.clearAllMocks();
   });
