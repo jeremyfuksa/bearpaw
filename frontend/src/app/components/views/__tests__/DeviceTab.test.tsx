@@ -28,7 +28,7 @@ describe('DeviceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockApiClient = createMockApiClient();
-    vi.mocked(useAPI).mockReturnValue(mockApiClient);
+    vi.mocked(useAPI).mockReturnValue(mockApiClient as unknown as ReturnType<typeof useAPI>);
     useStore.setState({
       channels: [],
       liveState: createTestLiveState(),

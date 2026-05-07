@@ -11,7 +11,7 @@ describe('ScannerDisplay', () => {
     signalStrength: 3,
     isError: false,
     isScanning: false,
-    variant: 'default',
+    variant: 'default' as const,
   };
 
   describe('rendering', () => {

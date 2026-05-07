@@ -31,7 +31,9 @@ describe('ChannelsTab', () => {
   let mockChannels: ChannelData[];
   const mockedUseStore = vi.mocked(useStore);
   const setMockStore = (store: ReturnType<typeof createMockStore>) => {
-    mockedUseStore.mockImplementation((selector) => selector(store));
+    mockedUseStore.mockImplementation((selector) =>
+      selector(store as unknown as Parameters<typeof selector>[0]),
+    );
   };
 
   beforeEach(() => {
@@ -222,7 +224,7 @@ describe('ChannelsTab', () => {
         ok: true,
         json: vi.fn().mockResolvedValue({ imported: 1, errors: [] }),
       };
-      global.fetch = vi.fn().mockResolvedValue(mockResponse as Response);
+      global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
       mockApiClient.getChannels = vi
         .fn()
         .mockResolvedValue([...mockChannels, createTestChannel({ index: 2 })]);
@@ -271,9 +273,10 @@ describe('ChannelsTab', () => {
     it('should trigger download when export button clicked', async () => {
       const mockBlob = new Blob(['test'], { type: 'text/csv' });
       const originalCreateElement = document.createElement.bind(document);
-      global.fetch = vi
-        .fn()
-        .mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue(mockBlob) } as Response);
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(mockBlob),
+      } as unknown as Response);
       global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
       global.URL.revokeObjectURL = vi.fn();
       const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {

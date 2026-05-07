@@ -15,7 +15,7 @@ import type {
   CustomSearchSettings,
   WeatherSettings,
   ContrastSettings,
-} from '../types';
+} from '../../types';
 import { createTestLiveState, createTestChannel, createTestDeviceInfo } from './data';
 
 export const mockApiResponses = {
