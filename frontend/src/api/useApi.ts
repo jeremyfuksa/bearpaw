@@ -1,10 +1,10 @@
-import { ScannerAPIClient } from "./client";
+import { ScannerAPIClient } from './client';
 
 // Detect Tauri runtime only when the marker is truthy/object-like.
 // In browser builds, __TAURI__ may exist as a false boolean sentinel.
 const isTauri = (() => {
   const marker = (window as Window & { __TAURI__?: unknown }).__TAURI__;
-  return typeof marker === "object" && marker !== null;
+  return typeof marker === 'object' && marker !== null;
 })();
 
 // Backend URL configuration — exported so non-hook code can resolve API URLs
@@ -17,13 +17,14 @@ const defaultBaseURL = API_BASE;
 
 export function useAPI() {
   const baseURL = defaultBaseURL;
-  if (!(globalThis as { __bearpawApiClients?: Map<string, ScannerAPIClient> })
-    .__bearpawApiClients) {
-    (globalThis as { __bearpawApiClients?: Map<string, ScannerAPIClient> })
-      .__bearpawApiClients = new Map();
+  if (
+    !(globalThis as { __bearpawApiClients?: Map<string, ScannerAPIClient> }).__bearpawApiClients
+  ) {
+    (globalThis as { __bearpawApiClients?: Map<string, ScannerAPIClient> }).__bearpawApiClients =
+      new Map();
   }
 
-  const clients = (globalThis as { __bearpawApiClients: Map<string, ScannerAPIClient> })
+  const clients = (globalThis as unknown as { __bearpawApiClients: Map<string, ScannerAPIClient> })
     .__bearpawApiClients;
   let client = clients.get(baseURL);
   if (!client) {

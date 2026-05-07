@@ -1,7 +1,7 @@
-import { ReactElement } from "react";
-import { render, RenderOptions } from "@testing-library/react";
-import { renderHook } from "@testing-library/react";
-import type { AppStore } from "../../store/useStore";
+import { ReactElement } from 'react';
+import { render, RenderOptions } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
+import type { AppStore } from '../../store/useStore';
 
 export interface TestProvidersProps {
   children: React.ReactNode;
@@ -15,10 +15,10 @@ const MockProviders = ({ children, mockStore, mockApi }: TestProvidersProps) => 
 
 export const renderWithProviders = (
   ui: ReactElement,
-  options?: Omit<RenderOptions, "wrapper"> & {
+  options?: Omit<RenderOptions, 'wrapper'> & {
     mockStore?: Partial<AppStore>;
     mockApi?: Record<string, unknown>;
-  }
+  },
 ) => {
   const { mockStore, mockApi, ...renderOptions } = options ?? {};
 
@@ -38,7 +38,7 @@ export const renderHookWithProviders = <T,>(
   options?: {
     mockStore?: Partial<AppStore>;
     mockApi?: Record<string, unknown>;
-  }
+  },
 ) => {
   const { mockStore, mockApi } = options ?? {};
 
@@ -53,7 +53,7 @@ export const renderHookWithProviders = <T,>(
 
 export const waitForStateUpdate = async (
   selector: (state: AppStore) => unknown,
-  timeout: number = 1000
+  timeout: number = 1000,
 ): Promise<void> => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();

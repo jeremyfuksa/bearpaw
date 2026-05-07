@@ -1,4 +1,4 @@
-export type Modulation = "FM" | "AM" | "NFM" | "AUTO";
+export type Modulation = 'FM' | 'AM' | 'NFM' | 'AUTO';
 
 export interface LiveState {
   timestamp: number;
@@ -6,7 +6,7 @@ export interface LiveState {
   modulation: Modulation | string;
   squelch_open: boolean;
   rssi: number;
-  mode: "SCAN" | "HOLD" | "DIRECT" | string;
+  mode: 'SCAN' | 'HOLD' | 'DIRECT' | string;
   channel?: number | null;
   alpha_tag?: string | null;
   volume: number;
@@ -45,28 +45,33 @@ export interface DeviceInfo {
   firmware?: string | null;
   serial_number?: string | null;
   description?: string | null;
-  connection_status: "connected" | "disconnected" | "connecting";
+  connection_status: 'connected' | 'disconnected' | 'connecting';
   diagnostic_code?: string | null;
   diagnostic_message?: string | null;
 }
 
-export type WSMessage = StateUpdateMessage | EventMessage | ProgressMessage | ErrorMessage | PingMessage;
+export type WSMessage =
+  | StateUpdateMessage
+  | EventMessage
+  | ProgressMessage
+  | ErrorMessage
+  | PingMessage;
 
 export interface PingMessage {
-  type: "ping";
+  type: 'ping';
 }
 
 export interface StateUpdateMessage {
-  type: "state_update";
+  type: 'state_update';
   timestamp: number;
   sequence: number;
   data: Partial<LiveState>;
 }
 
 export interface EventMessage {
-  type: "event";
+  type: 'event';
   timestamp: number;
-  event: "scan_hit" | "hold" | "scan_start" | "state_stale";
+  event: 'scan_hit' | 'hold' | 'scan_start' | 'state_stale';
   data: Record<string, unknown> & {
     frequency?: number;
     channel?: number;
@@ -78,14 +83,14 @@ export interface EventMessage {
 }
 
 export interface ProgressMessage {
-  type: "progress";
+  type: 'progress';
   task_id: string;
   percent: number;
   message: string;
 }
 
 export interface ErrorMessage {
-  type: "error";
+  type: 'error';
   error: string;
   message: string;
 }
@@ -96,7 +101,7 @@ export interface ActivityLogEntry {
   frequency: number;
   channel?: number | null;
   alpha_tag?: string | null;
-  type: "hit" | "hold" | "manual";
+  type: 'hit' | 'hold' | 'manual';
   rssi?: number;
   hasAudio?: boolean;
   duration?: number | null;
@@ -183,7 +188,7 @@ export interface ConfigSnapshot {
 
 export interface Notification {
   id: string;
-  type: "success" | "error" | "info" | "warning";
+  type: 'success' | 'error' | 'info' | 'warning';
   message: string;
   duration?: number;
 }

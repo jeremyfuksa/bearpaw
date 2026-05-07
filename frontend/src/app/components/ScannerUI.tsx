@@ -1,48 +1,45 @@
-import React from "react";
-import { Maximize2, Minimize2 } from "lucide-react";
-import { cn } from "../../lib/utils";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Slider } from "./ui/slider";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import svgPaths from "../../imports/svg-govmzsdb93";
-import usbSvgPaths from "../../imports/svg-4af8p5er03";
-import socketSvgPaths from "../../imports/svg-10gl6kikm0";
+import React from 'react';
+import { Maximize2, Minimize2 } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { Slider } from './ui/slider';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import svgPaths from '../../imports/svg-govmzsdb93';
+import usbSvgPaths from '../../imports/svg-4af8p5er03';
+import socketSvgPaths from '../../imports/svg-10gl6kikm0';
 
 // --- Tab Navigation ---
 
 interface TabNavProps {
   currentTab: string;
   onTabChange: (tab: string) => void;
-  connectionStatus: "connected" | "connecting" | "disconnected";
+  connectionStatus: 'connected' | 'connecting' | 'disconnected';
   modelName?: string;
   shellStatusText?: string | null;
 }
 
 function getStatusDisplay(
-  connectionStatus: "connected" | "connecting" | "disconnected",
+  connectionStatus: 'connected' | 'connecting' | 'disconnected',
   modelName: string,
 ) {
-  if (connectionStatus === "connecting") {
-    return { statusColor: "var(--color-status-connecting)", statusText: "Connecting..." };
+  if (connectionStatus === 'connecting') {
+    return { statusColor: 'var(--color-status-connecting)', statusText: 'Connecting...' };
   }
-  if (connectionStatus === "disconnected") {
-    return { statusColor: "var(--color-status-disconnected)", statusText: "Disconnected" };
+  if (connectionStatus === 'disconnected') {
+    return { statusColor: 'var(--color-status-disconnected)', statusText: 'Disconnected' };
   }
-  return { statusColor: "var(--color-status-connected)", statusText: modelName };
+  return { statusColor: 'var(--color-status-connected)', statusText: modelName };
 }
 
 export function TabNav({
   currentTab,
   onTabChange,
   connectionStatus,
-  modelName = "BC125AT",
+  modelName = 'BC125AT',
   shellStatusText,
 }: TabNavProps) {
-  const tabs = ["Scan", "Device", "Channels"];
-  const { statusColor, statusText } = getStatusDisplay(
-    connectionStatus,
-    modelName,
-  );
+  const tabs = ['Scan', 'Device', 'Channels'];
+  const { statusColor, statusText } = getStatusDisplay(connectionStatus, modelName);
 
   return (
     <div className="flex items-center justify-between pb-px pt-0 px-0 relative shrink-0 w-full border-b border-scanner-bg-dark">
@@ -54,8 +51,8 @@ export function TabNav({
               key={tab}
               onClick={() => onTabChange(tab)}
               className={cn(
-                "flex flex-col items-center justify-center px-3 py-1 relative transition-colors focus:outline-none",
-                isActive ? "text-white" : "scanner-text-light hover:text-white"
+                'flex flex-col items-center justify-center px-3 py-1 relative transition-colors focus:outline-none',
+                isActive ? 'text-white' : 'scanner-text-light hover:text-white',
               )}
             >
               {isActive && (
@@ -64,12 +61,7 @@ export function TabNav({
                   className="absolute border-b-2 border-brand-hover/50 inset-0 pointer-events-none"
                 />
               )}
-              <p
-                className={cn(
-                  "text-sm text-nowrap",
-                  isActive ? "font-bold" : "font-semibold"
-                )}
-              >
+              <p className={cn('text-sm text-nowrap', isActive ? 'font-bold' : 'font-semibold')}>
                 {tab}
               </p>
             </button>
@@ -83,18 +75,11 @@ export function TabNav({
           </p>
         ) : null}
         <div className="relative shrink-0 size-[var(--size-status-dot)]">
-          <svg
-            className="block size-full"
-            fill="none"
-            preserveAspectRatio="none"
-            viewBox="0 0 8 8"
-          >
+          <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 8 8">
             <circle cx="4" cy="4" fill={statusColor} r="4" />
           </svg>
         </div>
-        <p className="font-sans font-normal scanner-text-light text-xs text-nowrap">
-          {statusText}
-        </p>
+        <p className="font-sans font-normal scanner-text-light text-xs text-nowrap">{statusText}</p>
       </div>
     </div>
   );
@@ -107,7 +92,7 @@ interface StatusHeaderProps {
   onVolumeChange: (volume: number) => void;
   isHolding: boolean;
   onHoldToggle: () => void;
-  onLockout: (type: "temporary" | "permanent") => void;
+  onLockout: (type: 'temporary' | 'permanent') => void;
   isRecording?: boolean;
   onRecordingToggle?: () => void;
   isDashboardMode: boolean;
@@ -135,7 +120,7 @@ export function StatusHeader({
               onClick={onDashboardToggle}
               className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer"
               aria-pressed={isDashboardMode}
-              aria-label={isDashboardMode ? "Switch to monitor view" : "Switch to dashboard view"}
+              aria-label={isDashboardMode ? 'Switch to monitor view' : 'Switch to dashboard view'}
             >
               {isDashboardMode ? (
                 <Minimize2 className="size-3.5" />
@@ -150,20 +135,32 @@ export function StatusHeader({
             className="scanner-select-content"
             arrowClassName="bg-background fill-background"
           >
-            {isDashboardMode ? "Dashboard view" : "Monitor view"}
+            {isDashboardMode ? 'Dashboard view' : 'Monitor view'}
           </TooltipContent>
         </Tooltip>
         <button
           onClick={onRecordingToggle}
           className={cn(
-            "flex items-center justify-center px-1.5 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none gap-1.5",
-            isRecording ? "bg-red-500/20 border-red-500/50" : "bg-scanner-default hover:bg-scanner-hover"
+            'flex items-center justify-center px-1.5 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none gap-1.5',
+            isRecording
+              ? 'bg-red-500/20 border-red-500/50'
+              : 'bg-scanner-default hover:bg-scanner-hover',
           )}
         >
-           <div className={cn("size-1.5 rounded-full", isRecording ? "bg-red-500 animate-pulse shadow-glow" : "bg-scanner-text")} />
-           <p className={cn("font-medium text-xs text-nowrap", isRecording ? "text-red-400" : "scanner-text")}>
-             REC
-           </p>
+          <div
+            className={cn(
+              'size-1.5 rounded-full',
+              isRecording ? 'bg-red-500 animate-pulse shadow-glow' : 'bg-scanner-text',
+            )}
+          />
+          <p
+            className={cn(
+              'font-medium text-xs text-nowrap',
+              isRecording ? 'text-red-400' : 'scanner-text',
+            )}
+          >
+            REC
+          </p>
         </button>
       </div>
 
@@ -172,47 +169,48 @@ export function StatusHeader({
         <Popover>
           <PopoverTrigger asChild>
             <button className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer">
-              <p className="font-medium scanner-text text-xs text-nowrap">
-                VOL {volume}
-              </p>
+              <p className="font-medium scanner-text text-xs text-nowrap">VOL {volume}</p>
             </button>
           </PopoverTrigger>
           <PopoverContent className="scanner-select-content w-40 p-4" side="bottom" align="center">
-             <div className="flex flex-col">
-               <span className="sr-only">Volume {volume}</span>
-               <Slider
-                 defaultValue={[volume]}
-                 max={20}
-                 step={1}
-                 onValueChange={(vals) => onVolumeChange(vals[0])}
-               />
-             </div>
+            <div className="flex flex-col">
+              <span className="sr-only">Volume {volume}</span>
+              <Slider
+                defaultValue={[volume]}
+                max={20}
+                step={1}
+                onValueChange={(vals) => onVolumeChange(vals[0])}
+              />
+            </div>
           </PopoverContent>
         </Popover>
         <button
           onClick={(e) => {
-             if (e.detail === 2) {
-                 onLockout("permanent");
-             } else {
-                 onLockout("temporary");
-             }
+            if (e.detail === 2) {
+              onLockout('permanent');
+            } else {
+              onLockout('temporary');
+            }
           }}
           className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer"
         >
-          <p className="font-medium scanner-text text-xs text-nowrap">
-            L/O
-          </p>
+          <p className="font-medium scanner-text text-xs text-nowrap">L/O</p>
         </button>
         <button
           onClick={onHoldToggle}
           className={cn(
-            "flex items-center justify-center px-1 py-0.5 rounded-scanner-sm shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none border",
-            isHolding 
-              ? "bg-scanner-bg-semiDark border-brand-primary" 
-              : "bg-scanner-default hover:bg-scanner-hover border-scanner-border shadow-button"
+            'flex items-center justify-center px-1 py-0.5 rounded-scanner-sm shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none border',
+            isHolding
+              ? 'bg-scanner-bg-semiDark border-brand-primary'
+              : 'bg-scanner-default hover:bg-scanner-hover border-scanner-border shadow-button',
           )}
         >
-          <p className={cn("font-medium text-xs text-nowrap", isHolding ? "text-brand-primary" : "scanner-text")}>
+          <p
+            className={cn(
+              'font-medium text-xs text-nowrap',
+              isHolding ? 'text-brand-primary' : 'scanner-text',
+            )}
+          >
             HOLD
           </p>
         </button>
@@ -235,7 +233,7 @@ function SignalIcon({ strength }: { strength: number }) {
           {strength > 2 && <path d={svgPaths.pd4593f0} fill="black" />}
           {strength > 3 && <path d={svgPaths.p24eea280} fill="black" />}
           {strength > 4 && <path d={svgPaths.p1690cd00} fill="black" />}
-          <path d={svgPaths.p45ef080} fill="black" /> 
+          <path d={svgPaths.p45ef080} fill="black" />
         </g>
       </svg>
     </div>
@@ -270,10 +268,10 @@ interface ScannerDisplayProps {
   mode: string;
   signalStrength: number;
   isError?: boolean;
-  errorType?: "usb" | "socket";
+  errorType?: 'usb' | 'socket';
   isScanning?: boolean;
   className?: string;
-  variant?: "default" | "hero" | "monitor";
+  variant?: 'default' | 'hero' | 'monitor';
 }
 
 export function ScannerDisplay({
@@ -285,82 +283,88 @@ export function ScannerDisplay({
   errorType,
   isScanning,
   className,
-  variant = "default",
+  variant = 'default',
 }: ScannerDisplayProps) {
   return (
     <div
       className={cn(
-        "scanner-display-surface relative shrink-0 w-full overflow-hidden rounded-scanner-md transition-all duration-500 ease-in-out",
-        !className?.includes("h-") &&
-          (variant === "hero" || variant === "monitor"
-            ? "h-full min-h-[var(--size-signal-display-min-height)]"
-            : "h-[var(--size-signal-display-height)]"),
-        className
+        'scanner-display-surface relative shrink-0 w-full overflow-hidden rounded-scanner-md transition-all duration-500 ease-in-out',
+        !className?.includes('h-') &&
+          (variant === 'hero' || variant === 'monitor'
+            ? 'h-full min-h-[var(--size-signal-display-min-height)]'
+            : 'h-[var(--size-signal-display-height)]'),
+        className,
       )}
     >
-      <div className={cn(
-        "flex flex-col gap-2 items-start px-3 py-2.5 relative w-full h-full",
-        variant === "hero"
-          ? "justify-between px-8 py-8"
-          : variant === "monitor"
-            ? "justify-center px-12 py-10"
-            : "justify-center"
-      )}>
+      <div
+        className={cn(
+          'flex flex-col gap-2 items-start px-3 py-2.5 relative w-full h-full',
+          variant === 'hero'
+            ? 'justify-between px-8 py-8'
+            : variant === 'monitor'
+              ? 'justify-center px-12 py-10'
+              : 'justify-center',
+        )}
+      >
         {/* Main Row */}
-        <div className={cn(
-          "relative flex w-full items-center justify-between pb-1",
-          variant === "hero" || variant === "monitor"
-            ? "flex-1 items-center border-none"
-            : "border-b border-scanner-border/70"
-        )}>
-          <p className={cn(
-            "max-w-full truncate text-nowrap font-bold text-text-display-dark/90 transition-all duration-500",
-            variant === "monitor"
-              ? "text-7xl leading-none tracking-tight"
-              : variant === "hero"
-                ? "text-4xl leading-tight tracking-tight"
-                : "text-3xl"
-          )}>
-            {isScanning ? (
-              <span className="animate-pulse">Scanning...</span>
-            ) : (
-              mainText
+        <div
+          className={cn(
+            'relative flex w-full items-center justify-between pb-1',
+            variant === 'hero' || variant === 'monitor'
+              ? 'flex-1 items-center border-none'
+              : 'border-b border-scanner-border/70',
+          )}
+        >
+          <p
+            className={cn(
+              'max-w-full truncate text-nowrap font-bold text-text-display-dark/90 transition-all duration-500',
+              variant === 'monitor'
+                ? 'text-7xl leading-none tracking-tight'
+                : variant === 'hero'
+                  ? 'text-4xl leading-tight tracking-tight'
+                  : 'text-3xl',
             )}
+          >
+            {isScanning ? <span className="animate-pulse">Scanning...</span> : mainText}
           </p>
-          <div className={cn(
-            "shrink-0 transition-all duration-500",
-            variant === "monitor"
-              ? "size-20 opacity-80"
-              : variant === "hero"
-                ? "size-16 opacity-80"
-                : "size-[var(--size-icon-sm)]"
-          )}>
-            {isError ? (
-              errorType === "usb" ? <UsbErrorIcon /> : <SocketErrorIcon />
-            ) : null}
+          <div
+            className={cn(
+              'shrink-0 transition-all duration-500',
+              variant === 'monitor'
+                ? 'size-20 opacity-80'
+                : variant === 'hero'
+                  ? 'size-16 opacity-80'
+                  : 'size-[var(--size-icon-sm)]',
+            )}
+          >
+            {isError ? errorType === 'usb' ? <UsbErrorIcon /> : <SocketErrorIcon /> : null}
           </div>
         </div>
 
         {/* Sub Row */}
-        <div className={cn(
-          "flex gap-2 items-start w-full relative transition-all duration-500",
-          variant === "hero" || variant === "monitor"
-            ? "border-t border-scanner-border/30 pt-4"
-            : ""
-        )}>
-          <p className={cn(
-            "font-normal text-text-display-dark/90 transition-all duration-500",
-            isError ? "whitespace-normal leading-snug" : "text-nowrap",
-            variant === "monitor"
-              ? "text-3xl font-medium opacity-90"
-              : variant === "hero"
-                ? "text-xl font-medium opacity-90"
-                : "text-lg"
-          )}>
+        <div
+          className={cn(
+            'flex gap-2 items-start w-full relative transition-all duration-500',
+            variant === 'hero' || variant === 'monitor'
+              ? 'border-t border-scanner-border/30 pt-4'
+              : '',
+          )}
+        >
+          <p
+            className={cn(
+              'font-normal text-text-display-dark/90 transition-all duration-500',
+              isError ? 'whitespace-normal leading-snug' : 'text-nowrap',
+              variant === 'monitor'
+                ? 'text-3xl font-medium opacity-90'
+                : variant === 'hero'
+                  ? 'text-xl font-medium opacity-90'
+                  : 'text-lg',
+            )}
+          >
             {isScanning ? (
               <span className="opacity-50">Searching for signal...</span>
             ) : (
-              subText || "—"
+              subText || '—'
             )}
           </p>
         </div>
@@ -390,23 +394,23 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
     <div className="flex gap-0.25 w-full justify-between">
       {banks.map((bank, index) => {
         const isActive = activeBanks[index];
-        const label = bank === 10 ? "0" : bank.toString();
+        const label = bank === 10 ? '0' : bank.toString();
         // Index is 0-9
         return (
           <button
             key={bank}
             onClick={() => onToggleBank(index)}
-             className={cn(
-               "relative mx-[var(--size-bank-control-spacing)] flex h-[var(--size-bank-control-height)] min-w-0 flex-1 items-center justify-center rounded-scanner-sm border transition-all",
-               isActive
-                 ? "bg-scanner-bg-semiDark border-brand-primary"
-                 : "bg-scanner-default border-scanner-border shadow-button"
-             )}
+            className={cn(
+              'relative mx-[var(--size-bank-control-spacing)] flex h-[var(--size-bank-control-height)] min-w-0 flex-1 items-center justify-center rounded-scanner-sm border transition-all',
+              isActive
+                ? 'bg-scanner-bg-semiDark border-brand-primary'
+                : 'bg-scanner-default border-scanner-border shadow-button',
+            )}
           >
             <p
               className={cn(
-                "font-medium text-xs",
-                isActive ? "text-brand-primary" : "scanner-text"
+                'font-medium text-xs',
+                isActive ? 'text-brand-primary' : 'scanner-text',
               )}
             >
               {label}

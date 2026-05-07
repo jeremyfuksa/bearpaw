@@ -57,7 +57,7 @@ describe("ComponentName", () => {
   it("should handle user interactions", async () => {
     const onAction = vi.fn();
     render(<Component onAction={onAction} />);
-    
+
     await userEvent.click(screen.getByRole("button"));
     expect(onAction).toHaveBeenCalled();
   });
@@ -72,31 +72,31 @@ describe("ComponentName", () => {
 ### API Client Tests
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { ScannerAPIClient } from "@/api/client";
-import { mockFetch, resetMockFetch } from "@/test/utils";
-import { mockApiResponses } from "@/test/fixtures";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ScannerAPIClient } from '@/api/client';
+import { mockFetch, resetMockFetch } from '@/test/utils';
+import { mockApiResponses } from '@/test/fixtures';
 
-describe("ScannerAPIClient", () => {
+describe('ScannerAPIClient', () => {
   let client: ScannerAPIClient;
 
   beforeEach(() => {
-    client = new ScannerAPIClient("/api/v1");
+    client = new ScannerAPIClient('/api/v1');
   });
 
   afterEach(() => {
     resetMockFetch();
   });
 
-  it("should fetch status successfully", async () => {
+  it('should fetch status successfully', async () => {
     mockFetch(mockApiResponses.status);
     const status = await client.getStatus();
     expect(status).toEqual(mockApiResponses.status);
   });
 
-  it("should handle errors correctly", async () => {
-    mockFetchError(503, "Device not connected");
-    await expect(client.getStatus()).rejects.toThrow("Device not connected");
+  it('should handle errors correctly', async () => {
+    mockFetchError(503, 'Device not connected');
+    await expect(client.getStatus()).rejects.toThrow('Device not connected');
   });
 });
 ```
@@ -106,8 +106,8 @@ describe("ScannerAPIClient", () => {
 ### 1. Mocking API Responses
 
 ```typescript
-import { mockFetch } from "@/test/utils";
-import { mockApiResponses } from "@/test/fixtures";
+import { mockFetch } from '@/test/utils';
+import { mockApiResponses } from '@/test/fixtures';
 
 mockFetch(mockApiResponses);
 ```
@@ -115,18 +115,18 @@ mockFetch(mockApiResponses);
 ### 2. Mocking API Errors
 
 ```typescript
-import { mockFetchError } from "@/test/utils";
+import { mockFetchError } from '@/test/utils';
 
-mockFetchError(503, "Device not connected");
+mockFetchError(503, 'Device not connected');
 ```
 
 ### 3. Using Test Data Fixtures
 
 ```typescript
-import { createTestChannel, createTestLiveState } from "@/test/fixtures";
+import { createTestChannel, createTestLiveState } from '@/test/fixtures';
 
 const testChannel = createTestChannel({ index: 1, frequency: 151.25 });
-const testState = createTestLiveState({ mode: "SCAN" });
+const testState = createTestLiveState({ mode: 'SCAN' });
 ```
 
 ### 4. Mocking Zustand Store
@@ -147,20 +147,20 @@ render(<Component store={mockStore} />);
 Use accessible queries over test-specific queries:
 
 ```typescript
-screen.getByRole("button")           // Good
-screen.getByRole("button", { name: "Submit" })  // Better
-screen.getByLabelText("Volume")      // Best
+screen.getByRole('button'); // Good
+screen.getByRole('button', { name: 'Submit' }); // Better
+screen.getByLabelText('Volume'); // Best
 ```
 
 ### 6. User Interactions
 
 ```typescript
-import userEvent from "@testing-library/user-event";
+import userEvent from '@testing-library/user-event';
 
 await userEvent.click(button);
-await userEvent.type(input, "text");
-await userEvent.select(select, "option");
-await userEvent.click(screen.getByRole("option", { name: "option" }));
+await userEvent.type(input, 'text');
+await userEvent.select(select, 'option');
+await userEvent.click(screen.getByRole('option', { name: 'option' }));
 ```
 
 ## Best Practices
@@ -189,7 +189,7 @@ await userEvent.click(screen.getByRole("option", { name: "option" }));
 ## Coverage Goals
 
 - **Components**: 80% coverage
-- **API Client**: 90% coverage  
+- **API Client**: 90% coverage
 - **Store**: 85% coverage
 - **Hooks**: 85% coverage
 - **Overall**: 75% coverage
@@ -224,5 +224,5 @@ SVG elements don't always have `role="img"`. Use `container.querySelector("svg")
 For async components, use `waitFor` or use mock timers:
 
 ```typescript
-await waitFor(() => expect(screen.getByText("loaded")).toBeInTheDocument());
+await waitFor(() => expect(screen.getByText('loaded')).toBeInTheDocument());
 ```

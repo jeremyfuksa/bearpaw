@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { X, Download, Calendar, Trash2 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { toast } from "sonner";
-import { cn } from "../../../lib/utils";
-import { useAPI, API_BASE } from "../../../api/useApi";
+import { useState } from 'react';
+import { X, Download, Calendar, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
+import { cn } from '../../../lib/utils';
+import { useAPI, API_BASE } from '../../../api/useApi';
 
 interface ActivityExportSheetProps {
   isOpen: boolean;
@@ -11,7 +11,7 @@ interface ActivityExportSheetProps {
   hasActivity: boolean;
 }
 
-type Timeframe = "today" | "week" | "month" | "all" | "custom";
+type Timeframe = 'today' | 'week' | 'month' | 'all' | 'custom';
 
 function getUnixTime(date: Date | null): number {
   if (!date) return 0;
@@ -39,7 +39,7 @@ function getStartOfMonth(): number {
 }
 
 export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityExportSheetProps) {
-  const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>("today");
+  const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>('today');
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -47,16 +47,16 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
 
   const getTimeframeLabel = (timeframe: Timeframe): string => {
     switch (timeframe) {
-      case "today":
-        return "Today";
-      case "week":
-        return "This Week";
-      case "month":
-        return "This Month";
-      case "all":
-        return "All Time";
-      case "custom":
-        return "Custom Range";
+      case 'today':
+        return 'Today';
+      case 'week':
+        return 'This Week';
+      case 'month':
+        return 'This Month';
+      case 'all':
+        return 'All Time';
+      case 'custom':
+        return 'Custom Range';
       default:
         return timeframe;
     }
@@ -66,20 +66,20 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
     const params = new URLSearchParams();
 
     switch (selectedTimeframe) {
-      case "today":
-        params.append("start_time", String(getStartOfToday()));
+      case 'today':
+        params.append('start_time', String(getStartOfToday()));
         break;
-      case "week":
-        params.append("start_time", String(getStartOfWeek()));
+      case 'week':
+        params.append('start_time', String(getStartOfWeek()));
         break;
-      case "month":
-        params.append("start_time", String(getStartOfMonth()));
+      case 'month':
+        params.append('start_time', String(getStartOfMonth()));
         break;
-      case "all":
+      case 'all':
         break;
-      case "custom":
-        params.append("start_time", String(getUnixTime(customStartDate)));
-        params.append("end_time", String(getUnixTime(customEndDate)));
+      case 'custom':
+        params.append('start_time', String(getUnixTime(customStartDate)));
+        params.append('end_time', String(getUnixTime(customEndDate)));
         break;
     }
 
@@ -99,32 +99,34 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
       const response = await fetch(`${API_BASE}/analytics/activity-log?${params.toString()}`);
 
       if (!response.ok) {
-        throw new Error("Failed to export activity log");
+        throw new Error('Failed to export activity log');
       }
 
       const data = await response.json();
-      const header = ["timestamp", "frequency", "tag", "channel", "rssi", "duration"].join(",");
+      const header = ['timestamp', 'frequency', 'tag', 'channel', 'rssi', 'duration'].join(',');
       const rows = data.map((entry: any) => {
         const timestamp = new Date(entry.timestamp * 1000).toISOString();
         const frequency = entry.frequency.toFixed(4);
-        const tag = entry.alpha_tag ?? "";
-        const channel = entry.channel ?? "";
-        const rssi = entry.rssi ?? "";
-        const duration = entry.duration ?? "";
-        return [timestamp, frequency, `"${tag.replace(/"/g, '""')}"`, channel, rssi, duration].join(",");
+        const tag = entry.alpha_tag ?? '';
+        const channel = entry.channel ?? '';
+        const rssi = entry.rssi ?? '';
+        const duration = entry.duration ?? '';
+        return [timestamp, frequency, `"${tag.replace(/"/g, '""')}"`, channel, rssi, duration].join(
+          ',',
+        );
       });
 
-      const csv = [header, ...rows].join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
+      const csv = [header, ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       link.href = url;
       link.download = generateFilename();
       link.click();
       URL.revokeObjectURL(url);
       onClose();
     } catch (error) {
-      console.error("Failed to export activity log", error);
+      console.error('Failed to export activity log', error);
     } finally {
       setIsExporting(false);
     }
@@ -134,10 +136,10 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
     setIsExporting(true);
     try {
       await api.cleanupAnalytics();
-      toast.success("Analytics data cleaned up");
+      toast.success('Analytics data cleaned up');
     } catch (error) {
-      console.error("Failed to cleanup analytics", error);
-      toast.error("Failed to cleanup analytics");
+      console.error('Failed to cleanup analytics', error);
+      toast.error('Failed to cleanup analytics');
     } finally {
       setIsExporting(false);
     }
@@ -155,11 +157,11 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
             onClick={onClose}
           />
           <motion.div
-            initial={{ y: "100%", opacity: 0 }}
-            animate={{ y: "0%", opacity: 1 }}
-            exit={{ y: "100%", opacity: 0 }}
+            initial={{ y: '100%', opacity: 0 }}
+            animate={{ y: '0%', opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
             transition={{
-              type: "spring",
+              type: 'spring',
               damping: 25,
               stiffness: 300,
             }}
@@ -178,17 +180,19 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="space-y-3">
-                <label className="text-xs font-medium text-white/70 uppercase tracking-wider">Select timeframe</label>
+                <label className="text-xs font-medium text-white/70 uppercase tracking-wider">
+                  Select timeframe
+                </label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(["today", "week", "month", "all", "custom"] as Timeframe[]).map((timeframe) => (
+                  {(['today', 'week', 'month', 'all', 'custom'] as Timeframe[]).map((timeframe) => (
                     <button
                       key={timeframe}
                       onClick={() => setSelectedTimeframe(timeframe)}
                       className={cn(
-                        "flex items-center gap-2 px-4 py-3 rounded text-sm font-medium transition-colors",
+                        'flex items-center gap-2 px-4 py-3 rounded text-sm font-medium transition-colors',
                         selectedTimeframe === timeframe
-                          ? "border border-brand-primary/30 bg-brand-primary/20 text-brand-primary"
-                          : "scanner-button-muted border"
+                          ? 'border border-brand-primary/30 bg-brand-primary/20 text-brand-primary'
+                          : 'scanner-button-muted border',
                       )}
                     >
                       <Calendar size={16} />
@@ -198,30 +202,40 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                 </div>
               </div>
 
-              {selectedTimeframe === "custom" && (
+              {selectedTimeframe === 'custom' && (
                 <div className="space-y-4 border-t border-white/10 pt-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label htmlFor="activity-export-start-date" className="text-xs font-medium text-white/70">
+                      <label
+                        htmlFor="activity-export-start-date"
+                        className="text-xs font-medium text-white/70"
+                      >
                         Start Date
                       </label>
                       <input
                         id="activity-export-start-date"
                         type="date"
-                        value={customStartDate ? customStartDate.toISOString().slice(0, 10) : ""}
-                        onChange={(e) => setCustomStartDate(e.target.value ? new Date(e.target.value) : null)}
+                        value={customStartDate ? customStartDate.toISOString().slice(0, 10) : ''}
+                        onChange={(e) =>
+                          setCustomStartDate(e.target.value ? new Date(e.target.value) : null)
+                        }
                         className="scanner-input w-full px-3 py-2 text-sm"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label htmlFor="activity-export-end-date" className="text-xs font-medium text-white/70">
+                      <label
+                        htmlFor="activity-export-end-date"
+                        className="text-xs font-medium text-white/70"
+                      >
                         End Date
                       </label>
                       <input
                         id="activity-export-end-date"
                         type="date"
-                        value={customEndDate ? customEndDate.toISOString().slice(0, 10) : ""}
-                        onChange={(e) => setCustomEndDate(e.target.value ? new Date(e.target.value) : null)}
+                        value={customEndDate ? customEndDate.toISOString().slice(0, 10) : ''}
+                        onChange={(e) =>
+                          setCustomEndDate(e.target.value ? new Date(e.target.value) : null)
+                        }
                         className="scanner-input w-full px-3 py-2 text-sm"
                       />
                     </div>
@@ -237,7 +251,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                 className="scanner-button-primary flex w-full items-center justify-center gap-2 py-3 text-sm uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download size={16} />
-                {isExporting ? "Exporting..." : "Download CSV"}
+                {isExporting ? 'Exporting...' : 'Download CSV'}
               </button>
               <button
                 onClick={handleCleanup}
@@ -245,7 +259,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                 className="flex w-full items-center justify-center gap-2 rounded border border-destructive bg-destructive py-3 text-sm font-bold uppercase tracking-wider text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 size={16} />
-                {isExporting ? "Cleaning..." : "Cleanup Analytics"}
+                {isExporting ? 'Cleaning...' : 'Cleanup Analytics'}
               </button>
             </div>
           </motion.div>
