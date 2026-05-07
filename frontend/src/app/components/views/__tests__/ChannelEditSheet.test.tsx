@@ -8,10 +8,10 @@ import type { ChannelDraft, ChannelData } from '../../../../types';
 describe('ChannelEditSheet', () => {
   let mockChannel: ChannelData;
   let mockDraft: ChannelDraft;
-  let mockOnSave: ReturnType<typeof vi.fn>;
-  let mockOnFieldChange: ReturnType<typeof vi.fn>;
-  let mockOnClear: ReturnType<typeof vi.fn>;
-  let mockOnClose: ReturnType<typeof vi.fn>;
+  let mockOnSave: (draft: ChannelDraft) => Promise<void>;
+  let mockOnFieldChange: (field: keyof ChannelDraft, value: string | boolean) => void;
+  let mockOnClear: () => void;
+  let mockOnClose: () => void;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -57,6 +57,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       expect(screen.queryByText(/Edit Channel 1/i)).not.toBeInTheDocument();
@@ -71,6 +72,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
@@ -87,6 +89,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);
@@ -102,6 +105,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);
@@ -118,6 +122,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);
@@ -136,6 +141,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);
@@ -154,6 +160,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);
@@ -174,6 +181,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/alpha tag/i);
@@ -189,6 +197,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/alpha tag/i);
@@ -205,6 +214,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/alpha tag/i) as HTMLInputElement;
@@ -222,6 +232,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       expect(screen.getByText(/FM/i)).toBeInTheDocument();
@@ -236,6 +247,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const selectTrigger = screen.getByRole('combobox');
@@ -254,6 +266,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const selectTrigger = screen.getByRole('combobox');
@@ -277,6 +290,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/tone/i);
@@ -292,6 +306,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/tone/i);
@@ -308,6 +323,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/tone/i);
@@ -326,6 +342,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/tone/i);
@@ -346,6 +363,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/delay/i);
@@ -361,6 +379,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/delay/i);
@@ -377,6 +396,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/delay/i);
@@ -395,6 +415,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/delay/i);
@@ -415,6 +436,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       expect(screen.getByRole('switch', { name: /lockout/i })).toBeInTheDocument();
@@ -429,6 +451,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const lockoutSwitch = screen.getByRole('switch', { name: /lockout/i });
@@ -447,6 +470,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       expect(screen.getByRole('switch', { name: /priority/i })).toBeInTheDocument();
@@ -461,6 +485,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const prioritySwitch = screen.getByRole('switch', { name: /priority/i });
@@ -479,6 +504,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       expect(screen.getByRole('button', { name: /Save Draft/i })).toBeInTheDocument();
@@ -545,6 +571,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);
@@ -556,8 +583,8 @@ describe('ChannelEditSheet', () => {
     });
 
     it('should show saving state while saving', async () => {
-      const savingPromise = new Promise((resolve) => setTimeout(resolve, 100));
-      mockOnSave.mockReturnValue(savingPromise);
+      const savingPromise = new Promise<void>((resolve) => setTimeout(resolve, 100));
+      (mockOnSave as ReturnType<typeof vi.fn>).mockReturnValue(savingPromise);
 
       render(
         <ChannelEditSheet
@@ -567,6 +594,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const saveButton = screen.getByRole('button', { name: /Save Draft/i });
@@ -586,6 +614,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);
@@ -604,6 +633,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/delay/i);
@@ -622,6 +652,7 @@ describe('ChannelEditSheet', () => {
           onClose={mockOnClose}
           onSave={mockOnSave}
           onFieldChange={mockOnFieldChange}
+          onClear={mockOnClear}
         />,
       );
       const input = screen.getByLabelText(/frequency/i);

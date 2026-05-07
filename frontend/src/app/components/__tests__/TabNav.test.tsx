@@ -6,9 +6,9 @@ import { TabNav } from '../ScannerUI';
 
 describe('TabNav Component', () => {
   const defaultProps = {
-    currentTab: 'Scan',
+    currentTab: 'Scan' as const,
     onTabChange: vi.fn(),
-    connectionStatus: 'connected',
+    connectionStatus: 'connected' as const,
     modelName: 'BC125AT',
   };
 

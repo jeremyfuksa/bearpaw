@@ -1,4 +1,10 @@
-import type { ChannelData, ChannelDraft, LiveState, DeviceInfo, ActivityLogEntry } from '../types';
+import type {
+  ChannelData,
+  ChannelDraft,
+  LiveState,
+  DeviceInfo,
+  ActivityLogEntry,
+} from '../../types';
 
 export const createTestChannel = (overrides: Partial<ChannelData> = {}): ChannelData => ({
   index: 1,
