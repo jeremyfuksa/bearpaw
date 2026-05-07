@@ -5,6 +5,7 @@ import csv
 import io
 import logging
 import os
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
@@ -77,6 +78,19 @@ def _set_device_diagnostic(
 def _clear_device_diagnostic(device_info: DeviceInfo) -> None:
     device_info.diagnostic_code = None
     device_info.diagnostic_message = None
+
+
+async def _broadcast_device_info(runtime: "RuntimeState") -> None:
+    from bearpaw.models import DeviceInfoModel as _DeviceInfoModel
+
+    payload = _DeviceInfoModel.model_validate(runtime.device_info).model_dump()
+    await runtime.ws_manager.broadcast(
+        {
+            "type": "device_info",
+            "timestamp": time.time(),
+            "data": payload,
+        }
+    )
 
 
 def _safe_create_task(coro):
@@ -409,6 +423,7 @@ def create_app(
         )
         app.state.runtime = runtime
         if runtime.driver and runtime.transport:
+            await _broadcast_device_info(runtime)
             runtime.poller_task = asyncio.create_task(_poll_status(app))
         if (
             config.device.transport == "usb"
@@ -1982,11 +1997,13 @@ async def _poll_status(app: FastAPI) -> None:
             failures = 0
             if runtime.device_info.connection_status != "connected":
                 runtime.device_info.connection_status = "connected"
+                await _broadcast_device_info(runtime)
         except Exception as exc:
             failures += 1
             if failures == 1 and runtime.device_info.connection_status != "connecting":
                 runtime.device_info.connection_status = "connecting"
                 logger.info("Device disconnected, attempting to reconnect...")
+                await _broadcast_device_info(runtime)
             if isinstance(exc, (ConnectionError, OSError)):
                 try:
                     if runtime.transport:
@@ -2003,6 +2020,7 @@ async def _poll_status(app: FastAPI) -> None:
                     stale_changes = runtime.state_store.mark_live_state_stale()
                     if stale_changes:
                         runtime.device_info.connection_status = "disconnected"
+                        await _broadcast_device_info(runtime)
                         await runtime.ws_manager.broadcast(
                             {
                                 "type": "event",
