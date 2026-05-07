@@ -6,7 +6,7 @@ import { TabNav, StatusHeader, ScannerDisplay, BankControls } from './components
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { Activity, Clock, FileText, Play, Radio, Signal } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip';
-import { useAPI, API_BASE } from '../api/useApi';
+import { getAPI, API_BASE } from '../api/useApi';
 import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -77,7 +77,7 @@ export default function App() {
       );
     },
   });
-  const api = useAPI();
+  const api = getAPI();
   const { ws, connected, connecting } = useWebSocket();
 
   const liveState = useStore((state) => state.liveState);
@@ -92,7 +92,6 @@ export default function App() {
   const setChannels = useStore((state) => state.setChannels);
   const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
   const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
-  const setPreferences = useStore((state) => state.setPreferences);
   const updatePreferences = useStore((state) => state.updatePreferences);
 
   const [currentTab, setCurrentTab] = useState<Tab>('Scan');
@@ -241,7 +240,7 @@ export default function App() {
             mqttRetain: prefs.mqtt_retain ?? false,
           };
           console.log('[Preferences] Setting in store:', frontendPrefs);
-          setPreferences(frontendPrefs);
+          updatePreferences(frontendPrefs);
           console.log(
             '[Preferences] Current store preferences after set:',
             useStore.getState().preferences,
@@ -252,7 +251,7 @@ export default function App() {
       }
     };
     loadPreferences();
-  }, [setPreferences]);
+  }, [updatePreferences]);
 
   useEffect(() => {
     const unsubscribeState = ws.on('state_update', (message) => {

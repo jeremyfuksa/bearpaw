@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
-import { useAPI } from '../api/useApi';
+import { getAPI } from '../api/useApi';
 import { useStore } from '../store/useStore';
 
 interface ShortcutHandlers {
@@ -11,12 +11,15 @@ interface ShortcutHandlers {
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
-  const api = useAPI();
+  const api = getAPI();
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const current = handlersRef.current;
       if (event.key === 'Escape') {
-        handlers.closeOverlays();
+        current.closeOverlays();
         return;
       }
 
@@ -43,7 +46,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         case 'l': {
           event.preventDefault();
           if (event.shiftKey) {
-            handlers.openActivityLog();
+            current.openActivityLog();
           } else {
             const liveState = useStore.getState().liveState;
             if (liveState?.frequency || liveState?.channel) {
@@ -57,11 +60,11 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         }
         case '?':
           event.preventDefault();
-          handlers.openShortcuts();
+          current.openShortcuts();
           break;
         case 'm':
           event.preventDefault();
-          handlers.openMemoryBrowser();
+          current.openMemoryBrowser();
           break;
         case 'arrowup':
           event.preventDefault();
@@ -78,5 +81,5 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [api, handlers]);
+  }, [api]);
 }

@@ -6,7 +6,7 @@ import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
 import { cn } from '../../../lib/utils';
-import { useAPI, API_BASE } from '../../../api/useApi';
+import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
 import type { ChannelData, ChannelDraft } from '../../../types';
 import { ChannelEditSheet } from './ChannelEditSheet';
@@ -169,7 +169,7 @@ function buildEmptyDraft(): ChannelDraft {
 }
 
 export function ChannelsTab() {
-  const api = useAPI();
+  const api = getAPI();
   const channels = useStore((state) => state.channels) ?? [];
   const memoryDrafts = useStore((state) => state.memoryDrafts);
   const setMemoryDraft = useStore((state) => state.setMemoryDraft);

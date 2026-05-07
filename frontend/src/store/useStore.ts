@@ -35,7 +35,6 @@ export interface AppStore {
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
-  setPreferences: (prefs: Partial<Preferences>) => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
   setMemoryEditingIndex: (index: number | null) => void;
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
@@ -120,11 +119,6 @@ export const useStore = create<AppStore>((set) => ({
     })),
 
   clearActivityLog: () => set({ activityLog: [], fullActivityLog: [] }),
-
-  setPreferences: (prefs) =>
-    set((prev) => ({
-      preferences: { ...prev.preferences, ...prefs },
-    })),
 
   updatePreferences: (prefs) =>
     set((prev) => ({
