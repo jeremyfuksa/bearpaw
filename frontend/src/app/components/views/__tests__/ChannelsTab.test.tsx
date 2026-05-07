@@ -18,7 +18,7 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('../../../../api/useApi', () => ({
-  useAPI: vi.fn(() => createMockApiClient()),
+  getAPI: vi.fn(() => createMockApiClient()),
   API_BASE: 'http://localhost:8000/api/v1',
 }));
 

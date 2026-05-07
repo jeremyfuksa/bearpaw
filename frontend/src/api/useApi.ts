@@ -15,7 +15,7 @@ export const API_BASE = isTauri
 
 const defaultBaseURL = API_BASE;
 
-export function useAPI() {
+export function getAPI() {
   const baseURL = defaultBaseURL;
   if (
     !(globalThis as { __bearpawApiClients?: Map<string, ScannerAPIClient> }).__bearpawApiClients
