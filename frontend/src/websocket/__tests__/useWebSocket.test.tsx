@@ -3,7 +3,7 @@ import { waitFor, act, render } from '@testing-library/react';
 import { screen } from '@testing-library/react';
 import { ScannerWebSocket } from '../ScannerWebSocket';
 import { WebSocketProvider, useWebSocket } from '../useWebSocket';
-import type { WSMessage } from '../types';
+import type { WSMessage } from '../../types';
 
 const createWebSocketMock = (factory: () => any) => {
   const mock = vi.fn(function () {
@@ -108,7 +108,7 @@ describe('ScannerWebSocket', () => {
   describe('Message Handling', () => {
     it('should parse JSON messages', () => {
       const mockEmit = vi.spyOn(ws, 'emit' as any);
-      const testMessage: WSMessage = { type: 'state_update', data: {} };
+      const testMessage = { type: 'state_update', data: {} } as unknown as WSMessage;
       ws.connect();
 
       if (mockWs.onmessage) {
@@ -150,7 +150,7 @@ describe('ScannerWebSocket', () => {
     it('should emit onmessage events to listeners', () => {
       const listener1 = vi.fn();
       const listener2 = vi.fn();
-      const testMessage: WSMessage = { type: 'event', data: {} };
+      const testMessage = { type: 'event', data: {} } as unknown as WSMessage;
 
       ws.on('event', listener1);
       ws.on('event', listener2);
@@ -281,7 +281,7 @@ describe('ScannerWebSocket', () => {
 
       ws.connect();
 
-      const testMessage: WSMessage = { type: 'event', data: {} };
+      const testMessage = { type: 'event', data: {} } as unknown as WSMessage;
 
       if ((ws as any).ws?.onmessage) {
         (ws as any).ws.onmessage({ data: JSON.stringify(testMessage) } as MessageEvent);
@@ -300,7 +300,7 @@ describe('ScannerWebSocket', () => {
       ws.on('state_update', listener2);
       ws.on('error', otherListener);
 
-      const testMessage: WSMessage = { type: 'event', data: {} };
+      const testMessage = { type: 'event', data: {} } as unknown as WSMessage;
 
       ws.connect();
 

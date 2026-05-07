@@ -19,7 +19,7 @@ export interface Preferences {
   mqttRetain: boolean;
 }
 
-interface AppState {
+export interface AppStore {
   liveState: LiveState | null;
   deviceInfo: DeviceInfo | null;
   channels: ChannelData[];
@@ -78,7 +78,7 @@ const defaultLiveState: LiveState = {
   stale: true,
 };
 
-export const useStore = create<AppState>((set) => ({
+export const useStore = create<AppStore>((set) => ({
   liveState: null,
   deviceInfo: null,
   channels: [],

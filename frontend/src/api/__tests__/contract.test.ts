@@ -7,15 +7,8 @@ import type {
   LockoutsResponse,
   ConfigSnapshot,
   ChannelDraft,
-  ChannelUpdatePayload,
   CloseCallSettings,
-  CloseCallSettingsPayload,
-  Preferences,
-  AnalyticsBusiestChannelsResponse,
-  AnalyticsHourlyHeatmapResponse,
-  AnalyticsSessionStatsResponse,
-  ActivityLogResponse,
-} from '../../../types';
+} from '../../types';
 import { mockApiResponses, mockApiErrors } from '../../test/fixtures';
 
 describe('API Contract Tests', () => {
@@ -366,7 +359,7 @@ describe('API Contract Tests', () => {
     });
 
     it('Preferences should match expected structure', () => {
-      const apiPrefs: Preferences = mockApiResponses.preferences;
+      const apiPrefs = mockApiResponses.preferences;
       expect(apiPrefs).toHaveProperty('theme');
       expect(apiPrefs).toHaveProperty('display_mode');
       expect(apiPrefs).toHaveProperty('reduced_motion');
