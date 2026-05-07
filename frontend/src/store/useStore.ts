@@ -9,10 +9,8 @@ export interface Preferences {
   startInDashboardMode: boolean;
   autoConnect: boolean;
   checkUpdates: boolean;
-  recordingBufferSize: number;
   dataRetentionDays: number;
   audioOutputDevice: string;
-  recordingsPath: string;
   mqttEnabled: boolean;
   mqttHost: string;
   mqttPort: number;
@@ -33,7 +31,6 @@ interface AppState {
   lastSequence: number;
   memoryDrafts: Record<number, ChannelDraft>;
   memoryEditingIndex: number | null;
-  isRecording: boolean;
 
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
   setDeviceInfo: (info: DeviceInfo | null) => void;
@@ -46,7 +43,6 @@ interface AppState {
   updatePreferences: (prefs: Partial<Preferences>) => void;
   setMemoryEditingIndex: (index: number | null) => void;
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
-  setRecording: (recording: boolean) => void;
   addToFullActivityLog: (entry: ActivityLogEntry) => void;
 }
 
@@ -58,10 +54,8 @@ const defaultPreferences: Preferences = {
   startInDashboardMode: false,
   autoConnect: false,
   checkUpdates: true,
-  recordingBufferSize: 30,
   dataRetentionDays: 30,
   audioOutputDevice: 'default',
-  recordingsPath: './recordings',
   mqttEnabled: false,
   mqttHost: '127.0.0.1',
   mqttPort: 1883,
@@ -96,7 +90,6 @@ export const useStore = create<AppState>((set) => ({
   lastSequence: 0,
   memoryDrafts: {},
   memoryEditingIndex: null,
-  isRecording: false,
 
   updateLiveState: (state, sequence) =>
     set((prev) => {
@@ -155,6 +148,4 @@ export const useStore = create<AppState>((set) => ({
         [index]: draft,
       },
     })),
-
-  setRecording: (recording) => set({ isRecording: recording }),
 }));
