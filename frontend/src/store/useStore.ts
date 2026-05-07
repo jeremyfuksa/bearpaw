@@ -23,8 +23,6 @@ interface AppState {
   liveState: LiveState | null;
   deviceInfo: DeviceInfo | null;
   channels: ChannelData[];
-  connected: boolean;
-  connecting: boolean;
   activityLog: ActivityLogEntry[];
   fullActivityLog: ActivityLogEntry[];
   preferences: Preferences;
@@ -35,8 +33,6 @@ interface AppState {
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
   setDeviceInfo: (info: DeviceInfo | null) => void;
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
-  setConnected: (connected: boolean) => void;
-  setConnecting: (connecting: boolean) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
   setPreferences: (prefs: Partial<Preferences>) => void;
@@ -82,8 +78,6 @@ export const useStore = create<AppState>((set) => ({
   liveState: null,
   deviceInfo: null,
   channels: [],
-  connected: false,
-  connecting: true,
   activityLog: [],
   fullActivityLog: [],
   preferences: defaultPreferences,
@@ -115,9 +109,6 @@ export const useStore = create<AppState>((set) => ({
             ? channels
             : [],
     })),
-  setConnected: (connected) => set({ connected }),
-  setConnecting: (connecting) => set({ connecting }),
-
   addActivityLogEntry: (entry) =>
     set((prev) => ({
       activityLog: [entry, ...prev.activityLog].slice(0, 5),

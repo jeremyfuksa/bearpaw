@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ScannerWebSocket } from './ScannerWebSocket';
 
 function resolveDefaultWsURL(): string {
@@ -47,7 +47,12 @@ export function WebSocketProvider({ children, url }: { children: React.ReactNode
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
 
-  const ws = useMemo(() => new ScannerWebSocket(wsURL), [wsURL]);
+  // Lazy-init via useRef so the socket survives any potential useMemo eviction.
+  const wsRef = useRef<ScannerWebSocket | null>(null);
+  if (wsRef.current === null) {
+    wsRef.current = new ScannerWebSocket(wsURL);
+  }
+  const ws = wsRef.current;
 
   useEffect(() => {
     const unsubscribe = ws.on('connection', (data) => {
@@ -70,7 +75,7 @@ export function WebSocketProvider({ children, url }: { children: React.ReactNode
   return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>;
 }
 
-export function useWebSocket(url?: string): WebSocketContextValue {
+export function useWebSocket(): WebSocketContextValue {
   const context = useContext(WebSocketContext);
 
   if (!context) {
