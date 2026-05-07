@@ -1868,13 +1868,33 @@ async def _poll_status(app: FastAPI) -> None:
                         glg_state = await get_glg()
                         state = LiveState(
                             timestamp=glg_state.timestamp,
-                            frequency=glg_state.frequency or state.frequency,
-                            modulation=glg_state.modulation or state.modulation,
+                            frequency=(
+                                glg_state.frequency
+                                if glg_state.frequency is not None
+                                else state.frequency
+                            ),
+                            modulation=(
+                                glg_state.modulation
+                                if glg_state.modulation is not None
+                                else state.modulation
+                            ),
                             squelch_open=glg_state.squelch_open,
-                            rssi=glg_state.rssi or state.rssi,
+                            rssi=(
+                                glg_state.rssi
+                                if glg_state.rssi is not None
+                                else state.rssi
+                            ),
                             mode=state.mode,
-                            channel=glg_state.channel or state.channel,
-                            alpha_tag=glg_state.alpha_tag or state.alpha_tag,
+                            channel=(
+                                glg_state.channel
+                                if glg_state.channel is not None
+                                else state.channel
+                            ),
+                            alpha_tag=(
+                                glg_state.alpha_tag
+                                if glg_state.alpha_tag is not None
+                                else state.alpha_tag
+                            ),
                             volume=state.volume,
                             battery=state.battery,
                             stale=state.stale,
@@ -1882,6 +1902,7 @@ async def _poll_status(app: FastAPI) -> None:
                     except Exception as exc:
                         logger.warning("GLG poll failed: %s", exc)
             changes = runtime.state_store.update_live_state(state)
+            is_first_poll = changes.pop("_first_poll", False)
             if changes:
                 payload = changes
                 if len(changes) == 1 and "timestamp" in changes:
@@ -1898,7 +1919,7 @@ async def _poll_status(app: FastAPI) -> None:
                     runtime.mqtt_exporter.publish(
                         "state", {"timestamp": state.timestamp, **changes}
                     )
-                if changes.get("squelch_open") is True:
+                if changes.get("squelch_open") is True and not is_first_poll:
                     event_payload = {
                         "type": "event",
                         "timestamp": state.timestamp,
@@ -1946,7 +1967,7 @@ async def _poll_status(app: FastAPI) -> None:
                                 session_id=runtime.session_id,
                             )
                         )
-                if changes.get("squelch_open") is False:
+                if changes.get("squelch_open") is False and not is_first_poll:
                     if runtime.analytics_db:
                         _safe_create_task(
                             runtime.analytics_db.record_hit_end(
