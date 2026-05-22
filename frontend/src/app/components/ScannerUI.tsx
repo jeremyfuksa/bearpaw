@@ -197,7 +197,7 @@ export function StatusHeader({
           )}
         >
           <p className={cn("font-medium text-xs text-nowrap", isHolding ? "text-brand-primary" : "scanner-text")}>
-            HOLD
+            {isHolding ? "SCAN" : "HOLD"}
           </p>
         </button>
       </div>

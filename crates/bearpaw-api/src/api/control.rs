@@ -5,8 +5,15 @@ use serde::Deserialize;
 /// Command for the poll thread to send to the scanner.
 #[derive(Clone, Debug)]
 pub enum ControlCommand {
-    Hold,
-    Scan,
+    /// Press Hold (KEY,H,P). Reply carries the scanner's raw response so the
+    /// HTTP handler can validate the OK ack.
+    Hold {
+        reply: Option<std::sync::mpsc::Sender<Result<String, String>>>,
+    },
+    /// Press Scan (KEY,S,P).
+    Scan {
+        reply: Option<std::sync::mpsc::Sender<Result<String, String>>>,
+    },
     Direct {
         frequency: f64,
         modulation: String,
