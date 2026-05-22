@@ -8,14 +8,14 @@ import svgPaths from '../../imports/svg-govmzsdb93';
 import usbSvgPaths from '../../imports/svg-4af8p5er03';
 import socketSvgPaths from '../../imports/svg-10gl6kikm0';
 
-// --- Tab Navigation ---
+// --- Status Bar ---
 
-interface TabNavProps {
-  currentTab: string;
-  onTabChange: (tab: string) => void;
+interface StatusBarProps {
   connectionStatus: 'connected' | 'connecting' | 'disconnected';
   modelName?: string;
   shellStatusText?: string | null;
+  currentFrequency?: number | null;
+  currentTab: string;
 }
 
 function getStatusDisplay(
@@ -31,55 +31,43 @@ function getStatusDisplay(
   return { statusColor: 'var(--color-status-connected)', statusText: modelName };
 }
 
-export function TabNav({
-  currentTab,
-  onTabChange,
+export function StatusBar({
   connectionStatus,
   modelName = 'BC125AT',
   shellStatusText,
-}: TabNavProps) {
-  const tabs = ['Scan', 'Device', 'Channels'];
+  currentFrequency,
+  currentTab,
+}: StatusBarProps) {
   const { statusColor, statusText } = getStatusDisplay(connectionStatus, modelName);
+  const freqText =
+    typeof currentFrequency === 'number' && currentFrequency > 0
+      ? `${currentFrequency.toFixed(4)} MHz`
+      : null;
 
   return (
-    <div className="flex items-center justify-between pb-px pt-0 px-0 relative shrink-0 w-full border-b border-scanner-bg-dark">
-      <div className="flex gap-4 items-start">
-        {tabs.map((tab) => {
-          const isActive = currentTab === tab;
-          return (
-            <button
-              key={tab}
-              onClick={() => onTabChange(tab)}
-              className={cn(
-                'flex flex-col items-center justify-center px-3 py-1 relative transition-colors focus:outline-none',
-                isActive ? 'text-white' : 'scanner-text-light hover:text-white',
-              )}
-            >
-              {isActive && (
-                <div
-                  aria-hidden="true"
-                  className="absolute border-b-2 border-brand-hover/50 inset-0 pointer-events-none"
-                />
-              )}
-              <p className={cn('text-sm text-nowrap', isActive ? 'font-bold' : 'font-semibold')}>
-                {tab}
-              </p>
-            </button>
-          );
-        })}
-      </div>
-      <div className="flex gap-2 items-center justify-end">
-        {shellStatusText ? (
-          <p className="mr-2 font-sans text-[length:var(--size-shell-status-text)] font-normal text-nowrap text-white/40">
-            {shellStatusText}
-          </p>
-        ) : null}
+    <div
+      role="status"
+      aria-label="Scanner status"
+      className="flex items-center justify-between px-4 py-1.5 relative shrink-0 w-full border-t border-scanner-bg-dark bg-scanner-bg-dark/40"
+    >
+      <div className="flex gap-2 items-center">
         <div className="relative shrink-0 size-[var(--size-status-dot)]">
           <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 8 8">
             <circle cx="4" cy="4" fill={statusColor} r="4" />
           </svg>
         </div>
         <p className="font-sans font-normal scanner-text-light text-xs text-nowrap">{statusText}</p>
+        <p className="font-sans font-normal text-white/40 text-xs text-nowrap pl-2">{currentTab}</p>
+      </div>
+      <div className="flex gap-3 items-center justify-end">
+        {freqText ? (
+          <p className="font-mono font-medium scanner-text-light text-xs text-nowrap">{freqText}</p>
+        ) : null}
+        {shellStatusText ? (
+          <p className="font-sans text-[length:var(--size-shell-status-text)] font-normal text-nowrap text-white/40">
+            {shellStatusText}
+          </p>
+        ) : null}
       </div>
     </div>
   );
