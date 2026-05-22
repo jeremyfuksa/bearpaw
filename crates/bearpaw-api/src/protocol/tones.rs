@@ -12,7 +12,11 @@
 //! - `240` — NO_TONE (explicit "tone-squelched, but no tone configured")
 //!
 //! Canonical table: `docs/SCANNER_PROTOCOL_REFERENCE.md` §7 (sourced from
-//! Uniden's BC125AT PC Protocol v1.01 and BCT15X v1.03 specs).
+//! Uniden's BC125AT PC Protocol v1.01 and BCT15X v1.03 specs). Code-range
+//! semantics also documented in `docs/BC125AT_PROTOCOL.md` §6.2 and §7.2.
+//! Codes 78, 79, 94, 95 are listed by Sentinel as standard CTCSS but are
+//! treated as reserved here (they're not on any standard CTCSS frequency
+//! chart); see `ctcss_code_to_hz` below.
 
 /// Translate a CTCSS code (64–113) to its frequency in Hz.
 ///
