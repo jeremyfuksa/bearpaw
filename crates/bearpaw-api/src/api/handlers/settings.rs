@@ -2,6 +2,8 @@ use axum::extract::{Path, State};
 use axum::response::Json;
 use serde_json::{json, Value};
 
+use crate::protocol::defaults::CUSTOM_SEARCH_DEFAULTS;
+
 use super::super::{
     command_sender, get_setting_section, parse_command_parts, read_settings_snapshot_from_scanner,
     send_raw_command, set_setting_section, ApiError, AppState, ProgramModeGuard,
@@ -601,6 +603,25 @@ pub(crate) async fn get_custom_range(
     Ok(Json(from_snapshot.unwrap_or_else(
         || json!({ "index": index, "lower": 0, "upper": 0 }),
     )))
+}
+
+/// Read-only seed: the 10 factory-default custom-search ranges Uniden
+/// preloads on `CLR`. See `docs/BC125AT_PROTOCOL.md` §5.5. No scanner
+/// round-trip — this is a constant table.
+pub(crate) async fn get_custom_search_defaults() -> Json<Value> {
+    let ranges: Vec<Value> = CUSTOM_SEARCH_DEFAULTS
+        .iter()
+        .enumerate()
+        .map(|(i, (lower, upper, label))| {
+            json!({
+                "index": i + 1,
+                "lower": lower,
+                "upper": upper,
+                "label": label,
+            })
+        })
+        .collect();
+    Json(json!({ "ranges": ranges }))
 }
 
 pub(crate) async fn set_custom_range(
