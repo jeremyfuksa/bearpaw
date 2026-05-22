@@ -1,3 +1,0 @@
-# NSSM template for Windows Service
-# nssm install Bearpaw "C:\Program Files\Bearpaw\bearpaw.exe" --config "C:\ProgramData\Bearpaw\config.yaml" --daemon
-# nssm start Bearpaw
