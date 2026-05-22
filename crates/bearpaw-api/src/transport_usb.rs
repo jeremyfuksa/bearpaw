@@ -13,6 +13,22 @@ pub enum UsbTransportError {
     Usb(#[from] rusb::Error),
 }
 
+impl UsbTransportError {
+    /// True if this error indicates the scanner is no longer reachable —
+    /// physical unplug, kernel module reset, or USB controller hiccup. The
+    /// poll loop uses this to decide between "retry the same handle" (false)
+    /// and "drop the handle and re-open the transport" (true).
+    pub fn is_device_gone(&self) -> bool {
+        match self {
+            UsbTransportError::NotFound(_, _) => true,
+            UsbTransportError::Usb(e) => matches!(
+                e,
+                rusb::Error::NoDevice | rusb::Error::Io | rusb::Error::Pipe | rusb::Error::Other
+            ),
+        }
+    }
+}
+
 pub struct UsbSession {
     pub _ctx: Context,
     pub handle: DeviceHandle<Context>,
@@ -180,4 +196,26 @@ fn sanitize_usb_ascii(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_device_gone_classifies_unplug_errors() {
+        assert!(UsbTransportError::NotFound(0x1965, 0x0017).is_device_gone());
+        assert!(UsbTransportError::Usb(rusb::Error::NoDevice).is_device_gone());
+        assert!(UsbTransportError::Usb(rusb::Error::Io).is_device_gone());
+        assert!(UsbTransportError::Usb(rusb::Error::Pipe).is_device_gone());
+        assert!(UsbTransportError::Usb(rusb::Error::Other).is_device_gone());
+    }
+
+    #[test]
+    fn is_device_gone_does_not_classify_transient_errors_as_dead() {
+        // Timeout is a normal short read; don't reopen on every timeout.
+        assert!(!UsbTransportError::Usb(rusb::Error::Timeout).is_device_gone());
+        assert!(!UsbTransportError::Usb(rusb::Error::Busy).is_device_gone());
+        assert!(!UsbTransportError::Usb(rusb::Error::Interrupted).is_device_gone());
+    }
 }

@@ -15,6 +15,28 @@ pub enum TransportError {
     Io(#[from] std::io::Error),
 }
 
+impl TransportError {
+    /// True if this error indicates the serial port is no longer reachable —
+    /// the device node has been removed (unplug, kernel reset). The poll
+    /// loop uses this to decide between "retry the same handle" (false) and
+    /// "drop the handle and re-open the transport" (true).
+    pub fn is_device_gone(&self) -> bool {
+        match self {
+            // `serialport::new(...).open()` failed at the OS layer — typically
+            // ENOENT, which is what we see on unplug.
+            TransportError::Open(_) => true,
+            TransportError::Io(e) => matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound
+                    | std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::ConnectionAborted
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::UnexpectedEof
+            ),
+        }
+    }
+}
+
 /// Serial transport: one command at a time, response until `\r`.
 pub struct SerialTransport {
     port_name: String,
@@ -201,5 +223,27 @@ mod tests {
 
         let t = SerialTransport::new("/dev/null", 115200).with_dtr_on_open(false);
         assert!(!t.asserts_dtr_on_open());
+    }
+
+    #[test]
+    fn is_device_gone_classifies_unplug_errors() {
+        let err = TransportError::Io(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(err.is_device_gone(), "ENOENT means device went away");
+
+        let err = TransportError::Io(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        assert!(err.is_device_gone(), "EPIPE means device went away");
+
+        let err = TransportError::Open("port disappeared".to_string());
+        assert!(err.is_device_gone(), "open failure = device gone");
+    }
+
+    #[test]
+    fn is_device_gone_does_not_classify_transient_errors_as_dead() {
+        // TimedOut is a normal read timeout, not a death certificate.
+        let err = TransportError::Io(std::io::Error::from(std::io::ErrorKind::TimedOut));
+        assert!(!err.is_device_gone());
+
+        let err = TransportError::Io(std::io::Error::from(std::io::ErrorKind::Interrupted));
+        assert!(!err.is_device_gone());
     }
 }
