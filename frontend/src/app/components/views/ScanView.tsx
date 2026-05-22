@@ -282,11 +282,17 @@ export function ScanView({
                 <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[var(--layout-heatmap-cell-gap)]">
                   {Array.from({ length: 24 }).map((_, col) => {
                     const heatmapData = hourlyHeatmap?.[row]?.[col] ?? 0;
+                    // Scale relative to max with a 1-bucket floor for any
+                    // non-zero count. Previously the formula divided by
+                    // (max - min); when only one cell was populated (or
+                    // every populated cell had the same count) max == min,
+                    // intensity stayed at 0, and the cell rendered with
+                    // `bg-heatmap-0` — visually identical to an empty cell,
+                    // so the whole heatmap looked blank.
                     let intensity = 0;
-                    if (heatmapStats.max > heatmapStats.min) {
-                      const normalized =
-                        (heatmapData - heatmapStats.min) / (heatmapStats.max - heatmapStats.min);
-                      intensity = Math.min(5, Math.floor(normalized * 5));
+                    if (heatmapData > 0 && heatmapStats.max > 0) {
+                      const normalized = heatmapData / heatmapStats.max;
+                      intensity = Math.min(5, Math.max(1, Math.ceil(normalized * 5)));
                     }
 
                     return (
