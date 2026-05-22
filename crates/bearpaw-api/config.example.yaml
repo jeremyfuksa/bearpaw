@@ -23,6 +23,12 @@ device:
   # change this.
   # baud: 115200
 
+  # Optional. Assert DTR after opening the serial port. Default `false` —
+  # asserting DTR on open has caused intermittent disconnects on macOS/Linux
+  # and the BC125AT itself does not require it. Only enable if your specific
+  # host or adapter combination is known to need it.
+  # assert_dtr_on_open: false
+
 api:
   host: 127.0.0.1
   port: 8000

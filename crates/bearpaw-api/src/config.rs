@@ -30,6 +30,12 @@ pub struct DeviceConfig {
     pub auto_detect: bool,
     pub usb_vid: Option<u16>,
     pub usb_pid: Option<u16>,
+    /// Assert DTR after opening the serial port. Default `false` — asserting
+    /// DTR on open has caused intermittent disconnects on macOS/Linux and
+    /// the BC125AT itself does not require it. Set to `true` only if your
+    /// host/adapter combination demands it.
+    #[serde(default)]
+    pub assert_dtr_on_open: bool,
 }
 
 impl Default for DeviceConfig {
@@ -41,6 +47,7 @@ impl Default for DeviceConfig {
             auto_detect: default_auto_detect(),
             usb_vid: None,
             usb_pid: None,
+            assert_dtr_on_open: false,
         }
     }
 }
