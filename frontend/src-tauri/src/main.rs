@@ -139,17 +139,19 @@ fn start_backend_runtime(
     let assert_dtr = cfg.device.assert_dtr_on_open;
     let serial_port = resolved_serial.clone().map(|p| (p, baud, assert_dtr));
 
-    let mut startup_issue = None;
-    if config_path.is_none() {
-        startup_issue =
-            Some("Config file not found; using defaults and auto-detect scanner".to_string());
-    }
-    if resolved_serial.is_none() {
-        startup_issue = Some(
+    // `last_error` drives the status-bar "(error)" badge in the UI, so it
+    // must only hold real failures. "No config file found" is benign —
+    // auto-detect handles it — and `config_path = None` is already exposed
+    // in BackendStatus for any caller that cares. Scanner-not-resolved
+    // *does* block the app's main job, so it still surfaces.
+    let startup_issue = if resolved_serial.is_none() {
+        Some(
             "Scanner port not resolved from config/auto-detect; API running without poll loop"
                 .to_string(),
-        );
-    }
+        )
+    } else {
+        None
+    };
 
     if let Ok(mut slot) = state.bind.lock() {
         *slot = bind.clone();
