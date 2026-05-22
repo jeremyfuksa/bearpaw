@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { TabNav } from './components/ScannerUI';
