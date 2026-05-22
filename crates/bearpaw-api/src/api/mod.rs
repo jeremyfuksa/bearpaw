@@ -252,7 +252,21 @@ async fn send_raw_command(
     let started = std::time::Instant::now();
     let command = command.to_string();
     let command_for_log = command.clone();
-    tokio::task::spawn_blocking(move || {
+
+    // Track program-mode entry/exit at the command level so the poll loop can
+    // suppress its STS/GLG/PWR fetch while the scanner is in PRG. Otherwise
+    // the poll loop interleaves operational commands with the PRG bracket and
+    // races against the API handler for the bulk endpoint, causing SCG /
+    // CIN reads to time out or read back stale ACKs.
+    let upper = command.to_uppercase();
+    let is_prg = upper == "PRG";
+    let is_epg = upper == "EPG";
+    let prg_flag = state.program_mode_active.clone();
+    if is_prg {
+        prg_flag.store(true, Ordering::Relaxed);
+    }
+
+    let join_result = tokio::task::spawn_blocking(move || {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         sender
             .send(ControlCommand::Raw {
@@ -269,29 +283,36 @@ async fn send_raw_command(
     })
     .await
     .map_err(|_| ApiError::BadRequest("command_task_failed".to_string()))
-    .map(|result| {
-        match &result {
-            Ok(response) => {
-                info!(
-                    command = %command_for_log,
-                    multiline = multiline,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    response_len = response.len(),
-                    "scanner command completed"
-                );
-            }
-            Err(err) => {
-                warn!(
-                    command = %command_for_log,
-                    multiline = multiline,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    error = ?err,
-                    "scanner command failed"
-                );
-            }
+    .and_then(|inner| inner);
+
+    match &join_result {
+        Ok(response) => {
+            info!(
+                command = %command_for_log,
+                multiline = multiline,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                response_len = response.len(),
+                "scanner command completed"
+            );
         }
-        result
-    })?
+        Err(err) => {
+            warn!(
+                command = %command_for_log,
+                multiline = multiline,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                error = ?err,
+                "scanner command failed"
+            );
+        }
+    }
+
+    // Always clear the flag on EPG (even on failure — leaving it stuck would
+    // freeze the live display). On PRG failure, also clear so the flag never
+    // gets stranded.
+    if is_epg || (is_prg && join_result.is_err()) {
+        prg_flag.store(false, Ordering::Relaxed);
+    }
+    join_result
 }
 
 #[derive(Serialize)]
@@ -344,41 +365,47 @@ async fn set_banks(
     Ok(Json(BanksResponse { banks: body.banks }))
 }
 
+/// Send a Hold or Scan ControlCommand to the poll loop and wait for its
+/// scanner-side reply. The poll loop updates commanded_mode inside the same
+/// match arm that issues the KEY write, so on success the next poll tick
+/// broadcasts the new mode — no separate live.mode write needed here.
+async fn send_mode_command(
+    state: &AppState,
+    make_cmd: impl FnOnce(
+            Option<std::sync::mpsc::Sender<Result<String, String>>>,
+        ) -> ControlCommand
+        + Send
+        + 'static,
+    error_tag: &'static str,
+) -> Result<(), ApiError> {
+    let sender = command_sender(state)?;
+    tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        sender
+            .send(make_cmd(Some(reply_tx)))
+            .map_err(|_| ApiError::SendFailed)?;
+        let response = match reply_rx.recv_timeout(Duration::from_secs(3)) {
+            Ok(Ok(r)) => r,
+            Ok(Err(m)) => return Err(ApiError::BadRequest(m)),
+            Err(_) => return Err(ApiError::BadRequest("command_timeout".to_string())),
+        };
+        let upper = response.trim().to_uppercase();
+        if !(upper == "OK" || upper.ends_with(",OK")) {
+            return Err(ApiError::BadRequest(format!("{}_failed", error_tag)));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| ApiError::SendFailed)?
+}
+
 async fn post_hold(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let response = send_raw_command(&state, "KEY,H,P", false).await;
-    let response = match response {
-        Ok(value) => value,
-        Err(_) => send_raw_command(&state, "KEY,H", false).await?,
-    };
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK")) {
-        return Err(ApiError::BadRequest("hold_failed".to_string()));
-    }
-    if let Ok(mut live) = state.live.write() {
-        live.mode = "HOLD".to_string();
-    }
+    send_mode_command(&state, |reply| ControlCommand::Hold { reply }, "hold").await?;
     Ok(Json(json!({ "status": "ok" })))
 }
 
 async fn post_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let response = send_raw_command(&state, "KEY,S,P", false).await;
-    let response = match response {
-        Ok(value) => value,
-        Err(_) => send_raw_command(&state, "KEY,S", false).await?,
-    };
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK")) {
-        return Err(ApiError::BadRequest("scan_failed".to_string()));
-    }
-    if let Ok(mut live) = state.live.write() {
-        live.mode = if state.program_mode_forced_hold.load(Ordering::Relaxed) {
-            "SCAN".to_string()
-        } else {
-            "HOLD".to_string()
-        };
-    }
+    send_mode_command(&state, |reply| ControlCommand::Scan { reply }, "scan").await?;
     Ok(Json(json!({ "status": "ok" })))
 }
 
@@ -394,8 +421,8 @@ async fn post_key(
     let _ = command_sender(&state)?;
     let key = body.key.to_uppercase();
     let cmd = match key.as_str() {
-        "H" => Some(ControlCommand::Hold),
-        "S" => Some(ControlCommand::Scan),
+        "H" => Some(ControlCommand::Hold { reply: None }),
+        "S" => Some(ControlCommand::Scan { reply: None }),
         _ => None,
     };
     if let Some(cmd) = cmd {

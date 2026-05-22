@@ -112,13 +112,27 @@ fn run_poll_loop(
         // Drain control commands (hold, scan, direct, start sync)
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                ControlCommand::Hold => {
-                    let _ = transport.send(port.as_mut(), KEY_HOLD);
-                    commanded_mode = "HOLD".to_string();
+                ControlCommand::Hold { reply } => {
+                    let response = transport
+                        .send(port.as_mut(), KEY_HOLD)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = "HOLD".to_string();
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
-                ControlCommand::Scan => {
-                    let _ = transport.send(port.as_mut(), KEY_SCAN);
-                    commanded_mode = "SCAN".to_string();
+                ControlCommand::Scan { reply } => {
+                    let response = transport
+                        .send(port.as_mut(), KEY_SCAN)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = "SCAN".to_string();
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
                 ControlCommand::Direct {
                     frequency,
@@ -157,6 +171,16 @@ fn run_poll_loop(
                     let _ = reply.send(response);
                 }
             }
+        }
+
+        // When the scanner is in program mode (PRG entered via an API
+        // handler), the operational commands STS/GLG/PWR will get NG replies
+        // and their bytes will collide with the bracket's subsequent CIN/SCG
+        // reads on the bulk endpoint. Skip the live-state fetch entirely and
+        // just keep draining the command channel until EPG runs.
+        if state.program_mode_active.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+            continue;
         }
 
         // STS is single-line on observed firmware; send_and_read_multiline still works
@@ -261,13 +285,27 @@ fn run_poll_loop_usb(
     loop {
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                ControlCommand::Hold => {
-                    let _ = transport.send(&mut session, KEY_HOLD);
-                    commanded_mode = "HOLD".to_string();
+                ControlCommand::Hold { reply } => {
+                    let response = transport
+                        .send(&mut session, KEY_HOLD)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = "HOLD".to_string();
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
-                ControlCommand::Scan => {
-                    let _ = transport.send(&mut session, KEY_SCAN);
-                    commanded_mode = "SCAN".to_string();
+                ControlCommand::Scan { reply } => {
+                    let response = transport
+                        .send(&mut session, KEY_SCAN)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = "SCAN".to_string();
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
                 ControlCommand::Direct {
                     frequency,
@@ -310,6 +348,13 @@ fn run_poll_loop_usb(
                     let _ = reply.send(response);
                 }
             }
+        }
+
+        // Skip live-state fetch while scanner is in program mode (see
+        // serial-path comment for rationale).
+        if state.program_mode_active.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+            continue;
         }
 
         let sts_resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {

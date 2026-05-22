@@ -60,6 +60,7 @@ impl UsbTransport {
     }
 
     pub fn send(&self, session: &mut UsbSession, cmd: &str) -> Result<String, UsbTransportError> {
+        self.drain_input(session);
         let mut payload = cmd.as_bytes().to_vec();
         payload.push(b'\r');
         session.handle.write_bulk(
@@ -75,6 +76,7 @@ impl UsbTransport {
         session: &mut UsbSession,
         cmd: &str,
     ) -> Result<String, UsbTransportError> {
+        self.drain_input(session);
         let mut payload = cmd.as_bytes().to_vec();
         payload.push(b'\r');
         session.handle.write_bulk(
@@ -83,6 +85,26 @@ impl UsbTransport {
             Duration::from_millis(self.timeout_ms),
         )?;
         self.read_multiline(session)
+    }
+
+    /// Read and discard any stale bytes sitting in the IN endpoint. Critical
+    /// before issuing a new command: without this, a previous command's
+    /// trailing bytes can be mis-parsed as the new command's response,
+    /// causing scanner state and Bearpaw state to drift out of sync.
+    fn drain_input(&self, session: &mut UsbSession) {
+        let mut buf = [0u8; 128];
+        // Safety cap: ~20 KB of drained bytes max. Prevents infinite loops if
+        // the device is steadily emitting data.
+        for _ in 0..160 {
+            match session
+                .handle
+                .read_bulk(self.ep_in, &mut buf, Duration::from_millis(5))
+            {
+                Ok(0) => return,
+                Ok(_) => continue,
+                Err(_) => return,
+            }
+        }
     }
 
     fn read_line(&self, session: &mut UsbSession) -> Result<String, UsbTransportError> {
