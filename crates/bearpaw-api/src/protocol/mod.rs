@@ -6,6 +6,7 @@
 //! firmware 1.06.06, which emits a different STS field count than the
 //! research doc's 1.04.02.
 
+pub mod defaults;
 pub mod tones;
 
 use crate::state::{ChannelData, LiveState, ScannerMode, ToneSquelchKind};
