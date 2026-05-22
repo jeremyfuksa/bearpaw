@@ -408,11 +408,20 @@ fn run_poll_loop_usb(
 fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &str) {
     if let Some(model) = parse_mdl_response(mdl_resp) {
         if let Ok(mut d) = state.device.write() {
-            d.model = Some(model);
+            d.model = Some(model.clone());
             d.port = Some(port_label.to_string());
             d.connection_status = "connected".to_string();
             d.diagnostic_code = None;
             d.diagnostic_message = None;
+        }
+        // Cache the USB serial number so autodetect can prefer this
+        // physical unit on reconnect. Best-effort: skipped silently for
+        // the `usb:` pseudo-target (macOS no-CDC-bind path) and any port
+        // without a USB serial number reported.
+        if !port_label.starts_with("usb:") {
+            if let Some(serial) = crate::config::usb_serial_for_port(port_label) {
+                crate::config::save_last_scanner_cache(&serial, port_label, &model);
+            }
         }
     } else {
         warn!("Invalid MDL response ignored: {}", mdl_resp.trim());
