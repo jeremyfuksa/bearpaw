@@ -58,7 +58,9 @@ export function useDashboardAnalytics(enabled: boolean): DashboardAnalytics {
           setLoading(true);
         }
         const [channelsRes, statsRes, heatmapRes] = await Promise.all([
-          fetch(`${API_BASE}/analytics/busiest-channels?limit=5&hours=24`),
+          // No `hours` param — backend defaults to all-time so the
+          // dashboard reflects long-term busiest channels at cold start.
+          fetch(`${API_BASE}/analytics/busiest-channels?limit=5`),
           fetch(`${API_BASE}/analytics/session-stats`),
           fetch(`${API_BASE}/analytics/hourly-heatmap`),
         ]);
