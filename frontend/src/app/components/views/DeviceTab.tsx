@@ -17,7 +17,7 @@ import {
 
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
-import { useStore } from '../../../store/useStore';
+import { useStore, type Preferences } from '../../../store/useStore';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
@@ -58,14 +58,14 @@ export function DeviceTab() {
   const [bankFilter, setBankFilter] = useState<number | 'all'>('all');
 
   const handlePreferenceChange = useCallback(
-    async (key: string, value: any) => {
+    async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
       const backendKey =
         key === 'startInDashboardMode'
           ? 'start_dashboard_mode'
           : key === 'hitMinDuration'
             ? 'hit_min_duration'
             : key;
-      updatePreferences({ [key]: value } as any);
+      updatePreferences({ [key]: value } as Partial<Preferences>);
       try {
         await fetch(`${API_BASE}/preferences`, {
           method: 'PUT',
