@@ -19,7 +19,7 @@ pub enum ProtocolError {
 
 /// Classified scanner response. The BC125AT protocol uses four distinct reply
 /// shapes that current code conflates by substring-matching "OK". Per the
-/// reference (`BC125AT_PROTOCOL.md` §3) and our wire captures:
+/// reference (`docs/BC125AT_PROTOCOL.md` §3) and our wire captures:
 ///
 /// - `OK` — set succeeded, or the verb itself was a side-effect-only command.
 /// - `Err` — syntax or out-of-range error. **Never retry**; surface as a
@@ -119,6 +119,9 @@ pub struct StsFrame {
 /// stable, so we anchor from the tail. SIG_LVL is the 3rd-from-last numeric
 /// field; SQL is the first numeric in the status block (right after the last
 /// non-empty line/mode pair).
+///
+/// See `docs/BC125AT_PROTOCOL.md` §10 ("Parsing STS") and the captures in
+/// `docs/wire_captures/2026-05-21/audit-reconciliation.md` finding 1.
 pub fn parse_sts_frame(response: &str) -> Option<StsFrame> {
     let line = response.lines().find(|l| !l.trim().is_empty())?.trim();
     let line = line.strip_suffix('\r').unwrap_or(line);
@@ -216,8 +219,11 @@ pub struct GlgFrame {
 /// Format: `GLG,<FRQ>,<MOD>,<ATT>,<TONE>,<N1>,<N2>,<N3>,<SQL>,<MUT>[,<RSV>,<CHAN_NUM>]`
 ///
 /// FRQ is 8-digit integer in 100 Hz units. Idle (no current channel) returns
-/// a skeleton with all data fields empty. Trailing channel number is present
-/// on firmware 1.06.06 but firmware-dependent in general.
+/// a skeleton with all data fields empty (`GLG,,,,,,,,,`). Trailing channel
+/// number is present on firmware 1.06.06 but firmware-dependent in general.
+///
+/// See `docs/BC125AT_PROTOCOL.md` §10 ("Parsing GLG"). BC125AT only uses one
+/// of the three name fields (N1/N2/N3); we surface the first non-empty.
 pub fn parse_glg_response(response: &str) -> Option<GlgFrame> {
     let line = response.lines().find(|l| !l.trim().is_empty())?.trim();
     let line = line.strip_suffix('\r').unwrap_or(line);
@@ -338,7 +344,7 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         _ => "FM".to_string(),
     };
     let tone_code = p.get(3).and_then(|s| s.parse::<u16>().ok()).unwrap_or(0);
-    // delay is signed (per BC125AT_PROTOCOL.md §5.3): valid values are
+    // delay is signed (per docs/BC125AT_PROTOCOL.md §5.3): valid values are
     // `-10, -5, 0, 1, 2, 3, 4, 5`. Negatives are pre-delays. Default to 2
     // (the most common firmware default) when the field is unparseable.
     let delay = p.get(4).and_then(|s| s.parse::<i8>().ok()).unwrap_or(2);
@@ -379,7 +385,7 @@ fn empty_channel(index: u16) -> ChannelData {
 }
 
 /// Validate a channel name against the BC125AT-accepted alphabet before
-/// sending a CIN write. Per `BC125AT_PROTOCOL.md` §6.3 (decompiled from
+/// sending a CIN write. Per `docs/BC125AT_PROTOCOL.md` §6.3 (decompiled from
 /// `Uniden.Scaner.SS/SntlLib.cs:10`), the firmware accepts only:
 ///
 /// ```text
@@ -722,7 +728,7 @@ mod tests {
 
     #[test]
     fn cin_preserves_negative_pre_delay() {
-        // -5 and -10 are valid wire values (per BC125AT_PROTOCOL.md §5.3)
+        // -5 and -10 are valid wire values (per docs/BC125AT_PROTOCOL.md §5.3)
         // representing pre-delays. The parser used to clamp these to 0,
         // silently discarding what the user had programmed.
         let ch = parse_cin_response(1, "CIN,1,Test,01451300,FM,0,-5,0,0").unwrap();
@@ -776,7 +782,7 @@ mod tests {
         assert_eq!(parse_mdl_response("ERR"), None);
     }
 
-    // classify_response — per BC125AT_PROTOCOL.md §3 and our response-code rules.
+    // classify_response — per docs/BC125AT_PROTOCOL.md §3 and our response-code rules.
 
     #[test]
     fn classify_bare_ok_err_ng() {
@@ -838,7 +844,7 @@ mod tests {
         );
     }
 
-    // validate_channel_name — per BC125AT_PROTOCOL.md §6.3.
+    // validate_channel_name — per docs/BC125AT_PROTOCOL.md §6.3.
 
     #[test]
     fn validate_channel_name_accepts_captured_samples() {

@@ -65,7 +65,7 @@ impl UsbTransport {
 
     /// Like `send` but overrides the read/write timeout for this single
     /// command. Use for commands the BC125AT documents as long-running —
-    /// primarily `CLR` (factory reset, ~30 seconds, per BC125AT_PROTOCOL.md
+    /// primarily `CLR` (factory reset, ~30 seconds, per docs/BC125AT_PROTOCOL.md
     /// §5.2). The override only applies to this call; the next `send` reverts
     /// to `timeout_ms`.
     pub fn send_with_timeout(

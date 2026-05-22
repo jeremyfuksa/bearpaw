@@ -2,8 +2,11 @@
 //!
 //! The BC125AT exposes memory/settings only while in program mode, entered
 //! with `PRG\r` and exited with `EPG\r`. Any handler that needs to read or
-//! write memory has to bracket its work in a `PRG`/`EPG` pair. Two things
-//! about this are easy to get wrong:
+//! write memory has to bracket its work in a `PRG`/`EPG` pair. See
+//! `docs/BC125AT_PROTOCOL.md` §4 ("Operating modes & state machine") for
+//! the protocol's view of this transaction.
+//!
+//! Two things about this are easy to get wrong:
 //!
 //! 1. **Leaks.** If anything between PRG and EPG returns early, the scanner
 //!    is stuck in program mode (LCD shows "Remote Mode / Keypad Lock") until
