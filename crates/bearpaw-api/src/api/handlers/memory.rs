@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 
 use crate::state::{ChannelData, ScannerMode};
 
+use super::super::security::validate_wire_field;
 use super::super::{
     command_sender, read_channel_from_scanner, send_raw_command, uuid_simple,
     write_channel_to_scanner, ApiError, AppState, ControlCommand,
@@ -76,6 +77,12 @@ pub(crate) async fn put_memory_channel(
     }
     if body.alpha_tag.len() > 16 {
         return Err(ApiError::BadRequest("alpha_tag_too_long".to_string()));
+    }
+    if validate_wire_field(&body.alpha_tag).is_err() {
+        return Err(ApiError::BadRequest("alpha_tag_invalid".to_string()));
+    }
+    if validate_wire_field(&body.modulation).is_err() {
+        return Err(ApiError::BadRequest("modulation_invalid".to_string()));
     }
     let updated = write_channel_to_scanner(&state, &body).await?;
     state

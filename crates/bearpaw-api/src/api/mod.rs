@@ -8,6 +8,7 @@ mod handlers;
 mod memory_sync;
 mod poll;
 mod program_mode;
+mod security;
 mod ws;
 
 pub(crate) use program_mode::ProgramModeGuard;
@@ -30,7 +31,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
-use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{info, warn};
 
@@ -255,12 +255,7 @@ pub fn router(state: AppState) -> Router {
             post(handlers::analytics::analytics_cleanup),
         )
         .route("/ws", get(ws::ws_handler))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
+        .layer(security::cors_layer())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO))
@@ -287,6 +282,16 @@ pub(crate) async fn send_raw_command(
     command: &str,
     multiline: bool,
 ) -> Result<String, ApiError> {
+    // Last-line check: a fully-formed wire command must not contain its own
+    // terminator. Handlers that build commands from user input validate the
+    // raw fields first; this catches any path that forgets to.
+    if security::validate_wire_command(command).is_err() {
+        warn!(
+            command = %command.escape_debug().to_string(),
+            "rejected wire command containing embedded terminator"
+        );
+        return Err(ApiError::BadRequest("invalid_command".to_string()));
+    }
     let sender = command_sender(state)?;
     let started = std::time::Instant::now();
     let command = command.to_string();
@@ -494,7 +499,12 @@ pub async fn run_server_with_shutdown(
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!("Bearpaw API listening on http://{}", bind);
-    axum::serve(listener, router(state).into_make_service())
+    let allowed_hosts = security::allowed_hosts_for_bind(bind);
+    let app = router(state).layer(axum::middleware::from_fn(move |req, next| {
+        let allowed = allowed_hosts.clone();
+        async move { security::validate_host(allowed, req, next).await }
+    }));
+    axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(shutdown)
         .await?;
     info!("Bearpaw API server shut down gracefully");
