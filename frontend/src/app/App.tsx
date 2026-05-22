@@ -97,6 +97,10 @@ export default function App() {
   const banksBusy = useStore((state) => state.banksBusy);
   const setBanks = useStore((state) => state.setBanks);
   const setBanksBusy = useStore((state) => state.setBanksBusy);
+  const sync = useStore((state) => state.sync);
+  const updateSync = useStore((state) => state.updateSync);
+  const isMemorySyncing = sync.inProgress;
+  const syncProgressMessage = sync.message;
 
   const [currentTab, setCurrentTab] = useState<Tab>('Scan');
   const [toggleBusy, setToggleBusy] = useState(false);
@@ -116,17 +120,12 @@ export default function App() {
     unique_channels?: number;
     active_time_seconds?: number;
   } | null>(null);
-  const [isMemorySyncing, setIsMemorySyncing] = useState(false);
-  const [syncProgressMessage, setSyncProgressMessage] = useState('Loading channels from device...');
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const [hasFreshLiveFrame, setHasFreshLiveFrame] = useState(false);
   const [shellStatus, setShellStatus] = useState<BackendStatus | null>(null);
   const [shellLabel, setShellLabel] = useState<string | null>(null);
 
-  const syncInProgressRef = useRef(false);
-  const syncTaskIdRef = useRef<string | null>(null);
-  const hasSyncedInitiallyRef = useRef(false);
   const lastHitOpenRef = useRef(false);
   const squelchOpenStartTimeRef = useRef<number | null>(null);
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
@@ -336,26 +335,23 @@ export default function App() {
         /sync cancelled/i.test(payload.message);
 
       if (payload.message) {
-        setSyncProgressMessage(payload.message);
+        updateSync({ message: payload.message });
       }
+
+      const currentSync = useStore.getState().sync;
 
       // Detect sync in progress or just completed
-      if (
-        !syncInProgressRef.current &&
-        !isComplete &&
-        payload.message.includes('Syncing channel')
-      ) {
-        syncInProgressRef.current = true;
-        setIsMemorySyncing(true);
-        syncTaskIdRef.current = payload.task_id || null;
+      if (!currentSync.inProgress && !isComplete && payload.message.includes('Syncing channel')) {
+        updateSync({ inProgress: true, taskId: payload.task_id || null });
       }
 
-      if (isComplete && syncInProgressRef.current) {
-        syncInProgressRef.current = false;
-        hasSyncedInitiallyRef.current = true;
-        setIsMemorySyncing(false);
-        setSyncProgressMessage('Loading channels from device...');
-        syncTaskIdRef.current = null;
+      if (isComplete && currentSync.inProgress) {
+        updateSync({
+          inProgress: false,
+          hasSyncedInitially: true,
+          taskId: null,
+          message: 'Loading channels from device...',
+        });
 
         // Double-check PGM mode after a delay to account for mode transitions
         programModeEntryTimeoutRef.current = setTimeout(() => {
@@ -449,19 +445,17 @@ export default function App() {
 
   useEffect(() => {
     if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
-    if (syncInProgressRef.current) return;
+    if (useStore.getState().sync.inProgress) return;
     if (channels.length > 0) return;
 
     let active = true;
     const startMemorySync = async () => {
       try {
-        setSyncProgressMessage('Loading channels from device...');
+        updateSync({ message: 'Loading channels from device...' });
         const result = await api.syncMemory();
         if (!active) return;
         if (result.status === 'started' || result.status === 'already_running') {
-          syncInProgressRef.current = true;
-          setIsMemorySyncing(true);
-          syncTaskIdRef.current = result.task_id || null;
+          updateSync({ inProgress: true, taskId: result.task_id || null });
         }
       } catch (error) {
         if (active) {
@@ -473,7 +467,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [api, channels.length, deviceInfo]);
+  }, [api, channels.length, deviceInfo, updateSync]);
 
   useEffect(() => {
     if (!isDashboardMode) {
@@ -487,18 +481,20 @@ export default function App() {
 
   const handleCancelSync = useCallback(async () => {
     try {
-      await api.cancelSync(syncTaskIdRef.current || undefined);
+      const taskId = useStore.getState().sync.taskId || undefined;
+      await api.cancelSync(taskId);
       toast.info('Sync cancelled');
-      syncInProgressRef.current = false;
-      hasSyncedInitiallyRef.current = true;
-      syncTaskIdRef.current = null;
-      setIsMemorySyncing(false);
-      setSyncProgressMessage('Loading channels from device...');
+      updateSync({
+        inProgress: false,
+        hasSyncedInitially: true,
+        taskId: null,
+        message: 'Loading channels from device...',
+      });
     } catch (error) {
       console.warn('Failed to cancel sync', error);
       toast.error('Unable to cancel sync');
     }
-  }, [api]);
+  }, [api, updateSync]);
 
   useEffect(() => {
     // One-shot fetch on mount as fallback in case the client connects
@@ -625,7 +621,7 @@ export default function App() {
     return 'SCAN';
   };
 
-  const isInitialSyncing = isMemorySyncing && !hasSyncedInitiallyRef.current;
+  const isInitialSyncing = isMemorySyncing && !sync.hasSyncedInitially;
 
   const { mainText, subText } = useMemo(() => {
     if (isInitialSyncing) {
