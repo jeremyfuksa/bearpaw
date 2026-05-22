@@ -36,7 +36,9 @@ describe('StatusHeader', () => {
 
     it('should apply HOLD styles when isHolding is true', () => {
       render(<StatusHeader {...defaultProps} isHolding={true} />);
-      const holdButton = screen.getByRole('button', { name: /HOLD/i });
+      // When isHolding=true, the button label flips to SCAN so the user
+      // knows clicking it will resume scanning.
+      const holdButton = screen.getByRole('button', { name: /SCAN/i });
       expect(holdButton).toHaveClass('bg-scanner-bg-semiDark');
     });
   });
