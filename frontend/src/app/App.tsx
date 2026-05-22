@@ -64,8 +64,14 @@ export default function App() {
   const [chartAnimate, setChartAnimate] = useState(false);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
-  const [hasFreshLiveFrame, setHasFreshLiveFrame] = useState(false);
   const shellStatusText = useShellStatusText();
+
+  // Derived from the store rather than tracked locally: a frame is "fresh"
+  // when we've received any live state and the backend isn't marking it
+  // stale. Previously this was a local `useState` that mirrored
+  // `liveState.stale`, but the two sources could disagree during reconnect
+  // windows and freeze the display on "Scanning..." (issue #74).
+  const hasFreshLiveFrame = liveState !== null && liveState.stale !== true;
 
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scanResumeInFlightRef = useRef(false);
@@ -152,14 +158,12 @@ export default function App() {
   useEffect(() => {
     const unsubscribeState = ws.on('state_update', (message) => {
       const payload = message as StateUpdateMessage;
-      setHasFreshLiveFrame(payload.data.stale !== true);
       updateLiveState(payload.data, payload.sequence);
     });
 
     const unsubscribeEvent = ws.on('event', (message) => {
       const payload = message as { event?: string };
       if (payload.event === 'state_stale') {
-        setHasFreshLiveFrame(false);
         updateLiveState({ stale: true });
       }
     });
@@ -243,9 +247,11 @@ export default function App() {
 
   useEffect(() => {
     if (!connected) {
-      setHasFreshLiveFrame(false);
+      // Mark the store stale on disconnect so the derived `hasFreshLiveFrame`
+      // becomes false without the local-mirror bug from #74.
+      updateLiveState({ stale: true });
     }
-  }, [connected]);
+  }, [connected, updateLiveState]);
 
   useEffect(() => {
     let active = true;
@@ -261,7 +267,6 @@ export default function App() {
 
         if (statusResult.status === 'fulfilled') {
           updateLiveState(statusResult.value);
-          setHasFreshLiveFrame(!statusResult.value.stale);
         }
 
         if (infoResult.status === 'fulfilled') {
