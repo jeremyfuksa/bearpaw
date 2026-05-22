@@ -13,14 +13,19 @@ use crate::api::track_analytics_transition;
 use crate::api::AppState;
 use crate::api::ControlCommand;
 use crate::protocol::{
-    livestate_from_sts, parse_cin_response, parse_mdl_response, parse_sts_response,
+    livestate_from_frames, parse_cin_response, parse_glg_response, parse_mdl_response,
+    parse_pwr_response, parse_sts_frame,
 };
 use crate::state::{ChannelData, LiveState};
 use crate::transport::{SerialTransport, TransportError};
 use crate::transport_usb::UsbTransport;
 
 const POLL_INTERVAL_MS: u64 = 200;
+/// Send PWR every Nth tick (200ms × 3 = ~600ms cadence).
+const PWR_INTERVAL_TICKS: u32 = 3;
 const STS_CMD: &str = "STS";
+const GLG_CMD: &str = "GLG";
+const PWR_CMD: &str = "PWR";
 const MDL_CMD: &str = "MDL";
 const KEY_HOLD: &str = "KEY,H,P";
 const KEY_SCAN: &str = "KEY,S,P";
@@ -92,6 +97,15 @@ fn run_poll_loop(
     }
 
     let mut commanded_mode: String = "SCAN".to_string();
+    let mut volume: u8 = 0;
+    let mut tick: u32 = 0;
+
+    // Initial volume query.
+    if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
+        if let Some(v) = parse_vol_response(&vol_resp) {
+            volume = v;
+        }
+    }
 
     loop {
         // Drain control commands (hold, scan, direct, start sync)
@@ -144,21 +158,47 @@ fn run_poll_loop(
             }
         }
 
-        // STS (multiline response)
-        let resp = match transport.send_and_read_multiline(port.as_mut(), STS_CMD) {
-            Ok(r) => r,
+        // STS is single-line on observed firmware; send_and_read_multiline still works
+        // but adds ~50ms idle wait. Keep it for now to absorb any inter-byte gaps.
+        let sts_resp = match transport.send_and_read_multiline(port.as_mut(), STS_CMD) {
+            Ok(r) => Some(r),
             Err(TransportError::Io(e)) => {
                 warn!("STS read error: {}", e);
-                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                continue;
+                None
             }
             Err(e) => return Err(e.into()),
         };
 
-        if !process_sts_frame(&state, &commanded_mode, &resp, "serial") {
-            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            continue;
-        }
+        let glg_resp = match transport.send(port.as_mut(), GLG_CMD) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                warn!("GLG read error: {}", e);
+                None
+            }
+        };
+
+        let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
+            match transport.send(port.as_mut(), PWR_CMD) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    warn!("PWR read error: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        tick = tick.wrapping_add(1);
+
+        process_poll_tick(
+            &state,
+            &commanded_mode,
+            sts_resp.as_deref(),
+            glg_resp.as_deref(),
+            pwr_resp.as_deref(),
+            volume,
+            "serial",
+        );
 
         thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
@@ -206,6 +246,15 @@ fn run_poll_loop_usb(
     }
 
     let mut commanded_mode: String = "SCAN".to_string();
+    let mut volume: u8 = 0;
+    let mut tick: u32 = 0;
+
+    if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
+        if let Some(v) = parse_vol_response(&vol_resp) {
+            volume = v;
+        }
+    }
+
     loop {
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
@@ -260,16 +309,44 @@ fn run_poll_loop_usb(
             }
         }
 
-        let resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {
-            Ok(r) => r,
+        let sts_resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {
+            Ok(r) => Some(r),
             Err(e) => {
                 warn!("STS read error (usb): {}", e);
-                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                continue;
+                None
             }
         };
 
-        if !process_sts_frame(&state, &commanded_mode, &resp, "usb") {
+        let glg_resp = match transport.send(&mut session, GLG_CMD) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                warn!("GLG read error (usb): {}", e);
+                None
+            }
+        };
+
+        let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
+            match transport.send(&mut session, PWR_CMD) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    warn!("PWR read error (usb): {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        tick = tick.wrapping_add(1);
+
+        if !process_poll_tick(
+            &state,
+            &commanded_mode,
+            sts_resp.as_deref(),
+            glg_resp.as_deref(),
+            pwr_resp.as_deref(),
+            volume,
+            "usb",
+        ) {
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
             continue;
         }
@@ -291,15 +368,28 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
     }
 }
 
-fn process_sts_frame(state: &AppState, commanded_mode: &str, resp: &str, source: &str) -> bool {
-    let map = parse_sts_response(resp);
-    if map.is_empty() {
-        debug!("Empty STS response ({})", source);
+/// One poll tick's worth of parsed responses, assembled into LiveState.
+///
+/// Returns `false` if all three parses failed and nothing should be broadcast.
+fn process_poll_tick(
+    state: &AppState,
+    commanded_mode: &str,
+    sts_resp: Option<&str>,
+    glg_resp: Option<&str>,
+    pwr_resp: Option<&str>,
+    volume: u8,
+    source: &str,
+) -> bool {
+    let sts = sts_resp.and_then(parse_sts_frame);
+    let glg = glg_resp.and_then(parse_glg_response);
+    let pwr = pwr_resp.and_then(parse_pwr_response);
+
+    if sts.is_none() && glg.is_none() && pwr.is_none() {
+        debug!("All poll-tick parses failed ({})", source);
         return false;
     }
 
-    let mut live = livestate_from_sts(&map);
-    live.mode = commanded_mode.to_string();
+    let live = livestate_from_frames(sts.as_ref(), glg.as_ref(), pwr.as_ref(), commanded_mode, volume);
     broadcast_live_update(state, live);
     true
 }
@@ -484,4 +574,15 @@ fn parse_usb_target(target: &str) -> Option<(u16, u16)> {
     let vid = u16::from_str_radix(parts.next()?, 16).ok()?;
     let pid = u16::from_str_radix(parts.next()?, 16).ok()?;
     Some((vid, pid))
+}
+
+/// Parse `VOL,n` response. Returns None for malformed input.
+fn parse_vol_response(resp: &str) -> Option<u8> {
+    let line = resp.lines().find(|l| !l.trim().is_empty())?.trim();
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    let (head, val) = line.split_once(',')?;
+    if !head.eq_ignore_ascii_case("VOL") {
+        return None;
+    }
+    val.trim().parse::<u8>().ok().map(|v| v.min(15))
 }

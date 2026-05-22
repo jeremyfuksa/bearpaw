@@ -110,7 +110,7 @@ CIN,5,AUTO,01454300,AUTO,0,0,1,0
 
 **There is no 9th field.** The research is right: **no `bank` field in `CIN`.** Bearpaw's current parser fabricates one with heuristic guesswork, then defaults to 0. Real bank membership comes from `SCG`.
 
-The current Bearpaw `ChannelData` schema has `bank` and `tone_squelch` swapped in interpretation: position 5 (the code) is being parsed as if it were Hz, and position 8 (priority) is being parsed as bank. Sample 3 has `priority=1` programmed, which Bearpaw would currently report as `bank=1`.
+The current Bearpaw `ChannelData` schema has `bank` and `tone_squelch` swapped in interpretation: position 5 (the code) is being parsed as if it were Hz, and position 8 (priority) is being parsed as bank. Samples 3 and 4 have `lockout=1, priority=0` programmed, which Bearpaw's old parser would currently report as `bank=0` (the trailing 0 byte) and miss the lockout entirely.
 
 **Also confirmed:** alpha tag is NOT space-padded on the wire (research doc says it should be 16 chars space-padded). Sample 1 returns `Ararat UHF` (10 chars, no padding). This is a firmware-variant difference — newer firmware appears to trim. **Read-side parsers should NOT depend on fixed alpha-tag width.** Write-side still needs padding-to-clear semantics per the spec, but we can verify that separately.
 
