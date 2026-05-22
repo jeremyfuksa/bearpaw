@@ -22,35 +22,6 @@ function fixCampfireSpacing() {
   };
 }
 
-function mockTauriAPI() {
-  return {
-    name: 'mock-tauri-api',
-    enforce: 'pre' as const,
-    resolveId(id: string) {
-      if (id === '@tauri-apps/api/core') {
-        return {
-          id: '@tauri-apps/api/core',
-          external: false,
-        };
-      }
-      if (id.startsWith('@tauri-apps/')) {
-        return {
-          id,
-          external: false,
-        };
-      }
-    },
-    load(id: string) {
-      if (id === '@tauri-apps/api/core') {
-        return 'export const invoke = () => Promise.reject(new Error("Tauri API not available"));';
-      }
-      if (id.startsWith('@tauri-apps/')) {
-        return 'export {}';
-      }
-    },
-  };
-}
-
 export default defineConfig({
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
@@ -58,9 +29,7 @@ export default defineConfig({
     react(),
     fixCampfireSpacing(),
     tailwindcss(),
-    // Mock Tauri API when not building for Tauri
-    process.env.TAURI !== 'true' ? mockTauriAPI() : null,
-  ].filter(Boolean),
+  ],
   resolve: {
     alias: {
       // Alias @ to src directory
