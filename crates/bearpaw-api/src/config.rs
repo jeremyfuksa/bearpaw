@@ -1,8 +1,11 @@
 //! Configuration for port, baud, API bind address.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+
+use tracing::{debug, warn};
 
 /// Known Uniden scanner USB IDs probed during plug-and-play autodetect.
 /// All current entries are Uniden America Corp. (`0x1965`).
@@ -12,6 +15,23 @@ const KNOWN_SCANNER_USB_IDS: &[(u16, u16)] = &[
                       // Other Uniden 125/126 family PIDs (0x0016–0x001A) can be added here
                       // as they're confirmed.
 ];
+
+/// Model names returned by `MDL` that we accept as a real Uniden scanner.
+/// Used by the autodetect MDL-probe step to confirm a candidate serial
+/// port is the scanner before committing to it. See
+/// `docs/BC125AT_PROTOCOL.md` §5.1.
+const ACCEPTED_MDL_MODELS: &[&str] = &[
+    "BC125AT",
+    "BCT125AT",
+    "UBC125XLT",
+    "UBC126AT",
+    "AE125H",
+];
+
+/// Sidecar filename for the most-recently-confirmed scanner. Lets us prefer
+/// the same physical unit across reconnects when multiple scanners would
+/// otherwise tie.
+const LAST_SCANNER_CACHE_FILE: &str = "last_scanner.json";
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
@@ -98,7 +118,18 @@ pub fn load_config(path: Option<&str>) -> Config {
 }
 
 /// Resolve serial port from config: explicit port first, then USB auto-detect.
+///
+/// Precedence:
+/// 1. `device.port` in config (explicit override; user gets exactly what they ask for).
+/// 2. `device.usb_vid` + `device.usb_pid` (explicit USB target; matched against
+///    serial enumeration first, then falls back to the `usb:` pseudo-target).
+/// 3. Cached-serial-number lookup from the last successful autodetect.
+/// 4. Scored serial-port candidates, with an MDL probe to confirm the winner
+///    is actually a scanner before committing.
+/// 5. Direct USB probe for known Uniden VID/PIDs (macOS no-CDC-bind fallback).
 pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
+    let baud = cfg.device.baud.unwrap_or(115200);
+
     if let Some(port) = cfg.device.port.clone() {
         if !port.is_empty() {
             return Some(port);
@@ -126,20 +157,46 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
         return None;
     }
 
-    // First-pass: score available serial ports and pick the highest scorer
-    // if any look like a Uniden USB-serial endpoint.
-    let candidates: Vec<_> = serialport::available_ports()
+    let available: Vec<_> = serialport::available_ports()
         .unwrap_or_default()
         .into_iter()
         .filter(|p| !is_blocked_port(p))
         .collect();
-    let mut scored: Vec<(i32, String)> = candidates
+
+    // Cached-serial-number step: if we've successfully identified a scanner
+    // in a previous session and it's still plugged in, prefer it. Lets the
+    // user keep multiple Uniden scanners attached without surprises.
+    if let Some(cache) = load_last_scanner_cache() {
+        for p in &available {
+            if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
+                if info.serial_number.as_deref() == Some(cache.serial_number.as_str())
+                    && probe_mdl_on_port(&p.port_name, baud).is_some()
+                {
+                    debug!(
+                        "resolved scanner via cached serial number {}: {}",
+                        cache.serial_number, p.port_name
+                    );
+                    return Some(p.port_name.clone());
+                }
+            }
+        }
+    }
+
+    // Scored-and-MDL-probed step: score the available ports, then in
+    // descending score order, MDL-probe each candidate. The first one that
+    // replies with a valid `MDL,<model>` we accept (per ACCEPTED_MDL_MODELS).
+    // If no candidate responds, fall through to the USB-direct probe so
+    // macOS no-CDC-bind still works.
+    let mut scored: Vec<(i32, String)> = available
         .iter()
         .filter_map(|p| score_port(p).map(|score| (score, p.port_name.clone())))
         .collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0));
-    if let Some((score, name)) = scored.first() {
-        if *score > 0 {
+    for (score, name) in &scored {
+        if *score <= 0 {
+            break;
+        }
+        if probe_mdl_on_port(name, baud).is_some() {
             return Some(name.clone());
         }
     }
@@ -219,4 +276,155 @@ fn score_port(p: &serialport::SerialPortInfo) -> Option<i32> {
         score -= 50;
     }
     Some(score)
+}
+
+/// Briefly open a serial port, send `MDL\r`, and return the model name if
+/// the response is a known Uniden scanner. Used by the autodetect path to
+/// avoid committing to a port that scored well but isn't actually our
+/// hardware (e.g. an unrelated USB-serial device).
+///
+/// Best-effort and tolerant: any open/read/parse failure returns None so
+/// the caller falls through to the next candidate. Does **not** assert DTR
+/// (per Phase 9b) and uses a 500 ms read timeout (default).
+fn probe_mdl_on_port(port_name: &str, baud: u32) -> Option<String> {
+    use crate::transport::SerialTransport;
+    let transport = SerialTransport::new(port_name, baud);
+    let mut port = transport.open().ok()?;
+    let response = transport.send(port.as_mut(), "MDL").ok()?;
+    let model = crate::protocol::parse_mdl_response(&response)?;
+    if ACCEPTED_MDL_MODELS
+        .iter()
+        .any(|known| model.eq_ignore_ascii_case(known))
+    {
+        debug!("MDL probe on {}: matched model {}", port_name, model);
+        Some(model)
+    } else {
+        debug!(
+            "MDL probe on {}: model {:?} not in accepted list",
+            port_name, model
+        );
+        None
+    }
+}
+
+/// On-disk record of the most-recently-confirmed scanner. Lets autodetect
+/// prefer the same physical unit across reconnects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LastScannerCache {
+    /// USB serial number reported by `serialport::UsbPortInfo`. Stable per
+    /// physical scanner unit; lets us distinguish two BC125ATs plugged into
+    /// the same host.
+    serial_number: String,
+    /// Last-known port path (`/dev/cu.usbmodemXXX`, `COM3`, etc). Recorded
+    /// for debugging; the serial number is the actual lookup key.
+    port_name: String,
+    /// Model returned by `MDL` when we last confirmed this unit.
+    model: String,
+}
+
+fn last_scanner_cache_path() -> PathBuf {
+    crate::api::default_data_dir().join(LAST_SCANNER_CACHE_FILE)
+}
+
+fn load_last_scanner_cache() -> Option<LastScannerCache> {
+    let path = last_scanner_cache_path();
+    let mut file = fs::File::open(&path).ok()?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf).ok()?;
+    match serde_json::from_str::<LastScannerCache>(&buf) {
+        Ok(cache) => Some(cache),
+        Err(e) => {
+            warn!("ignoring malformed scanner cache at {:?}: {}", path, e);
+            None
+        }
+    }
+}
+
+/// Persist the most-recently-confirmed scanner so a future startup can
+/// prefer it. Called from `update_device_info_from_mdl` in the poll loop
+/// once MDL has confirmed a port works.
+///
+/// Best-effort: any I/O error is logged but not surfaced. The autodetect
+/// path degrades gracefully to scoring + MDL-probe if the cache is missing
+/// or unreadable.
+pub fn save_last_scanner_cache(serial_number: &str, port_name: &str, model: &str) {
+    let cache = LastScannerCache {
+        serial_number: serial_number.to_string(),
+        port_name: port_name.to_string(),
+        model: model.to_string(),
+    };
+    let path = last_scanner_cache_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let json = match serde_json::to_string_pretty(&cache) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("failed to serialise scanner cache: {}", e);
+            return;
+        }
+    };
+    match fs::File::create(&path) {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(json.as_bytes()) {
+                warn!("failed to write scanner cache {:?}: {}", path, e);
+            }
+        }
+        Err(e) => warn!("failed to create scanner cache {:?}: {}", path, e),
+    }
+}
+
+/// Find the USB serial number for a port that was just confirmed via MDL.
+/// Returns None if the port isn't a USB serial device or has no serial
+/// number reported. Public so the poll loop can call it when committing
+/// to a port.
+pub fn usb_serial_for_port(port_name: &str) -> Option<String> {
+    let ports = serialport::available_ports().ok()?;
+    for p in ports {
+        if p.port_name == port_name {
+            if let serialport::SerialPortType::UsbPort(info) = p.port_type {
+                return info.serial_number;
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_roundtrip_via_serde() {
+        let cache = LastScannerCache {
+            serial_number: "0001".to_string(),
+            port_name: "/dev/cu.usbmodem14101".to_string(),
+            model: "BC125AT".to_string(),
+        };
+        let json = serde_json::to_string(&cache).expect("serialize");
+        let parsed: LastScannerCache = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed.serial_number, "0001");
+        assert_eq!(parsed.port_name, "/dev/cu.usbmodem14101");
+        assert_eq!(parsed.model, "BC125AT");
+    }
+
+    #[test]
+    fn malformed_cache_returns_none() {
+        // Write garbage to the cache path and confirm load_last_scanner_cache
+        // returns None instead of panicking. Uses test-mode default_data_dir.
+        let path = last_scanner_cache_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(&path, b"not json at all");
+        assert!(load_last_scanner_cache().is_none());
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn accepted_models_includes_bc125at_family() {
+        assert!(ACCEPTED_MDL_MODELS.contains(&"BC125AT"));
+        assert!(ACCEPTED_MDL_MODELS.contains(&"BCT125AT"));
+        assert!(ACCEPTED_MDL_MODELS.contains(&"UBC125XLT"));
+    }
 }
