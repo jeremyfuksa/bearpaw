@@ -419,7 +419,7 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         .unwrap_or("2")
         .parse()
         .map_err(|_| "Invalid delay".to_string())?;
-    // Valid CIN delay values per BC125AT_PROTOCOL.md §5.3.
+    // Valid CIN delay values per docs/BC125AT_PROTOCOL.md §5.3.
     if !matches!(delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
         return Err(format!("Invalid delay: {}", delay));
     }

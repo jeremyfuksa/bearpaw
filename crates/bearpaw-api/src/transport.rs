@@ -22,7 +22,7 @@ pub struct SerialTransport {
     timeout_ms: u64,
     /// Assert DTR after opening the port. Off by default — asserting DTR on
     /// open has caused intermittent disconnects on macOS/Linux. See
-    /// `BC125AT_PROTOCOL.md` §1 "Open-time discipline" and
+    /// `docs/BC125AT_PROTOCOL.md` §1 "Open-time discipline" and
     /// `docs/SCANNER_PROTOCOL_REFERENCE.md` §1.
     assert_dtr_on_open: bool,
 }
@@ -60,7 +60,7 @@ impl SerialTransport {
         }
         // Drop stale bytes from a previous session so the first response
         // isn't corrupted. Non-fatal if the OS doesn't support it; we just
-        // warn and continue. See BC125AT_PROTOCOL.md §1 "Open-time
+        // warn and continue. See docs/BC125AT_PROTOCOL.md §1 "Open-time
         // discipline" and docs/SCANNER_PROTOCOL_REFERENCE.md §13 gap 7.
         if let Err(e) = port.clear(ClearBuffer::Input) {
             warn!(
@@ -83,7 +83,7 @@ impl SerialTransport {
     ///
     /// Use this for the small set of commands that the BC125AT documents
     /// as long-running — primarily `CLR` (factory reset, ~30 seconds, per
-    /// BC125AT_PROTOCOL.md §5.2). Do **not** use this to paper over
+    /// docs/BC125AT_PROTOCOL.md §5.2). Do **not** use this to paper over
     /// general latency problems.
     pub fn send_with_timeout(
         &self,
@@ -107,11 +107,16 @@ impl SerialTransport {
         port: &mut dyn SerialPort,
         cmd: &str,
     ) -> Result<String, TransportError> {
+        // BC125AT wire format: CR-only (`\r`, 0x0D) terminator, never CRLF.
+        // A stray LF leaves a byte in the input buffer and turns the next
+        // command into ERR. See docs/BC125AT_PROTOCOL.md §2 and §3.
         let mut buf = cmd.as_bytes().to_vec();
         buf.push(b'\r');
         port.write_all(&buf)?;
         port.flush()?;
 
+        // Commands are not pipelined — wait for the single-line response
+        // terminated by `\r`. See docs/BC125AT_PROTOCOL.md §3.
         let mut out = Vec::new();
         loop {
             let mut b = [0u8; 1];
