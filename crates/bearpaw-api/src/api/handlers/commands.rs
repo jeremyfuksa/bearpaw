@@ -92,9 +92,27 @@ pub(crate) async fn post_key(
         let tx = tx.as_ref().ok_or(ApiError::NoScanner)?;
         tx.send(cmd).map_err(|_| ApiError::SendFailed)?;
     } else {
+        // Try the canonical `KEY,<key>,P` shape; if the scanner says ERR
+        // (unknown key code), retry with the legacy two-arg form some
+        // firmwares accept. Surface ERR/NG from the second attempt — the
+        // existing code masked them by unconditionally returning 200.
         let primary = send_raw_command(&state, &format!("KEY,{},P", key), false).await;
-        if primary.is_err() {
-            let _ = send_raw_command(&state, &format!("KEY,{}", key), false).await?;
+        let response = match primary {
+            Ok(r) if !matches!(classify_response(&r), ScannerReply::Err) => r,
+            _ => send_raw_command(&state, &format!("KEY,{}", key), false).await?,
+        };
+        match classify_response(&response) {
+            ScannerReply::Ok => {}
+            ScannerReply::Ng => {
+                return Err(ApiError::BadRequest("key_wrong_mode".to_string()));
+            }
+            ScannerReply::Err => {
+                warn!(key = %key, response = %response.trim(), "scanner returned ERR on KEY command");
+                return Err(ApiError::BadRequest("key_syntax_error".to_string()));
+            }
+            // Some firmwares echo `KEY,<key>` back as data.
+            ScannerReply::Data(d) if d.to_uppercase().starts_with("KEY,") => {}
+            _ => return Err(ApiError::BadRequest("key_failed".to_string())),
         }
     }
     Ok(Json(json!({ "status": "ok" })))
