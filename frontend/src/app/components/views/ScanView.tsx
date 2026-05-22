@@ -141,29 +141,31 @@ export function ScanView({
             onHoldToggle={onHoldToggle}
             onLockout={onLockout}
           />
-          <ScannerDisplay
-            mainText={mainText}
-            subText={subText}
-            mode={scannerMode}
-            signalStrength={signalStrength}
-            isScanning={isScanningRightNow}
-            isError={isError}
-            errorType={errorType}
-            variant="default"
-            className="flex-1 min-h-0 mb-3"
-          />
-          {isInitialSyncing && (
-            <div className="mb-3 flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-scanner-text-secondary">
-              <span>{syncProgressMessage || 'Loading channels from device...'}</span>
-              <button
-                type="button"
-                onClick={onCancelSync}
-                className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-scanner-text-light transition-colors hover:bg-white/20"
-              >
-                Cancel Sync
-              </button>
-            </div>
-          )}
+          <div className="relative flex-1 min-h-0 mb-3 flex">
+            <ScannerDisplay
+              mainText={mainText}
+              subText={subText}
+              mode={scannerMode}
+              signalStrength={signalStrength}
+              isScanning={isScanningRightNow}
+              isError={isError}
+              errorType={errorType}
+              variant="default"
+              className="h-full w-full"
+            />
+            {isInitialSyncing && (
+              <div className="absolute inset-x-4 bottom-4 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/70 px-3 py-2 text-xs text-scanner-text-secondary shadow-lg backdrop-blur-sm">
+                <span>{syncProgressMessage || 'Loading channels from device...'}</span>
+                <button
+                  type="button"
+                  onClick={onCancelSync}
+                  className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-scanner-text-light transition-colors hover:bg-white/20"
+                >
+                  Cancel Sync
+                </button>
+              </div>
+            )}
+          </div>
           <BankControls activeBanks={banks} onToggleBank={onBankToggle} />
         </div>
 
