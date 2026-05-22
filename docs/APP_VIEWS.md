@@ -37,15 +37,6 @@ When disconnected, shows error icon:
 
 ### Control Buttons
 
-#### REC (Recording)
-- **Purpose**: Audio recording toggle (Tauri desktop app only)
-- **Behavior**: Toggles recording state, shows red dot when active
-- **Tauri commands**:
-  - `start_recording`: Starts recording with current frequency and alpha tag
-  - `stop_recording`: Stops recording and saves to disk
-- **Mode Requirement**: Works in any mode
-- **Note**: Shows error "Recording is only available in Tauri desktop app" in web version
-
 #### VOL (Volume)
 - **Purpose**: Adjust scanner audio volume
 - **Control**: Slider from 0 to 20
@@ -93,7 +84,6 @@ Shows the last 50 scan hits that opened squelch.
 
 **Behavior**:
 - New hits are added at top of list via WebSocket events
-- Hits with audio recording show play icon
 - Clicking a hit does nothing (display only)
 - List automatically maintains last 50 entries
 
@@ -618,7 +608,6 @@ The app shows toast messages for user feedback:
 
 ### Info
 - "No active frequency for lockout" - Cannot lockout without signal
-- "Recording feature coming soon" - Placeholder message
 - "Help is on the way" - Help button clicked
 
 ---

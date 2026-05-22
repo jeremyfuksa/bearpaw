@@ -1225,7 +1225,6 @@ Use OpenAPI spec to generate:
 - CSV export/import endpoints (`/memory/export/csv`, `/memory/import/csv`)
 - Activity log endpoint (`/analytics/activity-log`) with filtering and pagination
 - Preferences API (`/preferences`, `/preferences/{key}`) with reset support
-- Recording support (Tauri desktop app only)
 
 ### Version 1.0.0 (Initial Release)
 

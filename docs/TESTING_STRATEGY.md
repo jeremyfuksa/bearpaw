@@ -65,7 +65,7 @@ This document describes the comprehensive QA testing strategy for the Uniden Sca
 
 1. **ScannerUI Components**
    - `TabNav` - Tab navigation, connection status display
-   - `StatusHeader` - Volume, recording, lockout, hold, dashboard toggle
+   - `StatusHeader` - Volume, lockout, hold, dashboard toggle
    - `ScannerDisplay` - Main display, signal strength, error states
    - `BankControls` - 10 bank toggle buttons
 

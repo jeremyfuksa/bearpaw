@@ -367,10 +367,7 @@ describe("API Contract Tests", () => {
       expect(apiPrefs).toHaveProperty("start_dashboard_mode");
       expect(apiPrefs).toHaveProperty("auto_connect");
       expect(apiPrefs).toHaveProperty("check_updates");
-      expect(apiPrefs).toHaveProperty("recording_buffer_size");
       expect(apiPrefs).toHaveProperty("data_retention_days");
-      expect(apiPrefs).toHaveProperty("audio_output_device");
-      expect(apiPrefs).toHaveProperty("recordings_path");
     });
 
     it("LockoutsResponse should match expected structure", () => {

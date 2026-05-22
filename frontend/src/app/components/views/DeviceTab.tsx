@@ -1415,39 +1415,6 @@ export function DeviceTab() {
                 </div>
               </section>
 
-              {/* Audio Settings */}
-              <section className="space-y-4">
-                <h3 className="text-sm font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
-                  <Radio className="w-4 h-4 text-white/50" /> Audio & Recording
-                </h3>
-                <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-6">
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-sm font-medium text-white">Audio Output Device</label>
-                      <span className="text-xs text-white/40">System Default</span>
-                    </div>
-                    <Select defaultValue="default">
-                      <SelectTrigger className="w-full bg-white/5 border-white/10 text-xs">
-                        <SelectValue placeholder="Select device" />
-                      </SelectTrigger>
-                      <SelectContent className="scanner-select-content">
-                        <SelectItem value="default">System Default</SelectItem>
-                        <SelectItem value="speakers">Speakers (Realtek Audio)</SelectItem>
-                        <SelectItem value="headphones">Headphones (USB Audio)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-sm font-medium text-white">Recording Buffer Size</label>
-                      <span className="text-xs text-white/40">2048 samples</span>
-                    </div>
-                    <Slider defaultValue={[50]} max={100} step={1} />
-                  </div>
-                </div>
-              </section>
-
               {/* MQTT Settings */}
               <section className="space-y-4">
                 <h3 className="text-sm font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
@@ -1545,29 +1512,10 @@ export function DeviceTab() {
                   <FileText className="w-4 h-4 text-white/50" /> Data & Storage
                 </h3>
                 <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="space-y-0.5 flex-1">
-                      <label className="text-sm font-medium text-white">Recordings Location</label>
-                      <div className="flex gap-2 mt-1">
-                        <input
-                          type="text"
-                          value="~/Documents/Bearpaw/recordings"
-                          readOnly
-                          className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white/60 font-mono"
-                        />
-                      </div>
-                    </div>
-                    <button className="px-3 py-1 bg-white/5 hover:bg-white/10 rounded text-xs border border-white/5 h-fit mt-auto">
-                      Change
-                    </button>
-                  </div>
-
-                  <div className="h-px bg-white/5" />
-
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <label className="text-sm font-medium text-white">Data Retention</label>
-                      <p className="text-xs text-white/40">Auto-delete older recordings & logs</p>
+                      <p className="text-xs text-white/40">Auto-delete older activity logs</p>
                     </div>
                     <Select defaultValue="forever">
                       <SelectTrigger className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-xs text-white">

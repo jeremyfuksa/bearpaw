@@ -97,10 +97,7 @@ export const mockApiResponses = {
     start_dashboard_mode: false,
     auto_connect: false,
     check_updates: true,
-    recording_buffer_size: 30,
     data_retention_days: 30,
-    audio_output_device: "default",
-    recordings_path: "./recordings",
   },
   preferencesReset: {
     theme: "night",
@@ -110,10 +107,7 @@ export const mockApiResponses = {
     start_dashboard_mode: false,
     auto_connect: false,
     check_updates: true,
-    recording_buffer_size: 30,
     data_retention_days: 30,
-    audio_output_device: "default",
-    recordings_path: "./recordings",
   },
   analyticsBusiestChannels: {
     channels: [
@@ -145,7 +139,6 @@ export const mockApiResponses = {
       alpha_tag: `Channel ${i + 1}`,
       type: "hit" as const,
       rssi: 60 + Math.floor(Math.random() * 20),
-      hasAudio: false,
       duration: 2.5,
       ended_at: Date.now() / 1000 - i * 100 + 2.5,
     })),

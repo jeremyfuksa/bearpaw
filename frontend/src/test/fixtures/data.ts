@@ -56,7 +56,6 @@ export const createTestActivityLogEntry = (overrides: Partial<ActivityLogEntry> 
   alpha_tag: "Test Channel",
   type: "hit",
   rssi: 60,
-  hasAudio: false,
   duration: 2.5,
   ended_at: Date.now() / 1000,
   ...overrides,

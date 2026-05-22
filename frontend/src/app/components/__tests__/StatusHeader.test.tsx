@@ -11,8 +11,6 @@ describe("StatusHeader", () => {
     isHolding: false,
     onHoldToggle: vi.fn(),
     onLockout: vi.fn(),
-    isRecording: false,
-    onRecordingToggle: vi.fn(),
     isDashboardMode: false,
     onDashboardToggle: vi.fn(),
   };
@@ -35,18 +33,6 @@ describe("StatusHeader", () => {
       render(<StatusHeader {...defaultProps} />);
       const holdButton = screen.getByRole("button", { name: /HOLD/i });
       expect(holdButton).toBeInTheDocument();
-    });
-
-    it("should render recording button with correct label", () => {
-      render(<StatusHeader {...defaultProps} />);
-      const recordingButton = screen.getByRole("button", { name: /REC/i });
-      expect(recordingButton).toBeInTheDocument();
-    });
-
-    it("should apply recording styles when isRecording is true", () => {
-      render(<StatusHeader {...defaultProps} isRecording={true} />);
-      const recordingButton = screen.getByRole("button", { name: /REC/i });
-      expect(recordingButton).toHaveClass("bg-red-500/20");
     });
 
     it("should apply HOLD styles when isHolding is true", () => {
@@ -85,17 +71,6 @@ describe("StatusHeader", () => {
       await userEvent.click(holdButton);
 
       expect(onHoldToggle).toHaveBeenCalledTimes(1);
-    });
-
-
-    it("should call onRecordingToggle when recording button is clicked", async () => {
-      const onRecordingToggle = vi.fn();
-      render(<StatusHeader {...defaultProps} onRecordingToggle={onRecordingToggle} />);
-
-      const recordingButton = screen.getByRole("button", { name: /REC/i });
-      await userEvent.click(recordingButton);
-
-      expect(onRecordingToggle).toHaveBeenCalledTimes(1);
     });
   });
 });

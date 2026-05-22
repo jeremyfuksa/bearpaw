@@ -108,8 +108,6 @@ interface StatusHeaderProps {
   isHolding: boolean;
   onHoldToggle: () => void;
   onLockout: (type: "temporary" | "permanent") => void;
-  isRecording?: boolean;
-  onRecordingToggle?: () => void;
   isDashboardMode: boolean;
   onDashboardToggle: () => void;
 }
@@ -120,14 +118,12 @@ export function StatusHeader({
   isHolding,
   onHoldToggle,
   onLockout,
-  isRecording = false,
-  onRecordingToggle,
   isDashboardMode,
   onDashboardToggle,
 }: StatusHeaderProps) {
   return (
     <div className="flex items-center justify-between relative shrink-0 w-full">
-      {/* Dashboard + Recording controls */}
+      {/* Dashboard controls */}
       <div className="flex gap-2.5 items-center relative shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -153,18 +149,6 @@ export function StatusHeader({
             {isDashboardMode ? "Dashboard view" : "Monitor view"}
           </TooltipContent>
         </Tooltip>
-        <button
-          onClick={onRecordingToggle}
-          className={cn(
-            "flex items-center justify-center px-1.5 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer transition-all active:translate-y-[1px] active:shadow-none gap-1.5",
-            isRecording ? "bg-red-500/20 border-red-500/50" : "bg-scanner-default hover:bg-scanner-hover"
-          )}
-        >
-           <div className={cn("size-1.5 rounded-full", isRecording ? "bg-red-500 animate-pulse shadow-glow" : "bg-scanner-text")} />
-           <p className={cn("font-medium text-xs text-nowrap", isRecording ? "text-red-400" : "scanner-text")}>
-             REC
-           </p>
-        </button>
       </div>
 
       {/* Native scanner controls */}

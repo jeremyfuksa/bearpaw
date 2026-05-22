@@ -2941,16 +2941,7 @@ fn default_preferences() -> Map<String, Value> {
     m.insert("start_dashboard_mode".to_string(), Value::Bool(true));
     m.insert("auto_connect".to_string(), Value::Bool(false));
     m.insert("check_updates".to_string(), Value::Bool(true));
-    m.insert("recording_buffer_size".to_string(), Value::from(30));
     m.insert("data_retention_days".to_string(), Value::from(30));
-    m.insert(
-        "audio_output_device".to_string(),
-        Value::String("default".to_string()),
-    );
-    m.insert(
-        "recordings_path".to_string(),
-        Value::String("./recordings".to_string()),
-    );
     m.insert("mqtt_enabled".to_string(), Value::Bool(false));
     m.insert(
         "mqtt_host".to_string(),
