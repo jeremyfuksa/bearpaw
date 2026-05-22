@@ -19,12 +19,28 @@ export interface Preferences {
   mqttRetain: boolean;
 }
 
+/**
+ * Memory-sync orchestration state. The actual transport-level sync runs in
+ * the Rust backend; this is what the UI knows about it. `inProgress` is the
+ * "is there a sync running right now" signal that drives UI gating;
+ * `hasSyncedInitially` tells us whether we've ever completed a sync this
+ * session (used to distinguish the initial-load spinner from a user-
+ * triggered re-sync).
+ */
+export interface SyncState {
+  inProgress: boolean;
+  hasSyncedInitially: boolean;
+  taskId: string | null;
+  message: string;
+}
+
 export interface AppStore {
   liveState: LiveState | null;
   deviceInfo: DeviceInfo | null;
   channels: ChannelData[];
   banks: boolean[];
   banksBusy: boolean;
+  sync: SyncState;
   activityLog: ActivityLogEntry[];
   fullActivityLog: ActivityLogEntry[];
   preferences: Preferences;
@@ -37,6 +53,7 @@ export interface AppStore {
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
   setBanks: (banks: boolean[]) => void;
   setBanksBusy: (busy: boolean) => void;
+  updateSync: (patch: Partial<SyncState>) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
@@ -79,12 +96,20 @@ const defaultLiveState: LiveState = {
 
 const defaultBanks: boolean[] = Array.from({ length: 10 }, () => true);
 
+const defaultSync: SyncState = {
+  inProgress: false,
+  hasSyncedInitially: false,
+  taskId: null,
+  message: 'Loading channels from device...',
+};
+
 export const useStore = create<AppStore>((set) => ({
   liveState: null,
   deviceInfo: null,
   channels: [],
   banks: defaultBanks,
   banksBusy: false,
+  sync: defaultSync,
   activityLog: [],
   fullActivityLog: [],
   preferences: defaultPreferences,
@@ -118,6 +143,7 @@ export const useStore = create<AppStore>((set) => ({
     })),
   setBanks: (banks) => set({ banks: banks.length === 10 ? banks : defaultBanks }),
   setBanksBusy: (banksBusy) => set({ banksBusy }),
+  updateSync: (patch) => set((prev) => ({ sync: { ...prev.sync, ...patch } })),
   addActivityLogEntry: (entry) =>
     set((prev) => ({
       activityLog: [entry, ...prev.activityLog].slice(0, 5),
