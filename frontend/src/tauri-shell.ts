@@ -1,3 +1,6 @@
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
+
 export interface ShellInfo {
   product_name: string;
   version: string;
@@ -28,13 +31,11 @@ export function isTauriRuntime(): boolean {
 
 export async function getShellInfo(): Promise<ShellInfo | null> {
   if (!isTauriRuntime()) return null;
-  const { invoke } = await import('@tauri-apps/api/core');
   return invoke<ShellInfo>('shell_info');
 }
 
 export async function getBackendStatus(): Promise<BackendStatus | null> {
   if (!isTauriRuntime()) return null;
-  const { invoke } = await import('@tauri-apps/api/core');
   return invoke<BackendStatus>('backend_status');
 }
 
@@ -42,7 +43,6 @@ export async function subscribeBackendStatus(
   onStatus: (status: BackendStatus) => void,
 ): Promise<() => void> {
   if (!isTauriRuntime()) return () => {};
-  const { listen } = await import('@tauri-apps/api/event');
   const unlisten = await listen<BackendStatus>('shell://backend-status', (event) => {
     if (event.payload) onStatus(event.payload);
   });
