@@ -6,6 +6,7 @@ import { StatusBar } from './components/ScannerUI';
 import { getAPI, API_BASE } from '../api/useApi';
 import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
+import { useActivityLogHydrate } from '../hooks/useActivityLogHydrate';
 import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
@@ -40,6 +41,7 @@ export default function App() {
   });
   const api = getAPI();
   const { ws, connected } = useWebSocket();
+  useActivityLogHydrate();
   useActivityLogTracker();
 
   const liveState = useStore((state) => state.liveState);

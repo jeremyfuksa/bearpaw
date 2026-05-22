@@ -109,6 +109,66 @@ describe('useStore', () => {
     });
   });
 
+  describe('hydrateActivityLogs', () => {
+    beforeEach(() => {
+      useStore.setState({ activityLog: [], fullActivityLog: [] });
+    });
+
+    it('seeds full and recent logs sorted newest-first', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.hydrateActivityLogs([
+          { id: 'old', timestamp: 100, frequency: 146.5, type: 'hit' },
+          { id: 'new', timestamp: 300, frequency: 154.8, type: 'hit' },
+          { id: 'mid', timestamp: 200, frequency: 151.5, type: 'hit' },
+        ]);
+      });
+
+      expect(result.current.fullActivityLog.map((e) => e.id)).toEqual(['new', 'mid', 'old']);
+      expect(result.current.activityLog.map((e) => e.id)).toEqual(['new', 'mid', 'old']);
+    });
+
+    it('caps activityLog at 5 even when more history is hydrated', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.hydrateActivityLogs(
+          Array.from({ length: 8 }, (_, i) => ({
+            id: `e-${i}`,
+            timestamp: i,
+            frequency: 146.5,
+            type: 'hit' as const,
+          })),
+        );
+      });
+
+      expect(result.current.fullActivityLog).toHaveLength(8);
+      expect(result.current.activityLog).toHaveLength(5);
+    });
+
+    it('does not clobber an existing in-memory log', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.addToFullActivityLog({
+          id: 'live',
+          timestamp: 999,
+          frequency: 146.5,
+          type: 'hit',
+        });
+      });
+
+      act(() => {
+        result.current.hydrateActivityLogs([
+          { id: 'history', timestamp: 100, frequency: 154.8, type: 'hit' },
+        ]);
+      });
+
+      expect(result.current.fullActivityLog.map((e) => e.id)).toEqual(['live']);
+    });
+  });
+
   describe('setChannels', () => {
     it('should handle undefined channels', () => {
       const { result } = renderHook(() => useStore());

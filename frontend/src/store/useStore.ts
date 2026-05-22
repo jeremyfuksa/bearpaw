@@ -60,6 +60,7 @@ export interface AppStore {
   setMemoryEditingIndex: (index: number | null) => void;
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
   addToFullActivityLog: (entry: ActivityLogEntry) => void;
+  hydrateActivityLogs: (entries: ActivityLogEntry[]) => void;
 }
 
 const defaultPreferences: Preferences = {
@@ -155,6 +156,21 @@ export const useStore = create<AppStore>((set) => ({
     })),
 
   clearActivityLog: () => set({ activityLog: [], fullActivityLog: [] }),
+
+  hydrateActivityLogs: (entries) =>
+    set((prev) => {
+      // Only seed from history when nothing is in memory yet. Lets the
+      // user see historical hits at launch without clobbering anything a
+      // WS event might have prepended while the fetch was in flight.
+      if (prev.fullActivityLog.length > 0) {
+        return prev;
+      }
+      const sorted = [...entries].sort((a, b) => b.timestamp - a.timestamp);
+      return {
+        fullActivityLog: sorted,
+        activityLog: sorted.slice(0, 5),
+      };
+    }),
 
   updatePreferences: (prefs) =>
     set((prev) => ({
