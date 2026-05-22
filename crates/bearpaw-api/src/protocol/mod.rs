@@ -6,7 +6,7 @@
 //! firmware 1.06.06, which emits a different STS field count than the
 //! research doc's 1.04.02.
 
-use crate::state::{ChannelData, LiveState, ToneSquelchKind};
+use crate::state::{ChannelData, LiveState, ScannerMode, ToneSquelchKind};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -428,7 +428,7 @@ pub fn livestate_from_frames(
     sts: Option<&StsFrame>,
     glg: Option<&GlgFrame>,
     pwr: Option<&PwrFrame>,
-    commanded_mode: &str,
+    commanded_mode: ScannerMode,
     volume: u8,
 ) -> LiveState {
     let timestamp = std::time::SystemTime::UNIX_EPOCH
@@ -469,7 +469,7 @@ pub fn livestate_from_frames(
         modulation,
         squelch_open,
         rssi,
-        mode: commanded_mode.to_string(),
+        mode: commanded_mode,
         channel,
         alpha_tag,
         volume,
@@ -678,13 +678,13 @@ mod tests {
         let sts = parse_sts_frame(STS_SIGNAL_PRESENT).unwrap();
         let glg = parse_glg_response(GLG_SIGNAL_PRESENT).unwrap();
         let pwr = parse_pwr_response(PWR_SAMPLE).unwrap();
-        let live = livestate_from_frames(Some(&sts), Some(&glg), Some(&pwr), "SCAN", 7);
+        let live = livestate_from_frames(Some(&sts), Some(&glg), Some(&pwr), ScannerMode::Scan, 7);
         assert_eq!(live.frequency, 462.6125);
         assert_eq!(live.modulation, "NFM");
         assert!(live.squelch_open);
         assert_eq!(live.channel, Some(75));
         assert_eq!(live.alpha_tag.as_deref(), Some("GMRS CH 03"));
-        assert_eq!(live.mode, "SCAN");
+        assert_eq!(live.mode, ScannerMode::Scan);
         assert_eq!(live.volume, 7);
         assert!(live.battery.is_none());
         // RSSI from PWR=454/1023 = 44%
@@ -695,7 +695,7 @@ mod tests {
     fn livestate_falls_back_to_sts_sig_lvl_when_pwr_absent() {
         let sts = parse_sts_frame(STS_SIGNAL_PRESENT).unwrap();
         let glg = parse_glg_response(GLG_SIGNAL_PRESENT).unwrap();
-        let live = livestate_from_frames(Some(&sts), Some(&glg), None, "SCAN", 0);
+        let live = livestate_from_frames(Some(&sts), Some(&glg), None, ScannerMode::Scan, 0);
         // sig_lvl=5 → 5*20 = 100
         assert_eq!(live.rssi, 100);
     }
