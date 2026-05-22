@@ -3,12 +3,12 @@ use axum::response::{IntoResponse, Json};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+use crate::protocol::tones::tone_code_label;
 use crate::state::ChannelData;
 
 use super::super::{
-    command_sender, csv_escape, ctcss_dcs_to_string, flags_to_bools, format_modulation, on_off,
-    send_raw_command, split_command_parts, write_channel_to_scanner, ApiError, AppState,
-    ProgramModeGuard,
+    command_sender, csv_escape, flags_to_bools, format_modulation, on_off, send_raw_command,
+    split_command_parts, write_channel_to_scanner, ApiError, AppState, ProgramModeGuard,
 };
 
 pub(crate) async fn export_bc125at_ss_file(
@@ -125,7 +125,7 @@ pub(crate) async fn export_bc125at_ss_file(
                 .map(|v| v * 100)
                 .unwrap_or(0);
             let modulation = format_modulation(parts.get(2).map(String::as_str).unwrap_or("Auto"));
-            let tone = ctcss_dcs_to_string(parts.get(3).map(String::as_str).unwrap_or("0"));
+            let tone = tone_code_label(parts.get(3).map(String::as_str).unwrap_or("0"));
             let delay = parts.get(4).cloned().unwrap_or_else(|| "2".to_string());
             let lockout = on_off(parts.get(5).map(String::as_str).unwrap_or("0"));
             let priority = on_off(parts.get(6).map(String::as_str).unwrap_or("0"));
