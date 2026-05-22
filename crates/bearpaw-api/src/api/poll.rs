@@ -15,12 +15,20 @@ use crate::protocol::{
     parse_sts_frame, PwrFrame,
 };
 use crate::state::{LiveState, ScannerMode};
-use crate::transport::{SerialTransport, TransportError};
+use crate::transport::SerialTransport;
 use crate::transport_usb::UsbTransport;
 
 const POLL_INTERVAL_MS: u64 = 200;
 /// Send PWR every Nth tick (200ms × 3 = ~600ms cadence).
 const PWR_INTERVAL_TICKS: u32 = 3;
+/// First reconnect attempt fires this many ms after a disconnect is
+/// detected. Subsequent attempts back off via `next_backoff` up to
+/// `RECONNECT_BACKOFF_MAX_MS`.
+const RECONNECT_BACKOFF_INITIAL_MS: u64 = 500;
+/// Cap on the reconnect backoff. Past this point the poll loop retries on
+/// a fixed cadence so a forgotten unplugged scanner doesn't tie up the
+/// USB subsystem.
+const RECONNECT_BACKOFF_MAX_MS: u64 = 5_000;
 const STS_CMD: &str = "STS";
 const GLG_CMD: &str = "GLG";
 const PWR_CMD: &str = "PWR";
@@ -59,176 +67,251 @@ fn run_poll_loop(
     }
 
     let transport = SerialTransport::new(port_name, baud).with_dtr_on_open(assert_dtr);
-    let mut port = transport.open().map_err(|e| e.to_string())?;
 
-    info!("Serial opened: {} @ {} baud", port_name, baud);
-    if let Ok(mut d) = state.device.write() {
-        d.port = Some(port_name.to_string());
-        d.connection_status = "connected".to_string();
-    }
-
-    // Device info: model from MDL (with retry because some scanners can return
-    // stale command echoes immediately after connection).
-    let mut mdl_set = false;
-    for attempt in 1..=5 {
-        match transport.send(port.as_mut(), MDL_CMD) {
-            Ok(mdl_resp) => {
-                if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
-                    update_device_info_from_mdl(&state, &mdl_resp, port_name);
-                    mdl_set = true;
-                    break;
-                }
-                warn!(
-                    "Invalid MDL response on serial attempt {}: {}",
-                    attempt,
-                    mdl_resp.trim()
-                );
-            }
-            Err(err) => {
-                warn!("MDL read failed on serial attempt {}: {}", attempt, err);
-            }
-        }
-        thread::sleep(Duration::from_millis(120));
-    }
-    if !mdl_set {
-        warn!("Unable to read valid MDL response after retries (serial)");
-    }
-
+    // Loop-spanning state. Preserved across reconnects.
     let mut commanded_mode = ScannerMode::Scan;
     let mut volume: u8 = 0;
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
+    let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
-    // Initial volume query.
-    if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
-        if let Some(v) = parse_vol_response(&vol_resp) {
-            volume = v;
-        }
-    }
-
+    let mut first_open = true;
     loop {
-        // Drain control commands (hold, scan, direct, start sync)
-        while let Ok(cmd) = cmd_rx.try_recv() {
-            match cmd {
-                ControlCommand::Hold { reply } => {
-                    let response = transport
-                        .send(port.as_mut(), KEY_HOLD)
-                        .map_err(|e| e.to_string());
-                    if response.is_ok() {
-                        commanded_mode = ScannerMode::Hold;
-                    }
-                    if let Some(r) = reply {
-                        let _ = r.send(response);
-                    }
-                }
-                ControlCommand::Scan { reply } => {
-                    let response = transport
-                        .send(port.as_mut(), KEY_SCAN)
-                        .map_err(|e| e.to_string());
-                    if response.is_ok() {
-                        commanded_mode = ScannerMode::Scan;
-                    }
-                    if let Some(r) = reply {
-                        let _ = r.send(response);
-                    }
-                }
-                ControlCommand::Direct {
-                    frequency,
-                    modulation,
-                } => {
-                    let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
-                    let _ = transport.send(port.as_mut(), &do_cmd);
-                    commanded_mode = ScannerMode::Direct;
-                }
-                ControlCommand::StartSync {
-                    task_id,
-                    max_channels,
-                } => {
-                    if let Err(e) = super::memory_sync::run_serial(
-                        &state,
-                        &transport,
-                        port.as_mut(),
-                        &task_id,
-                        max_channels,
-                    ) {
-                        warn!("Memory sync failed: {}", e);
-                        super::memory_sync::finish(&state);
-                        send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
-                    }
-                }
-                ControlCommand::Raw {
-                    command,
-                    multiline,
-                    reply,
-                } => {
-                    let response = if multiline {
-                        transport
-                            .send_and_read_multiline(port.as_mut(), &command)
-                            .map_err(|e| e.to_string())
-                    } else {
-                        transport
-                            .send(port.as_mut(), &command)
-                            .map_err(|e| e.to_string())
-                    };
-                    let _ = reply.send(response);
-                }
-            }
-        }
-
-        // When the scanner is in program mode (PRG entered via an API
-        // handler), the operational commands STS/GLG/PWR will get NG replies
-        // and their bytes will collide with the bracket's subsequent CIN/SCG
-        // reads on the bulk endpoint. Skip the live-state fetch entirely and
-        // just keep draining the command channel until EPG runs.
-        if state.program_mode_active.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            continue;
-        }
-
-        // STS is single-line on observed firmware; send_and_read_multiline still works
-        // but adds ~50ms idle wait. Keep it for now to absorb any inter-byte gaps.
-        let sts_resp = match transport.send_and_read_multiline(port.as_mut(), STS_CMD) {
-            Ok(r) => Some(r),
-            Err(TransportError::Io(e)) => {
-                warn!("STS read error: {}", e);
-                None
-            }
-            Err(e) => return Err(e.into()),
-        };
-
-        let glg_resp = match transport.send(port.as_mut(), GLG_CMD) {
-            Ok(r) => Some(r),
+        let mut port = match transport.open() {
+            Ok(p) => p,
             Err(e) => {
-                warn!("GLG read error: {}", e);
-                None
+                if first_open {
+                    return Err(e.to_string().into());
+                }
+                mark_disconnected(&state, &format!("serial open failed: {}", e));
+                thread::sleep(reconnect_backoff);
+                reconnect_backoff = next_backoff(reconnect_backoff);
+                continue;
             }
         };
+        first_open = false;
+        reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
-        let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
-            match transport.send(port.as_mut(), PWR_CMD) {
+        info!("Serial opened: {} @ {} baud", port_name, baud);
+        if let Ok(mut d) = state.device.write() {
+            d.port = Some(port_name.to_string());
+            d.connection_status = "connected".to_string();
+            d.diagnostic_code = None;
+            d.diagnostic_message = None;
+        }
+
+        // Device info: model from MDL (with retry because some scanners can return
+        // stale command echoes immediately after connection).
+        let mut mdl_set = false;
+        for attempt in 1..=5 {
+            match transport.send(port.as_mut(), MDL_CMD) {
+                Ok(mdl_resp) => {
+                    if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
+                        update_device_info_from_mdl(&state, &mdl_resp, port_name);
+                        mdl_set = true;
+                        break;
+                    }
+                    warn!(
+                        "Invalid MDL response on serial attempt {}: {}",
+                        attempt,
+                        mdl_resp.trim()
+                    );
+                }
+                Err(err) => {
+                    warn!("MDL read failed on serial attempt {}: {}", attempt, err);
+                    if err.is_device_gone() {
+                        break;
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(120));
+        }
+        if !mdl_set {
+            warn!("Unable to read valid MDL response after retries (serial)");
+        }
+
+        // Initial volume query.
+        if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
+            if let Some(v) = parse_vol_response(&vol_resp) {
+                volume = v;
+            }
+        }
+
+        let mut session_dead = false;
+        while !session_dead {
+            // Drain control commands (hold, scan, direct, start sync)
+            while let Ok(cmd) = cmd_rx.try_recv() {
+                match cmd {
+                    ControlCommand::Hold { reply } => {
+                        let response = transport.send(port.as_mut(), KEY_HOLD).map_err(|e| {
+                            if e.is_device_gone() {
+                                session_dead = true;
+                            }
+                            e.to_string()
+                        });
+                        if response.is_ok() {
+                            commanded_mode = ScannerMode::Hold;
+                        }
+                        if let Some(r) = reply {
+                            let _ = r.send(response);
+                        }
+                    }
+                    ControlCommand::Scan { reply } => {
+                        let response = transport.send(port.as_mut(), KEY_SCAN).map_err(|e| {
+                            if e.is_device_gone() {
+                                session_dead = true;
+                            }
+                            e.to_string()
+                        });
+                        if response.is_ok() {
+                            commanded_mode = ScannerMode::Scan;
+                        }
+                        if let Some(r) = reply {
+                            let _ = r.send(response);
+                        }
+                    }
+                    ControlCommand::Direct {
+                        frequency,
+                        modulation,
+                    } => {
+                        let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
+                        if let Err(e) = transport.send(port.as_mut(), &do_cmd) {
+                            if e.is_device_gone() {
+                                session_dead = true;
+                            }
+                        }
+                        commanded_mode = ScannerMode::Direct;
+                    }
+                    ControlCommand::StartSync {
+                        task_id,
+                        max_channels,
+                    } => {
+                        if let Err(e) = super::memory_sync::run_serial(
+                            &state,
+                            &transport,
+                            port.as_mut(),
+                            &task_id,
+                            max_channels,
+                        ) {
+                            warn!("Memory sync failed: {}", e);
+                            super::memory_sync::finish(&state);
+                            send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
+                        }
+                    }
+                    ControlCommand::Raw {
+                        command,
+                        multiline,
+                        reply,
+                    } => {
+                        let response = if multiline {
+                            transport
+                                .send_and_read_multiline(port.as_mut(), &command)
+                                .map_err(|e| {
+                                    if e.is_device_gone() {
+                                        session_dead = true;
+                                    }
+                                    e.to_string()
+                                })
+                        } else {
+                            transport.send(port.as_mut(), &command).map_err(|e| {
+                                if e.is_device_gone() {
+                                    session_dead = true;
+                                }
+                                e.to_string()
+                            })
+                        };
+                        let _ = reply.send(response);
+                    }
+                }
+                if session_dead {
+                    break;
+                }
+            }
+            if session_dead {
+                break;
+            }
+
+            // When the scanner is in program mode (PRG entered via an API
+            // handler), the operational commands STS/GLG/PWR will get NG replies
+            // and their bytes will collide with the bracket's subsequent CIN/SCG
+            // reads on the bulk endpoint. Skip the live-state fetch entirely and
+            // just keep draining the command channel until EPG runs.
+            if state.program_mode_active.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+                continue;
+            }
+
+            let sts_resp = match transport.send_and_read_multiline(port.as_mut(), STS_CMD) {
                 Ok(r) => Some(r),
                 Err(e) => {
-                    warn!("PWR read error: {}", e);
+                    if e.is_device_gone() {
+                        session_dead = true;
+                    } else {
+                        warn!("STS read error: {}", e);
+                    }
                     None
                 }
+            };
+            if session_dead {
+                break;
             }
-        } else {
-            None
-        };
-        tick = tick.wrapping_add(1);
 
-        process_poll_tick(
-            &state,
-            &mut poll_state,
-            commanded_mode,
-            sts_resp.as_deref(),
-            glg_resp.as_deref(),
-            pwr_resp.as_deref(),
-            volume,
-            "serial",
+            let glg_resp = match transport.send(port.as_mut(), GLG_CMD) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    if e.is_device_gone() {
+                        session_dead = true;
+                    } else {
+                        warn!("GLG read error: {}", e);
+                    }
+                    None
+                }
+            };
+            if session_dead {
+                break;
+            }
+
+            let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
+                match transport.send(port.as_mut(), PWR_CMD) {
+                    Ok(r) => Some(r),
+                    Err(e) => {
+                        if e.is_device_gone() {
+                            session_dead = true;
+                        } else {
+                            warn!("PWR read error: {}", e);
+                        }
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            if session_dead {
+                break;
+            }
+            tick = tick.wrapping_add(1);
+
+            process_poll_tick(
+                &state,
+                &mut poll_state,
+                commanded_mode,
+                sts_resp.as_deref(),
+                glg_resp.as_deref(),
+                pwr_resp.as_deref(),
+                volume,
+                "serial",
+            );
+
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+        }
+
+        warn!(
+            "Serial session ended for {} — scanner disconnected. Will attempt to reconnect.",
+            port_name
         );
-
-        thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+        mark_disconnected(&state, "scanner disconnected");
+        thread::sleep(reconnect_backoff);
+        reconnect_backoff = next_backoff(reconnect_backoff);
     }
 }
 
@@ -239,170 +322,292 @@ fn run_poll_loop_usb(
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let transport = UsbTransport::new(vid, pid);
-    let mut session = transport.open().map_err(|e| e.to_string())?;
-
-    info!("USB opened: {:04x}:{:04x}", vid, pid);
-    if let Ok(mut d) = state.device.write() {
-        d.port = Some(format!("usb:{:04x}:{:04x}", vid, pid));
-        d.connection_status = "connected".to_string();
-    }
-
     let port_label = format!("usb:{:04x}:{:04x}", vid, pid);
-    let mut mdl_set = false;
-    for attempt in 1..=5 {
-        match transport.send(&mut session, MDL_CMD) {
-            Ok(mdl_resp) => {
-                if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
-                    update_device_info_from_mdl(&state, &mdl_resp, &port_label);
-                    mdl_set = true;
-                    break;
-                }
-                warn!(
-                    "Invalid MDL response on usb attempt {}: {}",
-                    attempt,
-                    mdl_resp.trim()
-                );
-            }
-            Err(err) => {
-                warn!("MDL read failed on usb attempt {}: {}", attempt, err);
-            }
-        }
-        thread::sleep(Duration::from_millis(120));
-    }
-    if !mdl_set {
-        warn!("Unable to read valid MDL response after retries (usb)");
-    }
 
+    // Loop-spanning state. Preserved across reconnects so the user's
+    // commanded mode + last-known volume survive a brief unplug/replug.
     let mut commanded_mode = ScannerMode::Scan;
     let mut volume: u8 = 0;
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
+    let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
-    if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
-        if let Some(v) = parse_vol_response(&vol_resp) {
-            volume = v;
-        }
-    }
-
+    // Outer reconnect loop. Returns only if the initial open fails (so the
+    // caller's error path can surface it); otherwise loops forever, opening
+    // and re-opening the session as the scanner appears/disappears.
+    let mut first_open = true;
     loop {
-        while let Ok(cmd) = cmd_rx.try_recv() {
-            match cmd {
-                ControlCommand::Hold { reply } => {
-                    let response = transport
-                        .send(&mut session, KEY_HOLD)
-                        .map_err(|e| e.to_string());
-                    if response.is_ok() {
-                        commanded_mode = ScannerMode::Hold;
+        let mut session = match transport.open() {
+            Ok(s) => s,
+            Err(e) => {
+                if first_open {
+                    return Err(e.to_string().into());
+                }
+                // Subsequent opens after a reconnect: device probably still
+                // gone. Mark disconnected, back off, retry.
+                mark_disconnected(&state, &format!("USB open failed: {}", e));
+                thread::sleep(reconnect_backoff);
+                reconnect_backoff = next_backoff(reconnect_backoff);
+                continue;
+            }
+        };
+        first_open = false;
+        reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
+
+        info!("USB opened: {:04x}:{:04x}", vid, pid);
+        if let Ok(mut d) = state.device.write() {
+            d.port = Some(port_label.clone());
+            d.connection_status = "connected".to_string();
+            d.diagnostic_code = None;
+            d.diagnostic_message = None;
+        }
+
+        let mut mdl_set = false;
+        for attempt in 1..=5 {
+            match transport.send(&mut session, MDL_CMD) {
+                Ok(mdl_resp) => {
+                    if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
+                        update_device_info_from_mdl(&state, &mdl_resp, &port_label);
+                        mdl_set = true;
+                        break;
                     }
-                    if let Some(r) = reply {
-                        let _ = r.send(response);
+                    warn!(
+                        "Invalid MDL response on usb attempt {}: {}",
+                        attempt,
+                        mdl_resp.trim()
+                    );
+                }
+                Err(err) => {
+                    warn!("MDL read failed on usb attempt {}: {}", attempt, err);
+                    if err.is_device_gone() {
+                        break;
                     }
                 }
-                ControlCommand::Scan { reply } => {
-                    let response = transport
-                        .send(&mut session, KEY_SCAN)
-                        .map_err(|e| e.to_string());
-                    if response.is_ok() {
-                        commanded_mode = ScannerMode::Scan;
+            }
+            thread::sleep(Duration::from_millis(120));
+        }
+        if !mdl_set {
+            warn!("Unable to read valid MDL response after retries (usb)");
+        }
+
+        if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
+            if let Some(v) = parse_vol_response(&vol_resp) {
+                volume = v;
+            }
+        }
+
+        // Inner per-session loop. Breaks out (to the outer reconnect loop)
+        // the moment any transport call signals the device is gone.
+        let mut session_dead = false;
+        while !session_dead {
+            while let Ok(cmd) = cmd_rx.try_recv() {
+                match cmd {
+                    ControlCommand::Hold { reply } => {
+                        let response = transport
+                            .send(&mut session, KEY_HOLD)
+                            .map_err(|e| {
+                                if e.is_device_gone() {
+                                    session_dead = true;
+                                }
+                                e.to_string()
+                            });
+                        if response.is_ok() {
+                            commanded_mode = ScannerMode::Hold;
+                        }
+                        if let Some(r) = reply {
+                            let _ = r.send(response);
+                        }
                     }
-                    if let Some(r) = reply {
-                        let _ = r.send(response);
+                    ControlCommand::Scan { reply } => {
+                        let response = transport
+                            .send(&mut session, KEY_SCAN)
+                            .map_err(|e| {
+                                if e.is_device_gone() {
+                                    session_dead = true;
+                                }
+                                e.to_string()
+                            });
+                        if response.is_ok() {
+                            commanded_mode = ScannerMode::Scan;
+                        }
+                        if let Some(r) = reply {
+                            let _ = r.send(response);
+                        }
                     }
-                }
-                ControlCommand::Direct {
-                    frequency,
-                    modulation,
-                } => {
-                    let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
-                    let _ = transport.send(&mut session, &do_cmd);
-                    commanded_mode = ScannerMode::Direct;
-                }
-                ControlCommand::StartSync {
-                    task_id,
-                    max_channels,
-                } => {
-                    if let Err(e) = super::memory_sync::run_usb(
-                        &state,
-                        &transport,
-                        &mut session,
-                        &task_id,
+                    ControlCommand::Direct {
+                        frequency,
+                        modulation,
+                    } => {
+                        let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
+                        if let Err(e) = transport.send(&mut session, &do_cmd) {
+                            if e.is_device_gone() {
+                                session_dead = true;
+                            }
+                        }
+                        commanded_mode = ScannerMode::Direct;
+                    }
+                    ControlCommand::StartSync {
+                        task_id,
                         max_channels,
-                    ) {
-                        warn!("Memory sync failed: {}", e);
-                        super::memory_sync::finish(&state);
-                        send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
+                    } => {
+                        if let Err(e) = super::memory_sync::run_usb(
+                            &state,
+                            &transport,
+                            &mut session,
+                            &task_id,
+                            max_channels,
+                        ) {
+                            warn!("Memory sync failed: {}", e);
+                            super::memory_sync::finish(&state);
+                            send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
+                        }
+                    }
+                    ControlCommand::Raw {
+                        command,
+                        multiline,
+                        reply,
+                    } => {
+                        let response = if multiline {
+                            transport
+                                .send_and_read_multiline(&mut session, &command)
+                                .map_err(|e| {
+                                    if e.is_device_gone() {
+                                        session_dead = true;
+                                    }
+                                    e.to_string()
+                                })
+                        } else {
+                            transport
+                                .send(&mut session, &command)
+                                .map_err(|e| {
+                                    if e.is_device_gone() {
+                                        session_dead = true;
+                                    }
+                                    e.to_string()
+                                })
+                        };
+                        let _ = reply.send(response);
                     }
                 }
-                ControlCommand::Raw {
-                    command,
-                    multiline,
-                    reply,
-                } => {
-                    let response = if multiline {
-                        transport
-                            .send_and_read_multiline(&mut session, &command)
-                            .map_err(|e| e.to_string())
-                    } else {
-                        transport
-                            .send(&mut session, &command)
-                            .map_err(|e| e.to_string())
-                    };
-                    let _ = reply.send(response);
+                if session_dead {
+                    break;
                 }
             }
-        }
-
-        // Skip live-state fetch while scanner is in program mode (see
-        // serial-path comment for rationale).
-        if state.program_mode_active.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            continue;
-        }
-
-        let sts_resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {
-            Ok(r) => Some(r),
-            Err(e) => {
-                warn!("STS read error (usb): {}", e);
-                None
+            if session_dead {
+                break;
             }
-        };
 
-        let glg_resp = match transport.send(&mut session, GLG_CMD) {
-            Ok(r) => Some(r),
-            Err(e) => {
-                warn!("GLG read error (usb): {}", e);
-                None
+            // Skip live-state fetch while scanner is in program mode (see
+            // serial-path comment for rationale).
+            if state.program_mode_active.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+                continue;
             }
-        };
 
-        let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
-            match transport.send(&mut session, PWR_CMD) {
+            let sts_resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {
                 Ok(r) => Some(r),
                 Err(e) => {
-                    warn!("PWR read error (usb): {}", e);
+                    if e.is_device_gone() {
+                        session_dead = true;
+                    } else {
+                        warn!("STS read error (usb): {}", e);
+                    }
                     None
                 }
+            };
+            if session_dead {
+                break;
             }
-        } else {
-            None
-        };
-        tick = tick.wrapping_add(1);
 
-        if !process_poll_tick(
-            &state,
-            &mut poll_state,
-            commanded_mode,
-            sts_resp.as_deref(),
-            glg_resp.as_deref(),
-            pwr_resp.as_deref(),
-            volume,
-            "usb",
-        ) {
+            let glg_resp = match transport.send(&mut session, GLG_CMD) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    if e.is_device_gone() {
+                        session_dead = true;
+                    } else {
+                        warn!("GLG read error (usb): {}", e);
+                    }
+                    None
+                }
+            };
+            if session_dead {
+                break;
+            }
+
+            let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
+                match transport.send(&mut session, PWR_CMD) {
+                    Ok(r) => Some(r),
+                    Err(e) => {
+                        if e.is_device_gone() {
+                            session_dead = true;
+                        } else {
+                            warn!("PWR read error (usb): {}", e);
+                        }
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            if session_dead {
+                break;
+            }
+            tick = tick.wrapping_add(1);
+
+            if !process_poll_tick(
+                &state,
+                &mut poll_state,
+                commanded_mode,
+                sts_resp.as_deref(),
+                glg_resp.as_deref(),
+                pwr_resp.as_deref(),
+                volume,
+                "usb",
+            ) {
+                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+                continue;
+            }
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            continue;
         }
-        thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+
+        // Session dropped here. Log once (not per failed poll) and let the
+        // outer loop reopen with backoff.
+        warn!(
+            "USB session ended for {} — scanner disconnected. Will attempt to reconnect.",
+            port_label
+        );
+        mark_disconnected(&state, "scanner disconnected");
+        thread::sleep(reconnect_backoff);
+        reconnect_backoff = next_backoff(reconnect_backoff);
     }
+}
+
+/// Flip DeviceInfo into the disconnected state with a diagnostic message.
+/// Idempotent — safe to call from each reconnect-loop iteration even if
+/// the previous iteration already marked the device disconnected.
+fn mark_disconnected(state: &AppState, reason: &str) {
+    if let Ok(mut d) = state.device.write() {
+        if d.connection_status != "disconnected" {
+            d.connection_status = "disconnected".to_string();
+        }
+        d.diagnostic_code = Some("scanner_disconnected".to_string());
+        d.diagnostic_message = Some(reason.to_string());
+    }
+    // Also flag liveState as stale so the frontend's "stale" UI fires
+    // (the frontend treats `stale: true` as a disconnect indicator).
+    if let Ok(mut live) = state.live.write() {
+        live.stale = true;
+    }
+}
+
+/// Double the reconnect delay, capped at RECONNECT_BACKOFF_MAX_MS, so a
+/// persistently-unplugged scanner doesn't spin the USB subsystem.
+fn next_backoff(current: Duration) -> Duration {
+    let doubled_ms = current
+        .as_millis()
+        .saturating_mul(2)
+        .min(RECONNECT_BACKOFF_MAX_MS as u128) as u64;
+    Duration::from_millis(doubled_ms)
 }
 
 fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &str) {
@@ -589,4 +794,28 @@ fn parse_vol_response(resp: &str) -> Option<u8> {
         return None;
     }
     val.trim().parse::<u8>().ok().map(|v| v.min(15))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_backoff_doubles_until_cap() {
+        let start = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
+        let mut current = start;
+        for _ in 0..20 {
+            let next = next_backoff(current);
+            assert!(next >= current, "backoff must be non-decreasing");
+            assert!(
+                next.as_millis() <= RECONNECT_BACKOFF_MAX_MS as u128,
+                "backoff must be capped at {} ms, got {} ms",
+                RECONNECT_BACKOFF_MAX_MS,
+                next.as_millis()
+            );
+            current = next;
+        }
+        // After enough doublings we should be sitting at the cap.
+        assert_eq!(current.as_millis(), RECONNECT_BACKOFF_MAX_MS as u128);
+    }
 }
