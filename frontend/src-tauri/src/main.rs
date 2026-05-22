@@ -7,8 +7,31 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, path::PathBuf};
 
 use serde::Serialize;
+use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::Emitter;
 use tauri::Manager;
+
+/// Menu-item IDs emitted as Tauri events when the user clicks them.
+///
+/// The frontend subscribes to these via `@tauri-apps/api/event::listen`
+/// (wired up in PR-B). Each ID also becomes the menu item's accessible
+/// label so screen readers and Tauri's built-in event naming line up.
+mod menu_ids {
+    // View menu — navigate between the three top-level tabs.
+    pub const NAV_SCAN: &str = "bearpaw:nav:scan";
+    pub const NAV_DEVICE: &str = "bearpaw:nav:device";
+    pub const NAV_CHANNELS: &str = "bearpaw:nav:channels";
+
+    // Scanner menu — actions on the physical scanner.
+    pub const CMD_HOLD: &str = "bearpaw:cmd:hold";
+    pub const CMD_SCAN: &str = "bearpaw:cmd:scan";
+    pub const CMD_SYNC_MEMORY: &str = "bearpaw:cmd:sync-memory";
+
+    // Help menu — external links + about box.
+    pub const HELP_DOCS: &str = "bearpaw:help:docs";
+    pub const HELP_ISSUES: &str = "bearpaw:help:issues";
+    pub const HELP_ABOUT: &str = "bearpaw:help:about";
+}
 
 #[derive(Default)]
 struct BackendRuntimeState {
@@ -204,6 +227,96 @@ fn backend_status(state: tauri::State<'_, ShellState>) -> BackendStatus {
     capture_backend_status(&state.backend)
 }
 
+/// Build the native macOS menu bar. The first submenu (the "app" menu) is
+/// populated by Tauri with the standard `Bearpaw › About / Hide / Quit`
+/// entries. Then our three custom submenus: View, Scanner, Help.
+///
+/// Each user-action item has a stable string ID that the frontend listens
+/// for via `@tauri-apps/api/event::listen(id, ...)`. We don't wire any
+/// behaviour to them here; the `on_menu_event` handler below just emits the
+/// ID and lets the frontend dispatch.
+fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    // Apple menu — the standard macOS app submenu. About/Hide/Quit live
+    // here per platform convention. Tauri's PredefinedMenuItem variants
+    // fill in the localised labels.
+    let app_submenu = SubmenuBuilder::new(app, "Bearpaw")
+        .item(&PredefinedMenuItem::about(app, None, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::hide(app, None)?)
+        .item(&PredefinedMenuItem::hide_others(app, None)?)
+        .item(&PredefinedMenuItem::show_all(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::quit(app, None)?)
+        .build()?;
+
+    // View: navigate between the three top-level tabs. ⌘1/⌘2/⌘3 match
+    // common Mac muscle memory (Safari, Finder, etc.).
+    let view_submenu = SubmenuBuilder::new(app, "View")
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::NAV_SCAN, "Scan")
+                .accelerator("CmdOrCtrl+1")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::NAV_DEVICE, "Device")
+                .accelerator("CmdOrCtrl+2")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::NAV_CHANNELS, "Channels")
+                .accelerator("CmdOrCtrl+3")
+                .build(app)?,
+        )
+        .build()?;
+
+    // Scanner: actions on the physical scanner. Matches the existing
+    // keyboard-shortcut handlers in useKeyboardShortcuts.ts where possible.
+    let scanner_submenu = SubmenuBuilder::new(app, "Scanner")
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::CMD_HOLD, "Hold")
+                .accelerator("CmdOrCtrl+H")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::CMD_SCAN, "Scan")
+                .accelerator("CmdOrCtrl+S")
+                .build(app)?,
+        )
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::CMD_SYNC_MEMORY, "Sync Memory")
+                .accelerator("CmdOrCtrl+Y")
+                .build(app)?,
+        )
+        .build()?;
+
+    // Help: external links + a custom about-box trigger. The Apple-menu
+    // About uses Tauri's built-in panel; this one gives us room to grow a
+    // richer dialog later (PR-D in the menu sequence).
+    let help_submenu = SubmenuBuilder::new(app, "Help")
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::HELP_DOCS, "Documentation")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::HELP_ISSUES, "GitHub Issues")
+                .build(app)?,
+        )
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::HELP_ABOUT, "About Bearpaw")
+                .build(app)?,
+        )
+        .build()?;
+
+    MenuBuilder::new(app)
+        .item(&app_submenu)
+        .item(&view_submenu)
+        .item(&scanner_submenu)
+        .item(&help_submenu)
+        .build()
+}
+
 fn main() {
     let backend_state = Arc::new(BackendRuntimeState::default());
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -230,9 +343,23 @@ fn main() {
             // Leak the guard so it lives for the process lifetime
             std::mem::forget(_logging);
 
+            // Build and install the native menu bar. PR-A only wires the
+            // menus + emits events on click; the frontend handlers that
+            // make them functional land in PR-B.
+            let menu = build_menu(app.handle())?;
+            app.set_menu(menu)?;
+
             start_backend_runtime(backend_state.clone(), shutdown_rx);
             start_status_broadcaster(app.handle().clone(), backend_state.clone());
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            // The menu-item ID is also the event name we emit. Frontend
+            // subscribes via `listen("bearpaw:nav:scan", ...)` etc.
+            let id = event.id().as_ref();
+            if let Err(err) = app.emit(id, ()) {
+                eprintln!("failed to emit menu event {}: {}", id, err);
+            }
         })
         .invoke_handler(tauri::generate_handler![shell_info, backend_status])
         .build(tauri::generate_context!())
