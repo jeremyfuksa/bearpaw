@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { listen } from '@tauri-apps/api/event';
 import { isTauriRuntime } from '../tauri-shell';
 import type { Tab } from '../app/App';
 
@@ -36,7 +37,6 @@ export function useMenuEvents(handlers: MenuEventHandlers): void {
     const unlisteners: Array<() => void> = [];
 
     (async () => {
-      const { listen } = await import('@tauri-apps/api/event');
       for (const name of EVENT_NAMES) {
         const unlisten = await listen(name, () => {
           const navTab = NAV_TABS[name];
