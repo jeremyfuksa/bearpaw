@@ -49,6 +49,11 @@ export default defineConfig({
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,
+        // changeOrigin rewrites the Host header to localhost:8000 so the
+        // backend's Host allowlist accepts the proxied upgrade. Without it
+        // the browser's Host (localhost:5173) propagates through and gets
+        // rejected as a potential DNS-rebinding target.
+        changeOrigin: true,
       },
     },
   },
