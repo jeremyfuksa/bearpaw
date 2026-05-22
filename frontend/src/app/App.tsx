@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip
 import { getAPI, API_BASE } from '../api/useApi';
 import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
+import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import {
   getBackendStatus,
@@ -25,7 +26,6 @@ import { ActivityExportSheet } from './components/views/ActivityExportSheet';
 // API_BASE is imported from ../api/useApi (Tauri-aware)
 
 export type Tab = 'Scan' | 'Device' | 'Channels';
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 export type ScannerMode = 'SCAN' | 'HOLD' | 'SEARCH' | 'CLOSE_CALL';
 
 function getRelativeTime(date: Date | number) {
@@ -78,7 +78,7 @@ export default function App() {
     },
   });
   const api = getAPI();
-  const { ws, connected, connecting } = useWebSocket();
+  const { ws, connected } = useWebSocket();
 
   const liveState = useStore((state) => state.liveState);
   const deviceInfo = useStore((state) => state.deviceInfo);
@@ -580,12 +580,7 @@ export default function App() {
     }
   }, [liveState?.mode, isInProgramMode, isMemorySyncing]);
 
-  const getConnectionStatus = useCallback((): ConnectionStatus => {
-    if (connecting) return 'connecting';
-    if (!connected || deviceInfo?.connection_status === 'disconnected' || liveState?.stale)
-      return 'disconnected';
-    return 'connected';
-  }, [connected, connecting, deviceInfo, liveState]);
+  const connectionStatus = useConnectionStatus();
 
   const shellStatusText = useMemo(() => {
     if (!isTauriRuntime()) return null;
@@ -851,7 +846,7 @@ export default function App() {
         <TabNav
           currentTab={currentTab}
           onTabChange={handleTabChange}
-          connectionStatus={getConnectionStatus()}
+          connectionStatus={connectionStatus}
           modelName={deviceInfo?.model || 'BC125AT'}
           shellStatusText={shellStatusText}
         />
@@ -898,8 +893,8 @@ export default function App() {
                       isScanning={
                         !isInitialSyncing && liveState?.mode === 'SCAN' && !liveState?.squelch_open
                       }
-                      isError={getConnectionStatus() === 'disconnected'}
-                      errorType={getConnectionStatus() === 'disconnected' ? 'usb' : undefined}
+                      isError={connectionStatus === 'disconnected'}
+                      errorType={connectionStatus === 'disconnected' ? 'usb' : undefined}
                       variant="default"
                       className="flex-1 min-h-0 mb-3"
                     />
@@ -1021,8 +1016,8 @@ export default function App() {
                     isScanning={
                       !isInitialSyncing && liveState?.mode === 'SCAN' && !liveState?.squelch_open
                     }
-                    isError={getConnectionStatus() === 'disconnected'}
-                    errorType={getConnectionStatus() === 'disconnected' ? 'usb' : undefined}
+                    isError={connectionStatus === 'disconnected'}
+                    errorType={connectionStatus === 'disconnected' ? 'usb' : undefined}
                     variant="monitor"
                     className="h-full w-full"
                   />
