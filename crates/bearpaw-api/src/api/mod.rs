@@ -514,7 +514,9 @@ async fn post_lockout(
                     lockout: false,
                     priority: false,
                     tone_squelch: None,
-                    bank: 1,
+                    tone_squelch_kind: Default::default(),
+                    tone_dcs_code: None,
+                    bank: crate::protocol::index_to_bank(index),
                 });
                 ch.lockout = !ch.lockout;
                 ch.clone()
@@ -2394,6 +2396,12 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         .transpose()
         .map_err(|_| "Invalid CTCSS/DCS".to_string())?;
 
+    let tone_squelch_kind = if tone_squelch.is_some() {
+        crate::state::ToneSquelchKind::Ctcss
+    } else {
+        crate::state::ToneSquelchKind::None
+    };
+
     Ok(ChannelData {
         index,
         frequency,
@@ -2406,6 +2414,8 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         lockout: row.get("Lockout").map(|s| parse_bool(s)).unwrap_or(false),
         priority: row.get("Priority").map(|s| parse_bool(s)).unwrap_or(false),
         tone_squelch,
+        tone_squelch_kind,
+        tone_dcs_code: None,
         bank,
     })
 }
