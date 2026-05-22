@@ -33,10 +33,11 @@ pub fn spawn_poll_loop(
     state: AppState,
     port_name: String,
     baud: u32,
+    assert_dtr: bool,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
 ) {
     thread::spawn(move || {
-        if let Err(e) = run_poll_loop(state.clone(), &port_name, baud, cmd_rx) {
+        if let Err(e) = run_poll_loop(state.clone(), &port_name, baud, assert_dtr, cmd_rx) {
             error!("Poll loop exited: {}", e);
             if let Ok(mut d) = state.device.write() {
                 d.connection_status = "disconnected".to_string();
@@ -50,13 +51,14 @@ fn run_poll_loop(
     state: AppState,
     port_name: &str,
     baud: u32,
+    assert_dtr: bool,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some((vid, pid)) = parse_usb_target(port_name) {
         return run_poll_loop_usb(state, vid, pid, cmd_rx);
     }
 
-    let transport = SerialTransport::new(port_name, baud);
+    let transport = SerialTransport::new(port_name, baud).with_dtr_on_open(assert_dtr);
     let mut port = transport.open().map_err(|e| e.to_string())?;
 
     info!("Serial opened: {} @ {} baud", port_name, baud);

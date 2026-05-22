@@ -20,7 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let bind = format!("{}:{}", cfg.api.host, cfg.api.port);
     let state = default_state();
     let baud = cfg.device.baud.unwrap_or(115200);
-    let serial = config::resolve_serial_port(&cfg).map(|p| (p, baud));
+    let assert_dtr = cfg.device.assert_dtr_on_open;
+    let serial = config::resolve_serial_port(&cfg).map(|p| (p, baud, assert_dtr));
 
     run_server(&bind, state, serial).await
 }
