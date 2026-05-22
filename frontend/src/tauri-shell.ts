@@ -13,8 +13,17 @@ export interface BackendStatus {
 }
 
 export function isTauriRuntime(): boolean {
-  const marker = (window as Window & { __TAURI__?: unknown }).__TAURI__;
-  return typeof marker === 'object' && marker !== null;
+  // Tauri 2 only injects `__TAURI_INTERNALS__` by default. `__TAURI__` is
+  // present only when `app.withGlobalTauri` is set in `tauri.conf.json`,
+  // which we deliberately leave off. Check both so the helper keeps
+  // working regardless of that config flip.
+  const w = window as Window & {
+    __TAURI__?: unknown;
+    __TAURI_INTERNALS__?: unknown;
+  };
+  const hasGlobal = typeof w.__TAURI__ === 'object' && w.__TAURI__ !== null;
+  const hasInternals = typeof w.__TAURI_INTERNALS__ === 'object' && w.__TAURI_INTERNALS__ !== null;
+  return hasGlobal || hasInternals;
 }
 
 export async function getShellInfo(): Promise<ShellInfo | null> {
