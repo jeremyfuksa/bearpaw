@@ -198,7 +198,7 @@ This is the actual connection and reconnection flow the backend uses for USB sca
 **2. When a transport opens successfully**
 - Backend starts the command scheduler.
 - It sends `MDL` to identify the scanner model.
-- It picks the driver (`BC125AT` or `SR30C`) and sets `device_info.connection_status = "connected"`.
+- It loads the BC125AT driver and sets `device_info.connection_status = "connected"`.
 - The polling loop starts and WebSocket `state_update` messages begin.
 
 **3. If the USB device is missing or unplugged**
