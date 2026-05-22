@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { open as openInShell } from '@tauri-apps/plugin-shell';
 
 export interface ShellInfo {
   product_name: string;
@@ -37,6 +38,21 @@ export async function getShellInfo(): Promise<ShellInfo | null> {
 export async function getBackendStatus(): Promise<BackendStatus | null> {
   if (!isTauriRuntime()) return null;
   return invoke<BackendStatus>('backend_status');
+}
+
+/**
+ * Open a URL in the user's default browser via Tauri's shell plugin.
+ * Falls back to `window.open` outside Tauri (e.g. plain `npm run dev`),
+ * which is fine because that path has a real browser already.
+ */
+export function openExternalUrl(url: string): void {
+  if (isTauriRuntime()) {
+    void openInShell(url).catch((error) => {
+      console.warn('Failed to open external URL via shell plugin', error);
+    });
+    return;
+  }
+  window.open(url, '_blank', 'noopener');
 }
 
 export async function subscribeBackendStatus(

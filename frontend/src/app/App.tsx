@@ -12,6 +12,7 @@ import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useMenuEvents } from '../hooks/useMenuEvents';
 import { useShellStatusText } from '../hooks/useShellStatusText';
+import { openExternalUrl } from '../tauri-shell';
 import type { ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
@@ -439,10 +440,10 @@ export default function App() {
           });
       },
       onOpenDocs: () => {
-        window.open('https://github.com/jeremyfuksa/bearpaw#readme', '_blank', 'noopener');
+        openExternalUrl('https://github.com/jeremyfuksa/bearpaw#readme');
       },
       onOpenIssues: () => {
-        window.open('https://github.com/jeremyfuksa/bearpaw/issues', '_blank', 'noopener');
+        openExternalUrl('https://github.com/jeremyfuksa/bearpaw/issues');
       },
     }),
     [api, connected, handleTabChange, updateSync],
