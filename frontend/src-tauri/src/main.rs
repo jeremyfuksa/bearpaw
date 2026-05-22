@@ -110,9 +110,9 @@ fn start_backend_runtime(
     let api_state = bearpaw_api::default_state();
     let bind = format!("{}:{}", cfg.api.host, cfg.api.port);
     let resolved_serial = bearpaw_api::resolve_serial_port(&cfg);
-    let serial_port = resolved_serial
-        .clone()
-        .map(|p| (p, cfg.device.baud.unwrap_or(115200)));
+    let baud = cfg.device.baud.unwrap_or(115200);
+    let assert_dtr = cfg.device.assert_dtr_on_open;
+    let serial_port = resolved_serial.clone().map(|p| (p, baud, assert_dtr));
 
     let mut startup_issue = None;
     if config_path.is_none() {
@@ -234,17 +234,19 @@ fn main() {
             start_status_broadcaster(app.handle().clone(), backend_state.clone());
             Ok(())
         })
-        .on_event(move |_app, event| {
+        .invoke_handler(tauri::generate_handler![shell_info, backend_status])
+        .build(tauri::generate_context!())
+        .expect("error while building bearpaw application")
+        .run(move |_app, event| {
+            // Tauri 2 moved the run-event callback from Builder::on_event
+            // to a closure passed to AppHandle::run. Signal the backend to
+            // shut down gracefully when the OS asks the app to quit.
             if let tauri::RunEvent::ExitRequested { .. } = &event {
-                // Signal the backend to shut down gracefully
                 if let Ok(mut tx) = shutdown_tx.lock() {
                     if let Some(tx) = tx.take() {
                         let _ = tx.send(());
                     }
                 }
             }
-        })
-        .invoke_handler(tauri::generate_handler![shell_info, backend_status])
-        .run(tauri::generate_context!())
-        .expect("error while running bearpaw application");
+        });
 }
