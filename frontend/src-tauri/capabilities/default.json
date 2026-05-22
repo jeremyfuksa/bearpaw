@@ -2,5 +2,14 @@
   "identifier": "default",
   "description": "Default capability set for Bearpaw desktop.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "url": "https://github.com/jeremyfuksa/bearpaw" },
+        { "url": "https://github.com/jeremyfuksa/bearpaw/**" }
+      ]
+    }
+  ]
 }
