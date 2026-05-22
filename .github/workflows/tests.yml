@@ -25,10 +25,23 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-      - name: Install Linux USB dev headers
-        run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
+      - name: Install Linux system deps (USB + Tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libudev-dev \
+            pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
       - name: Run backend tests
         run: cargo test -p bearpaw-api --lib
+      # Cheap insurance against silent drift in the Tauri crate (see
+      # https://github.com/jeremyfuksa/bearpaw/pull/80). Workspace check
+      # catches signature mismatches like the Phase 9b run_server_with_shutdown
+      # tuple change that would otherwise only surface on `npm run tauri:dev`.
+      - name: Check whole workspace compiles
+        run: cargo check --workspace --all-targets
 
   test-frontend:
     name: Frontend Tests
