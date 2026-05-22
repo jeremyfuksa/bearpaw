@@ -36,6 +36,21 @@ jobs:
             librsvg2-dev
       - name: Run backend tests
         run: cargo test -p bearpaw-api --lib
+      # Tauri's `generate_context!` macro validates that the configured
+      # `frontendDist` path (`../dist`) exists at compile time even for
+      # `cargo check`. Build the frontend first so the workspace check
+      # has something to point at.
+      - name: Setup Node.js (for Tauri frontendDist)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend dist
+        run: |
+          cd frontend
+          npm ci
+          npm run build
       # Cheap insurance against silent drift in the Tauri crate (see
       # https://github.com/jeremyfuksa/bearpaw/pull/80). Workspace check
       # catches signature mismatches like the Phase 9b run_server_with_shutdown
