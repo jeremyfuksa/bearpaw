@@ -185,10 +185,3 @@ export interface ConfigSnapshot {
   weather?: WeatherSettings | null;
   contrast?: ContrastSettings | null;
 }
-
-export interface Notification {
-  id: string;
-  type: 'success' | 'error' | 'info' | 'warning';
-  message: string;
-  duration?: number;
-}
