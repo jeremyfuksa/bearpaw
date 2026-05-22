@@ -1,33 +1,13 @@
 import { defineConfig } from 'vite';
-import fs from 'fs';
 import path from 'path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-
-function fixCampfireSpacing() {
-  const patch = (code: string) => code.replace(/--spacing\((\d+)\)/g, 'calc(var(--spacing) * $1)');
-
-  return {
-    name: 'campfire-spacing-fix',
-    enforce: 'pre' as const,
-    async load(id: string) {
-      if (
-        id.includes('@jeremyfuksa/campfire/dist/index.css') ||
-        id.includes('@jeremyfuksa/campfire/styles.css')
-      ) {
-        const code = await fs.promises.readFile(id, 'utf-8');
-        return patch(code);
-      }
-    },
-  };
-}
 
 export default defineConfig({
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
     // Tailwind is not being actively used – do not remove them
     react(),
-    fixCampfireSpacing(),
     tailwindcss(),
   ],
   resolve: {

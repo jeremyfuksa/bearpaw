@@ -22,7 +22,7 @@
   "dependencies": {
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
-    "@jeremyfuksa/campfire": "0.9.0",
+    "@jeremyfuksa/campfire": "2.0.0",
     "@mui/icons-material": "7.3.11",
     "@mui/material": "7.3.11",
     "@popperjs/core": "2.11.8",
