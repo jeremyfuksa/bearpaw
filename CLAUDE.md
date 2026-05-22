@@ -1,348 +1,251 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) working in this repo.
 
-## Project Overview
+## Project overview
 
-Bearpaw is a web-based control interface for the Uniden BC125AT scanner. It's split into:
-- **Backend**: Python FastAPI service that talks to scanner hardware via serial/USB
-- **Frontend**: React + TypeScript + Vite SPA that provides a web UI
+Bearpaw is a desktop control interface for the Uniden BC125AT scanner.
 
-The architecture is **strictly client-server**: the backend owns ALL state and hardware communication. The frontend is a stateless, replaceable UI that only displays current state and sends commands.
+- **Backend:** Rust (Axum REST + WebSocket) in [`crates/bearpaw-api/`](crates/bearpaw-api/). Talks to the scanner over serial or direct USB.
+- **Frontend:** React + TypeScript + Vite SPA in [`frontend/`](frontend/), state in Zustand.
+- **Desktop shell:** Tauri 2 bundles backend + frontend into a single app. Lives in [`frontend/src-tauri/`](frontend/src-tauri/).
 
-## Development Commands
+Architecture is **strictly client/server.** The Rust backend owns ALL state and hardware communication. The React frontend is replaceable — it only displays current state and sends commands.
 
-### Backend (Python)
+Current version: see [`crates/bearpaw-api/Cargo.toml`](crates/bearpaw-api/Cargo.toml).
+
+## Development commands
+
+### Backend (Rust)
 
 ```bash
-# Setup (from backend/)
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
+# Run standalone (frontend dev server proxies to it)
+cargo run -p bearpaw-api --bin bearpaw -- --config ./config.yaml
 
-# Run backend
-bearpaw --config ./config.yaml
-
-# Install in dev mode
-pip install -e .
+# Tests / type check / lint
+cargo test -p bearpaw-api
+cargo check -p bearpaw-api
+cargo clippy -p bearpaw-api
 ```
 
-**Config**: Copy `backend/config.example.yaml` to create your config. See `docs/BACKEND_SPEC.md` for schema.
+**Config:** copy [`crates/bearpaw-api/config.example.yaml`](crates/bearpaw-api/config.example.yaml) to `./config.yaml` and edit. The example covers the macOS USB-direct setup (see Pitfalls).
 
 ### Frontend (React + Vite)
 
+From [`frontend/`](frontend/):
+
 ```bash
-# Setup (from frontend/)
 npm install
-
-# Development
-npm run dev              # Start dev server with HMR
-npm run build            # Production build
-
-# Tests
-npm test                 # Run vitest once
-npm run test:watch       # Vitest in watch mode
-npm run test:coverage    # Vitest with coverage
-
-# Code quality
-npm run lint             # Run ESLint
-npm run lint:fix         # Auto-fix ESLint issues
-npm run format           # Format with Prettier
-npm run format:check     # Check formatting
-npm run type-check       # TypeScript type checking (excludes test files)
+npm run dev              # HMR dev server (proxies /api and /ws to localhost:8000)
+npm run build
+npm test -- --run        # vitest one-shot
+npm run lint
+npm run type-check
+npm run format:check
 ```
 
-**Type-check scope**: `tsc` runs against production source (`src/`). Test files (`__tests__/`, `*.test.*`, `e2e/`) are excluded — Vitest transpiles them via Vite. Re-include them in `tsconfig.json` once test mock typing is cleaned up.
+**Type-check scope:** `tsc` runs against `src/` only. Test files are excluded — Vitest transpiles them via Vite.
 
-**Dev server proxy**: Vite proxies `/api` and `/ws` to `http://localhost:8000` in development (see `frontend/vite.config.ts`).
+### Tauri (full desktop app)
 
-## Critical Architecture Concepts
+From [`frontend/`](frontend/):
 
-### 1. Three-Layer State Model (Backend)
-
-The backend maintains state in three distinct layers:
-
-**LiveState** (real-time polling):
-- Current frequency, modulation, squelch_open, rssi, mode
-- Polled from scanner hardware 5-10x per second via `STS` command
-- Located in `state.py`, updated by `_poll_status()` in `api.py:350`
-
-**ShadowState** (cached channel memory):
-- All 500 channels with frequency, alpha_tag, bank, lockout, etc.
-- Read once during memory sync (60+ seconds), cached in-memory
-- Optional persistence to SQLite or JSON (`persistence.py`)
-
-**DeviceInfo** (static metadata):
-- Model name, serial port, VID/PID
-- Detected on startup via `MDL` command
-
-### 2. Command Scheduler Priority System
-
-Scanner commands are queued with three priority levels (`scheduler.py`):
-
-```python
-PRIORITY_CONTROL = 0      # User commands (hold, scan, tune) - highest
-PRIORITY_TELEMETRY = 1    # Status polling (STS) - medium
-PRIORITY_BACKGROUND = 2   # Memory sync, channel reads - lowest
+```bash
+npm run tauri:dev        # dev mode with HMR
+npm run tauri:build      # bundle for release
 ```
 
-**Why this matters**: High-priority commands preempt polling. During memory sync, status polling yields to avoid blocking user controls.
+## Critical architecture concepts
 
-**Program mode**: Reading channels requires entering `PRG` mode, which:
-1. Saves current mode (SCAN/HOLD)
-2. Stops scanning if active
-3. Enters program mode
-4. Reads channel data
-5. Exits program mode (`EPG`)
-6. Restores previous mode
+### 1. Three state surfaces
 
-Located in `protocol/bc125at.py:135-147`.
+**`LiveState`** ([`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs)) — real-time scanner state polled 5×/sec.
+- `frequency`, `modulation`, `squelch_open`, `rssi`, `mode`, `channel`, `alpha_tag`, `volume`, `stale`.
+- Updated by the poll loop in [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs).
 
-### 3. Scanner State Transitions (The "Hit" Workflow)
+**Channel memory** — all 500 channels read once during memory sync via `PRG` → `CIN,1` … `CIN,500` → `EPG`. Cached in `AppState.channels`. Persistence to SQLite in [`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs).
 
-**Critical concept**: The scanner has THREE operational modes, plus a signal state:
+**`DeviceInfo`** — static metadata: model name (from `MDL`), port, connection_status. Same module.
 
-**Modes** (controlled by user commands):
-- `SCAN`: Cycling through channels (hardware does the cycling)
-- `HOLD`: Stopped on one frequency (user-initiated via `KEY,H,P`)
-- `DIRECT`: Tuned to manual frequency (via `DO,<freq>,<mod>`)
+### 2. Command queue and program-mode guard
 
-**Signal State** (hardware-controlled):
-- `squelch_open: true` - Signal detected, scanner AUTOMATICALLY paused
-- `squelch_open: false` - No signal, scanner resumes cycling (if in SCAN mode)
+The poll loop is single-threaded. User commands enter via an mpsc channel ([`crates/bearpaw-api/src/api/control.rs`](crates/bearpaw-api/src/api/control.rs)) and are drained between status polls. There's no priority enum — every queued command runs before the next `STS` poll.
 
-**The "hit" workflow** (see `docs/UI_WORKFLOW.md`):
+**Program mode** is a RAII guard ([`crates/bearpaw-api/src/api/program_mode.rs`](crates/bearpaw-api/src/api/program_mode.rs)):
+
+1. `enter()` sends `PRG`, waits for `PRG,OK`, sets `program_mode_active` atomic.
+2. Drop sends `EPG` via the command channel.
+3. The poll loop checks `program_mode_active` and yields its `STS`/`GLG` polling while program mode is in effect.
+
+Always use the guard — never send `PRG`/`EPG` manually.
+
+### 3. The "hit" workflow
+
+Scanner has three operational modes plus a signal-open state:
+
+- **Mode** (user-driven): `SCAN` / `HOLD` / `DIRECT`. Tracked by the backend as `commanded_mode` in the poll loop. The scanner does NOT report mode on the wire.
+- **`squelch_open`** (hardware-driven): true = signal present, scanner auto-paused. false = no signal, scanner cycling.
+
 ```
-1. mode=SCAN, squelch_open=false  → "Scanning..." (actively searching)
-2. squelch_open: false → true     → Scanner auto-pauses, backend broadcasts "scan_hit" event
-3. mode=SCAN, squelch_open=true   → "Hit" state (listening to signal)
-4. squelch_open: true → false     → Scanner auto-resumes scan, back to step 1
-```
-
-**Common mistake**: During a hit, `mode` is still `"SCAN"`. The scanner hardware pauses automatically when squelch opens, but the mode doesn't change to HOLD. Only manual user action changes mode.
-
-**Code location**: `api.py:374-395` detects squelch transitions and broadcasts WebSocket events.
-
-### 4. WebSocket State Synchronization
-
-Backend → Frontend flow (`websocket.py` + `api.py:350-420`):
-
-```python
-# Every poll cycle (0.1-0.2s):
-state = await driver.get_status()           # Poll scanner
-changes = state_store.update_live_state()   # Detect what changed
-if changes:
-    ws_manager.broadcast({
-        "type": "state_update",
-        "sequence": int(timestamp * 1000),  # Prevents out-of-order updates
-        "data": changes                     # Only changed fields
-    })
+1. mode=SCAN, squelch_open=false  →  "Scanning..." (cycling)
+2. squelch opens                   →  backend broadcasts `scan_hit` event
+3. mode=SCAN, squelch_open=true    →  "Hit" (display the frequency, alpha tag, RSSI)
+4. squelch closes                  →  back to step 1
 ```
 
-**Message types**:
-- `state_update`: Partial state changes (most common)
-- `event`: Special events like "scan_hit" (when squelch opens)
-- `progress`: Long-running task updates (memory sync)
-- `error`: Error conditions
+**Common mistake:** during a hit, `mode` stays `"SCAN"`. The hardware pauses automatically; the mode only changes when the user presses Hold or Direct. The poll loop and squelch-detection logic live in [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs).
 
-**Sequence numbers**: Frontend MUST check `message.sequence > lastSequence` to prevent stale updates from overwriting newer state.
+### 4. WebSocket state sync
 
-### 5. Frontend State Rules (React + Zustand)
+Every poll cycle the backend computes a diff and broadcasts only changed fields:
 
-Frontend display logic (`frontend/src/components/VirtualDisplay.tsx`):
-
-```typescript
-// Show "Scanning..." when:
-liveState.mode === "SCAN" && !liveState.squelch_open
-
-// Show frequency/channel/alpha tag when:
-liveState.squelch_open === true       // Hit detected
-|| liveState.mode === "HOLD"          // Manual hold
-|| liveState.mode === "DIRECT"        // Direct tune
+```jsonc
+{
+  "type": "state_update",
+  "sequence": 1779433242187,    // monotonically increasing
+  "data": { "frequency": 146.85, "squelch_open": true }
+}
 ```
 
-**Why**: During active scan, frequency changes 5-10x per second (unreadable). Only display stable frequency when scanner is stopped.
+Message types ([`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md)):
+- `state_update` — partial LiveState changes (most common)
+- `event` — `scan_hit`, `state_stale`, etc.
+- `progress` — long-running task updates (memory sync)
+- `device_info` — model/port/connection_status changes
 
-**Alpha tags**: Frontend looks up `channels[liveState.channel]` from shadow state to display friendly names like "Police Dispatch" instead of just frequency.
+The frontend MUST check `message.sequence > lastSequence` ([`frontend/src/store/useStore.ts`](frontend/src/store/useStore.ts) `updateLiveState`). Out-of-order updates are dropped.
 
-**Store location**: `frontend/src/store/useStore.ts` (Zustand store with partial update merging).
+### 5. Frontend display logic
 
-## Device Driver
+The `mainText`/`subText` derivation in [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) decides what the big display shows:
 
-Single protocol implementation for the BC125AT family
-(`protocol/bc125at.py`).
+- During scan with no hit: "Scanning..."
+- During a hit OR mode = HOLD/DIRECT: stable frequency + alpha tag + modulation
+- When sync is in progress: "Syncing Scanner Memory" + progress text
 
-- Supports `STS` (LCD dump) and `GLG` (comma-separated) status formats —
-  see `docs/SCANNER_PROTOCOL_REFERENCE.md` for the canonical wire spec
-- Returns battery level and volume
+The connection-status enum (`'connected' | 'connecting' | 'disconnected'`) is derived in [`frontend/src/hooks/useConnectionStatus.ts`](frontend/src/hooks/useConnectionStatus.ts) by folding five signals (WS connected/connecting, deviceInfo.connection_status, liveState.stale, Tauri shell status).
 
-**Identification**: `api.py` queries the `MDL` command on connect; only
-BC125AT-family responses (BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H)
-are supported.
+## Wire protocol
 
-**Common commands**:
-- `STS` - Get current status (frequency, squelch, rssi, etc.)
-- `KEY,H,P` - Hold (stop scanning)
-- `KEY,S,P` - Scan (start scanning)
-- `DO,<freq>,<mod>` - Direct tune to frequency
-- `PRG` / `EPG` - Enter/exit program mode
-- `CIN,<index>` - Read channel data (requires program mode)
+The BC125AT speaks an ASCII line protocol over USB CDC-ACM at 115200 8N1, `\r`-terminated. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the canonical wire shape and the audit history. Real wire captures live in [`docs/wire_captures/2026-05-21/`](docs/wire_captures/2026-05-21/).
 
-## Transport Layer
+Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs)):
 
-Two transport implementations:
+| Cmd | Purpose | Mode |
+|---|---|---|
+| `MDL` | Model probe — must reply `MDL,BC125AT` (or BCT125AT, UBC125XLT, UBC126AT, AE125H) | any |
+| `VER` | Firmware version | any |
+| `STS` | LCD dump + status flags | any |
+| `GLG` | Canonical live frequency/mod/tone/name/squelch | any |
+| `PWR` | RSSI (0–1023 raw) | any |
+| `KEY,<key>,P` | Virtual keypress | any |
+| `DO,<freq>,<mod>` | Direct tune | any |
+| `PRG` / `EPG` | Enter/exit program mode | — |
+| `CIN,<index>` | Read channel data | PRG |
+| `GLF` / `LOF` / `ULF` | Walk/add/remove global lockouts | PRG |
+| `SCG` | Bank-enable mask (10 chars, `'1'`=disabled) | PRG |
+| `BLT`, `BSV`, `KBP`, `CNT`, `VOL`, `SQL`, `PRI`, `WXS` | Global settings | either |
 
-**SerialTransport** (`transport.py`):
-- Standard pyserial over COM/ttyUSB ports
-- Auto-detection via `discovery.py` (scans for Uniden VID/PID)
+CTCSS/DCS codes (0–231) are decoded to Hz in [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs).
 
-**UsbTransport** (`transport_usb.py`):
-- Direct USB CDC access via pyusb (Linux without kernel drivers)
-- Requires USB VID/PID in config
+## Transport
 
-**Command protocol**:
-1. Send ASCII command + `\r` (carriage return)
-2. Read until `\r` received
-3. Strip `\r` from response
-4. Timeout: 0.5s default
+Two transports, picked based on config:
+
+- **`SerialTransport`** ([`crates/bearpaw-api/src/transport.rs`](crates/bearpaw-api/src/transport.rs)) — `serialport` crate, opens `/dev/cu.usbmodem*` / `/dev/ttyUSB0` / `COMx`.
+- **`UsbTransport`** ([`crates/bearpaw-api/src/transport_usb.rs`](crates/bearpaw-api/src/transport_usb.rs)) — `nusb` direct bulk endpoints. Used when serial CDC binding fails (macOS — see Pitfalls).
+
+The poll loop dispatches to the right transport based on whether the resolved port string starts with `usb:` (USB pseudo-target) or looks like a serial device. See [`crates/bearpaw-api/src/config.rs::resolve_serial_port`](crates/bearpaw-api/src/config.rs).
 
 ## Configuration
 
-**Backend** (`backend/config.yaml`):
+`./config.yaml` at repo root (gitignored). Example in [`crates/bearpaw-api/config.example.yaml`](crates/bearpaw-api/config.example.yaml).
+
+Minimal macOS config:
+
 ```yaml
 device:
-  port: "/dev/ttyUSB0"          # Serial port (or null for auto-detect)
-  transport: "serial"            # "serial", "usb", or "auto"
-  usb_vid: 0x1965               # For USB transport
+  usb_vid: 0x1965
   usb_pid: 0x0017
-
-polling:
-  sts_interval: 0.2              # Status poll rate (seconds)
-
-state:
-  persistence: "sqlite"          # "none", "json", or "sqlite"
-  db_path: "./scanner.db"
-
-exporters:
-  text_file:
-    enabled: true
-    path: "./now_scanning.txt"   # Live frequency export for OBS
-    update_on: ["squelch_open"]  # When to update file
-
-  mqtt:
-    enabled: false
-    host: "localhost"
-    topic_prefix: "scanner/"
+api:
+  host: 127.0.0.1
+  port: 8000
 ```
 
-**Frontend** (environment variables in `frontend/.env`):
+On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver never binds — `/dev/cu.usbmodem*` does not appear. Setting `usb_vid`/`usb_pid` forces the `nusb` direct-USB path. Linux/Windows usually omit those fields and let auto-detect handle it.
+
+Frontend env (in `frontend/.env`):
+
 ```
-VITE_API_BASE_URL=/api/v1      # API base (proxied in dev)
-VITE_WS_URL=                   # WebSocket URL (auto-detected if empty)
+VITE_API_BASE_URL=/api/v1
+VITE_WS_URL=                # auto-detect from window.location if empty
 ```
 
-## Key Files Reference
+## Key files
 
-### Backend Critical Paths
+### Backend
+- [`crates/bearpaw-api/src/main.rs`](crates/bearpaw-api/src/main.rs) — binary entry point
+- [`crates/bearpaw-api/src/api/mod.rs`](crates/bearpaw-api/src/api/mod.rs) — Axum router, `run_server`
+- [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs) — poll loop, hit detection
+- [`crates/bearpaw-api/src/api/program_mode.rs`](crates/bearpaw-api/src/api/program_mode.rs) — PRG/EPG RAII guard
+- [`crates/bearpaw-api/src/api/memory_sync.rs`](crates/bearpaw-api/src/api/memory_sync.rs) — `CIN,1..500` walker
+- [`crates/bearpaw-api/src/api/ws.rs`](crates/bearpaw-api/src/api/ws.rs) — WebSocket broadcast
+- [`crates/bearpaw-api/src/api/handlers/`](crates/bearpaw-api/src/api/handlers/) — REST handlers (banks, channels, settings, commands, etc.)
+- [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs) — STS/GLG/CIN/PWR parsers
+- [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs) — CTCSS/DCS code → Hz
+- [`crates/bearpaw-api/src/transport.rs`](crates/bearpaw-api/src/transport.rs), [`transport_usb.rs`](crates/bearpaw-api/src/transport_usb.rs)
+- [`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs) — `LiveState`, `ChannelData`, `DeviceInfo`
+- [`crates/bearpaw-api/src/config.rs`](crates/bearpaw-api/src/config.rs)
 
-- `api.py` - FastAPI app, polling loop, WebSocket endpoint
-- `scheduler.py` - Priority queue for scanner commands
-- `state.py` - LiveState/ShadowState management
-- `protocol/bc125at.py` - BC125AT driver implementation
-- `websocket.py` - WebSocket manager, broadcast logic
-- `sync.py` - Memory sync task (reads all channels)
-
-### Frontend Critical Paths
-
-- `src/App.tsx` - Main app shell, WebSocket setup
-- `src/store/useStore.ts` - Zustand state store
-- `src/api/client.ts` - REST API client
-- `src/websocket/ScannerWebSocket.ts` - WebSocket client with auto-reconnect
-- `src/components/VirtualDisplay.tsx` - Main display component
-- `src/components/PrimaryControls.tsx` - Scan/Hold button
+### Frontend
+- [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) — app shell, view routing, top-level state derivation
+- [`frontend/src/app/components/views/ScanView.tsx`](frontend/src/app/components/views/ScanView.tsx), [`DeviceTab.tsx`](frontend/src/app/components/views/DeviceTab.tsx), [`ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx)
+- [`frontend/src/store/useStore.ts`](frontend/src/store/useStore.ts) — Zustand store
+- [`frontend/src/api/client.ts`](frontend/src/api/client.ts) — REST client
+- [`frontend/src/websocket/ScannerWebSocket.ts`](frontend/src/websocket/ScannerWebSocket.ts) — WS client with auto-reconnect
+- [`frontend/src/hooks/`](frontend/src/hooks/) — `useConnectionStatus`, `useActivityLogTracker`, `useDashboardAnalytics`, `useShellStatusText`, `useKeyboardShortcuts`
 
 ## Documentation
 
-**Must-read for UI work**:
-- `docs/UI_WORKFLOW.md` - Complete scanning workflow explanation (for coding agents)
-- `docs/FRONTEND_SPEC.md` - Full frontend architecture specification
+- [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) — canonical wire-protocol reference
+- [`docs/PROTOCOL_AUDIT_PLAN.md`](docs/PROTOCOL_AUDIT_PLAN.md) — audit history (Phases 1–4 done; 5–7 partly in v1.1)
+- [`docs/API_SPEC.md`](docs/API_SPEC.md) — REST + WebSocket API contract
+- [`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) — WS message shapes
+- [`docs/BACKEND_LOGGING.md`](docs/BACKEND_LOGGING.md), [`docs/DATA_LIFECYCLE.md`](docs/DATA_LIFECYCLE.md)
+- [`docs/wire_captures/2026-05-21/`](docs/wire_captures/2026-05-21/) — real BC125AT wire traffic + audit reconciliation
+- [`docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md`](docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md) — broader protocol research notes (second-source cross-check)
+- [`docs/fixtures/kf0nui.bc125at_ss`](docs/fixtures/kf0nui.bc125at_ss) — sample Sentinel `.hpe` config dump
 
-**Backend reference**:
-- `docs/BACKEND_SPEC.md` - Configuration schema and API documentation
-
-## Common Pitfalls
+## Common pitfalls
 
 ### Backend
-
-1. **Don't block the polling loop**: Long operations go in background tasks, not inline
-2. **Program mode changes scanner state**: Always save/restore mode when entering PRG
-3. **Serial timeouts are critical**: Set transport timeout to 0.5s to prevent hangs
-4. **Scheduler priorities matter**: User commands must be PRIORITY_CONTROL to preempt polling
+1. **Don't send `PRG`/`EPG` manually** — always use `ProgramModeGuard`.
+2. **The wire is `\r`-terminated, not `\r\n`.** A stray LF leaves a byte in the input buffer and turns the next command into `ERR`.
+3. **Commands are not pipelined.** Wait for each response before sending the next.
+4. **`STS` field count varies by firmware.** Use tail-anchored field finding (already done in `parse_sts_response`).
+5. **`SQL=1` means squelch OPEN** (signal present). Inverted from intuition.
+6. **`mode` is not a wire field.** Track it from user commands as `commanded_mode`.
+7. **Bank masks: `'1'` means disabled**, `'0'` means enabled. Counter-intuitive.
 
 ### Frontend
+1. **Check sequence numbers** in WS handlers to avoid stale-state regressions.
+2. **Mode vs squelch_open**: during a hit, mode stays "SCAN" but `squelch_open=true`. Display rules check both.
+3. **Frequency only stable when held or during a hit.** Don't render during scan-cycling — it changes 5–10×/sec.
+4. **Alpha tags need memory sync.** Until sync completes, channel-name lookups return null.
 
-1. **Don't hardcode device limits**: Get frequency ranges from device API, not constants
-2. **Check sequence numbers**: Prevent stale WebSocket updates from overwriting newer state
-3. **Mode vs squelch_open confusion**: During hit, mode is still "SCAN" but squelch_open=true
-4. **Display logic**: Only show frequency when stable (squelch_open OR mode=HOLD/DIRECT)
-5. **Alpha tags require memory sync**: Frontend can't show friendly names until shadow state loaded
+### macOS USB transport
+The BC125AT enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0017`) but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` never appears. Configure `usb_vid`/`usb_pid` in `config.yaml` to force the `nusb` direct-USB path. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the discrepancy with reference docs that claim CP210x VID/PID.
 
-## File Layout
+## Testing
 
-```
-backend/
-  src/bearpaw/
-    api.py                    # FastAPI app, main polling loop
-    scheduler.py              # Command priority queue
-    state.py                  # LiveState/ShadowState management
-    protocol/
-      bc125at.py              # BC125AT scanner driver
-    transport.py              # Serial port communication
-    transport_usb.py          # USB CDC communication
-    websocket.py              # WebSocket manager
-    sync.py                   # Memory sync task
-    exporters/                # Text file, MQTT, JSON stream exporters
+- **Backend:** `cargo test -p bearpaw-api`. Fixtures driven by captures in `docs/wire_captures/`.
+- **Frontend:** `npm test -- --run` (vitest), `npm run lint`, `npm run type-check`, `npm run format:check`. All four run on every PR via `.github/workflows/tests.yml`.
 
-frontend/
-  src/
-    App.tsx                   # Main app shell
-    store/useStore.ts         # Zustand state store
-    api/client.ts             # REST API client
-    websocket/                # WebSocket client
-    components/               # React components
-      VirtualDisplay.tsx      # Main scanner display
-      PrimaryControls.tsx     # Scan/Hold button
-```
+## Memory sync performance
 
-## Testing Notes
+Reading all 500 channels is slow (~30–45 s):
+- Each channel is one `CIN,N` round-trip inside the PRG bracket.
+- Progress events go out via WebSocket every ~10 channels.
+- Frontend shows progress bar in the Scan view's sync banner.
 
-**Backend**: `python -m unittest discover -s tests` (run from `backend/` with venv active).
-
-**Frontend**: `npm test` (vitest), `npm run lint` (ESLint), `npm run type-check` (tsc), `npm run format:check` (Prettier). All four run on every PR via `.github/workflows/tests.yml`.
-
-## Memory Sync Performance
-
-Reading all scanner channels is SLOW (60+ seconds for 500 channels):
-- Each channel read requires: PRG → CIN,N → EPG sequence
-- Driver yields to higher-priority commands (user controls)
-- Progress updates sent via WebSocket every ~10 channels
-- Frontend shows progress bar during sync
-
-**Location**: `sync.py:MemorySyncTask`, invoked via POST `/api/v1/memory/sync`
-
-## Export Features
-
-**Text file exporter** (`exporters/text_exporter.py`):
-- Writes current frequency/alpha tag to file (for OBS overlays)
-- Configurable template with `{frequency}`, `{alpha_tag}`, `{modulation}` placeholders
-- Updates on squelch_open or frequency change
-
-**MQTT exporter** (`exporters/mqtt.py`):
-- Publishes state changes to MQTT broker
-- Topics: `scanner/state`, `scanner/events/scan_hit`
-- Useful for Home Assistant integration
-
-**JSON stream** (`exporters/json_stream.py`):
-- Appends newline-delimited JSON events to log file
-- Supports rotation (daily or size-based)
-- Records all scan hits with timestamps
+Entry point: `POST /api/v1/memory/sync`. Implementation in [`crates/bearpaw-api/src/api/memory_sync.rs`](crates/bearpaw-api/src/api/memory_sync.rs).
