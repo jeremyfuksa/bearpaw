@@ -4,6 +4,15 @@ use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
+/// Known Uniden scanner USB IDs probed during plug-and-play autodetect.
+/// All current entries are Uniden America Corp. (`0x1965`).
+/// See docs/SCANNER_PROTOCOL_REFERENCE.md §1 for the list.
+const KNOWN_SCANNER_USB_IDS: &[(u16, u16)] = &[
+    (0x1965, 0x0017), // BC125AT, BCT125AT (shared PID)
+                      // Other Uniden 125/126 family PIDs (0x0016–0x001A) can be added here
+                      // as they're confirmed.
+];
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -12,7 +21,7 @@ pub struct Config {
     pub api: ApiConfig,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DeviceConfig {
     pub port: Option<String>,
     pub baud: Option<u32>,
@@ -21,6 +30,19 @@ pub struct DeviceConfig {
     pub auto_detect: bool,
     pub usb_vid: Option<u16>,
     pub usb_pid: Option<u16>,
+}
+
+impl Default for DeviceConfig {
+    fn default() -> Self {
+        Self {
+            port: None,
+            baud: None,
+            transport: None,
+            auto_detect: default_auto_detect(),
+            usb_vid: None,
+            usb_pid: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -75,38 +97,35 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
             return Some(port);
         }
     }
-    if !cfg.device.auto_detect {
-        return None;
-    }
-    let ports = serialport::available_ports().ok()?;
-    let candidates: Vec<_> = ports.into_iter().filter(|p| !is_blocked_port(p)).collect();
-    if candidates.is_empty() {
-        return None;
-    }
 
-    // Prefer VID/PID match when configured. If configured but not present, do not
-    // fall back to random ports (prevents opening debug/Bluetooth consoles).
+    // VID/PID-configured path: try matching a serial TTY first, otherwise fall back
+    // to the USB pseudo-target so the poll loop uses direct bulk endpoints. Runs even
+    // when auto_detect is false or no serial candidates exist (macOS sometimes
+    // enumerates the device at the USB level without binding AppleUSBCDCACMData).
     if let (Some(vid), Some(pid)) = (cfg.device.usb_vid, cfg.device.usb_pid) {
-        for p in &candidates {
-            if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
-                if info.vid == vid && info.pid == pid {
-                    return Some(p.port_name.clone());
+        if let Ok(ports) = serialport::available_ports() {
+            for p in ports.iter().filter(|p| !is_blocked_port(p)) {
+                if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
+                    if info.vid == vid && info.pid == pid {
+                        return Some(p.port_name.clone());
+                    }
                 }
             }
         }
-        // macOS may expose the USB device without creating a serial TTY.
-        // Return a USB pseudo-target so poll loop can use direct bulk endpoints.
         return Some(format!("usb:{:04x}:{:04x}", vid, pid));
     }
 
-    // If transport is explicitly USB, require a USB-ish serial endpoint.
-    let transport_usb = cfg
-        .device
-        .transport
-        .as_deref()
-        .map(|t| t.eq_ignore_ascii_case("usb"))
-        .unwrap_or(false);
+    if !cfg.device.auto_detect {
+        return None;
+    }
 
+    // First-pass: score available serial ports and pick the highest scorer
+    // if any look like a Uniden USB-serial endpoint.
+    let candidates: Vec<_> = serialport::available_ports()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| !is_blocked_port(p))
+        .collect();
     let mut scored: Vec<(i32, String)> = candidates
         .iter()
         .filter_map(|p| score_port(p).map(|score| (score, p.port_name.clone())))
@@ -117,8 +136,32 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
             return Some(name.clone());
         }
     }
-    if transport_usb {
-        return None;
+
+    // Second-pass: probe USB directly for any known Uniden scanner. This is
+    // the path hit when macOS sees the device but never binds
+    // AppleUSBCDCACMData, leaving no /dev/cu.usbmodem* serial node.
+    if let Some((vid, pid)) = probe_known_scanner_via_usb() {
+        return Some(format!("usb:{:04x}:{:04x}", vid, pid));
+    }
+
+    None
+}
+
+/// Walk rusb's device list and return the first VID/PID matching a known
+/// Uniden scanner. Returns None on enumeration error or no match.
+fn probe_known_scanner_via_usb() -> Option<(u16, u16)> {
+    use rusb::UsbContext;
+    let ctx = rusb::Context::new().ok()?;
+    let devices = ctx.devices().ok()?;
+    for dev in devices.iter() {
+        let Ok(desc) = dev.device_descriptor() else {
+            continue;
+        };
+        for &(vid, pid) in KNOWN_SCANNER_USB_IDS {
+            if desc.vendor_id() == vid && desc.product_id() == pid {
+                return Some((vid, pid));
+            }
+        }
     }
     None
 }

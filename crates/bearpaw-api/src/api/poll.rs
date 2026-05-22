@@ -13,14 +13,19 @@ use crate::api::track_analytics_transition;
 use crate::api::AppState;
 use crate::api::ControlCommand;
 use crate::protocol::{
-    livestate_from_sts, parse_cin_response, parse_mdl_response, parse_sts_response,
+    livestate_from_frames, parse_cin_response, parse_glg_response, parse_mdl_response,
+    parse_pwr_response, parse_sts_frame, PwrFrame,
 };
-use crate::state::{ChannelData, LiveState};
+use crate::state::{ChannelData, LiveState, ScannerMode};
 use crate::transport::{SerialTransport, TransportError};
 use crate::transport_usb::UsbTransport;
 
 const POLL_INTERVAL_MS: u64 = 200;
+/// Send PWR every Nth tick (200ms × 3 = ~600ms cadence).
+const PWR_INTERVAL_TICKS: u32 = 3;
 const STS_CMD: &str = "STS";
+const GLG_CMD: &str = "GLG";
+const PWR_CMD: &str = "PWR";
 const MDL_CMD: &str = "MDL";
 const KEY_HOLD: &str = "KEY,H,P";
 const KEY_SCAN: &str = "KEY,S,P";
@@ -91,19 +96,43 @@ fn run_poll_loop(
         warn!("Unable to read valid MDL response after retries (serial)");
     }
 
-    let mut commanded_mode: String = "SCAN".to_string();
+    let mut commanded_mode = ScannerMode::Scan;
+    let mut volume: u8 = 0;
+    let mut tick: u32 = 0;
+    let mut poll_state = PollState::new();
+
+    // Initial volume query.
+    if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
+        if let Some(v) = parse_vol_response(&vol_resp) {
+            volume = v;
+        }
+    }
 
     loop {
         // Drain control commands (hold, scan, direct, start sync)
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                ControlCommand::Hold => {
-                    let _ = transport.send(port.as_mut(), KEY_HOLD);
-                    commanded_mode = "HOLD".to_string();
+                ControlCommand::Hold { reply } => {
+                    let response = transport
+                        .send(port.as_mut(), KEY_HOLD)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = ScannerMode::Hold;
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
-                ControlCommand::Scan => {
-                    let _ = transport.send(port.as_mut(), KEY_SCAN);
-                    commanded_mode = "SCAN".to_string();
+                ControlCommand::Scan { reply } => {
+                    let response = transport
+                        .send(port.as_mut(), KEY_SCAN)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = ScannerMode::Scan;
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
                 ControlCommand::Direct {
                     frequency,
@@ -111,7 +140,7 @@ fn run_poll_loop(
                 } => {
                     let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
                     let _ = transport.send(port.as_mut(), &do_cmd);
-                    commanded_mode = "DIRECT".to_string();
+                    commanded_mode = ScannerMode::Direct;
                 }
                 ControlCommand::StartSync {
                     task_id,
@@ -144,21 +173,58 @@ fn run_poll_loop(
             }
         }
 
-        // STS (multiline response)
-        let resp = match transport.send_and_read_multiline(port.as_mut(), STS_CMD) {
-            Ok(r) => r,
+        // When the scanner is in program mode (PRG entered via an API
+        // handler), the operational commands STS/GLG/PWR will get NG replies
+        // and their bytes will collide with the bracket's subsequent CIN/SCG
+        // reads on the bulk endpoint. Skip the live-state fetch entirely and
+        // just keep draining the command channel until EPG runs.
+        if state.program_mode_active.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+            continue;
+        }
+
+        // STS is single-line on observed firmware; send_and_read_multiline still works
+        // but adds ~50ms idle wait. Keep it for now to absorb any inter-byte gaps.
+        let sts_resp = match transport.send_and_read_multiline(port.as_mut(), STS_CMD) {
+            Ok(r) => Some(r),
             Err(TransportError::Io(e)) => {
                 warn!("STS read error: {}", e);
-                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                continue;
+                None
             }
             Err(e) => return Err(e.into()),
         };
 
-        if !process_sts_frame(&state, &commanded_mode, &resp, "serial") {
-            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            continue;
-        }
+        let glg_resp = match transport.send(port.as_mut(), GLG_CMD) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                warn!("GLG read error: {}", e);
+                None
+            }
+        };
+
+        let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
+            match transport.send(port.as_mut(), PWR_CMD) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    warn!("PWR read error: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        tick = tick.wrapping_add(1);
+
+        process_poll_tick(
+            &state,
+            &mut poll_state,
+            commanded_mode,
+            sts_resp.as_deref(),
+            glg_resp.as_deref(),
+            pwr_resp.as_deref(),
+            volume,
+            "serial",
+        );
 
         thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
@@ -205,17 +271,41 @@ fn run_poll_loop_usb(
         warn!("Unable to read valid MDL response after retries (usb)");
     }
 
-    let mut commanded_mode: String = "SCAN".to_string();
+    let mut commanded_mode = ScannerMode::Scan;
+    let mut volume: u8 = 0;
+    let mut tick: u32 = 0;
+    let mut poll_state = PollState::new();
+
+    if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
+        if let Some(v) = parse_vol_response(&vol_resp) {
+            volume = v;
+        }
+    }
+
     loop {
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                ControlCommand::Hold => {
-                    let _ = transport.send(&mut session, KEY_HOLD);
-                    commanded_mode = "HOLD".to_string();
+                ControlCommand::Hold { reply } => {
+                    let response = transport
+                        .send(&mut session, KEY_HOLD)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = ScannerMode::Hold;
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
-                ControlCommand::Scan => {
-                    let _ = transport.send(&mut session, KEY_SCAN);
-                    commanded_mode = "SCAN".to_string();
+                ControlCommand::Scan { reply } => {
+                    let response = transport
+                        .send(&mut session, KEY_SCAN)
+                        .map_err(|e| e.to_string());
+                    if response.is_ok() {
+                        commanded_mode = ScannerMode::Scan;
+                    }
+                    if let Some(r) = reply {
+                        let _ = r.send(response);
+                    }
                 }
                 ControlCommand::Direct {
                     frequency,
@@ -223,7 +313,7 @@ fn run_poll_loop_usb(
                 } => {
                     let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
                     let _ = transport.send(&mut session, &do_cmd);
-                    commanded_mode = "DIRECT".to_string();
+                    commanded_mode = ScannerMode::Direct;
                 }
                 ControlCommand::StartSync {
                     task_id,
@@ -260,16 +350,52 @@ fn run_poll_loop_usb(
             }
         }
 
-        let resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {
-            Ok(r) => r,
+        // Skip live-state fetch while scanner is in program mode (see
+        // serial-path comment for rationale).
+        if state.program_mode_active.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+            continue;
+        }
+
+        let sts_resp = match transport.send_and_read_multiline(&mut session, STS_CMD) {
+            Ok(r) => Some(r),
             Err(e) => {
                 warn!("STS read error (usb): {}", e);
-                thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-                continue;
+                None
             }
         };
 
-        if !process_sts_frame(&state, &commanded_mode, &resp, "usb") {
+        let glg_resp = match transport.send(&mut session, GLG_CMD) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                warn!("GLG read error (usb): {}", e);
+                None
+            }
+        };
+
+        let pwr_resp = if tick.is_multiple_of(PWR_INTERVAL_TICKS) {
+            match transport.send(&mut session, PWR_CMD) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    warn!("PWR read error (usb): {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        tick = tick.wrapping_add(1);
+
+        if !process_poll_tick(
+            &state,
+            &mut poll_state,
+            commanded_mode,
+            sts_resp.as_deref(),
+            glg_resp.as_deref(),
+            pwr_resp.as_deref(),
+            volume,
+            "usb",
+        ) {
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
             continue;
         }
@@ -291,15 +417,90 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
     }
 }
 
-fn process_sts_frame(state: &AppState, commanded_mode: &str, resp: &str, source: &str) -> bool {
-    let map = parse_sts_response(resp);
-    if map.is_empty() {
-        debug!("Empty STS response ({})", source);
+/// Mutable per-loop state carried across poll ticks.
+struct PollState {
+    /// Last successfully parsed PWR frame — carried forward on ticks that
+    /// don't poll PWR so RSSI stays continuous rather than flickering to 0.
+    last_pwr: Option<PwrFrame>,
+    /// Count of STS responses that failed to parse (truncation, garbage).
+    /// Logged periodically — these are normal under the firmware's documented
+    /// "occasionally drops or truncates STS" behavior.
+    dropped_sts: u64,
+    /// Count of ticks where STS.sql and GLG.sql disagreed. Should be 0 in
+    /// normal operation; non-zero values may indicate a parser bug.
+    squelch_disagreements: u64,
+}
+
+impl PollState {
+    fn new() -> Self {
+        Self {
+            last_pwr: None,
+            dropped_sts: 0,
+            squelch_disagreements: 0,
+        }
+    }
+}
+
+/// One poll tick's worth of parsed responses, assembled into LiveState.
+///
+/// Returns `false` if all three parses failed and nothing should be broadcast.
+fn process_poll_tick(
+    state: &AppState,
+    poll: &mut PollState,
+    commanded_mode: ScannerMode,
+    sts_resp: Option<&str>,
+    glg_resp: Option<&str>,
+    pwr_resp: Option<&str>,
+    volume: u8,
+    source: &str,
+) -> bool {
+    let sts = sts_resp.and_then(parse_sts_frame);
+    let glg = glg_resp.and_then(parse_glg_response);
+
+    // PWR sampled this tick (if any); else fall back to the last good sample
+    // so RSSI stays continuous across non-PWR ticks.
+    let pwr_this_tick = pwr_resp.and_then(parse_pwr_response);
+    if let Some(p) = pwr_this_tick.as_ref() {
+        poll.last_pwr = Some(p.clone());
+    }
+    let pwr_effective = pwr_this_tick.as_ref().or(poll.last_pwr.as_ref());
+
+    // Track STS truncation (asked for it, got something, but didn't parse).
+    if sts_resp.is_some() && sts.is_none() {
+        poll.dropped_sts += 1;
+        if poll.dropped_sts.is_multiple_of(50) {
+            warn!(
+                "STS parse drops accumulating ({}): {} total — firmware truncation is documented but verify the parser",
+                source, poll.dropped_sts
+            );
+        }
+    }
+
+    // Cross-check squelch polarity between STS and GLG.
+    if let (Some(s), Some(g)) = (sts.as_ref(), glg.as_ref()) {
+        if s.squelch_open != g.squelch_open {
+            poll.squelch_disagreements += 1;
+            if poll.squelch_disagreements.is_multiple_of(10) {
+                warn!(
+                    "STS.sql != GLG.sql {} times ({}): STS={}, GLG={} — investigate parser",
+                    poll.squelch_disagreements, source, s.squelch_open, g.squelch_open
+                );
+            }
+        }
+    }
+
+    if sts.is_none() && glg.is_none() && pwr_effective.is_none() {
+        debug!("All poll-tick parses failed ({})", source);
         return false;
     }
 
-    let mut live = livestate_from_sts(&map);
-    live.mode = commanded_mode.to_string();
+    let live = livestate_from_frames(
+        sts.as_ref(),
+        glg.as_ref(),
+        pwr_effective,
+        commanded_mode,
+        volume,
+    );
     broadcast_live_update(state, live);
     true
 }
@@ -484,4 +685,15 @@ fn parse_usb_target(target: &str) -> Option<(u16, u16)> {
     let vid = u16::from_str_radix(parts.next()?, 16).ok()?;
     let pid = u16::from_str_radix(parts.next()?, 16).ok()?;
     Some((vid, pid))
+}
+
+/// Parse `VOL,n` response. Returns None for malformed input.
+fn parse_vol_response(resp: &str) -> Option<u8> {
+    let line = resp.lines().find(|l| !l.trim().is_empty())?.trim();
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    let (head, val) = line.split_once(',')?;
+    if !head.eq_ignore_ascii_case("VOL") {
+        return None;
+    }
+    val.trim().parse::<u8>().ok().map(|v| v.min(15))
 }

@@ -5,6 +5,9 @@
 
 mod control;
 mod poll;
+mod program_mode;
+
+pub(crate) use program_mode::ProgramModeGuard;
 
 pub use control::{validate_frequency, validate_modulation, ControlCommand, FrequencyRequest};
 pub use poll::spawn_poll_loop;
@@ -32,7 +35,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::{info, warn};
 
 use crate::protocol::parse_cin_response;
-use crate::state::{ChannelData, DeviceInfo, LiveState, ShadowState};
+use crate::state::{ChannelData, DeviceInfo, LiveState, ScannerMode, ShadowState};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -69,7 +72,7 @@ pub struct ActivityHit {
     pub rssi: u8,
     pub duration: f64,
     pub modulation: String,
-    pub mode: String,
+    pub mode: ScannerMode,
     pub bank: Option<u8>,
     pub session_id: String,
     pub ended_at: f64,
@@ -83,7 +86,7 @@ pub struct ActiveHit {
     pub alpha_tag: Option<String>,
     pub rssi: u8,
     pub modulation: String,
-    pub mode: String,
+    pub mode: ScannerMode,
     pub bank: Option<u8>,
 }
 
@@ -243,7 +246,7 @@ fn command_sender(state: &AppState) -> Result<std::sync::mpsc::Sender<ControlCom
         .ok_or(ApiError::NoScanner)
 }
 
-async fn send_raw_command(
+pub(crate) async fn send_raw_command(
     state: &AppState,
     command: &str,
     multiline: bool,
@@ -252,7 +255,21 @@ async fn send_raw_command(
     let started = std::time::Instant::now();
     let command = command.to_string();
     let command_for_log = command.clone();
-    tokio::task::spawn_blocking(move || {
+
+    // Track program-mode entry/exit at the command level so the poll loop can
+    // suppress its STS/GLG/PWR fetch while the scanner is in PRG. Otherwise
+    // the poll loop interleaves operational commands with the PRG bracket and
+    // races against the API handler for the bulk endpoint, causing SCG /
+    // CIN reads to time out or read back stale ACKs.
+    let upper = command.to_uppercase();
+    let is_prg = upper == "PRG";
+    let is_epg = upper == "EPG";
+    let prg_flag = state.program_mode_active.clone();
+    if is_prg {
+        prg_flag.store(true, Ordering::Relaxed);
+    }
+
+    let join_result = tokio::task::spawn_blocking(move || {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         sender
             .send(ControlCommand::Raw {
@@ -269,29 +286,36 @@ async fn send_raw_command(
     })
     .await
     .map_err(|_| ApiError::BadRequest("command_task_failed".to_string()))
-    .map(|result| {
-        match &result {
-            Ok(response) => {
-                info!(
-                    command = %command_for_log,
-                    multiline = multiline,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    response_len = response.len(),
-                    "scanner command completed"
-                );
-            }
-            Err(err) => {
-                warn!(
-                    command = %command_for_log,
-                    multiline = multiline,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    error = ?err,
-                    "scanner command failed"
-                );
-            }
+    .and_then(|inner| inner);
+
+    match &join_result {
+        Ok(response) => {
+            info!(
+                command = %command_for_log,
+                multiline = multiline,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                response_len = response.len(),
+                "scanner command completed"
+            );
         }
-        result
-    })?
+        Err(err) => {
+            warn!(
+                command = %command_for_log,
+                multiline = multiline,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                error = ?err,
+                "scanner command failed"
+            );
+        }
+    }
+
+    // Always clear the flag on EPG (even on failure — leaving it stuck would
+    // freeze the live display). On PRG failure, also clear so the flag never
+    // gets stranded.
+    if is_epg || (is_prg && join_result.is_err()) {
+        prg_flag.store(false, Ordering::Relaxed);
+    }
+    join_result
 }
 
 #[derive(Serialize)]
@@ -320,6 +344,7 @@ async fn get_banks(State(state): State<AppState>) -> Result<Json<BanksResponse>,
     }
     let banks = flags.chars().map(|c| c == '0').collect::<Vec<bool>>();
     *state.banks.write().unwrap() = banks.clone();
+    broadcast_banks_update(&state);
     Ok(Json(BanksResponse { banks }))
 }
 
@@ -341,44 +366,51 @@ async fn set_banks(
     let _ = send_raw_command(&state, "EPG", false).await;
     let _ = set_result?;
     *state.banks.write().unwrap() = body.banks.clone();
+    broadcast_banks_update(&state);
     Ok(Json(BanksResponse { banks: body.banks }))
 }
 
+/// Send a Hold or Scan ControlCommand to the poll loop and wait for its
+/// scanner-side reply. The poll loop updates commanded_mode inside the same
+/// match arm that issues the KEY write, so on success the next poll tick
+/// broadcasts the new mode — no separate live.mode write needed here.
+async fn send_mode_command(
+    state: &AppState,
+    make_cmd: impl FnOnce(
+            Option<std::sync::mpsc::Sender<Result<String, String>>>,
+        ) -> ControlCommand
+        + Send
+        + 'static,
+    error_tag: &'static str,
+) -> Result<(), ApiError> {
+    let sender = command_sender(state)?;
+    tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        sender
+            .send(make_cmd(Some(reply_tx)))
+            .map_err(|_| ApiError::SendFailed)?;
+        let response = match reply_rx.recv_timeout(Duration::from_secs(3)) {
+            Ok(Ok(r)) => r,
+            Ok(Err(m)) => return Err(ApiError::BadRequest(m)),
+            Err(_) => return Err(ApiError::BadRequest("command_timeout".to_string())),
+        };
+        let upper = response.trim().to_uppercase();
+        if !(upper == "OK" || upper.ends_with(",OK")) {
+            return Err(ApiError::BadRequest(format!("{}_failed", error_tag)));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| ApiError::SendFailed)?
+}
+
 async fn post_hold(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let response = send_raw_command(&state, "KEY,H,P", false).await;
-    let response = match response {
-        Ok(value) => value,
-        Err(_) => send_raw_command(&state, "KEY,H", false).await?,
-    };
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK")) {
-        return Err(ApiError::BadRequest("hold_failed".to_string()));
-    }
-    if let Ok(mut live) = state.live.write() {
-        live.mode = "HOLD".to_string();
-    }
+    send_mode_command(&state, |reply| ControlCommand::Hold { reply }, "hold").await?;
     Ok(Json(json!({ "status": "ok" })))
 }
 
 async fn post_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let response = send_raw_command(&state, "KEY,S,P", false).await;
-    let response = match response {
-        Ok(value) => value,
-        Err(_) => send_raw_command(&state, "KEY,S", false).await?,
-    };
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK")) {
-        return Err(ApiError::BadRequest("scan_failed".to_string()));
-    }
-    if let Ok(mut live) = state.live.write() {
-        live.mode = if state.program_mode_forced_hold.load(Ordering::Relaxed) {
-            "SCAN".to_string()
-        } else {
-            "HOLD".to_string()
-        };
-    }
+    send_mode_command(&state, |reply| ControlCommand::Scan { reply }, "scan").await?;
     Ok(Json(json!({ "status": "ok" })))
 }
 
@@ -394,8 +426,8 @@ async fn post_key(
     let _ = command_sender(&state)?;
     let key = body.key.to_uppercase();
     let cmd = match key.as_str() {
-        "H" => Some(ControlCommand::Hold),
-        "S" => Some(ControlCommand::Scan),
+        "H" => Some(ControlCommand::Hold { reply: None }),
+        "S" => Some(ControlCommand::Scan { reply: None }),
         _ => None,
     };
     if let Some(cmd) = cmd {
@@ -514,7 +546,9 @@ async fn post_lockout(
                     lockout: false,
                     priority: false,
                     tone_squelch: None,
-                    bank: 1,
+                    tone_squelch_kind: Default::default(),
+                    tone_dcs_code: None,
+                    bank: crate::protocol::index_to_bank(index),
                 });
                 ch.lockout = !ch.lockout;
                 ch.clone()
@@ -661,9 +695,9 @@ async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>
     let pre_mode = state
         .live
         .read()
-        .map(|live| live.mode.to_uppercase())
-        .unwrap_or_else(|_| "SCAN".to_string());
-    let forced_hold = pre_mode == "SCAN";
+        .map(|live| live.mode)
+        .unwrap_or(ScannerMode::Scan);
+    let forced_hold = pre_mode == ScannerMode::Scan;
     if forced_hold {
         if send_raw_command(&state, "KEY,H,P", false).await.is_err() {
             let _ = send_raw_command(&state, "KEY,H", false).await;
@@ -675,7 +709,7 @@ async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>
         .store(forced_hold, Ordering::Relaxed);
     state.program_mode_active.store(true, Ordering::Relaxed);
     if let Ok(mut live) = state.live.write() {
-        live.mode = "PGM".to_string();
+        live.mode = ScannerMode::Programming;
     }
     Ok(Json(json!({ "status": "ok" })))
 }
@@ -693,7 +727,11 @@ async fn program_mode_end(State(state): State<AppState>) -> Result<Json<Value>, 
         }
     }
     if let Ok(mut live) = state.live.write() {
-        live.mode = if forced_hold { "SCAN" } else { "HOLD" }.to_string();
+        live.mode = if forced_hold {
+            ScannerMode::Scan
+        } else {
+            ScannerMode::Hold
+        };
     }
     Ok(Json(json!({ "status": "ok" })))
 }
@@ -2394,6 +2432,12 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         .transpose()
         .map_err(|_| "Invalid CTCSS/DCS".to_string())?;
 
+    let tone_squelch_kind = if tone_squelch.is_some() {
+        crate::state::ToneSquelchKind::Ctcss
+    } else {
+        crate::state::ToneSquelchKind::None
+    };
+
     Ok(ChannelData {
         index,
         frequency,
@@ -2406,6 +2450,8 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         lockout: row.get("Lockout").map(|s| parse_bool(s)).unwrap_or(false),
         priority: row.get("Priority").map(|s| parse_bool(s)).unwrap_or(false),
         tone_squelch,
+        tone_squelch_kind,
+        tone_dcs_code: None,
         bank,
     })
 }
@@ -2520,7 +2566,7 @@ async fn simulate_hit(State(state): State<AppState>) -> Json<Value> {
         modulation: "FM".to_string(),
         squelch_open: true,
         rssi: 75,
-        mode: "SCAN".to_string(),
+        mode: ScannerMode::Scan,
         channel: Some(1),
         alpha_tag: Some("Test Channel".to_string()),
         volume: 5,
@@ -2538,7 +2584,7 @@ async fn simulate_hit(State(state): State<AppState>) -> Json<Value> {
             modulation: "FM".to_string(),
             squelch_open: false,
             rssi: 0,
-            mode: "SCAN".to_string(),
+            mode: ScannerMode::Scan,
             channel: Some(1),
             alpha_tag: Some("Test Channel".to_string()),
             volume: 5,
@@ -3011,7 +3057,7 @@ pub(crate) fn track_analytics_transition(
             alpha_tag: live.alpha_tag.clone(),
             rssi: live.rssi,
             modulation: live.modulation.clone(),
-            mode: live.mode.clone(),
+            mode: live.mode,
             bank: None,
         });
         return;
@@ -3186,7 +3232,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
                     rssi: rssi as u8,
                     duration: duration.unwrap_or(0.0),
                     modulation,
-                    mode,
+                    mode: ScannerMode::from_str(&mode),
                     bank,
                     session_id,
                     ended_at: ended_at.unwrap_or(timestamp),
@@ -3218,7 +3264,7 @@ fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
                 hit.modulation,
                 hit.rssi as i64,
                 hit.duration,
-                hit.mode,
+                hit.mode.as_str(),
                 hit.bank,
                 hit.session_id,
                 hit.ended_at
@@ -3454,6 +3500,19 @@ fn broadcast_state_update(state: &AppState, live: &LiveState) {
         });
         let _ = state.ws_tx.send(event.to_string());
     }
+}
+
+/// Push the current bank-enabled mask to all WebSocket subscribers. Call
+/// after any change to state.banks so the UI can mirror reality instead of
+/// holding a stale local copy.
+pub(crate) fn broadcast_banks_update(state: &AppState) {
+    let banks = state.banks.read().map(|g| g.clone()).unwrap_or_default();
+    let msg = json!({
+        "type": "banks_update",
+        "timestamp": epoch_now(),
+        "data": { "banks": banks },
+    });
+    let _ = state.ws_tx.send(msg.to_string());
 }
 
 fn epoch_now() -> f64 {
