@@ -31,6 +31,7 @@ export interface SyncState {
   hasSyncedInitially: boolean;
   taskId: string | null;
   message: string;
+  percent: number;
 }
 
 export interface AppStore {
@@ -100,6 +101,7 @@ const defaultSync: SyncState = {
   hasSyncedInitially: false,
   taskId: null,
   message: 'Loading channels from device...',
+  percent: 0,
 };
 
 export const useStore = create<AppStore>((set) => ({
