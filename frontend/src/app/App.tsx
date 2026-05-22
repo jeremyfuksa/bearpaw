@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './components/ui/tooltip
 import { getAPI, API_BASE } from '../api/useApi';
 import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
+import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import {
@@ -18,7 +19,7 @@ import {
   subscribeBackendStatus,
   type BackendStatus,
 } from '../tauri-shell';
-import type { ActivityLogEntry, EventMessage, ProgressMessage, StateUpdateMessage } from '../types';
+import type { ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
@@ -79,6 +80,7 @@ export default function App() {
   });
   const api = getAPI();
   const { ws, connected } = useWebSocket();
+  useActivityLogTracker();
 
   const liveState = useStore((state) => state.liveState);
   const deviceInfo = useStore((state) => state.deviceInfo);
@@ -90,8 +92,6 @@ export default function App() {
   const updateLiveState = useStore((state) => state.updateLiveState);
   const setDeviceInfo = useStore((state) => state.setDeviceInfo);
   const setChannels = useStore((state) => state.setChannels);
-  const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
-  const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
   const updatePreferences = useStore((state) => state.updatePreferences);
   const banks = useStore((state) => state.banks);
   const banksBusy = useStore((state) => state.banksBusy);
@@ -126,9 +126,6 @@ export default function App() {
   const [shellStatus, setShellStatus] = useState<BackendStatus | null>(null);
   const [shellLabel, setShellLabel] = useState<string | null>(null);
 
-  const lastHitOpenRef = useRef(false);
-  const squelchOpenStartTimeRef = useRef<number | null>(null);
-  const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
   const analyticsLoadedRef = useRef(false);
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scanResumeInFlightRef = useRef(false);
@@ -257,66 +254,15 @@ export default function App() {
   useEffect(() => {
     const unsubscribeState = ws.on('state_update', (message) => {
       const payload = message as StateUpdateMessage;
-      if (payload.data.stale === true) {
-        setHasFreshLiveFrame(false);
-      } else {
-        setHasFreshLiveFrame(true);
-      }
+      setHasFreshLiveFrame(payload.data.stale !== true);
       updateLiveState(payload.data, payload.sequence);
-      const squelchOpen = payload.data.squelch_open;
-
-      if (typeof squelchOpen === 'boolean') {
-        if (squelchOpen && !lastHitOpenRef.current) {
-          squelchOpenStartTimeRef.current = payload.timestamp;
-          lastHitOpenRef.current = true;
-        } else if (!squelchOpen && lastHitOpenRef.current) {
-          const startTime =
-            squelchOpenStartTimeRef.current !== null
-              ? squelchOpenStartTimeRef.current
-              : payload.timestamp;
-          const duration = payload.timestamp - startTime;
-          if (
-            duration >= preferences.hitMinDuration &&
-            squelchOpenStartTimeRef.current !== null &&
-            currentHitDataRef.current
-          ) {
-            const entry: ActivityLogEntry = {
-              ...currentHitDataRef.current,
-              id: `${squelchOpenStartTimeRef.current}-${payload.sequence}`,
-              timestamp: squelchOpenStartTimeRef.current,
-              duration,
-              ended_at: payload.timestamp,
-            };
-            addActivityLogEntry(entry);
-            addToFullActivityLog(entry);
-          }
-          squelchOpenStartTimeRef.current = null;
-          currentHitDataRef.current = null;
-          lastHitOpenRef.current = false;
-        }
-      }
     });
 
     const unsubscribeEvent = ws.on('event', (message) => {
-      const payload = message as EventMessage;
+      const payload = message as { event?: string };
       if (payload.event === 'state_stale') {
         setHasFreshLiveFrame(false);
         updateLiveState({ stale: true });
-      }
-      if (payload.event === 'scan_hit') {
-        squelchOpenStartTimeRef.current = payload.timestamp;
-        currentHitDataRef.current = {
-          id: `${payload.timestamp}-pending`,
-          timestamp: payload.timestamp,
-          frequency: payload.data.frequency ?? 0,
-          channel: payload.data.channel ?? null,
-          alpha_tag: payload.data.alpha_tag ?? null,
-          type: 'hit',
-          rssi: payload.data.rssi,
-          hasAudio: false,
-          duration: 0,
-          ended_at: 0,
-        };
       }
     });
 
@@ -386,14 +332,13 @@ export default function App() {
       }
     };
   }, [
-    addActivityLogEntry,
-    addToFullActivityLog,
     api,
     currentTab,
     requestScanResume,
     setChannels,
     setDeviceInfo,
     updateLiveState,
+    updateSync,
     ws,
     liveState?.mode,
   ]);
