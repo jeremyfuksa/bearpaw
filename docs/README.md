@@ -261,7 +261,6 @@ The **API specification** ([API_SPEC.md](./API_SPEC.md)) is the critical interfa
 **Goal:** Production-ready system with optional features
 
 **Deliverables:**
-- SR30C driver (second scanner family)
 - Memory sync UI with progress
 - Audio integration (optional)
 - Native wrappers (Electron/Tauri)
@@ -375,12 +374,12 @@ cd frontend/ && npm run dev &
 
 ---
 
-## Supported Scanners (Initial Release)
+## Supported Scanners (v1.0)
 
 | Model | Family | Connection | Status |
 |-------|--------|------------|--------|
 | **BC125AT** | Handheld Bank Analog | USB CDC | ✅ Primary target |
-| **SR30C** | Handheld Bank Analog | USB Serial (CP210x) | ✅ Supported with protocol variations |
+| BCT125AT | Handheld Bank Analog | USB CDC | 🔄 Compatible (same protocol; BearTracker commands not yet exposed) |
 | BCT15X | DMA Analog XT | RS-232/USB | 🔮 Future |
 | BC245XLT | Legacy Analog | RS-232 | 🔮 Future |
 
