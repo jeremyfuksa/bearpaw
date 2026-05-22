@@ -979,7 +979,7 @@ fn has_user_tables(conn: &rusqlite::Connection) -> bool {
     .unwrap_or(false)
 }
 
-fn default_data_dir() -> PathBuf {
+pub(crate) fn default_data_dir() -> PathBuf {
     if let Ok(raw) = std::env::var("BEARPAW_DATA_DIR") {
         let trimmed = raw.trim();
         if !trimmed.is_empty() {
