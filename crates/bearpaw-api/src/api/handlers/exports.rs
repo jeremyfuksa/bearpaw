@@ -413,13 +413,14 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         return Err(format!("Invalid frequency: {}", frequency));
     }
 
-    let delay: u8 = row
+    let delay: i8 = row
         .get("Delay")
         .map(|s| s.as_str())
         .unwrap_or("2")
         .parse()
         .map_err(|_| "Invalid delay".to_string())?;
-    if delay > 30 {
+    // Valid CIN delay values per BC125AT_PROTOCOL.md §5.3.
+    if !matches!(delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
         return Err(format!("Invalid delay: {}", delay));
     }
 
