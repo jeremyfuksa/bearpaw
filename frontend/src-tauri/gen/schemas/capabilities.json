@@ -1,9 +1,0 @@
-{
-  "default": {
-    "identifier": "default",
-    "description": "Default capability set for Bearpaw desktop.",
-    "local": true,
-    "windows": ["main"],
-    "permissions": ["core:default"]
-  }
-}
