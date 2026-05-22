@@ -18,6 +18,7 @@ import {
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
+import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -40,6 +41,7 @@ interface SearchRange {
 
 export function DeviceTab() {
   const api = getAPI();
+  const connectionStatus = useConnectionStatus();
   const deviceInfo = useStore((state) => state.deviceInfo);
   const liveState = useStore((state) => state.liveState);
   const channels = useStore((state) => state.channels) ?? [];
@@ -128,14 +130,14 @@ export function DeviceTab() {
   ]);
 
   const connectionStatusLabel =
-    deviceInfo?.connection_status === 'connected'
+    connectionStatus === 'connected'
       ? 'Connected'
-      : deviceInfo?.connection_status === 'connecting'
+      : connectionStatus === 'connecting'
         ? 'Connecting'
         : 'Disconnected';
 
   const showUsbTroubleshooting =
-    deviceInfo?.connection_status !== 'connected' &&
+    connectionStatus !== 'connected' &&
     (deviceInfo?.diagnostic_code === 'usb_detected_no_serial_endpoint' ||
       deviceInfo?.diagnostic_code === 'usb_device_not_accessible');
 
