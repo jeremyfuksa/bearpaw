@@ -14,7 +14,7 @@ use crate::api::AppState;
 use crate::api::ControlCommand;
 use crate::protocol::{
     livestate_from_frames, parse_cin_response, parse_glg_response, parse_mdl_response,
-    parse_pwr_response, parse_sts_frame,
+    parse_pwr_response, parse_sts_frame, PwrFrame,
 };
 use crate::state::{ChannelData, LiveState};
 use crate::transport::{SerialTransport, TransportError};
@@ -99,6 +99,7 @@ fn run_poll_loop(
     let mut commanded_mode: String = "SCAN".to_string();
     let mut volume: u8 = 0;
     let mut tick: u32 = 0;
+    let mut poll_state = PollState::new();
 
     // Initial volume query.
     if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
@@ -192,6 +193,7 @@ fn run_poll_loop(
 
         process_poll_tick(
             &state,
+            &mut poll_state,
             &commanded_mode,
             sts_resp.as_deref(),
             glg_resp.as_deref(),
@@ -248,6 +250,7 @@ fn run_poll_loop_usb(
     let mut commanded_mode: String = "SCAN".to_string();
     let mut volume: u8 = 0;
     let mut tick: u32 = 0;
+    let mut poll_state = PollState::new();
 
     if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
         if let Some(v) = parse_vol_response(&vol_resp) {
@@ -340,6 +343,7 @@ fn run_poll_loop_usb(
 
         if !process_poll_tick(
             &state,
+            &mut poll_state,
             &commanded_mode,
             sts_resp.as_deref(),
             glg_resp.as_deref(),
@@ -368,11 +372,36 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
     }
 }
 
+/// Mutable per-loop state carried across poll ticks.
+struct PollState {
+    /// Last successfully parsed PWR frame — carried forward on ticks that
+    /// don't poll PWR so RSSI stays continuous rather than flickering to 0.
+    last_pwr: Option<PwrFrame>,
+    /// Count of STS responses that failed to parse (truncation, garbage).
+    /// Logged periodically — these are normal under the firmware's documented
+    /// "occasionally drops or truncates STS" behavior.
+    dropped_sts: u64,
+    /// Count of ticks where STS.sql and GLG.sql disagreed. Should be 0 in
+    /// normal operation; non-zero values may indicate a parser bug.
+    squelch_disagreements: u64,
+}
+
+impl PollState {
+    fn new() -> Self {
+        Self {
+            last_pwr: None,
+            dropped_sts: 0,
+            squelch_disagreements: 0,
+        }
+    }
+}
+
 /// One poll tick's worth of parsed responses, assembled into LiveState.
 ///
 /// Returns `false` if all three parses failed and nothing should be broadcast.
 fn process_poll_tick(
     state: &AppState,
+    poll: &mut PollState,
     commanded_mode: &str,
     sts_resp: Option<&str>,
     glg_resp: Option<&str>,
@@ -382,14 +411,51 @@ fn process_poll_tick(
 ) -> bool {
     let sts = sts_resp.and_then(parse_sts_frame);
     let glg = glg_resp.and_then(parse_glg_response);
-    let pwr = pwr_resp.and_then(parse_pwr_response);
 
-    if sts.is_none() && glg.is_none() && pwr.is_none() {
+    // PWR sampled this tick (if any); else fall back to the last good sample
+    // so RSSI stays continuous across non-PWR ticks.
+    let pwr_this_tick = pwr_resp.and_then(parse_pwr_response);
+    if let Some(p) = pwr_this_tick.as_ref() {
+        poll.last_pwr = Some(p.clone());
+    }
+    let pwr_effective = pwr_this_tick.as_ref().or(poll.last_pwr.as_ref());
+
+    // Track STS truncation (asked for it, got something, but didn't parse).
+    if sts_resp.is_some() && sts.is_none() {
+        poll.dropped_sts += 1;
+        if poll.dropped_sts.is_multiple_of(50) {
+            warn!(
+                "STS parse drops accumulating ({}): {} total — firmware truncation is documented but verify the parser",
+                source, poll.dropped_sts
+            );
+        }
+    }
+
+    // Cross-check squelch polarity between STS and GLG.
+    if let (Some(s), Some(g)) = (sts.as_ref(), glg.as_ref()) {
+        if s.squelch_open != g.squelch_open {
+            poll.squelch_disagreements += 1;
+            if poll.squelch_disagreements.is_multiple_of(10) {
+                warn!(
+                    "STS.sql != GLG.sql {} times ({}): STS={}, GLG={} — investigate parser",
+                    poll.squelch_disagreements, source, s.squelch_open, g.squelch_open
+                );
+            }
+        }
+    }
+
+    if sts.is_none() && glg.is_none() && pwr_effective.is_none() {
         debug!("All poll-tick parses failed ({})", source);
         return false;
     }
 
-    let live = livestate_from_frames(sts.as_ref(), glg.as_ref(), pwr.as_ref(), commanded_mode, volume);
+    let live = livestate_from_frames(
+        sts.as_ref(),
+        glg.as_ref(),
+        pwr_effective,
+        commanded_mode,
+        volume,
+    );
     broadcast_live_update(state, live);
     true
 }
