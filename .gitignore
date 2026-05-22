@@ -14,6 +14,7 @@ backend/.venv/
 .DS_Store
 
 # Local runtime artifacts
+logs/
 backend/scanner.db
 backend/now_scanning.txt
 docs/manual.pdf

@@ -75,6 +75,24 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
             return Some(port);
         }
     }
+
+    // VID/PID-configured path: try matching a serial TTY first, otherwise fall back
+    // to the USB pseudo-target so the poll loop uses direct bulk endpoints. Runs even
+    // when auto_detect is false or no serial candidates exist (macOS sometimes
+    // enumerates the device at the USB level without binding AppleUSBCDCACMData).
+    if let (Some(vid), Some(pid)) = (cfg.device.usb_vid, cfg.device.usb_pid) {
+        if let Ok(ports) = serialport::available_ports() {
+            for p in ports.iter().filter(|p| !is_blocked_port(p)) {
+                if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
+                    if info.vid == vid && info.pid == pid {
+                        return Some(p.port_name.clone());
+                    }
+                }
+            }
+        }
+        return Some(format!("usb:{:04x}:{:04x}", vid, pid));
+    }
+
     if !cfg.device.auto_detect {
         return None;
     }
@@ -82,21 +100,6 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
     let candidates: Vec<_> = ports.into_iter().filter(|p| !is_blocked_port(p)).collect();
     if candidates.is_empty() {
         return None;
-    }
-
-    // Prefer VID/PID match when configured. If configured but not present, do not
-    // fall back to random ports (prevents opening debug/Bluetooth consoles).
-    if let (Some(vid), Some(pid)) = (cfg.device.usb_vid, cfg.device.usb_pid) {
-        for p in &candidates {
-            if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
-                if info.vid == vid && info.pid == pid {
-                    return Some(p.port_name.clone());
-                }
-            }
-        }
-        // macOS may expose the USB device without creating a serial TTY.
-        // Return a USB pseudo-target so poll loop can use direct bulk endpoints.
-        return Some(format!("usb:{:04x}:{:04x}", vid, pid));
     }
 
     // If transport is explicitly USB, require a USB-ish serial endpoint.
