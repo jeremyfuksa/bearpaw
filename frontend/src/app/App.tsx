@@ -63,7 +63,18 @@ export default function App() {
   const isMemorySyncing = sync.inProgress;
   const syncProgressMessage = sync.message;
 
-  const [currentTab, setCurrentTab] = useState<Tab>('Scan');
+  const [currentTab, setCurrentTab] = useState<Tab>(() => {
+    // Query param `?tab=scan|device|channels` → initial tab. Lets deep
+    // links (and Figma/Playwright captures) target a specific tab
+    // without clicking the menu. Using the query string instead of the
+    // hash keeps the hash reserved for unrelated tooling (e.g. the
+    // Figma html-to-design capture script).
+    if (typeof window === 'undefined') return 'Scan';
+    const tab = new URLSearchParams(window.location.search).get('tab')?.toLowerCase();
+    if (tab === 'device') return 'Device';
+    if (tab === 'channels') return 'Channels';
+    return 'Scan';
+  });
   const [toggleBusy, setToggleBusy] = useState(false);
   const [chartAnimate, setChartAnimate] = useState(false);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
