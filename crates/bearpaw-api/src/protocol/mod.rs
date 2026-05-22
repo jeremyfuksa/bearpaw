@@ -6,7 +6,7 @@
 //! firmware 1.06.06, which emits a different STS field count than the
 //! research doc's 1.04.02.
 
-use crate::state::{ChannelData, LiveState};
+use crate::state::{ChannelData, LiveState, ToneSquelchKind};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -284,7 +284,7 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
     let lockout = p.get(5).map(|s| *s == "1").unwrap_or(false);
     let priority = p.get(6).map(|s| *s == "1").unwrap_or(false);
 
-    let tone_squelch = tone_code_to_hz(tone_code);
+    let (tone_squelch_kind, tone_squelch, tone_dcs_code) = decode_tone(tone_code);
 
     // delay is stored as u8 in ChannelData; clamp negatives to 0 for now.
     // (Negative pre-delays are valid wire values; surfacing them needs an
@@ -300,8 +300,9 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         lockout,
         priority,
         tone_squelch,
-        // Bank is derived from SCG post-sync, not from CIN.
-        bank: 0,
+        tone_squelch_kind,
+        tone_dcs_code,
+        bank: index_to_bank(index),
     })
 }
 
@@ -315,7 +316,32 @@ fn empty_channel(index: u16) -> ChannelData {
         lockout: false,
         priority: false,
         tone_squelch: None,
-        bank: 0,
+        tone_squelch_kind: ToneSquelchKind::None,
+        tone_dcs_code: None,
+        bank: index_to_bank(index),
+    }
+}
+
+/// Map a BC125AT channel index (1–500) to its fixed bank (1–10).
+/// Banks are 50 channels each: 1–50 = bank 1, ..., 451–500 = bank 10.
+/// Returns 0 for out-of-range input.
+pub fn index_to_bank(index: u16) -> u8 {
+    if index == 0 || index > 500 {
+        return 0;
+    }
+    ((index - 1) / 50 + 1) as u8
+}
+
+/// Decode the CTCSS/DCS code field into kind + Hz + DCS code.
+fn decode_tone(code: u16) -> (ToneSquelchKind, Option<f64>, Option<u16>) {
+    match code {
+        0 | 240 => (ToneSquelchKind::None, None, None),
+        127 => (ToneSquelchKind::Search, None, None),
+        128..=231 => (ToneSquelchKind::Dcs, None, Some(code)),
+        _ => match tone_code_to_hz(code) {
+            Some(hz) => (ToneSquelchKind::Ctcss, Some(hz), None),
+            None => (ToneSquelchKind::None, None, None),
+        },
     }
 }
 
@@ -549,7 +575,7 @@ mod tests {
         assert!(!ch.lockout);
         assert!(!ch.priority);
         assert!(ch.tone_squelch.is_none());
-        assert_eq!(ch.bank, 0);
+        assert_eq!(ch.bank, 1, "channel 1 is in bank 1");
     }
 
     #[test]
@@ -562,7 +588,7 @@ mod tests {
         assert_eq!(ch.frequency, 0.0);
         assert!(ch.lockout, "lockout=1 in field 7");
         assert!(!ch.priority, "priority=0 in field 8");
-        assert_eq!(ch.bank, 0, "no bank field exists in CIN");
+        assert_eq!(ch.bank, 1, "channel 3 is in bank 1 (1-50)");
     }
 
     #[test]
@@ -589,6 +615,62 @@ mod tests {
         assert_eq!(tone_code_to_hz(88), Some(146.2));
         assert_eq!(tone_code_to_hz(127), None, "127 = SEARCH (not a Hz value)");
         assert_eq!(tone_code_to_hz(150), None, "DCS codes not mapped to Hz");
+    }
+
+    #[test]
+    fn decode_tone_classifies_kind() {
+        use crate::state::ToneSquelchKind;
+        assert_eq!(decode_tone(0), (ToneSquelchKind::None, None, None));
+        assert_eq!(decode_tone(240), (ToneSquelchKind::None, None, None));
+        assert_eq!(decode_tone(127), (ToneSquelchKind::Search, None, None));
+        assert_eq!(decode_tone(75), (ToneSquelchKind::Ctcss, Some(100.0), None));
+        assert_eq!(decode_tone(150), (ToneSquelchKind::Dcs, None, Some(150)));
+    }
+
+    #[test]
+    fn index_to_bank_maps_50_channel_chunks() {
+        assert_eq!(index_to_bank(0), 0, "out of range");
+        assert_eq!(index_to_bank(1), 1);
+        assert_eq!(index_to_bank(50), 1);
+        assert_eq!(index_to_bank(51), 2);
+        assert_eq!(index_to_bank(100), 2);
+        assert_eq!(index_to_bank(451), 10);
+        assert_eq!(index_to_bank(500), 10);
+        assert_eq!(index_to_bank(501), 0, "out of range");
+    }
+
+    #[test]
+    fn cin_populates_bank_from_index() {
+        let ch1 = parse_cin_response(1, "CIN,1,Ararat UHF,01451300,AUTO,0,2,0,0").unwrap();
+        assert_eq!(ch1.bank, 1);
+        let ch100 = parse_cin_response(100, "CIN,100,Test,01451300,AUTO,0,2,0,0").unwrap();
+        assert_eq!(ch100.bank, 2);
+        let ch451 = parse_cin_response(451, "CIN,451,Test,01451300,AUTO,0,2,0,0").unwrap();
+        assert_eq!(ch451.bank, 10);
+    }
+
+    #[test]
+    fn cin_classifies_tone_kind() {
+        use crate::state::ToneSquelchKind;
+        // No tone (sample 1 from capture)
+        let ch = parse_cin_response(1, "CIN,1,X,01451300,FM,0,2,0,0").unwrap();
+        assert_eq!(ch.tone_squelch_kind, ToneSquelchKind::None);
+        assert_eq!(ch.tone_squelch, None);
+
+        // CTCSS 100.0 Hz (code 75)
+        let ch = parse_cin_response(2, "CIN,2,X,01451300,FM,75,2,0,0").unwrap();
+        assert_eq!(ch.tone_squelch_kind, ToneSquelchKind::Ctcss);
+        assert_eq!(ch.tone_squelch, Some(100.0));
+
+        // DCS code 023
+        let ch = parse_cin_response(3, "CIN,3,X,01451300,FM,151,2,0,0").unwrap();
+        assert_eq!(ch.tone_squelch_kind, ToneSquelchKind::Dcs);
+        assert_eq!(ch.tone_dcs_code, Some(151));
+        assert_eq!(ch.tone_squelch, None);
+
+        // Search (code 127)
+        let ch = parse_cin_response(4, "CIN,4,X,01451300,FM,127,2,0,0").unwrap();
+        assert_eq!(ch.tone_squelch_kind, ToneSquelchKind::Search);
     }
 
     #[test]
