@@ -60,15 +60,25 @@ impl UsbTransport {
     }
 
     pub fn send(&self, session: &mut UsbSession, cmd: &str) -> Result<String, UsbTransportError> {
+        self.send_with_timeout(session, cmd, Duration::from_millis(self.timeout_ms))
+    }
+
+    /// Like `send` but overrides the read/write timeout for this single
+    /// command. Use for commands the BC125AT documents as long-running —
+    /// primarily `CLR` (factory reset, ~30 seconds, per BC125AT_PROTOCOL.md
+    /// §5.2). The override only applies to this call; the next `send` reverts
+    /// to `timeout_ms`.
+    pub fn send_with_timeout(
+        &self,
+        session: &mut UsbSession,
+        cmd: &str,
+        timeout: Duration,
+    ) -> Result<String, UsbTransportError> {
         self.drain_input(session);
         let mut payload = cmd.as_bytes().to_vec();
         payload.push(b'\r');
-        session.handle.write_bulk(
-            self.ep_out,
-            &payload,
-            Duration::from_millis(self.timeout_ms),
-        )?;
-        self.read_line(session)
+        session.handle.write_bulk(self.ep_out, &payload, timeout)?;
+        self.read_line_with_timeout(session, timeout)
     }
 
     pub fn send_and_read_multiline(
@@ -107,15 +117,15 @@ impl UsbTransport {
         }
     }
 
-    fn read_line(&self, session: &mut UsbSession) -> Result<String, UsbTransportError> {
+    fn read_line_with_timeout(
+        &self,
+        session: &mut UsbSession,
+        timeout: Duration,
+    ) -> Result<String, UsbTransportError> {
         let mut out = Vec::new();
         let mut buf = [0u8; 64];
         loop {
-            match session.handle.read_bulk(
-                self.ep_in,
-                &mut buf,
-                Duration::from_millis(self.timeout_ms),
-            ) {
+            match session.handle.read_bulk(self.ep_in, &mut buf, timeout) {
                 Ok(n) => {
                     out.extend_from_slice(&buf[..n]);
                     if out.contains(&b'\r') {

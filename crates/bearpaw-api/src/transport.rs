@@ -72,7 +72,41 @@ impl SerialTransport {
     }
 
     /// Send ASCII command + `\r`, read until `\r`, return line without `\r`.
+    /// Uses the transport's default timeout (`timeout_ms`, 500ms).
     pub fn send(&self, port: &mut dyn SerialPort, cmd: &str) -> Result<String, TransportError> {
+        self.send_with_timeout(port, cmd, Duration::from_millis(self.timeout_ms))
+    }
+
+    /// Like `send` but overrides the port's read timeout for the duration
+    /// of this single command. The previous timeout is restored on return
+    /// (including the error paths).
+    ///
+    /// Use this for the small set of commands that the BC125AT documents
+    /// as long-running — primarily `CLR` (factory reset, ~30 seconds, per
+    /// BC125AT_PROTOCOL.md §5.2). Do **not** use this to paper over
+    /// general latency problems.
+    pub fn send_with_timeout(
+        &self,
+        port: &mut dyn SerialPort,
+        cmd: &str,
+        timeout: Duration,
+    ) -> Result<String, TransportError> {
+        let original_timeout = port.timeout();
+        port.set_timeout(timeout)
+            .map_err(|e| TransportError::Open(e.to_string()))?;
+        let result = self.send_inner(port, cmd);
+        // Restore even if send_inner failed — otherwise a CLR-style call
+        // would leave the port stuck on a 30s timeout for all subsequent
+        // commands.
+        let _ = port.set_timeout(original_timeout);
+        result
+    }
+
+    fn send_inner(
+        &self,
+        port: &mut dyn SerialPort,
+        cmd: &str,
+    ) -> Result<String, TransportError> {
         let mut buf = cmd.as_bytes().to_vec();
         buf.push(b'\r');
         port.write_all(&buf)?;
