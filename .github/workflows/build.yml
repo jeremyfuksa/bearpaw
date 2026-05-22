@@ -45,19 +45,14 @@ jobs:
           profile: minimal
           toolchain: stable
           target: ${{ matrix.target }}
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-      
+
       - name: Cache Rust
         uses: actions/cache@v4
         with:
@@ -68,38 +63,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-      
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: backend/.venv
-          key: ${{ runner.os }}-python-${{ hashFiles('backend/requirements.txt') }}
-      
-      - name: Install Python dependencies
-        run: |
-          cd backend
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      
+
       - name: Install frontend dependencies
         run: |
           cd frontend
           npm install
-      
-      - name: Build Python sidecar
-        shell: bash
-        run: |
-          cd backend/packaging/tauri
-          chmod +x build.sh
-          if [[ "$OSTYPE" == "msys" ]]; then
-            powershell -File ./build.ps1
-          else
-            ./build.sh
-          fi
-      
+
       - name: Build frontend
         run: |
           cd frontend
