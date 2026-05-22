@@ -5,11 +5,7 @@ import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
-import type {
-  BusiestChannel,
-  HeatmapStats,
-  SessionStats,
-} from '../../../hooks/useDashboardAnalytics';
+import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
 import { BankControls, ScannerDisplay, StatusHeader } from '../ScannerUI';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import type { ScannerMode } from '../../App';
@@ -32,13 +28,6 @@ function getRelativeTime(date: Date | number) {
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ago`;
-}
-
-function formatDuration(totalSeconds?: number) {
-  if (!totalSeconds || totalSeconds <= 0) return '0:00';
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 function normalizeSignal(value?: number) {
@@ -74,7 +63,6 @@ export interface ScanViewProps {
   chartAnimate: boolean;
   dashboardLoading: boolean;
   busiestChannels: BusiestChannel[];
-  sessionStats: SessionStats | null;
   hourlyHeatmap: number[][];
   heatmapStats: HeatmapStats;
   onHoldToggle: () => void;
@@ -97,7 +85,6 @@ export function ScanView({
   chartAnimate,
   dashboardLoading,
   busiestChannels,
-  sessionStats,
   hourlyHeatmap,
   heatmapStats,
   onHoldToggle,
@@ -127,12 +114,6 @@ export function ScanView({
       })),
     [activityLog],
   );
-
-  const sessionStatsDisplay = {
-    hits: sessionStats?.total_hits ?? 0,
-    uniqueChannels: sessionStats?.unique_channels ?? 0,
-    activeTime: sessionStats?.active_time_seconds ?? 0,
-  };
 
   const isScanningRightNow =
     !isInitialSyncing && liveState?.mode === 'SCAN' && !liveState?.squelch_open;
@@ -256,28 +237,6 @@ export function ScanView({
                   </div>
                 ))
               )}
-            </div>
-          </div>
-
-          {/* Stats Sidebar - Dashboard Mode Only */}
-          <div className="flex h-full w-[var(--layout-stats-sidebar-width)] flex-col gap-2">
-            <div className="flex flex-col justify-between flex-1 py-1">
-              <div className="flex flex-col">
-                <span className="text-xs text-white/40 font-medium uppercase">Hits</span>
-                <span className="text-xl font-bold text-white/90">{sessionStatsDisplay.hits}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs text-white/40 font-medium uppercase">Active</span>
-                <span className="text-xl font-bold text-white/90">
-                  {formatDuration(sessionStatsDisplay.activeTime)}
-                </span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs text-white/40 font-medium uppercase">Channels</span>
-                <span className="text-xl font-bold text-white/90">
-                  {sessionStatsDisplay.uniqueChannels}
-                </span>
-              </div>
             </div>
           </div>
         </div>
