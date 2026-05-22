@@ -5,6 +5,9 @@
 
 mod control;
 mod poll;
+mod program_mode;
+
+pub(crate) use program_mode::ProgramModeGuard;
 
 pub use control::{validate_frequency, validate_modulation, ControlCommand, FrequencyRequest};
 pub use poll::spawn_poll_loop;
@@ -32,7 +35,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tracing::{info, warn};
 
 use crate::protocol::parse_cin_response;
-use crate::state::{ChannelData, DeviceInfo, LiveState, ShadowState};
+use crate::state::{ChannelData, DeviceInfo, LiveState, ScannerMode, ShadowState};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -69,7 +72,7 @@ pub struct ActivityHit {
     pub rssi: u8,
     pub duration: f64,
     pub modulation: String,
-    pub mode: String,
+    pub mode: ScannerMode,
     pub bank: Option<u8>,
     pub session_id: String,
     pub ended_at: f64,
@@ -83,7 +86,7 @@ pub struct ActiveHit {
     pub alpha_tag: Option<String>,
     pub rssi: u8,
     pub modulation: String,
-    pub mode: String,
+    pub mode: ScannerMode,
     pub bank: Option<u8>,
 }
 
@@ -243,7 +246,7 @@ fn command_sender(state: &AppState) -> Result<std::sync::mpsc::Sender<ControlCom
         .ok_or(ApiError::NoScanner)
 }
 
-async fn send_raw_command(
+pub(crate) async fn send_raw_command(
     state: &AppState,
     command: &str,
     multiline: bool,
@@ -341,6 +344,7 @@ async fn get_banks(State(state): State<AppState>) -> Result<Json<BanksResponse>,
     }
     let banks = flags.chars().map(|c| c == '0').collect::<Vec<bool>>();
     *state.banks.write().unwrap() = banks.clone();
+    broadcast_banks_update(&state);
     Ok(Json(BanksResponse { banks }))
 }
 
@@ -362,6 +366,7 @@ async fn set_banks(
     let _ = send_raw_command(&state, "EPG", false).await;
     let _ = set_result?;
     *state.banks.write().unwrap() = body.banks.clone();
+    broadcast_banks_update(&state);
     Ok(Json(BanksResponse { banks: body.banks }))
 }
 
@@ -690,9 +695,9 @@ async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>
     let pre_mode = state
         .live
         .read()
-        .map(|live| live.mode.to_uppercase())
-        .unwrap_or_else(|_| "SCAN".to_string());
-    let forced_hold = pre_mode == "SCAN";
+        .map(|live| live.mode)
+        .unwrap_or(ScannerMode::Scan);
+    let forced_hold = pre_mode == ScannerMode::Scan;
     if forced_hold {
         if send_raw_command(&state, "KEY,H,P", false).await.is_err() {
             let _ = send_raw_command(&state, "KEY,H", false).await;
@@ -704,7 +709,7 @@ async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>
         .store(forced_hold, Ordering::Relaxed);
     state.program_mode_active.store(true, Ordering::Relaxed);
     if let Ok(mut live) = state.live.write() {
-        live.mode = "PGM".to_string();
+        live.mode = ScannerMode::Programming;
     }
     Ok(Json(json!({ "status": "ok" })))
 }
@@ -722,7 +727,11 @@ async fn program_mode_end(State(state): State<AppState>) -> Result<Json<Value>, 
         }
     }
     if let Ok(mut live) = state.live.write() {
-        live.mode = if forced_hold { "SCAN" } else { "HOLD" }.to_string();
+        live.mode = if forced_hold {
+            ScannerMode::Scan
+        } else {
+            ScannerMode::Hold
+        };
     }
     Ok(Json(json!({ "status": "ok" })))
 }
@@ -2557,7 +2566,7 @@ async fn simulate_hit(State(state): State<AppState>) -> Json<Value> {
         modulation: "FM".to_string(),
         squelch_open: true,
         rssi: 75,
-        mode: "SCAN".to_string(),
+        mode: ScannerMode::Scan,
         channel: Some(1),
         alpha_tag: Some("Test Channel".to_string()),
         volume: 5,
@@ -2575,7 +2584,7 @@ async fn simulate_hit(State(state): State<AppState>) -> Json<Value> {
             modulation: "FM".to_string(),
             squelch_open: false,
             rssi: 0,
-            mode: "SCAN".to_string(),
+            mode: ScannerMode::Scan,
             channel: Some(1),
             alpha_tag: Some("Test Channel".to_string()),
             volume: 5,
@@ -3039,7 +3048,7 @@ pub(crate) fn track_analytics_transition(
             alpha_tag: live.alpha_tag.clone(),
             rssi: live.rssi,
             modulation: live.modulation.clone(),
-            mode: live.mode.clone(),
+            mode: live.mode,
             bank: None,
         });
         return;
@@ -3214,7 +3223,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
                     rssi: rssi as u8,
                     duration: duration.unwrap_or(0.0),
                     modulation,
-                    mode,
+                    mode: ScannerMode::from_str(&mode),
                     bank,
                     session_id,
                     ended_at: ended_at.unwrap_or(timestamp),
@@ -3246,7 +3255,7 @@ fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
                 hit.modulation,
                 hit.rssi as i64,
                 hit.duration,
-                hit.mode,
+                hit.mode.as_str(),
                 hit.bank,
                 hit.session_id,
                 hit.ended_at
@@ -3482,6 +3491,19 @@ fn broadcast_state_update(state: &AppState, live: &LiveState) {
         });
         let _ = state.ws_tx.send(event.to_string());
     }
+}
+
+/// Push the current bank-enabled mask to all WebSocket subscribers. Call
+/// after any change to state.banks so the UI can mirror reality instead of
+/// holding a stale local copy.
+pub(crate) fn broadcast_banks_update(state: &AppState) {
+    let banks = state.banks.read().map(|g| g.clone()).unwrap_or_default();
+    let msg = json!({
+        "type": "banks_update",
+        "timestamp": epoch_now(),
+        "data": { "banks": banks },
+    });
+    let _ = state.ws_tx.send(msg.to_string());
 }
 
 fn epoch_now() -> f64 {

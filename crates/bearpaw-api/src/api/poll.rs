@@ -16,7 +16,7 @@ use crate::protocol::{
     livestate_from_frames, parse_cin_response, parse_glg_response, parse_mdl_response,
     parse_pwr_response, parse_sts_frame, PwrFrame,
 };
-use crate::state::{ChannelData, LiveState};
+use crate::state::{ChannelData, LiveState, ScannerMode};
 use crate::transport::{SerialTransport, TransportError};
 use crate::transport_usb::UsbTransport;
 
@@ -96,7 +96,7 @@ fn run_poll_loop(
         warn!("Unable to read valid MDL response after retries (serial)");
     }
 
-    let mut commanded_mode: String = "SCAN".to_string();
+    let mut commanded_mode = ScannerMode::Scan;
     let mut volume: u8 = 0;
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
@@ -117,7 +117,7 @@ fn run_poll_loop(
                         .send(port.as_mut(), KEY_HOLD)
                         .map_err(|e| e.to_string());
                     if response.is_ok() {
-                        commanded_mode = "HOLD".to_string();
+                        commanded_mode = ScannerMode::Hold;
                     }
                     if let Some(r) = reply {
                         let _ = r.send(response);
@@ -128,7 +128,7 @@ fn run_poll_loop(
                         .send(port.as_mut(), KEY_SCAN)
                         .map_err(|e| e.to_string());
                     if response.is_ok() {
-                        commanded_mode = "SCAN".to_string();
+                        commanded_mode = ScannerMode::Scan;
                     }
                     if let Some(r) = reply {
                         let _ = r.send(response);
@@ -140,7 +140,7 @@ fn run_poll_loop(
                 } => {
                     let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
                     let _ = transport.send(port.as_mut(), &do_cmd);
-                    commanded_mode = "DIRECT".to_string();
+                    commanded_mode = ScannerMode::Direct;
                 }
                 ControlCommand::StartSync {
                     task_id,
@@ -218,7 +218,7 @@ fn run_poll_loop(
         process_poll_tick(
             &state,
             &mut poll_state,
-            &commanded_mode,
+            commanded_mode,
             sts_resp.as_deref(),
             glg_resp.as_deref(),
             pwr_resp.as_deref(),
@@ -271,7 +271,7 @@ fn run_poll_loop_usb(
         warn!("Unable to read valid MDL response after retries (usb)");
     }
 
-    let mut commanded_mode: String = "SCAN".to_string();
+    let mut commanded_mode = ScannerMode::Scan;
     let mut volume: u8 = 0;
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
@@ -290,7 +290,7 @@ fn run_poll_loop_usb(
                         .send(&mut session, KEY_HOLD)
                         .map_err(|e| e.to_string());
                     if response.is_ok() {
-                        commanded_mode = "HOLD".to_string();
+                        commanded_mode = ScannerMode::Hold;
                     }
                     if let Some(r) = reply {
                         let _ = r.send(response);
@@ -301,7 +301,7 @@ fn run_poll_loop_usb(
                         .send(&mut session, KEY_SCAN)
                         .map_err(|e| e.to_string());
                     if response.is_ok() {
-                        commanded_mode = "SCAN".to_string();
+                        commanded_mode = ScannerMode::Scan;
                     }
                     if let Some(r) = reply {
                         let _ = r.send(response);
@@ -313,7 +313,7 @@ fn run_poll_loop_usb(
                 } => {
                     let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
                     let _ = transport.send(&mut session, &do_cmd);
-                    commanded_mode = "DIRECT".to_string();
+                    commanded_mode = ScannerMode::Direct;
                 }
                 ControlCommand::StartSync {
                     task_id,
@@ -389,7 +389,7 @@ fn run_poll_loop_usb(
         if !process_poll_tick(
             &state,
             &mut poll_state,
-            &commanded_mode,
+            commanded_mode,
             sts_resp.as_deref(),
             glg_resp.as_deref(),
             pwr_resp.as_deref(),
@@ -447,7 +447,7 @@ impl PollState {
 fn process_poll_tick(
     state: &AppState,
     poll: &mut PollState,
-    commanded_mode: &str,
+    commanded_mode: ScannerMode,
     sts_resp: Option<&str>,
     glg_resp: Option<&str>,
     pwr_resp: Option<&str>,
