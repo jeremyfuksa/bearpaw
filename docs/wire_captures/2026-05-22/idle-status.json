@@ -1,0 +1,12 @@
+{
+  "timestamp": 1779471904.269449,
+  "frequency": 145.13,
+  "modulation": "NFM",
+  "squelch_open": false,
+  "rssi": 43,
+  "mode": "SCAN",
+  "channel": 1,
+  "alpha_tag": "Ararat UHF",
+  "volume": 0,
+  "stale": false
+}
