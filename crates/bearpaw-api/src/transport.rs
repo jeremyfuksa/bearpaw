@@ -3,8 +3,9 @@
 use std::thread;
 use std::time::Duration;
 
-use serialport::SerialPort;
+use serialport::{ClearBuffer, SerialPort};
 use thiserror::Error;
+use tracing::warn;
 
 #[derive(Debug, Error)]
 pub enum TransportError {
@@ -56,6 +57,16 @@ impl SerialTransport {
         if self.assert_dtr_on_open {
             port.write_data_terminal_ready(true)
                 .map_err(|e| TransportError::Open(e.to_string()))?;
+        }
+        // Drop stale bytes from a previous session so the first response
+        // isn't corrupted. Non-fatal if the OS doesn't support it; we just
+        // warn and continue. See BC125AT_PROTOCOL.md §1 "Open-time
+        // discipline" and docs/SCANNER_PROTOCOL_REFERENCE.md §13 gap 7.
+        if let Err(e) = port.clear(ClearBuffer::Input) {
+            warn!(
+                "Failed to drain serial input buffer on open ({}): {}",
+                self.port_name, e
+            );
         }
         Ok(port)
     }
