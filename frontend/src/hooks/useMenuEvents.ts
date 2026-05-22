@@ -31,10 +31,7 @@ const EVENT_NAMES = [
 
 export function useMenuEvents(handlers: MenuEventHandlers): void {
   useEffect(() => {
-    const tauri = isTauriRuntime();
-    // TEMPORARY DIAGNOSTIC: trace the menu→frontend wiring.
-    console.log('[bearpaw-menu] useMenuEvents mount; isTauri=', tauri);
-    if (!tauri) return;
+    if (!isTauriRuntime()) return;
 
     let cancelled = false;
     const unlisteners: Array<() => void> = [];
@@ -42,7 +39,6 @@ export function useMenuEvents(handlers: MenuEventHandlers): void {
     (async () => {
       for (const name of EVENT_NAMES) {
         const unlisten = await listen(name, () => {
-          console.log('[bearpaw-menu] event arrived:', name);
           const navTab = NAV_TABS[name];
           if (navTab) {
             handlers.onNavigate(navTab);
@@ -70,12 +66,10 @@ export function useMenuEvents(handlers: MenuEventHandlers): void {
           void unlisten();
           return;
         }
-        console.log('[bearpaw-menu] subscribed:', name);
         unlisteners.push(() => void unlisten());
       }
-      console.log('[bearpaw-menu] all subscriptions attached:', EVENT_NAMES.length);
     })().catch((error) => {
-      console.warn('[bearpaw-menu] failed to subscribe', error);
+      console.warn('Failed to subscribe to menu events', error);
     });
 
     return () => {

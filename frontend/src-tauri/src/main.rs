@@ -338,6 +338,7 @@ fn main() {
     let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .manage(ShellState {
             backend: backend_state.clone(),
         })
@@ -372,12 +373,8 @@ fn main() {
             // The menu-item ID is also the event name we emit. Frontend
             // subscribes via `listen("bearpaw:nav:scan", ...)` etc.
             let id = event.id().as_ref();
-            // TEMPORARY DIAGNOSTIC: confirm the handler fires for custom
-            // menu items. Remove once the menu→frontend chain is verified.
-            eprintln!("[bearpaw-menu] on_menu_event fired: id={}", id);
-            match app.emit(id, ()) {
-                Ok(()) => eprintln!("[bearpaw-menu] emit ok: id={}", id),
-                Err(err) => eprintln!("[bearpaw-menu] emit failed: id={} err={}", id, err),
+            if let Err(err) = app.emit(id, ()) {
+                eprintln!("failed to emit menu event {}: {}", id, err);
             }
         })
         .invoke_handler(tauri::generate_handler![shell_info, backend_status])
