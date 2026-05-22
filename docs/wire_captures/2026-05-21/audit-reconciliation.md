@@ -188,3 +188,25 @@ Idle GLG (between channels) would need a separate capture — none of our sample
 - This file — interpretation and reconciliation
 
 Both are committed to the repo as Phase 2 test fixtures.
+
+---
+
+## § Reconciliation against decompiled reference (2026-05-22)
+
+After v1.0.0 shipped, a fresh decompile of the official Uniden Sentinel app (`BC125AT_SS.exe`, namespace `Uniden.Scaner.SS`) plus the community Scan125 tool produced a 750-line wire-protocol reference (`BC125AT_PROTOCOL.md`). Most of its content cross-confirms what we'd already documented. Two empirical claims contradict this hardware:
+
+### Conflict 1 — USB VID/PID
+
+- **Reference says:** BC125AT enumerates via a Silicon Labs CP210x USB-UART bridge with VID/PID `0x10C4:0xEA60`.
+- **Our hardware says:** Uniden America Corp. CDC-ACM direct, VID/PID `0x1965:0x0017` (verified via `ioreg -p IOUSB -l -w 0` on macOS Darwin 25.4.0). No Silicon Labs intermediary on this unit.
+- **Verdict:** captures win. Bearpaw stays on `0x1965:0x0017`. The reference is likely describing a different unit revision or an older firmware. If a CP210x BC125AT shows up in the wild we'll add a second VID/PID branch then.
+
+### Conflict 2 — CIN write-vs-read field order
+
+- **Reference says:** `CIN` read returns `..., ctcss, lockout, delay, priority` while write sends `..., ctcss, delay, lockout, priority` — i.e., delay and lockout are *swapped* on write.
+- **Our hardware says:** Read order is `..., ctcss, delay, lockout, priority` on firmware 1.06.06 — confirmed in Finding 4 above (sample 4 `CIN,4,Trimble 640,01466400,AUTO,0,2,1,0` has delay=2, lockout=1, priority=0).
+- **Verdict:** captures win on the *read* side. The write-side order is genuinely unknown for our firmware because Bearpaw doesn't currently write CIN. **Implementing CIN writes requires a write→read-back verification step on this hardware first**, before assuming the reference's claim or assuming the read order applies symmetrically.
+
+### Governing rule
+
+Whenever `BC125AT_PROTOCOL.md` disagrees with a wire capture from this hardware, the capture wins. Document the disagreement in `docs/SCANNER_PROTOCOL_REFERENCE.md`; do not reshape the Rust code to match the reference's claim.
