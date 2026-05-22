@@ -312,7 +312,7 @@ export function ScannerDisplay({
             )}
           </p>
           <div className={cn(
-            "shrink-0 transition-all duration-500",
+            "shrink-0 transition-all duration-500 flex items-center justify-end",
             variant === "monitor"
               ? "size-20 opacity-80"
               : variant === "hero"
@@ -321,7 +321,9 @@ export function ScannerDisplay({
           )}>
             {isError ? (
               errorType === "usb" ? <UsbErrorIcon /> : <SocketErrorIcon />
-            ) : null}
+            ) : isScanning ? null : (
+              <SignalIcon strength={signalStrength} />
+            )}
           </div>
         </div>
 
