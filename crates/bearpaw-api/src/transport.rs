@@ -19,6 +19,11 @@ pub struct SerialTransport {
     port_name: String,
     baud: u32,
     timeout_ms: u64,
+    /// Assert DTR after opening the port. Off by default — asserting DTR on
+    /// open has caused intermittent disconnects on macOS/Linux. See
+    /// `BC125AT_PROTOCOL.md` §1 "Open-time discipline" and
+    /// `docs/SCANNER_PROTOCOL_REFERENCE.md` §1.
+    assert_dtr_on_open: bool,
 }
 
 impl SerialTransport {
@@ -27,7 +32,20 @@ impl SerialTransport {
             port_name: port_name.into(),
             baud,
             timeout_ms: 500,
+            assert_dtr_on_open: false,
         }
+    }
+
+    /// Opt in to asserting DTR on open. Only enable this if the OS or
+    /// adapter is known to require it; the BC125AT itself does not.
+    pub fn with_dtr_on_open(mut self, assert: bool) -> Self {
+        self.assert_dtr_on_open = assert;
+        self
+    }
+
+    /// Returns true if `open()` will assert DTR after constructing the port.
+    pub fn asserts_dtr_on_open(&self) -> bool {
+        self.assert_dtr_on_open
     }
 
     pub fn open(&self) -> Result<Box<dyn SerialPort>, TransportError> {
@@ -35,8 +53,10 @@ impl SerialTransport {
             .timeout(Duration::from_millis(self.timeout_ms))
             .open()
             .map_err(|e| TransportError::Open(e.to_string()))?;
-        port.write_data_terminal_ready(true)
-            .map_err(|e| TransportError::Open(e.to_string()))?;
+        if self.assert_dtr_on_open {
+            port.write_data_terminal_ready(true)
+                .map_err(|e| TransportError::Open(e.to_string()))?;
+        }
         Ok(port)
     }
 
@@ -111,5 +131,25 @@ impl SerialTransport {
             .replace('\r', "\n")
             .trim()
             .to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_does_not_assert_dtr_by_default() {
+        let t = SerialTransport::new("/dev/null", 115200);
+        assert!(!t.asserts_dtr_on_open());
+    }
+
+    #[test]
+    fn with_dtr_on_open_flips_the_flag() {
+        let t = SerialTransport::new("/dev/null", 115200).with_dtr_on_open(true);
+        assert!(t.asserts_dtr_on_open());
+
+        let t = SerialTransport::new("/dev/null", 115200).with_dtr_on_open(false);
+        assert!(!t.asserts_dtr_on_open());
     }
 }
