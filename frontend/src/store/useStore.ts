@@ -6,7 +6,6 @@ export interface Preferences {
   displayMode: 'frequency' | 'alpha';
   reducedMotion: boolean;
   hitMinDuration: number;
-  startInDashboardMode: boolean;
   autoConnect: boolean;
   checkUpdates: boolean;
   dataRetentionDays: number;
@@ -68,7 +67,6 @@ const defaultPreferences: Preferences = {
   displayMode: 'frequency',
   reducedMotion: false,
   hitMinDuration: 2,
-  startInDashboardMode: false,
   autoConnect: false,
   checkUpdates: true,
   dataRetentionDays: 30,

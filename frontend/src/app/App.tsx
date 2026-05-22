@@ -49,7 +49,6 @@ export default function App() {
   const channels = useStore((state) => state.channels);
   const fullActivityLog = useStore((state) => state.fullActivityLog);
   const preferences = useStore((state) => state.preferences);
-  const isDashboardMode = preferences.startInDashboardMode;
   const updateLiveState = useStore((state) => state.updateLiveState);
   const setDeviceInfo = useStore((state) => state.setDeviceInfo);
   const setChannels = useStore((state) => state.setChannels);
@@ -133,7 +132,6 @@ export default function App() {
             displayMode: prefs.displayMode || 'frequency',
             reducedMotion: prefs.reduced_motion || false,
             hitMinDuration: prefs.hit_min_duration || 2,
-            startInDashboardMode: prefs.start_dashboard_mode ?? false,
             autoConnect: prefs.auto_connect ?? false,
             checkUpdates: prefs.check_updates ?? true,
             dataRetentionDays: prefs.data_retention_days || 30,
@@ -322,14 +320,13 @@ export default function App() {
   }, [api, channels.length, deviceInfo, updateSync]);
 
   useEffect(() => {
-    if (!isDashboardMode) {
-      setChartAnimate(false);
-      return;
-    }
+    // One-shot animation pass on mount so the bar chart slides in once.
+    // After 700ms Recharts switches to its no-anim render path, which
+    // matches the prior behaviour when entering dashboard view.
     setChartAnimate(true);
     const timeout = window.setTimeout(() => setChartAnimate(false), 700);
     return () => window.clearTimeout(timeout);
-  }, [isDashboardMode]);
+  }, []);
 
   const handleCancelSync = useCallback(async () => {
     try {
@@ -618,21 +615,6 @@ export default function App() {
     [api],
   );
 
-  const handleDashboardToggle = useCallback(async () => {
-    const newValue = !isDashboardMode;
-    updatePreferences({ startInDashboardMode: newValue });
-    try {
-      await fetch(`${API_BASE}/preferences`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start_dashboard_mode: newValue }),
-      });
-    } catch (error) {
-      console.error('Failed to save dashboard preference', error);
-      toast.error('Failed to save preference');
-    }
-  }, [isDashboardMode, updatePreferences]);
-
   return (
     <div className="scanner-app-shell">
       <Toaster
@@ -655,12 +637,7 @@ export default function App() {
         }}
       />
 
-      <div
-        className={cn(
-          'relative flex-1 overflow-hidden',
-          currentTab === 'Scan' && !isDashboardMode ? 'p-0' : 'p-6',
-        )}
-      >
+      <div className="relative flex-1 overflow-hidden p-6">
         <AnimatePresence mode="wait">
           {currentTab === 'Scan' && (
             <ScanView
@@ -681,7 +658,6 @@ export default function App() {
               onVolumeChange={handleVolumeChange}
               onBankToggle={handleBankToggle}
               onCancelSync={handleCancelSync}
-              onDashboardToggle={handleDashboardToggle}
               onOpenActivityExport={() => setIsExportSheetOpen(true)}
             />
           )}

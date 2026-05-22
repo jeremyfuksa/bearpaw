@@ -11,8 +11,6 @@ describe('StatusHeader', () => {
     isHolding: false,
     onHoldToggle: vi.fn(),
     onLockout: vi.fn(),
-    isDashboardMode: false,
-    onDashboardToggle: vi.fn(),
   };
 
   describe('rendering', () => {
