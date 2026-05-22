@@ -131,8 +131,8 @@ describe('TabNav Component', () => {
     });
 
     it('should handle custom model name', () => {
-      render(<TabNav {...defaultProps} modelName="SR30C" connectionStatus="connected" />);
-      expect(screen.getByText('SR30C')).toBeInTheDocument();
+      render(<TabNav {...defaultProps} modelName="BCT125AT" connectionStatus="connected" />);
+      expect(screen.getByText('BCT125AT')).toBeInTheDocument();
     });
   });
 });

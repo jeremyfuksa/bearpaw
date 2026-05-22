@@ -464,7 +464,7 @@ A mock hardware server should simulate scanner responses for E2E testing without
 - Pseudo-terminal for serial communication
 - Responds to protocol commands (STS, GLG, PRG, etc.)
 - Configurable responses (valid, error, timeout)
-- Supports both BC125AT and SR30C protocols
+- BC125AT-family protocol only
 
 ## Test Execution
 
