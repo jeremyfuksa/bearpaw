@@ -60,7 +60,16 @@ impl ProgramModeGuard {
     /// mode. On failure (PRG returned an error), the guard is still
     /// returned but in an inactive state — drop is a no-op — and the
     /// caller's `?` will propagate the error up.
+    ///
+    /// Refuses to enter while a memory sync is in progress: sync runs PRG
+    /// directly on the poll thread and holds the bulk endpoint for the
+    /// duration, so a concurrent PRG from a handler would queue behind it
+    /// and time out (we observed 3 s timeouts during Phase 9-verify). 409
+    /// Conflict here lets the frontend retry once the sync finishes.
     pub async fn enter(state: &AppState) -> Result<Self, ApiError> {
+        if state.sync_task_id.lock().unwrap().is_some() {
+            return Err(ApiError::Conflict("memory_sync_in_progress".to_string()));
+        }
         let flag = state.program_mode_active.clone();
         // Set the flag *before* sending PRG so the poll loop suspends as
         // early as possible. If PRG fails, the Drop impl will clear it.
