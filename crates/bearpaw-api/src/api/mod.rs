@@ -430,7 +430,7 @@ impl IntoResponse for ApiError {
 
 pub async fn run_server(
     bind: &str,
-    mut state: AppState,
+    state: AppState,
     serial_port: Option<(String, u32)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     run_server_with_shutdown(bind, state, serial_port, std::future::pending()).await

@@ -1,6 +1,6 @@
 [package]
 name = "bearpaw-desktop"
-version = "0.9.0-alpha.1"
+version = "1.0.0"
 description = "Bearpaw Desktop"
 authors = ["Jeremy Fuksa"]
 edition = "2021"
