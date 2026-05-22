@@ -10,6 +10,7 @@ import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+import { useMenuEvents } from '../hooks/useMenuEvents';
 import { useShellStatusText } from '../hooks/useShellStatusText';
 import type { ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
@@ -400,6 +401,56 @@ export default function App() {
     },
     [isInProgramMode, requestScanResume],
   );
+
+  const menuHandlers = useMemo(
+    () => ({
+      onNavigate: (tab: Tab) => handleTabChange(tab),
+      onHold: () => {
+        if (!connected) return;
+        api.sendHold().catch((error) => {
+          console.warn('Menu: failed to send hold', error);
+          toast.error('Failed to send Hold');
+        });
+      },
+      onScan: () => {
+        if (!connected) return;
+        api.sendScan().catch((error) => {
+          console.warn('Menu: failed to send scan', error);
+          toast.error('Failed to send Scan');
+        });
+      },
+      onSyncMemory: () => {
+        if (!connected) return;
+        if (useStore.getState().sync.inProgress) {
+          toast.info('Memory sync already in progress');
+          return;
+        }
+        updateSync({ message: 'Loading channels from device...' });
+        api
+          .syncMemory()
+          .then((result) => {
+            if (result.status === 'started' || result.status === 'already_running') {
+              updateSync({ inProgress: true, taskId: result.task_id || null });
+            }
+          })
+          .catch((error) => {
+            console.warn('Menu: failed to start memory sync', error);
+            toast.error('Failed to start memory sync');
+          });
+      },
+      onOpenDocs: () => {
+        window.open('https://github.com/jeremyfuksa/bearpaw#readme', '_blank', 'noopener');
+      },
+      onOpenIssues: () => {
+        window.open('https://github.com/jeremyfuksa/bearpaw/issues', '_blank', 'noopener');
+      },
+      onShowAbout: () => {
+        toast.info('Bearpaw — Uniden BC125AT control interface');
+      },
+    }),
+    [api, connected, handleTabChange, updateSync],
+  );
+  useMenuEvents(menuHandlers);
 
   const getScannerMode = () => {
     const normalized = (liveState?.mode ?? '').toString().trim().toUpperCase();
