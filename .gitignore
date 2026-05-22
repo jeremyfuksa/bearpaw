@@ -32,3 +32,5 @@ Cargo.lock
 # Tauri build outputs
 src-tauri/binaries/
 src-tauri/entitlements/
+# tauri-build regenerates these schemas on every compile; not source.
+frontend/src-tauri/gen/schemas/
