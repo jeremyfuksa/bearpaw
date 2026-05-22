@@ -70,7 +70,6 @@ fn run_poll_loop(
 
     // Loop-spanning state. Preserved across reconnects.
     let mut commanded_mode = ScannerMode::Scan;
-    let mut volume: u8 = 0;
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
     let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
@@ -130,10 +129,13 @@ fn run_poll_loop(
             warn!("Unable to read valid MDL response after retries (serial)");
         }
 
-        // Initial volume query.
+        // Initial volume query. Writes to `state.live.volume` so the first
+        // poll tick (and the UI) sees the real scanner volume rather than 0.
         if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
             if let Some(v) = parse_vol_response(&vol_resp) {
-                volume = v;
+                if let Ok(mut live) = state.live.write() {
+                    live.volume = v;
+                }
             }
         }
 
@@ -298,7 +300,6 @@ fn run_poll_loop(
                 sts_resp.as_deref(),
                 glg_resp.as_deref(),
                 pwr_resp.as_deref(),
-                volume,
                 "serial",
             );
 
@@ -325,9 +326,10 @@ fn run_poll_loop_usb(
     let port_label = format!("usb:{:04x}:{:04x}", vid, pid);
 
     // Loop-spanning state. Preserved across reconnects so the user's
-    // commanded mode + last-known volume survive a brief unplug/replug.
+    // commanded mode survives a brief unplug/replug. Volume lives in
+    // `state.live.volume` — that's the single source of truth for both
+    // poll-initiated reads and user-driven `set_volume` writes.
     let mut commanded_mode = ScannerMode::Scan;
-    let mut volume: u8 = 0;
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
     let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
@@ -390,9 +392,13 @@ fn run_poll_loop_usb(
             warn!("Unable to read valid MDL response after retries (usb)");
         }
 
+        // Initial volume query. Writes to `state.live.volume` so the first
+        // poll tick (and the UI) sees the real scanner volume rather than 0.
         if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
             if let Some(v) = parse_vol_response(&vol_resp) {
-                volume = v;
+                if let Ok(mut live) = state.live.write() {
+                    live.volume = v;
+                }
             }
         }
 
@@ -561,7 +567,6 @@ fn run_poll_loop_usb(
                 sts_resp.as_deref(),
                 glg_resp.as_deref(),
                 pwr_resp.as_deref(),
-                volume,
                 "usb",
             ) {
                 thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
@@ -723,9 +728,14 @@ fn process_poll_tick(
     sts_resp: Option<&str>,
     glg_resp: Option<&str>,
     pwr_resp: Option<&str>,
-    volume: u8,
     source: &str,
 ) -> bool {
+    // Read the authoritative volume from shared state rather than a local
+    // poll-thread cache. Previously the poll loop held its own `volume`
+    // var (refreshed once at startup) and stamped it into every poll
+    // frame, which clobbered user-initiated `set_volume` writes ~200ms
+    // after they landed.
+    let volume = state.live.read().map(|g| g.volume).unwrap_or(0);
     let sts = sts_resp.and_then(parse_sts_frame);
     let glg = glg_resp.and_then(parse_glg_response);
 
