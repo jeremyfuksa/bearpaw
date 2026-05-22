@@ -1,11 +1,8 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use serde_json::json;
-use std::sync::atomic::Ordering;
 
-use crate::state::LiveState;
-
-use super::{epoch_now, track_analytics_transition, AppState};
+use super::{epoch_now, AppState};
 
 pub(crate) async fn ws_handler(
     State(state): State<AppState>,
@@ -29,52 +26,6 @@ async fn handle_socket(state: AppState, mut socket: WebSocket) {
                 }
             }
         }
-    }
-}
-
-pub(crate) fn broadcast_state_update(state: &AppState, live: &LiveState) {
-    let prev_squelch_open = state.live.read().map(|g| g.squelch_open).unwrap_or(false);
-
-    if let Ok(mut guard) = state.live.write() {
-        *guard = live.clone();
-    }
-
-    track_analytics_transition(state, live, prev_squelch_open);
-
-    let sequence = state.sequence.fetch_add(1, Ordering::Relaxed);
-    let msg = json!({
-        "type": "state_update",
-        "timestamp": live.timestamp,
-        "sequence": sequence,
-        "data": {
-            "timestamp": live.timestamp,
-            "frequency": live.frequency,
-            "modulation": live.modulation,
-            "squelch_open": live.squelch_open,
-            "rssi": live.rssi,
-            "mode": live.mode,
-            "channel": live.channel,
-            "alpha_tag": live.alpha_tag,
-            "volume": live.volume,
-            "battery": live.battery,
-            "stale": live.stale,
-        }
-    });
-    let _ = state.ws_tx.send(msg.to_string());
-
-    if live.squelch_open && !prev_squelch_open {
-        let event = json!({
-            "type": "event",
-            "timestamp": live.timestamp,
-            "event": "scan_hit",
-            "data": {
-                "frequency": live.frequency,
-                "channel": live.channel,
-                "alpha_tag": live.alpha_tag,
-                "rssi": live.rssi,
-            }
-        });
-        let _ = state.ws_tx.send(event.to_string());
     }
 }
 
