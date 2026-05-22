@@ -13,13 +13,7 @@ import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
-import {
-  getBackendStatus,
-  getShellInfo,
-  isTauriRuntime,
-  subscribeBackendStatus,
-  type BackendStatus,
-} from '../tauri-shell';
+import { useShellStatusText } from '../hooks/useShellStatusText';
 import type { ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
@@ -109,8 +103,7 @@ export default function App() {
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const [hasFreshLiveFrame, setHasFreshLiveFrame] = useState(false);
-  const [shellStatus, setShellStatus] = useState<BackendStatus | null>(null);
-  const [shellLabel, setShellLabel] = useState<string | null>(null);
+  const shellStatusText = useShellStatusText();
 
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scanResumeInFlightRef = useRef(false);
@@ -153,48 +146,6 @@ export default function App() {
     },
     [api, connected],
   );
-
-  useEffect(() => {
-    if (!isTauriRuntime()) {
-      setShellStatus(null);
-      setShellLabel(null);
-      return;
-    }
-    let active = true;
-    let cleanup: (() => void) | null = null;
-
-    getShellInfo()
-      .then((info) => {
-        if (!active || !info) return;
-        setShellLabel(`${info.product_name} ${info.version}`);
-      })
-      .catch(() => {
-        // Ignore shell metadata failures in UI.
-      });
-
-    getBackendStatus()
-      .then((status) => {
-        if (active) setShellStatus(status);
-      })
-      .catch(() => {
-        // Ignore initial status failures; event stream may still provide updates.
-      });
-
-    subscribeBackendStatus((status) => {
-      if (active) setShellStatus(status);
-    })
-      .then((unlisten) => {
-        cleanup = unlisten;
-      })
-      .catch(() => {
-        // Non-fatal in browser or restricted runtime.
-      });
-
-    return () => {
-      active = false;
-      if (cleanup) cleanup();
-    };
-  }, []);
 
   useEffect(() => {
     const loadPreferences = async () => {
@@ -464,14 +415,6 @@ export default function App() {
   }, [liveState?.mode, isInProgramMode, isMemorySyncing]);
 
   const connectionStatus = useConnectionStatus();
-
-  const shellStatusText = useMemo(() => {
-    if (!isTauriRuntime()) return null;
-    const server = shellStatus?.running ? 'Backend up' : 'Backend down';
-    if (shellStatus?.last_error) return `${server} (error)`;
-    if (shellLabel) return `${shellLabel} • ${server}`;
-    return server;
-  }, [shellLabel, shellStatus]);
 
   const handleTabChange = useCallback(
     (tab: string) => {
