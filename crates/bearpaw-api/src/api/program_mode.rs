@@ -21,12 +21,20 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 use tracing::warn;
 
 use super::AppState;
 use super::ApiError;
 use super::send_raw_command;
+
+/// Delay after `PRG,OK` (and after `EPG` is queued in Drop) for the
+/// scanner's mode transition to settle. Without this, the next command
+/// — especially a memory-sync `CIN,1` — can race the mode transition
+/// and come back `NG`. Empirically 50–100 ms is enough; we use 100 to
+/// have headroom. See `docs/PROTOCOL_AUDIT_PLAN.md` Phase 5 §5.4.
+const MODE_TRANSITION_SETTLE: Duration = Duration::from_millis(100);
 
 /// RAII guard. Entering scope sends `PRG` and asserts the
 /// `program_mode_active` flag (which suspends the poll loop's
@@ -62,6 +70,11 @@ impl ProgramModeGuard {
         match send_raw_command(state, "PRG", false).await {
             Ok(_) => {
                 guard.active = true;
+                // Let the LCD/firmware settle on the new mode before the
+                // caller fires its first PRG-only command. Skipping this
+                // makes the immediately-following CIN/SCG come back NG on
+                // some firmware revisions.
+                tokio::time::sleep(MODE_TRANSITION_SETTLE).await;
                 Ok(guard)
             }
             Err(e) => {
