@@ -116,8 +116,7 @@ export const useStore = create<AppStore>((set) => ({
             ? channels
             : [],
     })),
-  setBanks: (banks) =>
-    set({ banks: banks.length === 10 ? banks : defaultBanks }),
+  setBanks: (banks) => set({ banks: banks.length === 10 ? banks : defaultBanks }),
   setBanksBusy: (banksBusy) => set({ banksBusy }),
   addActivityLogEntry: (entry) =>
     set((prev) => ({
