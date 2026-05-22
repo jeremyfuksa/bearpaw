@@ -11,7 +11,7 @@ mod program_mode;
 mod ws;
 
 pub(crate) use program_mode::ProgramModeGuard;
-pub(crate) use ws::{broadcast_banks_update, broadcast_state_update};
+pub(crate) use ws::broadcast_banks_update;
 
 pub use control::{validate_frequency, validate_modulation, ControlCommand, FrequencyRequest};
 pub use poll::spawn_poll_loop;
@@ -96,7 +96,6 @@ const ANALYTICS_SCHEMA_VERSION: i32 = 1;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/status", get(handlers::status::get_status))
-        .route("/api/v1/health", get(handlers::status::get_health))
         .route(
             "/api/v1/device/info",
             get(handlers::status::get_device_info),
@@ -113,10 +112,6 @@ pub fn router(state: AppState) -> Router {
             post(handlers::commands::post_lockout),
         )
         .route(
-            "/api/v1/frequency",
-            post(handlers::commands::post_frequency),
-        )
-        .route(
             "/api/v1/volume",
             get(handlers::commands::get_volume).post(handlers::commands::set_volume),
         )
@@ -125,10 +120,6 @@ pub fn router(state: AppState) -> Router {
             get(handlers::commands::get_squelch).post(handlers::commands::set_squelch),
         )
         .route("/api/v1/config", get(handlers::settings::get_config))
-        .route(
-            "/api/v1/settings/firmware",
-            get(handlers::settings::get_firmware),
-        )
         .route("/api/v1/settings/all", get(handlers::settings::get_config))
         .route(
             "/api/v1/settings/backlight",
@@ -176,10 +167,6 @@ pub fn router(state: AppState) -> Router {
             get(handlers::settings::get_contrast).post(handlers::settings::set_contrast),
         )
         .route("/api/v1/lockouts", get(handlers::lockouts::get_lockouts))
-        .route(
-            "/api/v1/lockouts/:frequency",
-            get(handlers::lockouts::get_lockout_status),
-        )
         .route(
             "/api/v1/lockouts/temporary/clear",
             post(handlers::lockouts::clear_temporary_lockouts),
@@ -242,13 +229,6 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/preferences/:key",
             get(handlers::preferences::get_preference)
                 .put(handlers::preferences::put_preference),
-        )
-        .route("/api/v1/debug/glg", get(handlers::debug::debug_glg))
-        .route("/api/v1/debug/scg", get(handlers::debug::debug_scg))
-        .route("/api/v1/debug/glf", get(handlers::debug::debug_glf))
-        .route(
-            "/api/v1/test/simulate-hit",
-            post(handlers::status::simulate_hit),
         )
         .route(
             "/api/v1/analytics/busiest-channels",
@@ -1546,24 +1526,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn health_endpoint_returns_ok() {
-        let app = router(default_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method(Method::GET)
-                    .uri("/api/v1/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = json_body(response).await;
-        assert_eq!(body["status"], "ok");
-    }
-
-    #[tokio::test]
     async fn settings_all_requires_scanner_when_disconnected() {
         let app = router(default_state());
         let response = app
@@ -1598,24 +1560,6 @@ mod tests {
         let body = json_body(response).await;
         assert!(body.get("theme").is_some());
         assert!(body.get("mqtt_enabled").is_some());
-    }
-
-    #[tokio::test]
-    async fn lockout_frequency_endpoint_present() {
-        let app = router(default_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method(Method::GET)
-                    .uri("/api/v1/lockouts/162.55")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-        let body = json_body(response).await;
-        assert_eq!(body["error"], "device_disconnected");
     }
 
     #[tokio::test]

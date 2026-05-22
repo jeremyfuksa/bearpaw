@@ -10,8 +10,7 @@ use crate::state::ChannelData;
 
 use super::super::{
     command_sender, send_raw_command, set_channel_lockout_on_scanner, set_setting_section,
-    validate_frequency, validate_modulation, ApiError, AppState, ControlCommand, FrequencyRequest,
-    ProgramModeGuard,
+    ApiError, AppState, ControlCommand, ProgramModeGuard,
 };
 
 /// Send a Hold or Scan ControlCommand to the poll loop and wait for its
@@ -85,22 +84,6 @@ pub(crate) async fn post_key(
         }
     }
     Ok(Json(json!({ "status": "ok" })))
-}
-
-pub(crate) async fn post_frequency(
-    State(state): State<AppState>,
-    Json(body): Json<FrequencyRequest>,
-) -> Result<Json<crate::state::LiveState>, ApiError> {
-    validate_frequency(body.frequency).map_err(ApiError::BadRequest)?;
-    validate_modulation(&body.modulation).map_err(ApiError::BadRequest)?;
-    let tx = state.command_tx.lock().unwrap();
-    let tx = tx.as_ref().ok_or(ApiError::NoScanner)?;
-    tx.send(ControlCommand::Direct {
-        frequency: body.frequency,
-        modulation: body.modulation.to_uppercase(),
-    })
-    .map_err(|_| ApiError::SendFailed)?;
-    Ok(Json(state.live.read().unwrap().clone()))
 }
 
 #[derive(Deserialize)]

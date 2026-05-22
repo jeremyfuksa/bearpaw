@@ -1,4 +1,4 @@
-use axum::extract::{Path, Query, State};
+use axum::extract::{Query, State};
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -68,20 +68,6 @@ pub(crate) async fn get_lockouts(
         channels,
         temporary_channels,
     }))
-}
-
-pub(crate) async fn get_lockout_status(
-    State(state): State<AppState>,
-    Path(frequency): Path<f64>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let raw = (frequency * 10000.0).round().max(0.0) as u32;
-    let from_scanner = read_frequency_lockouts_from_scanner(&state).await?;
-    let mut set = state.frequency_lockouts.write().unwrap();
-    set.clear();
-    set.extend(from_scanner.iter().copied());
-    let locked = state.frequency_lockouts.read().unwrap().contains(&raw);
-    Ok(Json(json!({ "frequency": frequency, "locked": locked })))
 }
 
 pub(crate) async fn clear_temporary_lockouts(

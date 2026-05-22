@@ -14,19 +14,6 @@ pub(crate) async fn get_config(State(state): State<AppState>) -> Result<Json<Val
     Ok(Json(snapshot))
 }
 
-pub(crate) async fn get_firmware(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let response = send_raw_command(&state, "VER", false).await?;
-    let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
-    if parts.first().map(|p| p.eq_ignore_ascii_case("VER")) == Some(true) {
-        parts.remove(0);
-    }
-    let firmware = parts.join(",").trim().to_string();
-    if let Ok(mut device) = state.device.write() {
-        device.firmware = Some(firmware.clone());
-    }
-    Ok(Json(json!({ "firmware": firmware })))
-}
-
 pub(crate) async fn get_backlight(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
