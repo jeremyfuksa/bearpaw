@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Loader2 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+import { BearpawProgress } from './components/BearpawProgress';
 import { cn } from '../lib/utils';
 import { StatusBar } from './components/ScannerUI';
 import { getAPI, API_BASE } from '../api/useApi';
@@ -188,6 +188,9 @@ export default function App() {
       if (payload.message) {
         updateSync({ message: payload.message });
       }
+      if (typeof payload.percent === 'number' && Number.isFinite(payload.percent)) {
+        updateSync({ percent: Math.max(0, Math.min(100, payload.percent)) });
+      }
 
       const currentSync = useStore.getState().sync;
 
@@ -202,6 +205,7 @@ export default function App() {
           hasSyncedInitially: true,
           taskId: null,
           message: 'Loading channels from device...',
+          percent: 0,
         });
 
         // Double-check PGM mode after a delay to account for mode transitions
@@ -694,9 +698,12 @@ export default function App() {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
           >
             <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-white/10 bg-scanner-bg-dark p-6 shadow-lg">
-              <div className="flex items-center gap-2 text-white">
-                <Loader2 className="h-5 w-5 animate-spin text-brand-primary" />
-                <span className="text-sm font-medium">Syncing Scanner Memory</span>
+              <BearpawProgress percent={sync.percent} size={96} />
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-sm font-medium text-white">Syncing Scanner Memory</span>
+                <span className="font-mono text-xs text-scanner-text-secondary">
+                  {Math.round(sync.percent)}%
+                </span>
               </div>
               <p className="text-center text-xs text-scanner-text-secondary">
                 {syncProgressMessage || 'Loading channels from device...'}
