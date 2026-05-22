@@ -330,9 +330,8 @@ struct BanksRequest {
 
 async fn get_banks(State(state): State<AppState>) -> Result<Json<BanksResponse>, ApiError> {
     let _ = command_sender(&state)?;
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, "SCG", false).await;
-    let _ = send_raw_command(&state, "EPG", false).await;
     let response = response?;
     let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
     if parts.first().map(|p| p.eq_ignore_ascii_case("SCG")) == Some(true) {
@@ -361,9 +360,8 @@ async fn set_banks(
         .iter()
         .map(|enabled| if *enabled { "0" } else { "1" })
         .collect::<String>();
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    let _prg = ProgramModeGuard::enter(&state).await?;
     let set_result = send_raw_command(&state, &format!("SCG,{}", flags), false).await;
-    let _ = send_raw_command(&state, "EPG", false).await;
     let _ = set_result?;
     *state.banks.write().unwrap() = body.banks.clone();
     broadcast_banks_update(&state);
@@ -703,6 +701,9 @@ async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>
             let _ = send_raw_command(&state, "KEY,H", false).await;
         }
     }
+    // Manual PRG/EPG here (instead of ProgramModeGuard) because this handler
+    // intentionally leaves the scanner in program mode across HTTP requests.
+    // The matching EPG is in program_mode_end.
     let _ = send_raw_command(&state, "PRG", false).await?;
     state
         .program_mode_forced_hold
@@ -847,12 +848,11 @@ async fn clear_global_lockouts(State(state): State<AppState>) -> Result<Json<Val
     let _ = command_sender(&state)?;
     let mut cleared = Vec::new();
     let existing = read_frequency_lockouts_from_scanner(&state).await?;
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    let _prg = ProgramModeGuard::enter(&state).await?;
     for frequency in &existing {
         let _ = send_raw_command(&state, &format!("ULF,{}", frequency), false).await;
         cleared.push(*frequency as f64 / 10000.0);
     }
-    let _ = send_raw_command(&state, "EPG", false).await;
     cleared.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     state.frequency_lockouts.write().unwrap().clear();
     Ok(Json(json!({ "cleared": cleared, "failed": [] })))
@@ -950,9 +950,8 @@ async fn set_volume(
 
 async fn get_squelch(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, "SQL", false).await;
-    let _ = send_raw_command(&state, "EPG", false).await;
     let response = response?;
     let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
     if parts.first().map(|p| p.eq_ignore_ascii_case("SQL")) == Some(true) {
@@ -980,9 +979,8 @@ async fn set_squelch(
     if body.level > 15 {
         return Err(ApiError::BadRequest("squelch_out_of_range".to_string()));
     }
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, &format!("SQL,{}", body.level), false).await;
-    let _ = send_raw_command(&state, "EPG", false).await;
     let response = response?;
     let upper = response.trim().to_uppercase();
     if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("SQL,")) {
@@ -1016,10 +1014,9 @@ async fn get_backlight(State(state): State<AppState>) -> Result<Json<Value>, Api
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "BLT", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "BLT");
             Ok::<Value, ApiError>(
                 json!({ "event": parts.first().cloned().unwrap_or_else(|| "AO".to_string()) }),
@@ -1052,10 +1049,9 @@ async fn set_backlight(
         return Err(ApiError::BadRequest("backlight_invalid".to_string()));
     }
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("BLT,{}", event), false).await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("backlight_failed".to_string()));
@@ -1069,10 +1065,9 @@ async fn get_battery(State(state): State<AppState>) -> Result<Json<Value>, ApiEr
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "BSV", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "BSV");
             let value = parts
                 .first()
@@ -1109,10 +1104,9 @@ async fn set_battery(
         ));
     }
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("BSV,{}", charge_time), false).await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("battery_failed".to_string()));
@@ -1126,10 +1120,9 @@ async fn get_key_beep(State(state): State<AppState>) -> Result<Json<Value>, ApiE
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "KBP", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "KBP");
             let level = parts
                 .first()
@@ -1166,15 +1159,14 @@ async fn set_key_beep(
         return Err(ApiError::BadRequest("beep_level_out_of_range".to_string()));
     }
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
             &state,
             &format!("KBP,{},{}", level, if lock { 1 } else { 0 }),
             false,
         )
         .await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("key_beep_failed".to_string()));
@@ -1188,10 +1180,9 @@ async fn get_priority(State(state): State<AppState>) -> Result<Json<Value>, ApiE
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "PRI", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "PRI");
             let mode = parts
                 .first()
@@ -1226,10 +1217,9 @@ async fn set_priority(
         return Err(ApiError::BadRequest("priority_mode_invalid".to_string()));
     }
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("PRI,{}", mode), false).await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("priority_failed".to_string()));
@@ -1243,10 +1233,9 @@ async fn get_search(State(state): State<AppState>) -> Result<Json<Value>, ApiErr
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "SCO", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "SCO");
             let delay = parts
                 .first()
@@ -1286,15 +1275,14 @@ async fn set_search(
         return Err(ApiError::BadRequest("search_delay_invalid".to_string()));
     }
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
             &state,
             &format!("SCO,{},{}", delay, if code_search { 1 } else { 0 }),
             false,
         )
         .await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("SCO,")) {
             return Err(ApiError::BadRequest("search_failed".to_string()));
@@ -1308,10 +1296,9 @@ async fn get_close_call(State(state): State<AppState>) -> Result<Json<Value>, Ap
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "CLC", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "CLC");
             let mode = parts
                 .first()
@@ -1390,7 +1377,7 @@ async fn set_close_call(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
             &state,
             &format!(
@@ -1404,8 +1391,7 @@ async fn set_close_call(
             false,
         )
         .await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("close_call_failed".to_string()));
@@ -1419,10 +1405,9 @@ async fn get_service_search(State(state): State<AppState>) -> Result<Json<Value>
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "SSG", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "SSG");
             let flags = parts
                 .first()
@@ -1479,10 +1464,9 @@ async fn set_service_search(
                 }
             })
             .collect::<String>();
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("SSG,{}", flags), false).await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("service_search_failed".to_string()));
@@ -1496,10 +1480,9 @@ async fn get_custom_search(State(state): State<AppState>) -> Result<Json<Value>,
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "CSG", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "CSG");
             let flags = parts
                 .first()
@@ -1556,10 +1539,9 @@ async fn set_custom_search(
                 }
             })
             .collect::<String>();
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("CSG,{}", flags), false).await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("custom_search_failed".to_string()));
@@ -1576,10 +1558,9 @@ async fn get_custom_range(
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() && (1..=10).contains(&index) {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, &format!("CSP,{}", index), false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let mut parts = parse_command_parts(&response, "CSP");
             if parts.first().and_then(|s| s.parse::<u8>().ok()) == Some(index) {
                 parts.remove(0);
@@ -1626,7 +1607,7 @@ async fn set_custom_range(
     let lower = body.get("lower").and_then(Value::as_f64).unwrap_or(0.0);
     let upper = body.get("upper").and_then(Value::as_f64).unwrap_or(0.0);
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
             &state,
             &format!(
@@ -1638,8 +1619,7 @@ async fn set_custom_range(
             false,
         )
         .await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper_resp = response.trim().to_uppercase();
         if !(upper_resp == "OK" || upper_resp.ends_with(",OK")) {
             return Err(ApiError::BadRequest(
@@ -1675,10 +1655,9 @@ async fn get_weather(State(state): State<AppState>) -> Result<Json<Value>, ApiEr
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "WXS", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "WXS");
             let priority = parts.first().map(|s| s == "1").unwrap_or(false);
             Ok::<Value, ApiError>(json!({ "priority": priority }))
@@ -1706,15 +1685,14 @@ async fn set_weather(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
             &state,
             &format!("WXS,{}", if priority { 1 } else { 0 }),
             false,
         )
         .await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("weather_failed".to_string()));
@@ -1728,10 +1706,9 @@ async fn get_contrast(State(state): State<AppState>) -> Result<Json<Value>, ApiE
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
         let result = async {
-            let _ = send_raw_command(&state, "PRG", false).await?;
+            let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "CNT", false).await;
-            let _ = send_raw_command(&state, "EPG", false).await;
-            let response = response?;
+                    let response = response?;
             let parts = parse_command_parts(&response, "CNT");
             let level = parts
                 .first()
@@ -1762,10 +1739,9 @@ async fn set_contrast(
         return Err(ApiError::BadRequest("contrast_out_of_range".to_string()));
     }
     if command_sender(&state).is_ok() {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("CNT,{}", level), false).await;
-        let _ = send_raw_command(&state, "EPG", false).await;
-        let response = response?;
+            let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("contrast_failed".to_string()));
@@ -2021,7 +1997,7 @@ async fn export_bc125at_ss_file(
     let region = if model.contains("UBC") { "EUR" } else { "USA" };
 
     let result = async {
-        let _ = send_raw_command(&state, "PRG", false).await?;
+        let _prg = ProgramModeGuard::enter(&state).await?;
 
         let backlight = split_command_parts(&send_raw_command(&state, "BLT", false).await?)
             .first()
@@ -2276,7 +2252,6 @@ async fn export_bc125at_ss_file(
         Ok::<String, ApiError>(format!("{}\n", lines.join("\n")))
     }
     .await;
-    let _ = send_raw_command(&state, "EPG", false).await;
     let payload = result?;
 
     Ok((
@@ -2527,14 +2502,13 @@ async fn debug_glg(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
 }
 
 async fn debug_scg(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, "SCG", false).await;
-    let _ = send_raw_command(&state, "EPG", false).await;
     Ok(Json(json!({ "response": response? })))
 }
 
 async fn debug_glf(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    let _prg = ProgramModeGuard::enter(&state).await?;
     let result = async {
         let mut responses = Vec::new();
         let first = send_raw_command(&state, "GLF,***", false).await?;
@@ -2554,7 +2528,6 @@ async fn debug_glf(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
         Ok::<Vec<String>, ApiError>(responses)
     }
     .await;
-    let _ = send_raw_command(&state, "EPG", false).await;
     Ok(Json(json!({ "responses": result? })))
 }
 
