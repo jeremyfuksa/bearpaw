@@ -334,6 +334,89 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
         .build()
 }
 
+/// Platform-specific data dir for the legacy `com.uniden.bearpaw`
+/// bundle identifier. Returns `None` if the platform's home/data env
+/// var isn't set (best-effort — migration just doesn't run).
+fn legacy_app_data_dir() -> Option<PathBuf> {
+    const LEGACY_ID: &str = "com.uniden.bearpaw";
+
+    #[cfg(target_os = "macos")]
+    {
+        return env::var("HOME").ok().map(|home| {
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join(LEGACY_ID)
+        });
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return env::var("APPDATA")
+            .ok()
+            .map(|p| PathBuf::from(p).join(LEGACY_ID));
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        if let Ok(xdg) = env::var("XDG_DATA_HOME") {
+            return Some(PathBuf::from(xdg).join(LEGACY_ID));
+        }
+        env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".local").join("share").join(LEGACY_ID))
+    }
+}
+
+fn copy_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        let ft = entry.file_type()?;
+        if ft.is_dir() {
+            copy_dir_contents(&from, &to)?;
+        } else if ft.is_file() {
+            std::fs::copy(&from, &to)?;
+        }
+        // Symlinks deliberately skipped — keep the migration boring.
+    }
+    Ok(())
+}
+
+/// One-shot migration for the `com.uniden.bearpaw` →
+/// `com.jeremyfuksa.bearpaw` bundle-ID rename: if the new app-data
+/// directory is empty and the old one exists, copy the contents over.
+/// The old directory is left in place so the user can verify and
+/// delete it manually. Best-effort: failures are logged to stderr and
+/// don't block startup.
+fn migrate_legacy_app_data_dir(new_dir: &std::path::Path) {
+    let Some(old_dir) = legacy_app_data_dir() else {
+        return;
+    };
+    if !old_dir.is_dir() || old_dir == new_dir {
+        return;
+    }
+    let new_empty = std::fs::read_dir(new_dir)
+        .map(|mut it| it.next().is_none())
+        .unwrap_or(true);
+    if !new_empty {
+        return;
+    }
+    if let Err(err) = copy_dir_contents(&old_dir, new_dir) {
+        eprintln!(
+            "bearpaw: failed to migrate legacy data from {:?} to {:?}: {}",
+            old_dir, new_dir, err
+        );
+    } else {
+        eprintln!(
+            "bearpaw: migrated legacy app data from {:?} to {:?}",
+            old_dir, new_dir
+        );
+    }
+}
+
 fn main() {
     let backend_state = Arc::new(BackendRuntimeState::default());
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -347,6 +430,7 @@ fn main() {
         .setup(move |app| {
             if let Ok(data_dir) = app.path().app_data_dir() {
                 let _ = std::fs::create_dir_all(&data_dir);
+                migrate_legacy_app_data_dir(&data_dir);
                 env::set_var("BEARPAW_DATA_DIR", data_dir.to_string_lossy().to_string());
 
                 // Set log dir inside app data so logs don't scatter to CWD
