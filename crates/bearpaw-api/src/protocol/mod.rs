@@ -168,22 +168,59 @@ pub fn parse_sts_frame(response: &str) -> Option<StsFrame> {
 
 /// Find the index in `parts` where the status-bit tail begins.
 ///
-/// Heuristic: scan from the end backward looking for a position `i` such that
-/// `parts[i]` and `parts[i+1]` are both single 0/1 digits (SQL,MUT). Require
-/// at least 9 fields from `i` to the end (the documented tail length).
+/// The tail has exactly 9 fields with a known signature:
+///   [0] SQL       single 0/1
+///   [1] MUT       single 0/1
+///   [2] reserved  0/1 (some firmwares)
+///   [3] WAT       0/1
+///   [4] LED_CC    0/1 or empty
+///   [5] LED_ALERT 0/1 or empty
+///   [6] SIG_LVL   0..=5
+///   [7] reserved  empty
+///   [8] BK_DIMMER 0..=3
+///
+/// Original heuristic looked for ANY adjacent `(0|1, 0|1)` pair walking from
+/// the end backward, intending to find SQL,MUT. Bug: on firmwares where
+/// LED_CC and LED_ALERT both carry a 0/1 value (rather than empty), the
+/// walker locks onto that pair four positions too late and reads LED_CC as
+/// SQL — that's the disagreement filed as issue #73.
+///
+/// New approach: anchor on the *back end* of the tail. Walk every legal
+/// position and accept only if BK_DIMMER (offset 8) is a single 0..=3 digit
+/// AND SIG_LVL (offset 6) is a single 0..=5 digit AND SQL (offset 0) is a
+/// single 0/1 digit. That signature is unique within the STS frame; the LCD
+/// section can't accidentally match because its character cells are
+/// multi-character padded strings, not single digits.
 fn find_sts_tail_start(parts: &[&str]) -> Option<usize> {
     if parts.len() < 10 {
         return None;
     }
     let max_start = parts.len().saturating_sub(9);
     for i in (1..=max_start).rev() {
-        let a = parts[i].trim();
-        let b = parts.get(i + 1).map(|s| s.trim()).unwrap_or("");
-        if matches!(a, "0" | "1") && matches!(b, "0" | "1") {
+        if matches_sts_tail_signature(parts, i) {
             return Some(i);
         }
     }
     None
+}
+
+/// True if positions [i..i+9] in `parts` match the documented STS tail
+/// signature: SQL/MUT 0-or-1 at offsets 0/1, SIG_LVL 0-to-5 at offset 6,
+/// BK_DIMMER 0-to-3 at offset 8.
+fn matches_sts_tail_signature(parts: &[&str], i: usize) -> bool {
+    let sql_ok = matches!(parts.get(i).map(|s| s.trim()), Some("0" | "1"));
+    let mut_ok = matches!(parts.get(i + 1).map(|s| s.trim()), Some("0" | "1"));
+    let sig_ok = parts
+        .get(i + 6)
+        .map(|s| s.trim())
+        .and_then(|s| s.parse::<u8>().ok())
+        .is_some_and(|n| n <= 5);
+    let dimmer_ok = parts
+        .get(i + 8)
+        .map(|s| s.trim())
+        .and_then(|s| s.parse::<u8>().ok())
+        .is_some_and(|n| n <= 3);
+    sql_ok && mut_ok && sig_ok && dimmer_ok
 }
 
 fn parse_bit(s: &str) -> Option<bool> {
@@ -582,6 +619,49 @@ mod tests {
         assert!(parse_sts_frame("").is_none());
         assert!(parse_sts_frame("ERR").is_none());
         assert!(parse_sts_frame("STS,").is_none());
+    }
+
+    #[test]
+    fn sts_anchors_correctly_when_led_cc_and_led_alert_are_populated() {
+        // Regression for issue #73. The original `find_sts_tail_start`
+        // heuristic scanned backward for ANY adjacent (0|1, 0|1) pair and
+        // assumed it was SQL,MUT. On firmwares where LED_CC and LED_ALERT
+        // are both single 0/1 digits (rather than the empty strings in
+        // our 2026-05-21 capture), the scan locked onto the LED pair
+        // first — four positions late — and read LED_CC as SQL.
+        //
+        // Synthetic frame: LCD section padded as in the real capture, but
+        // the tail's LED_CC and LED_ALERT positions are populated as
+        // "1","1" instead of empty. SQL is "1", SIG_LVL is "5",
+        // BK_DIMMER is "3" — same as the SIGNAL_PRESENT capture.
+        let synthetic = "STS,011000,              ,,GMRS CH 03      ,,CH075  462.6125,,            ,,                ,,123          ,,1,0,0,0,1,1,5,,3";
+        let f = parse_sts_frame(synthetic).expect("should parse");
+        assert!(
+            f.squelch_open,
+            "SQL=1 must read as squelch_open=true even when LED_CC/LED_ALERT are 0/1 digits"
+        );
+        assert!(!f.muted, "MUT=0 must read as muted=false (not flipped)");
+        assert_eq!(f.sig_lvl, 5);
+        assert_eq!(f.bk_dimmer, 3);
+    }
+
+    #[test]
+    fn sts_tail_signature_requires_signal_and_dimmer_in_range() {
+        // If a frame is corrupted such that SIG_LVL > 5 or BK_DIMMER > 3,
+        // the anchor heuristic should not lock onto a wrong tail and
+        // return garbage — better to return None and re-poll.
+        let bad_sig =
+            "STS,011000,              ,,GMRS CH 03      ,,CH075  462.6125,,            ,,                ,,123          ,,1,0,0,0,,,9,,3";
+        assert!(
+            parse_sts_frame(bad_sig).is_none(),
+            "SIG_LVL=9 is out of range; should not anchor a tail"
+        );
+        let bad_dimmer =
+            "STS,011000,              ,,GMRS CH 03      ,,CH075  462.6125,,            ,,                ,,123          ,,1,0,0,0,,,5,,9";
+        assert!(
+            parse_sts_frame(bad_dimmer).is_none(),
+            "BK_DIMMER=9 is out of range; should not anchor a tail"
+        );
     }
 
     #[test]
