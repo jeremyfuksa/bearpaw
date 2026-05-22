@@ -1,9 +1,11 @@
 # Protocol Audit Remediation Plan
 
-**Status:** Proposed
+**Status:** Phases 1–4 complete (2026-05-21); Phases 5 and 6 continued in v1.1 (Phase 9); Phase 7 deferred.
 **Created:** 2026-05-19
+**Last updated:** 2026-05-22
 **Source audit:** `docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md`
 **Updated reference:** [SCANNER_PROTOCOL_REFERENCE.md](SCANNER_PROTOCOL_REFERENCE.md)
+**Continuation:** v1.1 picks up the unfinished work as "Phase 9" — see the project plan at `/Users/jeremyfuksa/.claude/plans/snazzy-knitting-meerkat.md` (not committed).
 
 The May 2026 protocol audit identified eight gaps between Bearpaw's Rust implementation and the documented Uniden BC125AT/BCT125AT wire protocol. This plan sequences fixes by **blast radius first, then leverage**: validate the actual wire format before rewriting parsers, fix the load-bearing bugs before adding features, defer plug-and-play polish until correctness is locked.
 
@@ -22,7 +24,7 @@ The May 2026 protocol audit identified eight gaps between Bearpaw's Rust impleme
 
 ### Tasks
 
-- [ ] **Wire capture script.** Write a small Rust binary (`crates/bearpaw-api/examples/wire_capture.rs`) or shell + `socat` recipe that opens the port at 115200 8N1, drains the input buffer, and issues:
+- [x] **Wire capture script.** Write a small Rust binary (`crates/bearpaw-api/examples/wire_capture.rs`) or shell + `socat` recipe that opens the port at 115200 8N1, drains the input buffer, and issues:
   - `MDL\r`, `VER\r`
   - `STS\r` × 5 (under different signal conditions: scanning idle, scanning during a hit, manual hold)
   - `GLG\r` × 5 (same conditions)
@@ -31,8 +33,8 @@ The May 2026 protocol audit identified eight gaps between Bearpaw's Rust impleme
   - `SCG\r`, `SSG\r`
   - `VOL\r`, `SQL\r`
   Dump raw bytes (with `\r` rendered) and parsed splits to a file under `docs/wire_captures/YYYY-MM-DD/`.
-- [ ] **Fixture file format.** One `.txt` per command with raw bytes; one `fixtures.json` summarising parsed splits for use in unit tests later.
-- [ ] **Reconcile against the audit.** For each of the eight gaps in [SCANNER_PROTOCOL_REFERENCE.md §13](SCANNER_PROTOCOL_REFERENCE.md#13-known-correctness-gaps-in-current-bearpaw-code), record one of: `confirmed`, `firmware-variant`, `false-alarm`. Notes in `docs/wire_captures/YYYY-MM-DD/audit-reconciliation.md`.
+- [x] **Fixture file format.** One `.txt` per command with raw bytes; one `fixtures.json` summarising parsed splits for use in unit tests later.
+- [x] **Reconcile against the audit.** For each of the eight gaps in [SCANNER_PROTOCOL_REFERENCE.md §13](SCANNER_PROTOCOL_REFERENCE.md#13-known-correctness-gaps-in-current-bearpaw-code), record one of: `confirmed`, `firmware-variant`, `false-alarm`. Notes in `docs/wire_captures/YYYY-MM-DD/audit-reconciliation.md`.
 
 ### Exit criteria
 
@@ -55,39 +57,39 @@ Depends on: **Phase 1 reconciliation complete.**
 ### Tasks
 
 #### 2.1 STS parser
-- [ ] Rename `parse_sts_response` → `parse_sts_lcd_dump` (or delete if Phase 1 shows it's unused).
-- [ ] New struct `StsFrame { lines: [String; 4], modes: [String; 4], sql: bool, mut_: bool, wat: u8, led_cc: u8, led_alert: u8, sig_lvl: u8, dimmer: u8 }`.
-- [ ] Parser splits on `,`, handles **empty-collapse** for line-mode fields (`,,` → empty string), bounds-checks every index.
-- [ ] Returns `Option<StsFrame>` — `None` on truncated or unrecognisable frames so the poll loop can retry rather than crash.
+- [x] Rename `parse_sts_response` → `parse_sts_lcd_dump` (or delete if Phase 1 shows it's unused).
+- [x] New struct `StsFrame { lines: [String; 4], modes: [String; 4], sql: bool, mut_: bool, wat: u8, led_cc: u8, led_alert: u8, sig_lvl: u8, dimmer: u8 }`.
+- [x] Parser splits on `,`, handles **empty-collapse** for line-mode fields (`,,` → empty string), bounds-checks every index.
+- [x] Returns `Option<StsFrame>` — `None` on truncated or unrecognisable frames so the poll loop can retry rather than crash.
 
 #### 2.2 GLG parser (becomes the live-state source)
-- [ ] New function `parse_glg_response(&str) -> Option<GlgFrame>`.
-- [ ] `GlgFrame { frequency_mhz: f64, modulation: String, attenuator: bool, tone_code: u16, names: [String; 3], sql: bool, mut_: bool, channel: Option<u16> }`.
-- [ ] Frequency: parse 8-digit field, divide by 10_000.
-- [ ] Tone: keep as **code 0–231**, do not decode here.
-- [ ] Alpha tag: first non-empty `names[i]` (per audit note that flat memory only uses one).
-- [ ] Channel: optional trailing field — try parse, accept absence.
-- [ ] Idle frame (`GLG,,,,,,,,,`) returns `Some(GlgFrame { ..default })` with everything blank, not `None` — caller distinguishes "scanner is idle" from "parse failed".
+- [x] New function `parse_glg_response(&str) -> Option<GlgFrame>`.
+- [x] `GlgFrame { frequency_mhz: f64, modulation: String, attenuator: bool, tone_code: u16, names: [String; 3], sql: bool, mut_: bool, channel: Option<u16> }`.
+- [x] Frequency: parse 8-digit field, divide by 10_000.
+- [x] Tone: keep as **code 0–231**, do not decode here.
+- [x] Alpha tag: first non-empty `names[i]` (per audit note that flat memory only uses one).
+- [x] Channel: optional trailing field — try parse, accept absence.
+- [x] Idle frame (`GLG,,,,,,,,,`) returns `Some(GlgFrame { ..default })` with everything blank, not `None` — caller distinguishes "scanner is idle" from "parse failed".
 
 #### 2.3 PWR parser
-- [ ] `parse_pwr_response(&str) -> Option<PwrFrame { rssi_raw: u16, frequency_mhz: f64 }>`.
-- [ ] `rssi_raw` is 0–1023 verbatim; scaling to 0–100 happens at the `LiveState` boundary.
+- [x] `parse_pwr_response(&str) -> Option<PwrFrame { rssi_raw: u16, frequency_mhz: f64 }>`.
+- [x] `rssi_raw` is 0–1023 verbatim; scaling to 0–100 happens at the `LiveState` boundary.
 
 #### 2.4 CIN parser rewrite
-- [ ] Drop the `has_tone` / `has_bank` heuristic entirely.
-- [ ] Fixed field order: `CIN, index, name, freq, mod, tone_code, delay, lockout, priority` (8 fields after `CIN`).
-- [ ] **Remove `bank` from `ChannelData`'s CIN-derived fields.** Bank comes from `SCG` post-sync. (See Phase 4.)
-- [ ] Keep `tone_squelch` as `Option<u16>` (the code), not `Option<f64>` (Hz). Decode at the API boundary in Phase 3.
-- [ ] Name field: keep as the wire form (space-padded 16 chars); trim only at the display/API boundary.
+- [x] Drop the `has_tone` / `has_bank` heuristic entirely.
+- [x] Fixed field order: `CIN, index, name, freq, mod, tone_code, delay, lockout, priority` (8 fields after `CIN`).
+- [x] **Remove `bank` from `ChannelData`'s CIN-derived fields.** Bank comes from `SCG` post-sync. (See Phase 4.)
+- [x] Keep `tone_squelch` as `Option<u16>` (the code), not `Option<f64>` (Hz). Decode at the API boundary in Phase 3.
+- [x] Name field: keep as the wire form (space-padded 16 chars); trim only at the display/API boundary.
 
 #### 2.5 Drop dead code
-- [ ] Remove the `map["MODE"]` lookup in `livestate_from_sts` — mode is not a wire field and is already tracked in `poll.rs` as `commanded_mode`.
-- [ ] Remove the `FRQ`/`MOD`/`RSSI`/`CH`/`VOL`/`BAT` key-value path if Phase 1 confirmed it's never populated.
+- [x] Remove the `map["MODE"]` lookup in `livestate_from_sts` — mode is not a wire field and is already tracked in `poll.rs` as `commanded_mode`.
+- [x] Remove the `FRQ`/`MOD`/`RSSI`/`CH`/`VOL`/`BAT` key-value path if Phase 1 confirmed it's never populated.
 
 #### 2.6 Tests
-- [ ] Replace synthetic unit tests in `protocol/mod.rs` with tests driven by `docs/wire_captures/.../fixtures.json`.
-- [ ] Snapshot tests for each `STS` / `GLG` / `CIN` shape we captured.
-- [ ] Property test: `GLG` parser is total — never panics on any input.
+- [x] Replace synthetic unit tests in `protocol/mod.rs` with tests driven by `docs/wire_captures/.../fixtures.json`.
+- [x] Snapshot tests for each `STS` / `GLG` / `CIN` shape we captured.
+- [x] Property test: `GLG` parser is total — never panics on any input.
 
 ### Exit criteria
 
@@ -106,8 +108,8 @@ Depends on: **Phase 2 parsers landed.**
 ### Tasks
 
 #### 3.1 Poll loop reshape — `crates/bearpaw-api/src/api/poll.rs`
-- [ ] Each tick: `STS` → `StsFrame`, `GLG` → `GlgFrame`. (Add `PWR` every Nth tick, see 3.3.)
-- [ ] Build `LiveState` by combining:
+- [x] Each tick: `STS` → `StsFrame`, `GLG` → `GlgFrame`. (Add `PWR` every Nth tick, see 3.3.)
+- [x] Build `LiveState` by combining:
   - `frequency` ← `GlgFrame.frequency_mhz`
   - `modulation` ← `GlgFrame.modulation`
   - `squelch_open` ← `GlgFrame.sql` **OR** `StsFrame.sql` (cross-check; warn-log if they disagree)
@@ -117,23 +119,23 @@ Depends on: **Phase 2 parsers landed.**
   - `mode` ← `commanded_mode` (unchanged)
   - `volume` ← cached from periodic `VOL` query (see 3.4)
   - `battery` ← always `None` on BC125AT family; remove any code paths that try to populate it
-- [ ] Drop dropped-or-truncated `STS` frames silently and re-poll on next tick. Increment a counter for telemetry.
+- [x] Drop dropped-or-truncated `STS` frames silently and re-poll on next tick. Increment a counter for telemetry.
 
 #### 3.2 Squelch polarity
-- [ ] Confirm in code comments: `sql == true` means **open** (signal present). This is opposite to the old parser's `SQL == "0"` rule.
-- [ ] Existing hit-detection (`live.squelch_open && !prev_squelch_open`) is correct *as written* — no change needed once the source field is right.
+- [x] Confirm in code comments: `sql == true` means **open** (signal present). This is opposite to the old parser's `SQL == "0"` rule.
+- [x] Existing hit-detection (`live.squelch_open && !prev_squelch_open`) is correct *as written* — no change needed once the source field is right.
 
 #### 3.3 PWR pacing
-- [ ] Poll `PWR` every ~500 ms (every 3rd–5th tick, depending on `STS`+`GLG` cadence). Provides `rssi_raw` for fine-grained signal strength.
-- [ ] Add a config knob `polling.pwr_interval_ticks` (default 4) so we can disable it if it interferes with `STS`/`GLG` timing.
+- [x] Poll `PWR` every ~500 ms (every 3rd–5th tick, depending on `STS`+`GLG` cadence). Provides `rssi_raw` for fine-grained signal strength.
+- [x] Add a config knob `polling.pwr_interval_ticks` (default 4) so we can disable it if it interferes with `STS`/`GLG` timing.
 
 #### 3.4 VOL caching
-- [ ] On startup and after explicit volume commands, query `VOL\r` and cache the value into `LiveState.volume`.
-- [ ] Optional: re-query every ~5 s. The audit notes the value rarely changes outside user action.
+- [x] On startup and after explicit volume commands, query `VOL\r` and cache the value into `LiveState.volume`.
+- [x] Optional: re-query every ~5 s. The audit notes the value rarely changes outside user action.
 
 #### 3.5 Frontend impact
-- [ ] **Zero changes expected to REST or WebSocket payload shapes.** `LiveState` JSON keys are stable; values become correct.
-- [ ] Sanity-check the React store's display logic in [VirtualDisplay.tsx](../frontend/src/components/VirtualDisplay.tsx) — confirm it doesn't depend on the old (broken) rssi 0–100 directly-from-STS path.
+- [x] **Zero changes expected to REST or WebSocket payload shapes.** `LiveState` JSON keys are stable; values become correct.
+- [x] Sanity-check the React store's display logic in [VirtualDisplay.tsx](../frontend/src/components/VirtualDisplay.tsx) — confirm it doesn't depend on the old (broken) rssi 0–100 directly-from-STS path.
 
 ### Exit criteria
 
@@ -152,20 +154,20 @@ Depends on: **Phase 2 parsers, Phase 3 LiveState.**
 ### Tasks
 
 #### 4.1 CTCSS code → Hz table
-- [ ] New module `protocol/tones.rs` with the full table from [SCANNER_PROTOCOL_REFERENCE.md §7](SCANNER_PROTOCOL_REFERENCE.md#7-ctcss--dcs-tone-codes).
-- [ ] Functions: `code_to_hz(code: u16) -> Option<ToneSquelch>` and `hz_to_code(hz: f64) -> Option<u16>`.
-- [ ] `enum ToneSquelch { None, Ctcss(f64), Dcs(u16), Search, NoTone }` — the four meaningful states the wire carries.
-- [ ] Update `ChannelData` (or add a transport DTO) to expose the rich variant via JSON.
+- [x] New module `protocol/tones.rs` with the full table from [SCANNER_PROTOCOL_REFERENCE.md §7](SCANNER_PROTOCOL_REFERENCE.md#7-ctcss--dcs-tone-codes).
+- [x] Functions: `code_to_hz(code: u16) -> Option<ToneSquelch>` and `hz_to_code(hz: f64) -> Option<u16>`.
+- [x] `enum ToneSquelch { None, Ctcss(f64), Dcs(u16), Search, NoTone }` — the four meaningful states the wire carries.
+- [x] Update `ChannelData` (or add a transport DTO) to expose the rich variant via JSON.
 
 #### 4.2 Bank derivation
-- [ ] After memory sync completes, issue `SCG\r` once.
-- [ ] Parse the 10-digit mask (`0` = bank enabled, `1` = disabled — invert when writing).
-- [ ] For BC125AT's fixed channel-to-bank layout (channel `n` → bank `ceil(n/50)`), populate `ChannelData.bank` for every channel.
-- [ ] Surface `bank_active` as a separate field on a future `/api/v1/banks` endpoint (out of scope for this plan — keep `ChannelData.bank` as channel→bank, not enabled-state).
+- [x] After memory sync completes, issue `SCG\r` once.
+- [x] Parse the 10-digit mask (`0` = bank enabled, `1` = disabled — invert when writing).
+- [x] For BC125AT's fixed channel-to-bank layout (channel `n` → bank `ceil(n/50)`), populate `ChannelData.bank` for every channel.
+- [x] Surface `bank_active` as a separate field on a future `/api/v1/banks` endpoint (out of scope for this plan — keep `ChannelData.bank` as channel→bank, not enabled-state).
 
 #### 4.3 JSON shape
-- [ ] `ChannelData.tone_squelch` becomes `{ kind: "ctcss" | "dcs" | "search" | "none", hz?: number, code?: number }` (or similar). Coordinate one frontend update for this; this is the only **breaking** payload change in the plan.
-- [ ] Alternatively, keep `tone_squelch: number | null` (Hz only) and add `tone_squelch_kind: string` to avoid breaking the frontend. Decide once we look at the React components.
+- [x] `ChannelData.tone_squelch` becomes `{ kind: "ctcss" | "dcs" | "search" | "none", hz?: number, code?: number }` (or similar). Coordinate one frontend update for this; this is the only **breaking** payload change in the plan.
+- [x] Alternatively, keep `tone_squelch: number | null` (Hz only) and add `tone_squelch_kind: string` to avoid breaking the frontend. Decide once we look at the React components.
 
 ### Exit criteria
 
@@ -295,3 +297,16 @@ Realistic schedule with normal interruptions: one focused week. Phase 1 should h
 - A memory sync produces channels whose CTCSS tones (in Hz) match the values configured on the physical scanner.
 - `cargo test -p bearpaw-api` covers each `STS` / `GLG` / `CIN` shape we captured in Phase 1.
 - The Rust crate has zero references to a non-existent `MODE` field, zero `SQL == "0"` polarity checks, and zero `bank` extracted from `CIN`.
+
+---
+
+## Phase 9 (v1.1) continuation
+
+After v1.0.0 shipped (2026-05-22, hardware-verified), a fresh decompile of the Uniden Sentinel + Scan125 apps surfaced as `BC125AT_PROTOCOL.md`. Triage in the v1.1 plan revealed that:
+
+- Phases 1–4 of this document are silently complete (this PR retroactively ticks the boxes).
+- Phase 5 (transport hardening) is partly done in spirit but the load-bearing fixes (DTR=true, ERR/NG handling, settle delays, input-buffer drain) were never landed. Picked up as v1.1 PRs 2–4, 7, 8.
+- Phase 6 (plug-and-play autodetect) picked up as v1.1 PR-11 (optional).
+- Phase 7 (BearTracker / BCT125AT) stays deferred — no user demand.
+
+The Phase 5/6 task boxes above remain unticked here on purpose. They'll be ticked as v1.1 PRs land.

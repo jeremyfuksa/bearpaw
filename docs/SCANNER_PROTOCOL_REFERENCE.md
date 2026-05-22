@@ -68,6 +68,14 @@
 2. If none match, probe every CDC-class port with `MDL\r` and accept any response starting with `MDL,`.
 3. Cache the device's USB serial number so reconnects after replug find the same physical unit.
 
+### VID/PID variants observed
+
+The `BC125AT_PROTOCOL.md` reference (decompiled from Uniden Sentinel + Scan125, see `docs/wire_captures/2026-05-21/audit-reconciliation.md`) states the BC125AT uses a Silicon Labs CP210x USB-UART bridge with VID/PID `0x10C4:0xEA60`. **This does not match our hardware.** Our unit (verified via `ioreg -p IOUSB` on macOS Darwin 25.4.0, 2026-05-22) enumerates as Uniden America Corp. CDC-ACM with `0x1965:0x0017` — no Silicon Labs intermediary. Likely a different firmware/hardware revision than what Sentinel was originally designed against, or an outdated claim in the decompiled doc.
+
+**Our captures win.** Bearpaw probes `0x1965:0x0017` and that is what it should keep doing for BC125AT-family hardware. If a user reports a `0x10C4:0xEA60` BC125AT in the future, we'll add a second VID/PID branch; until then it's hypothetical.
+
+The `BC125AT_PROTOCOL.md` reference also documents a known macOS quirk for which we have empirical evidence: the device enumerates at USB level but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` does not appear. Bearpaw works around this via the `nusb` direct-USB transport (`crates/bearpaw-api/src/transport_usb.rs`), configured by setting `device.usb_vid` and `device.usb_pid` in `config.yaml`. See [`crates/bearpaw-api/config.example.yaml`](../crates/bearpaw-api/config.example.yaml).
+
 ---
 
 ## 2. Wire-protocol fundamentals
@@ -332,6 +340,8 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 | 8 | Priority | 0 = no, 1 = yes |
 
 **There is no `bank` field in `CIN`.** Bank membership is controlled by `SCG` (see below), which is a 10-digit mask covering all 500 channels' bank assignments. Do not look for a 9th `CIN` field — it doesn't exist.
+
+> **Write-side field order: open question.** `BC125AT_PROTOCOL.md` (decompiled from Uniden Sentinel) claims the write order is `name, freq, mod, ctcss, delay, lockout, priority` while the **read** order is `name, freq, mod, ctcss, lockout, delay, priority` — i.e., delay and lockout are swapped on write. Our wire captures (`docs/wire_captures/2026-05-21/`) confirm the read order is `delay, lockout, priority` on firmware 1.06.06 — the **same** order shown in the table above. The reference's swap claim is unverified on our hardware. **Bearpaw does not currently write CIN.** If/when a CIN write path is added, the first task is to write a known value, read it back, and confirm which order matches reality. Until that empirical check happens, do not implement CIN writes.
 
 ### Other programming commands
 
@@ -650,18 +660,23 @@ Progress messages:
 
 ## 13. Known correctness gaps in current Bearpaw code
 
-These are gaps identified by the 2026-05-19 protocol audit. Each is an upstream bug or design mismatch in the Rust crate.
+These are the eight gaps identified by the 2026-05-19 protocol audit. Each has been re-graded as of 2026-05-22 (v1.0.0 cut + v1.1 plan in flight).
 
-1. **`parse_sts_response` in [crates/bearpaw-api/src/protocol/mod.rs](../crates/bearpaw-api/src/protocol/mod.rs) parses key-value pairs.** The real `STS` is a positional LCD dump. The function currently does not match any documented BC125AT firmware. Live state is probably being filled from `GLG` (or zero defaults) and the `STS` parse contributes nothing useful.
-2. **Squelch polarity inverted.** `livestate_from_sts` treats `SQL=0` as open. The protocol defines `SQL=1` as open. If hits are nonetheless working in practice, it's because state is sourced from a different code path.
-3. **`MODE` field in `STS` does not exist.** The parser reads `map["MODE"]`; this is dead code. Mode lives in the scheduler.
-4. **`CIN` parser fabricates a `bank` field that the protocol does not provide** and has heuristic "has_tone vs has_bank" branching. The real CIN order is fixed: `index, name, freq, mod, tone_code, delay, lockout, priority` (8 fields after the `CIN` keyword). Bank comes from `SCG` separately.
-5. **`tone_squelch` parsed as a float in Hz.** The wire value is an integer code 0–231; needs decoding via [§7](#7-ctcss--dcs-tone-codes).
-6. **`SerialTransport::open` unconditionally asserts DTR.** Should be removed or made opt-out by default. Asserting DTR has caused intermittent disconnects on macOS and Linux.
-7. **`SerialTransport::send` reads until first `\r`.** Fine for single-line responses, but `STS` returns 18 comma-separated fields on one line *which itself ends in `\r`* — so single-line read is correct for STS. The risk is leftover bytes from a previous command's response; `reset_input_buffer()` before each write would harden this (Python pattern).
-8. **No `MDL`-based port autodetect.** Bearpaw requires a port from config. Plug-and-play UX requires VID-filter + `MDL` probe at startup.
+1. **`parse_sts_response` parses key-value pairs.** ✅ **Fixed** in Phase 2. Parser is now position-based, tail-anchored, handles both 10- and 14-field variants.
+2. **Squelch polarity inverted (`SQL=0` treated as open).** ✅ **Fixed** in Phase 2/3. `SQL=1` correctly means signal-open.
+3. **`MODE` field read from `STS` (dead code).** ✅ **Fixed** in Phase 2. Mode is tracked via `commanded_mode` in the poll loop, never read from the wire.
+4. **`CIN` fabricates a `bank` field; `has_tone vs has_bank` heuristic.** ✅ **Fixed** in Phase 2. Fixed-position parser; bank derived from `SCG` separately.
+5. **`tone_squelch` parsed as float Hz.** ✅ **Fixed** in Phase 4. Wire value stays as integer code 0–231; decoded to Hz via [`protocol::tones::decode_tone`](../crates/bearpaw-api/src/protocol/tones.rs).
+6. **`SerialTransport::open` unconditionally asserts DTR.** ❌ **Still present** at [`transport.rs:38`](../crates/bearpaw-api/src/transport.rs#L38). Scheduled as v1.1 PR-2 (Phase 9b).
+7. **`SerialTransport::send` doesn't drain input buffer.** ❌ **Still present.** Scheduled as v1.1 PR-3 (Phase 9c).
+8. **No `MDL`-based port autodetect.** ❌ **Still present** — Bearpaw requires explicit `device.port` or `usb_vid`/`usb_pid` in config. Scheduled as v1.1 PR-11 (Phase 9k, optional).
 
-See the protocol audit summary in `compass_artifact_wf-4d260a13...md` for full reasoning and the recommended fix order.
+**Two additional gaps surfaced by the 2026-05-22 decompile audit** (cross-checked against our wire captures):
+
+9. **`parse_cin_response` clamps negative `delay` to 0** at [`protocol/mod.rs:294`](../crates/bearpaw-api/src/protocol/mod.rs#L294), discarding the legitimate `-10` and `-5` pre-delay values. Scheduled as v1.1 PR-5 (Phase 9e).
+10. **No distinction between `OK` / `ERR` / `NG` / timeout response codes.** Current code checks substring "OK" only; both `ERR` (syntax error, never retry) and `NG` (wrong mode, surface to user) are handled identically. Scheduled as v1.1 PR-4 (Phase 9d).
+
+See [`PROTOCOL_AUDIT_PLAN.md`](PROTOCOL_AUDIT_PLAN.md) for the Phase 1–4 history. The v1.1 continuation plan covers the remaining items via Phase 9 PRs.
 
 ---
 
@@ -679,6 +694,7 @@ See the protocol audit summary in `compass_artifact_wf-4d260a13...md` for full r
 
 - [API_SPEC.md](API_SPEC.md) — REST API surface
 - [WEBSOCKET_SCHEMA.md](WEBSOCKET_SCHEMA.md) — live-update message shapes
-- [UI_WORKFLOW.md](UI_WORKFLOW.md) — hit detection and display rules
-- [RUST_BACKEND_PLAN.md](RUST_BACKEND_PLAN.md) — backend port phases
-- [USB_PERMISSIONS.md](USB_PERMISSIONS.md) — OS-level permission setup
+- [PROTOCOL_AUDIT_PLAN.md](PROTOCOL_AUDIT_PLAN.md) — audit history (Phases 1–4 done; 5–7 partly in v1.1)
+- [BACKEND_LOGGING.md](BACKEND_LOGGING.md) — logging conventions
+- [DATA_LIFECYCLE.md](DATA_LIFECYCLE.md) — persistence + retention
+- [wire_captures/2026-05-21/](wire_captures/2026-05-21/) — real BC125AT wire traffic + audit reconciliation
