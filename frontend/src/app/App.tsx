@@ -341,11 +341,7 @@ export default function App() {
       const currentSync = useStore.getState().sync;
 
       // Detect sync in progress or just completed
-      if (
-        !currentSync.inProgress &&
-        !isComplete &&
-        payload.message.includes('Syncing channel')
-      ) {
+      if (!currentSync.inProgress && !isComplete && payload.message.includes('Syncing channel')) {
         updateSync({ inProgress: true, taskId: payload.task_id || null });
       }
 
