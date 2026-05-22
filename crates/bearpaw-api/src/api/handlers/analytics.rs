@@ -19,17 +19,18 @@ pub(crate) async fn analytics_busiest(
     Query(query): Query<AnalyticsBusiestQuery>,
 ) -> Json<Value> {
     let limit = query.limit.unwrap_or(10).max(1);
-    let hours = query.hours.unwrap_or(24.0).max(0.1);
-    let cutoff = epoch_now() - (hours * 3600.0);
+    // Default window is "all of history" so the dashboard shows the
+    // user's actual busiest channels at startup, even before they get
+    // a hit in the current session. Pass `hours=N` to scope the window.
+    let cutoff = query.hours.map(|h| epoch_now() - h.max(0.1) * 3600.0);
     let min_duration = min_hit_duration(&state);
 
     let log = state.analytics_log.lock().unwrap();
     let mut grouped: HashMap<String, (f64, Option<String>, Option<u16>, usize, f64, f64)> =
         HashMap::new();
-    for hit in log
-        .iter()
-        .filter(|h| h.timestamp >= cutoff && h.duration >= min_duration)
-    {
+    for hit in log.iter().filter(|h| {
+        cutoff.is_none_or(|c| h.timestamp >= c) && h.duration >= min_duration
+    }) {
         let key = format!("{}|{}", hit.frequency, hit.channel.unwrap_or(0));
         let entry = grouped.entry(key).or_insert((
             hit.frequency,
