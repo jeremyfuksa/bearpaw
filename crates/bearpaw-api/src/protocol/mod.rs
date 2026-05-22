@@ -17,6 +17,62 @@ pub enum ProtocolError {
     Parse(String),
 }
 
+/// Classified scanner response. The BC125AT protocol uses four distinct reply
+/// shapes that current code conflates by substring-matching "OK". Per the
+/// reference (`BC125AT_PROTOCOL.md` §3) and our wire captures:
+///
+/// - `OK` — set succeeded, or the verb itself was a side-effect-only command.
+/// - `Err` — syntax or out-of-range error. **Never retry**; surface as a
+///   bad-request to the caller.
+/// - `Ng` — "Not Good": command is legal but wrong mode (e.g. tried `CIN`
+///   outside `PRG`). **Never retry**; the caller did something semantically
+///   wrong.
+/// - `EndOfList` — the `-1` sentinel used by `GLF` to indicate "no more
+///   entries". Not actually an error.
+/// - `Data` — anything else: a parseable response with payload fields.
+///
+/// Single-token responses (`OK`, `ERR`, `NG`) and command-prefixed forms
+/// (`<CMD>,OK`, `<CMD>,ERR`, `<CMD>,NG`) both classify the same.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScannerReply {
+    Ok,
+    Err,
+    Ng,
+    EndOfList,
+    Data(String),
+}
+
+/// Classify a raw scanner response string into one of the four reply shapes.
+/// Input is the response with leading/trailing whitespace already trimmed by
+/// the transport layer; this function further normalises case and trims
+/// inner whitespace on each comma-split field.
+pub fn classify_response(response: &str) -> ScannerReply {
+    let trimmed = response.trim();
+    if trimmed.is_empty() {
+        return ScannerReply::Data(trimmed.to_string());
+    }
+    let upper = trimmed.to_uppercase();
+    // Bare tokens — no comma — match a small fixed set.
+    if !upper.contains(',') {
+        return match upper.as_str() {
+            "OK" => ScannerReply::Ok,
+            "ERR" => ScannerReply::Err,
+            "NG" => ScannerReply::Ng,
+            "-1" => ScannerReply::EndOfList,
+            _ => ScannerReply::Data(trimmed.to_string()),
+        };
+    }
+    // <CMD>,<token> form — look at the last comma-separated field.
+    let last = upper.rsplit(',').next().map(|s| s.trim()).unwrap_or("");
+    match last {
+        "OK" => ScannerReply::Ok,
+        "ERR" => ScannerReply::Err,
+        "NG" => ScannerReply::Ng,
+        "-1" => ScannerReply::EndOfList,
+        _ => ScannerReply::Data(trimmed.to_string()),
+    }
+}
+
 // ---------- MDL ----------
 
 /// MDL response: "MDL,BC125AT" -> "BC125AT".
@@ -650,5 +706,67 @@ mod tests {
             Some("BCT125AT".to_string())
         );
         assert_eq!(parse_mdl_response("ERR"), None);
+    }
+
+    // classify_response — per BC125AT_PROTOCOL.md §3 and our response-code rules.
+
+    #[test]
+    fn classify_bare_ok_err_ng() {
+        assert_eq!(classify_response("OK"), ScannerReply::Ok);
+        assert_eq!(classify_response("ERR"), ScannerReply::Err);
+        assert_eq!(classify_response("NG"), ScannerReply::Ng);
+        assert_eq!(classify_response("-1"), ScannerReply::EndOfList);
+    }
+
+    #[test]
+    fn classify_command_prefixed_ok_err_ng() {
+        assert_eq!(classify_response("PRG,OK"), ScannerReply::Ok);
+        assert_eq!(classify_response("VOL,OK"), ScannerReply::Ok);
+        assert_eq!(classify_response("CIN,ERR"), ScannerReply::Err);
+        assert_eq!(classify_response("CIN,NG"), ScannerReply::Ng);
+        assert_eq!(classify_response("GLF,-1"), ScannerReply::EndOfList);
+    }
+
+    #[test]
+    fn classify_case_insensitive() {
+        assert_eq!(classify_response("prg,ok"), ScannerReply::Ok);
+        assert_eq!(classify_response("Cin,Err"), ScannerReply::Err);
+        assert_eq!(classify_response("scg,ng"), ScannerReply::Ng);
+    }
+
+    #[test]
+    fn classify_data_response_passes_through() {
+        // STS/GLG/CIN data responses must classify as Data, not Ok — they
+        // happen to contain commas but the trailing field isn't OK/ERR/NG.
+        assert_eq!(
+            classify_response(STS_SIGNAL_PRESENT),
+            ScannerReply::Data(STS_SIGNAL_PRESENT.to_string())
+        );
+        assert_eq!(
+            classify_response("PWR,454,04626125"),
+            ScannerReply::Data("PWR,454,04626125".to_string())
+        );
+        // MDL response is data, not OK.
+        assert_eq!(
+            classify_response("MDL,BC125AT"),
+            ScannerReply::Data("MDL,BC125AT".to_string())
+        );
+    }
+
+    #[test]
+    fn classify_empty_and_whitespace() {
+        assert_eq!(classify_response(""), ScannerReply::Data(String::new()));
+        assert_eq!(classify_response("   "), ScannerReply::Data(String::new()));
+        assert_eq!(classify_response("\r\n"), ScannerReply::Data(String::new()));
+    }
+
+    #[test]
+    fn classify_strips_outer_whitespace_but_preserves_data_content() {
+        assert_eq!(classify_response("  PRG,OK  "), ScannerReply::Ok);
+        let data = "MDL,BC125AT";
+        assert_eq!(
+            classify_response(&format!("  {}  ", data)),
+            ScannerReply::Data(data.to_string())
+        );
     }
 }
