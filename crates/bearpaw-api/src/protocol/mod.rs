@@ -378,6 +378,60 @@ fn empty_channel(index: u16) -> ChannelData {
     }
 }
 
+/// Validate a channel name against the BC125AT-accepted alphabet before
+/// sending a CIN write. Per `BC125AT_PROTOCOL.md` §6.3 (decompiled from
+/// `Uniden.Scaner.SS/SntlLib.cs:10`), the firmware accepts only:
+///
+/// ```text
+/// ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*()-/<>.? (space)
+/// ```
+///
+/// Sending any other character results in `ERR` from the scanner. The list
+/// is intentionally restrictive — notably **comma is forbidden** (it would
+/// break the wire format), as are `_`, `\`, `[]`, `{}`, `:`, `;`, `'`, `"`,
+/// `~`, `|`, `+`, `=`, backtick, and all control characters.
+///
+/// Max length is 16 characters. Empty is allowed on the wire (means
+/// "unchanged" on a write per the protocol), but we reject empty here
+/// because a write path that wants "unchanged" should pass `None`, not
+/// an empty string, to be explicit.
+///
+/// No caller yet — this is groundwork for the future CIN-write path.
+/// See `docs/PROTOCOL_AUDIT_PLAN.md` Phase 9 PR-6.
+pub fn validate_channel_name(name: &str) -> Result<(), &'static str> {
+    if name.is_empty() {
+        return Err("channel name is empty");
+    }
+    if name.chars().count() > 16 {
+        return Err("channel name exceeds 16 characters");
+    }
+    for c in name.chars() {
+        let allowed = c.is_ascii_alphanumeric()
+            || matches!(
+                c,
+                ' ' | '!'
+                    | '@'
+                    | '#'
+                    | '$'
+                    | '%'
+                    | '&'
+                    | '*'
+                    | '('
+                    | ')'
+                    | '-'
+                    | '/'
+                    | '<'
+                    | '>'
+                    | '.'
+                    | '?'
+            );
+        if !allowed {
+            return Err("channel name contains a forbidden character");
+        }
+    }
+    Ok(())
+}
+
 /// Map a BC125AT channel index (1–500) to its fixed bank (1–10).
 /// Banks are 50 channels each: 1–50 = bank 1, ..., 451–500 = bank 10.
 /// Returns 0 for out-of-range input.
@@ -782,5 +836,65 @@ mod tests {
             classify_response(&format!("  {}  ", data)),
             ScannerReply::Data(data.to_string())
         );
+    }
+
+    // validate_channel_name — per BC125AT_PROTOCOL.md §6.3.
+
+    #[test]
+    fn validate_channel_name_accepts_captured_samples() {
+        // From docs/wire_captures/2026-05-21/raw.txt — real channels we
+        // synced from the user's BC125AT.
+        assert!(validate_channel_name("Ararat UHF").is_ok());
+        assert!(validate_channel_name("K0ECS - JoCo").is_ok());
+        assert!(validate_channel_name("Trimble 640").is_ok());
+        assert!(validate_channel_name("AUTO").is_ok());
+    }
+
+    #[test]
+    fn validate_channel_name_accepts_documented_punctuation() {
+        for c in "!@#$%&*()-/<>.? ".chars() {
+            let s = format!("A{}B", c);
+            assert!(
+                validate_channel_name(&s).is_ok(),
+                "expected {:?} to be allowed",
+                s
+            );
+        }
+    }
+
+    #[test]
+    fn validate_channel_name_rejects_empty() {
+        assert!(validate_channel_name("").is_err());
+    }
+
+    #[test]
+    fn validate_channel_name_rejects_too_long() {
+        // 16 chars: allowed.
+        assert!(validate_channel_name("1234567890123456").is_ok());
+        // 17 chars: rejected.
+        assert!(validate_channel_name("12345678901234567").is_err());
+    }
+
+    #[test]
+    fn validate_channel_name_rejects_forbidden_punctuation() {
+        // The decompiled reference explicitly excludes these. Sending any
+        // of them to the scanner produces ERR.
+        for c in "_\\[]{}:;'\"`~|+=,".chars() {
+            let s = format!("A{}B", c);
+            assert!(
+                validate_channel_name(&s).is_err(),
+                "expected {:?} to be rejected",
+                s
+            );
+        }
+    }
+
+    #[test]
+    fn validate_channel_name_rejects_control_chars_and_non_ascii() {
+        assert!(validate_channel_name("A\rB").is_err(), "CR");
+        assert!(validate_channel_name("A\nB").is_err(), "LF");
+        assert!(validate_channel_name("A\tB").is_err(), "tab");
+        assert!(validate_channel_name("Ñame").is_err(), "non-ASCII");
+        assert!(validate_channel_name("🦀").is_err(), "emoji");
     }
 }
