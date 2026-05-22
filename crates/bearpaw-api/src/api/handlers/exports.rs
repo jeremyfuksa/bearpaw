@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::protocol::tones::tone_code_label;
 use crate::state::ChannelData;
 
+use super::super::security::validate_wire_field;
 use super::super::{
     command_sender, csv_escape, flags_to_bools, format_modulation, on_off, send_raw_command,
     split_command_parts, write_channel_to_scanner, ApiError, AppState, ProgramModeGuard,
@@ -448,14 +449,26 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         crate::state::ToneSquelchKind::None
     };
 
+    let modulation = row
+        .get("Modulation")
+        .map(|s| s.to_uppercase())
+        .unwrap_or_else(|| "FM".to_string());
+    let alpha_tag = row.get("Alpha Tag").cloned().unwrap_or_default();
+    if alpha_tag.len() > 16 {
+        return Err("Alpha Tag too long (max 16 chars)".to_string());
+    }
+    if validate_wire_field(&alpha_tag).is_err() {
+        return Err("Alpha Tag contains invalid characters".to_string());
+    }
+    if validate_wire_field(&modulation).is_err() {
+        return Err("Modulation contains invalid characters".to_string());
+    }
+
     Ok(ChannelData {
         index,
         frequency,
-        modulation: row
-            .get("Modulation")
-            .map(|s| s.to_uppercase())
-            .unwrap_or_else(|| "FM".to_string()),
-        alpha_tag: row.get("Alpha Tag").cloned().unwrap_or_default(),
+        modulation,
+        alpha_tag,
         delay,
         lockout: row.get("Lockout").map(|s| parse_bool(s)).unwrap_or(false),
         priority: row.get("Priority").map(|s| parse_bool(s)).unwrap_or(false),

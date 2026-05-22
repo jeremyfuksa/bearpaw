@@ -76,12 +76,26 @@ pub(crate) struct KeyRequest {
     key: String,
 }
 
+/// Allowlist of BC125AT virtual key codes. Anything outside this set would
+/// either be rejected by the scanner with ERR or — worse, if the value
+/// contained `\r` — terminate the `KEY,...,P` command early and inject a
+/// new command into the wire (e.g. `\rPRG\rCLR` to wipe channel memory).
+/// Sourced from docs/BC125AT_PROTOCOL.md §5.7 and
+/// docs/SCANNER_PROTOCOL_REFERENCE.md §KEY.
+const ALLOWED_KEY_CODES: &[&str] = &[
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "E", "M", "F", "H", "S", "R", "L", "<",
+    ">", "^", "V", "Q", "P", "W",
+];
+
 pub(crate) async fn post_key(
     State(state): State<AppState>,
     Json(body): Json<KeyRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     let key = body.key.to_uppercase();
+    if !ALLOWED_KEY_CODES.iter().any(|&c| c == key) {
+        return Err(ApiError::BadRequest("invalid_key".to_string()));
+    }
     let cmd = match key.as_str() {
         "H" => Some(ControlCommand::Hold { reply: None }),
         "S" => Some(ControlCommand::Scan { reply: None }),

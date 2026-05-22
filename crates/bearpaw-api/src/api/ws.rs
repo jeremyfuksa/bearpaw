@@ -1,13 +1,25 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::http::{header, HeaderMap, StatusCode};
+use axum::response::IntoResponse;
 use serde_json::json;
 
+use super::security::ws_origin_allowed;
 use super::{epoch_now, AppState};
 
 pub(crate) async fn ws_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> axum::response::Response {
+    // Browsers always send Origin on a WS upgrade. The CORS layer does not
+    // run on the upgrade response, so the origin check has to live here.
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok());
+    if !ws_origin_allowed(origin) {
+        return (StatusCode::FORBIDDEN, "origin_not_allowed").into_response();
+    }
     ws.on_upgrade(move |socket| handle_socket(state.clone(), socket))
 }
 
