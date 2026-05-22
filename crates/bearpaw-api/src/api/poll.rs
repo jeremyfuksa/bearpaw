@@ -7,16 +7,14 @@ use std::time::Duration;
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
-use std::collections::HashMap;
-
 use crate::api::track_analytics_transition;
 use crate::api::AppState;
 use crate::api::ControlCommand;
 use crate::protocol::{
-    livestate_from_frames, parse_cin_response, parse_glg_response, parse_mdl_response,
-    parse_pwr_response, parse_sts_frame, PwrFrame,
+    livestate_from_frames, parse_glg_response, parse_mdl_response, parse_pwr_response,
+    parse_sts_frame, PwrFrame,
 };
-use crate::state::{ChannelData, LiveState, ScannerMode};
+use crate::state::{LiveState, ScannerMode};
 use crate::transport::{SerialTransport, TransportError};
 use crate::transport_usb::UsbTransport;
 
@@ -29,8 +27,6 @@ const PWR_CMD: &str = "PWR";
 const MDL_CMD: &str = "MDL";
 const KEY_HOLD: &str = "KEY,H,P";
 const KEY_SCAN: &str = "KEY,S,P";
-const PRG_CMD: &str = "PRG";
-const EPG_CMD: &str = "EPG";
 
 /// Spawn a blocking thread: open serial, process command channel + STS poll, broadcast state.
 pub fn spawn_poll_loop(
@@ -146,11 +142,15 @@ fn run_poll_loop(
                     task_id,
                     max_channels,
                 } => {
-                    if let Err(e) =
-                        run_memory_sync(&state, &transport, port.as_mut(), &task_id, max_channels)
-                    {
+                    if let Err(e) = super::memory_sync::run_serial(
+                        &state,
+                        &transport,
+                        port.as_mut(),
+                        &task_id,
+                        max_channels,
+                    ) {
                         warn!("Memory sync failed: {}", e);
-                        finish_sync(&state);
+                        super::memory_sync::finish(&state);
                         send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
                     }
                 }
@@ -319,7 +319,7 @@ fn run_poll_loop_usb(
                     task_id,
                     max_channels,
                 } => {
-                    if let Err(e) = run_memory_sync_usb(
+                    if let Err(e) = super::memory_sync::run_usb(
                         &state,
                         &transport,
                         &mut session,
@@ -327,7 +327,7 @@ fn run_poll_loop_usb(
                         max_channels,
                     ) {
                         warn!("Memory sync failed: {}", e);
-                        finish_sync(&state);
+                        super::memory_sync::finish(&state);
                         send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
                     }
                 }
@@ -559,124 +559,6 @@ fn send_progress(state: &AppState, task_id: &str, percent: u8, message: &str) {
         "message": message,
     });
     let _ = state.ws_tx.send(msg.to_string());
-}
-
-/// Run full memory sync: PRG -> CIN 1..max_channels -> EPG; update shadow, broadcast progress.
-fn run_memory_sync(
-    state: &AppState,
-    transport: &SerialTransport,
-    port: &mut dyn serialport::SerialPort,
-    task_id: &str,
-    max_channels: u16,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    send_progress(state, task_id, 0, "Entering program mode...");
-    let _ = transport.send(port, PRG_CMD);
-    thread::sleep(Duration::from_millis(100));
-
-    let mut channels: HashMap<u16, ChannelData> = HashMap::new();
-    for idx in 1..=max_channels {
-        if state
-            .sync_cancel_requested
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            let _ = transport.send(port, EPG_CMD);
-            finish_sync(state);
-            send_progress(state, task_id, 0, "Sync cancelled");
-            return Ok(());
-        }
-        let cmd = format!("CIN,{}", idx);
-        let resp = transport.send(port, &cmd).unwrap_or_default();
-        if let Some(ch) = parse_cin_response(idx, &resp) {
-            channels.insert(idx, ch);
-        }
-        if idx % 10 == 0 {
-            let pct = ((idx as f64 / max_channels as f64) * 100.0) as u8;
-            send_progress(
-                state,
-                task_id,
-                pct,
-                &format!("Syncing channel {}/{}", idx, max_channels),
-            );
-        }
-    }
-
-    send_progress(state, task_id, 100, "Exiting program mode...");
-    let _ = transport.send(port, EPG_CMD);
-    thread::sleep(Duration::from_millis(100));
-
-    let now = std::time::SystemTime::UNIX_EPOCH
-        .elapsed()
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-    if let Ok(mut shadow) = state.shadow.write() {
-        shadow.channels = channels;
-        shadow.last_sync = now;
-    }
-    finish_sync(state);
-    send_progress(state, task_id, 100, "Sync complete");
-    Ok(())
-}
-
-fn run_memory_sync_usb(
-    state: &AppState,
-    transport: &UsbTransport,
-    session: &mut crate::transport_usb::UsbSession,
-    task_id: &str,
-    max_channels: u16,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    send_progress(state, task_id, 0, "Entering program mode...");
-    let _ = transport.send(session, PRG_CMD);
-    thread::sleep(Duration::from_millis(100));
-
-    let mut channels: HashMap<u16, ChannelData> = HashMap::new();
-    for idx in 1..=max_channels {
-        if state
-            .sync_cancel_requested
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            let _ = transport.send(session, EPG_CMD);
-            finish_sync(state);
-            send_progress(state, task_id, 0, "Sync cancelled");
-            return Ok(());
-        }
-        let cmd = format!("CIN,{}", idx);
-        let resp = transport.send(session, &cmd).unwrap_or_default();
-        if let Some(ch) = parse_cin_response(idx, &resp) {
-            channels.insert(idx, ch);
-        }
-        if idx % 10 == 0 {
-            let pct = ((idx as f64 / max_channels as f64) * 100.0) as u8;
-            send_progress(
-                state,
-                task_id,
-                pct,
-                &format!("Syncing channel {}/{}", idx, max_channels),
-            );
-        }
-    }
-
-    send_progress(state, task_id, 100, "Exiting program mode...");
-    let _ = transport.send(session, EPG_CMD);
-    thread::sleep(Duration::from_millis(100));
-
-    let now = std::time::SystemTime::UNIX_EPOCH
-        .elapsed()
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-    if let Ok(mut shadow) = state.shadow.write() {
-        shadow.channels = channels;
-        shadow.last_sync = now;
-    }
-    finish_sync(state);
-    send_progress(state, task_id, 100, "Sync complete");
-    Ok(())
-}
-
-fn finish_sync(state: &AppState) {
-    state
-        .sync_cancel_requested
-        .store(false, std::sync::atomic::Ordering::Relaxed);
-    state.sync_task_id.lock().unwrap().take();
 }
 
 fn parse_usb_target(target: &str) -> Option<(u16, u16)> {

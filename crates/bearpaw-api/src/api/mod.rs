@@ -5,6 +5,7 @@
 
 mod control;
 mod handlers;
+mod memory_sync;
 mod poll;
 mod program_mode;
 mod ws;
