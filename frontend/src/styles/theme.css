@@ -342,6 +342,11 @@
     font-size: var(--font-size);
     width: 100%;
     height: 100%;
+    /* Campfire's base CSS sets html { overflow-y: scroll }, which reserves
+       a vertical scrollbar gutter on the right edge of the Tauri window
+       even when nothing scrolls. The desktop shell has no overflowing
+       root content, so hide it. */
+    overflow-y: hidden;
   }
 
   h1 {
