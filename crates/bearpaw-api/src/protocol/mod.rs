@@ -246,7 +246,7 @@ pub fn rssi_raw_to_scaled(raw: u16) -> u8 {
 ///
 /// `tone_code` is an integer 0–231, NOT a frequency in Hz. The
 /// `ChannelData.tone_squelch` field is populated from a code→Hz translation
-/// elsewhere (see protocol::tones — TODO).
+/// via `protocol::tones::decode_tone`.
 pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
     let line = response.lines().find(|l| !l.trim().is_empty())?.trim();
     let line = line.strip_suffix('\r').unwrap_or(line);
