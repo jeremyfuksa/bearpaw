@@ -1,0 +1,28 @@
+# Bearpaw backend configuration.
+# Copy to ./config.yaml at the repo root and edit as needed.
+#
+# All fields are optional. If you omit `device` entirely, the backend
+# auto-detects a connected Uniden BC125AT-family scanner on serial ports.
+
+device:
+  # On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver
+  # doesn't bind, so no /dev/cu.usbmodem* node appears. Setting usb_vid/usb_pid
+  # forces the nusb direct-USB transport, which works without kernel binding.
+  # Linux/Windows users can usually omit this and let auto-detect handle it.
+  usb_vid: 0x1965
+  usb_pid: 0x0017
+
+  # Optional explicit serial port — only set this if auto-detect picks the
+  # wrong device. Examples:
+  #   port: /dev/cu.usbmodem14101    # macOS
+  #   port: /dev/ttyUSB0             # Linux
+  #   port: COM3                     # Windows
+  # port:
+
+  # Optional baud rate. The BC125AT runs at 115200; you almost never need to
+  # change this.
+  # baud: 115200
+
+api:
+  host: 127.0.0.1
+  port: 8000
