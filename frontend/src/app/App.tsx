@@ -11,6 +11,7 @@ import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
 import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
+import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import {
   getBackendStatus,
@@ -104,29 +105,13 @@ export default function App() {
 
   const [currentTab, setCurrentTab] = useState<Tab>('Scan');
   const [toggleBusy, setToggleBusy] = useState(false);
-  const [dashboardLoading, setDashboardLoading] = useState(true);
   const [chartAnimate, setChartAnimate] = useState(false);
-  const [busiestChannels, setBusiestChannels] = useState<
-    { alpha_tag: string; hit_count: number }[]
-  >([]);
-  const [hourlyHeatmap, setHourlyHeatmap] = useState<number[][]>([]);
-  const [heatmapStats, setHeatmapStats] = useState<{ min: number; max: number; avg: number }>({
-    min: 0,
-    max: 0,
-    avg: 0,
-  });
-  const [sessionStats, setSessionStats] = useState<{
-    total_hits?: number;
-    unique_channels?: number;
-    active_time_seconds?: number;
-  } | null>(null);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const [hasFreshLiveFrame, setHasFreshLiveFrame] = useState(false);
   const [shellStatus, setShellStatus] = useState<BackendStatus | null>(null);
   const [shellLabel, setShellLabel] = useState<string | null>(null);
 
-  const analyticsLoadedRef = useRef(false);
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scanResumeInFlightRef = useRef(false);
   const scanResumeTimerRef = useRef<number | null>(null);
@@ -458,60 +443,13 @@ export default function App() {
     };
   }, [api, setDeviceInfo]);
 
-  useEffect(() => {
-    if (currentTab !== 'Scan') return;
-    let active = true;
-    const fetchAnalytics = async () => {
-      try {
-        if (!analyticsLoadedRef.current) {
-          setDashboardLoading(true);
-        }
-        const [channelsRes, statsRes, heatmapRes] = await Promise.all([
-          fetch(`${API_BASE}/analytics/busiest-channels?limit=5&hours=24`),
-          fetch(`${API_BASE}/analytics/session-stats`),
-          fetch(`${API_BASE}/analytics/hourly-heatmap`),
-        ]);
-        if (channelsRes.ok) {
-          const data = await channelsRes.json();
-          if (active) setBusiestChannels(data.channels || []);
-        }
-        if (statsRes.ok) {
-          const data = await statsRes.json();
-          if (active) setSessionStats(data);
-        }
-        if (heatmapRes.ok) {
-          const data = await heatmapRes.json();
-          if (active) {
-            const stats = data.stats || { min: 0, max: 0, avg: 0 };
-            // Transform flat array to 7x24 grid
-            const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
-            if (data.heatmap && Array.isArray(data.heatmap)) {
-              for (const cell of data.heatmap) {
-                if (cell.day >= 0 && cell.day < 7 && cell.hour >= 0 && cell.hour < 24) {
-                  grid[cell.day][cell.hour] = cell.count;
-                }
-              }
-            }
-            setHourlyHeatmap(grid);
-            setHeatmapStats(stats);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch analytics data:', error);
-      } finally {
-        if (active) {
-          setDashboardLoading(false);
-          analyticsLoadedRef.current = true;
-        }
-      }
-    };
-    fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 5000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [currentTab]);
+  const {
+    busiestChannels,
+    sessionStats,
+    hourlyHeatmap,
+    heatmapStats,
+    loading: dashboardLoading,
+  } = useDashboardAnalytics(currentTab === 'Scan');
 
   useEffect(() => {
     // Don't track mode changes during sync completion to avoid race conditions
