@@ -444,9 +444,6 @@ export default function App() {
       onOpenIssues: () => {
         window.open('https://github.com/jeremyfuksa/bearpaw/issues', '_blank', 'noopener');
       },
-      onShowAbout: () => {
-        toast.info('Bearpaw — Uniden BC125AT control interface');
-      },
     }),
     [api, connected, handleTabChange, updateSync],
   );

@@ -7,7 +7,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, path::PathBuf};
 
 use serde::Serialize;
-use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadataBuilder, Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+};
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -27,10 +29,10 @@ mod menu_ids {
     pub const CMD_SCAN: &str = "bearpaw:cmd:scan";
     pub const CMD_SYNC_MEMORY: &str = "bearpaw:cmd:sync-memory";
 
-    // Help menu — external links + about box.
+    // Help menu — external links. The About item is a PredefinedMenuItem
+    // that opens the OS-native About panel, so it has no event ID.
     pub const HELP_DOCS: &str = "bearpaw:help:docs";
     pub const HELP_ISSUES: &str = "bearpaw:help:issues";
-    pub const HELP_ABOUT: &str = "bearpaw:help:about";
 }
 
 #[derive(Default)]
@@ -236,11 +238,29 @@ fn backend_status(state: tauri::State<'_, ShellState>) -> BackendStatus {
 /// behaviour to them here; the `on_menu_event` handler below just emits the
 /// ID and lets the frontend dispatch.
 fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    // Build once and reuse for both the Apple submenu About and the
+    // Help → About entry, so the two open the same native panel.
+    let about_metadata = AboutMetadataBuilder::new()
+        .name(Some("Bearpaw"))
+        .version(Some(env!("CARGO_PKG_VERSION")))
+        .authors(Some(vec!["Jeremy Fuksa".to_string()]))
+        .website(Some("https://github.com/jeremyfuksa/bearpaw"))
+        .website_label(Some("github.com/jeremyfuksa/bearpaw"))
+        .comments(Some(
+            "Desktop control interface for the Uniden BC125AT scanner.",
+        ))
+        .copyright(Some("© 2026 Jeremy Fuksa"))
+        .build();
+
     // Apple menu — the standard macOS app submenu. About/Hide/Quit live
     // here per platform convention. Tauri's PredefinedMenuItem variants
     // fill in the localised labels.
     let app_submenu = SubmenuBuilder::new(app, "Bearpaw")
-        .item(&PredefinedMenuItem::about(app, None, None)?)
+        .item(&PredefinedMenuItem::about(
+            app,
+            Some("About Bearpaw"),
+            Some(about_metadata.clone()),
+        )?)
         .separator()
         .item(&PredefinedMenuItem::hide(app, None)?)
         .item(&PredefinedMenuItem::hide_others(app, None)?)
@@ -290,23 +310,18 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
         )
         .build()?;
 
-    // Help: external links + a custom about-box trigger. The Apple-menu
-    // About uses Tauri's built-in panel; this one gives us room to grow a
-    // richer dialog later (PR-D in the menu sequence).
+    // Help: external links + the same native About panel that the Apple
+    // submenu opens. Both items use `PredefinedMenuItem::about` so the
+    // window/title/contents are identical.
     let help_submenu = SubmenuBuilder::new(app, "Help")
-        .item(
-            &MenuItemBuilder::with_id(menu_ids::HELP_DOCS, "Documentation")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id(menu_ids::HELP_ISSUES, "GitHub Issues")
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id(menu_ids::HELP_DOCS, "Documentation").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::HELP_ISSUES, "GitHub Issues").build(app)?)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id(menu_ids::HELP_ABOUT, "About Bearpaw")
-                .build(app)?,
-        )
+        .item(&PredefinedMenuItem::about(
+            app,
+            Some("About Bearpaw"),
+            Some(about_metadata),
+        )?)
         .build()?;
 
     MenuBuilder::new(app)
