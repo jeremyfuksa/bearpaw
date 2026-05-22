@@ -1,27 +1,10 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-
-# Virtualenv
-.venv/
-venv/
-backend/.venv/
-
 # OS files
 .DS_Store
 
 # Local runtime artifacts
 logs/
-backend/scanner.db
-backend/now_scanning.txt
 docs/manual.pdf
 docs/op-spec.pdf
-backend/analytics.db
-backend/analytics.db-wal
-backend/analytics.db-shm
 crates/bearpaw-api/scanner.db
 crates/bearpaw-api/scanner.db-wal
 crates/bearpaw-api/scanner.db-shm
@@ -34,9 +17,6 @@ bearpaw-refactor/
 node_modules/
 dist/
 frontend-old/
-backend/uv.lock
-backend/.pyinstaller/
-backend/build/
 
 # Tauri / Rust
 target/

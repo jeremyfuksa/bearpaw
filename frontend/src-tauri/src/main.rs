@@ -86,27 +86,18 @@ fn resolve_config_path() -> Option<String> {
         }
     }
 
-    // Dev-time paths relative to the source tree
-    let mut candidates =
-        vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../backend/config.yaml")];
-    if let Ok(cwd) = env::current_dir() {
-        candidates.push(cwd.join("../../backend/config.yaml"));
-        candidates.push(cwd.join("../backend/config.yaml"));
-        candidates.push(cwd.join("backend/config.yaml"));
-    }
-
     // Check next to the running executable (bundled installs)
     if let Ok(exe) = env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            candidates.push(exe_dir.join("config.yaml"));
+            let exe_cfg = exe_dir.join("config.yaml");
+            if exe_cfg.exists() {
+                return Some(exe_cfg.to_string_lossy().into_owned());
+            }
         }
     }
 
-    for candidate in candidates {
-        if candidate.exists() {
-            return Some(candidate.to_string_lossy().into_owned());
-        }
-    }
+    // No explicit config: fall back to the Rust backend's built-in defaults,
+    // which include USB auto-detect for Uniden VID/PID 0x1965:0x0017.
     None
 }
 

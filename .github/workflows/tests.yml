@@ -10,25 +10,25 @@ jobs:
   test-backend:
     name: Backend Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust
+        uses: actions/cache@v4
         with:
-          python-version: '3.10'
-      - name: Install backend
-        run: |
-          cd backend
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -e .
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Install Linux USB dev headers
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
       - name: Run backend tests
-        run: |
-          cd backend
-          source .venv/bin/activate
-          python -m unittest discover -s tests -v
+        run: cargo test -p bearpaw-api --lib
 
   test-frontend:
     name: Frontend Tests
