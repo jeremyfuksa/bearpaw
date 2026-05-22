@@ -40,7 +40,7 @@ interface WebSocketContextValue {
   connecting: boolean;
 }
 
-const WebSocketContext = createContext<WebSocketContextValue | null>(null);
+export const WebSocketContext = createContext<WebSocketContextValue | null>(null);
 
 export function WebSocketProvider({ children, url }: { children: React.ReactNode; url?: string }) {
   const wsURL = url ?? resolveDefaultWsURL();
