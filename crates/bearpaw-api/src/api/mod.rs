@@ -4,25 +4,24 @@
 //! without frontend contract regressions.
 
 mod control;
+mod handlers;
 mod poll;
 mod program_mode;
+mod ws;
 
 pub(crate) use program_mode::ProgramModeGuard;
+pub(crate) use ws::{broadcast_banks_update, broadcast_state_update};
 
 pub use control::{validate_frequency, validate_modulation, ControlCommand, FrequencyRequest};
 pub use poll::spawn_poll_loop;
 
 use axum::{
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Multipart, Path, Query, State,
-    },
     http::StatusCode,
     response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -95,120 +94,182 @@ const ANALYTICS_SCHEMA_VERSION: i32 = 1;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/api/v1/status", get(get_status))
-        .route("/api/v1/health", get(get_health))
-        .route("/api/v1/device/info", get(get_device_info))
-        .route("/api/v1/banks", get(get_banks).post(set_banks))
-        .route("/api/v1/commands/hold", post(post_hold))
-        .route("/api/v1/commands/scan", post(post_scan))
-        .route("/api/v1/commands/key", post(post_key))
-        .route("/api/v1/commands/lockout", post(post_lockout))
-        .route("/api/v1/frequency", post(post_frequency))
-        .route("/api/v1/volume", get(get_volume).post(set_volume))
-        .route("/api/v1/squelch", get(get_squelch).post(set_squelch))
-        .route("/api/v1/config", get(get_config))
-        .route("/api/v1/settings/firmware", get(get_firmware))
-        .route("/api/v1/settings/all", get(get_config))
+        .route("/api/v1/status", get(handlers::status::get_status))
+        .route("/api/v1/health", get(handlers::status::get_health))
+        .route(
+            "/api/v1/device/info",
+            get(handlers::status::get_device_info),
+        )
+        .route(
+            "/api/v1/banks",
+            get(handlers::banks::get_banks).post(handlers::banks::set_banks),
+        )
+        .route("/api/v1/commands/hold", post(handlers::commands::post_hold))
+        .route("/api/v1/commands/scan", post(handlers::commands::post_scan))
+        .route("/api/v1/commands/key", post(handlers::commands::post_key))
+        .route(
+            "/api/v1/commands/lockout",
+            post(handlers::commands::post_lockout),
+        )
+        .route(
+            "/api/v1/frequency",
+            post(handlers::commands::post_frequency),
+        )
+        .route(
+            "/api/v1/volume",
+            get(handlers::commands::get_volume).post(handlers::commands::set_volume),
+        )
+        .route(
+            "/api/v1/squelch",
+            get(handlers::commands::get_squelch).post(handlers::commands::set_squelch),
+        )
+        .route("/api/v1/config", get(handlers::settings::get_config))
+        .route(
+            "/api/v1/settings/firmware",
+            get(handlers::settings::get_firmware),
+        )
+        .route("/api/v1/settings/all", get(handlers::settings::get_config))
         .route(
             "/api/v1/settings/backlight",
-            get(get_backlight).post(set_backlight),
+            get(handlers::settings::get_backlight).post(handlers::settings::set_backlight),
         )
         .route(
             "/api/v1/settings/battery",
-            get(get_battery).post(set_battery),
+            get(handlers::settings::get_battery).post(handlers::settings::set_battery),
         )
         .route(
             "/api/v1/settings/key-beep",
-            get(get_key_beep).post(set_key_beep),
+            get(handlers::settings::get_key_beep).post(handlers::settings::set_key_beep),
         )
         .route(
             "/api/v1/settings/priority",
-            get(get_priority).post(set_priority),
+            get(handlers::settings::get_priority).post(handlers::settings::set_priority),
         )
-        .route("/api/v1/settings/search", get(get_search).post(set_search))
+        .route(
+            "/api/v1/settings/search",
+            get(handlers::settings::get_search).post(handlers::settings::set_search),
+        )
         .route(
             "/api/v1/settings/close-call",
-            get(get_close_call).post(set_close_call),
+            get(handlers::settings::get_close_call).post(handlers::settings::set_close_call),
         )
         .route(
             "/api/v1/settings/service-search",
-            get(get_service_search).post(set_service_search),
+            get(handlers::settings::get_service_search)
+                .post(handlers::settings::set_service_search),
         )
         .route(
             "/api/v1/settings/custom-search",
-            get(get_custom_search).post(set_custom_search),
+            get(handlers::settings::get_custom_search).post(handlers::settings::set_custom_search),
         )
         .route(
             "/api/v1/settings/custom-search/ranges/:index",
-            get(get_custom_range).post(set_custom_range),
+            get(handlers::settings::get_custom_range).post(handlers::settings::set_custom_range),
         )
         .route(
             "/api/v1/settings/weather",
-            get(get_weather).post(set_weather),
+            get(handlers::settings::get_weather).post(handlers::settings::set_weather),
         )
         .route(
             "/api/v1/settings/contrast",
-            get(get_contrast).post(set_contrast),
+            get(handlers::settings::get_contrast).post(handlers::settings::set_contrast),
         )
-        .route("/api/v1/lockouts", get(get_lockouts))
-        .route("/api/v1/lockouts/:frequency", get(get_lockout_status))
+        .route("/api/v1/lockouts", get(handlers::lockouts::get_lockouts))
+        .route(
+            "/api/v1/lockouts/:frequency",
+            get(handlers::lockouts::get_lockout_status),
+        )
         .route(
             "/api/v1/lockouts/temporary/clear",
-            post(clear_temporary_lockouts),
+            post(handlers::lockouts::clear_temporary_lockouts),
         )
-        .route("/api/v1/lockouts/clear", post(clear_global_lockouts))
+        .route(
+            "/api/v1/lockouts/clear",
+            post(handlers::lockouts::clear_global_lockouts),
+        )
         .route(
             "/api/v1/lockouts/channels/clear",
-            post(clear_channel_lockouts),
+            post(handlers::lockouts::clear_channel_lockouts),
         )
-        .route("/api/v1/memory/channels", get(get_memory_channels))
+        .route(
+            "/api/v1/memory/channels",
+            get(handlers::memory::get_memory_channels),
+        )
         .route(
             "/api/v1/memory/channels/:index",
-            get(get_memory_channel).put(put_memory_channel),
+            get(handlers::memory::get_memory_channel).put(handlers::memory::put_memory_channel),
         )
-        .route("/api/v1/memory/sync", post(post_memory_sync))
-        .route("/api/v1/memory/sync/cancel", post(cancel_memory_sync))
+        .route(
+            "/api/v1/memory/sync",
+            post(handlers::memory::post_memory_sync),
+        )
+        .route(
+            "/api/v1/memory/sync/cancel",
+            post(handlers::memory::cancel_memory_sync),
+        )
         .route(
             "/api/v1/memory/program-mode/start",
-            post(program_mode_start),
+            post(handlers::memory::program_mode_start),
         )
-        .route("/api/v1/memory/program-mode/end", post(program_mode_end))
+        .route(
+            "/api/v1/memory/program-mode/end",
+            post(handlers::memory::program_mode_end),
+        )
         .route(
             "/api/v1/memory/export/bc125at_ss",
-            get(export_bc125at_ss_file),
+            get(handlers::exports::export_bc125at_ss_file),
         )
-        .route("/api/v1/memory/export/csv", get(export_csv))
-        .route("/api/v1/memory/import/csv", post(import_csv))
+        .route(
+            "/api/v1/memory/export/csv",
+            get(handlers::exports::export_csv),
+        )
+        .route(
+            "/api/v1/memory/import/csv",
+            post(handlers::exports::import_csv),
+        )
         .route(
             "/api/v1/preferences",
-            get(get_preferences)
-                .put(set_preferences)
-                .post(reset_preferences),
+            get(handlers::preferences::get_preferences)
+                .put(handlers::preferences::put_preferences)
+                .post(handlers::preferences::reset_preferences),
         )
-        .route("/api/v1/preferences/reset", post(reset_preferences))
+        .route(
+            "/api/v1/preferences/reset",
+            post(handlers::preferences::reset_preferences),
+        )
         .route(
             "/api/v1/preferences/:key",
-            get(get_preference).put(set_preference),
+            get(handlers::preferences::get_preference)
+                .put(handlers::preferences::put_preference),
         )
-        .route("/api/v1/debug/glg", get(debug_glg))
-        .route("/api/v1/debug/scg", get(debug_scg))
-        .route("/api/v1/debug/glf", get(debug_glf))
-        .route("/api/v1/test/simulate-hit", post(simulate_hit))
-        .route("/api/v1/analytics/busiest-channels", get(analytics_busiest))
+        .route("/api/v1/debug/glg", get(handlers::debug::debug_glg))
+        .route("/api/v1/debug/scg", get(handlers::debug::debug_scg))
+        .route("/api/v1/debug/glf", get(handlers::debug::debug_glf))
+        .route(
+            "/api/v1/test/simulate-hit",
+            post(handlers::status::simulate_hit),
+        )
+        .route(
+            "/api/v1/analytics/busiest-channels",
+            get(handlers::analytics::analytics_busiest),
+        )
         .route(
             "/api/v1/analytics/session-stats",
-            get(analytics_session_stats),
+            get(handlers::analytics::analytics_session_stats),
         )
         .route(
             "/api/v1/analytics/hourly-heatmap",
-            get(analytics_hourly_heatmap),
+            get(handlers::analytics::analytics_hourly_heatmap),
         )
         .route(
             "/api/v1/analytics/activity-log",
-            get(analytics_activity_log),
+            get(handlers::analytics::analytics_activity_log),
         )
-        .route("/api/v1/analytics/cleanup", post(analytics_cleanup))
-        .route("/ws", get(ws_handler))
+        .route(
+            "/api/v1/analytics/cleanup",
+            post(handlers::analytics::analytics_cleanup),
+        )
+        .route("/ws", get(ws::ws_handler))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -224,19 +285,9 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-async fn get_status(State(state): State<AppState>) -> Json<LiveState> {
-    Json(state.live.read().unwrap().clone())
-}
-
-async fn get_health() -> Json<Value> {
-    Json(json!({ "status": "ok" }))
-}
-
-async fn get_device_info(State(state): State<AppState>) -> Json<DeviceInfo> {
-    Json(state.device.read().unwrap().clone())
-}
-
-fn command_sender(state: &AppState) -> Result<std::sync::mpsc::Sender<ControlCommand>, ApiError> {
+pub(crate) fn command_sender(
+    state: &AppState,
+) -> Result<std::sync::mpsc::Sender<ControlCommand>, ApiError> {
     state
         .command_tx
         .lock()
@@ -318,1440 +369,7 @@ pub(crate) async fn send_raw_command(
     join_result
 }
 
-#[derive(Serialize)]
-struct BanksResponse {
-    banks: Vec<bool>,
-}
-
-#[derive(Deserialize)]
-struct BanksRequest {
-    banks: Vec<bool>,
-}
-
-async fn get_banks(State(state): State<AppState>) -> Result<Json<BanksResponse>, ApiError> {
-    let _ = command_sender(&state)?;
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    let response = send_raw_command(&state, "SCG", false).await;
-    let response = response?;
-    let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
-    if parts.first().map(|p| p.eq_ignore_ascii_case("SCG")) == Some(true) {
-        parts.remove(0);
-    }
-    let flags = parts.first().copied().unwrap_or("");
-    if flags.len() != 10 || !flags.chars().all(|c| c == '0' || c == '1') {
-        return Err(ApiError::BadRequest("Invalid SCG response".to_string()));
-    }
-    let banks = flags.chars().map(|c| c == '0').collect::<Vec<bool>>();
-    *state.banks.write().unwrap() = banks.clone();
-    broadcast_banks_update(&state);
-    Ok(Json(BanksResponse { banks }))
-}
-
-async fn set_banks(
-    State(state): State<AppState>,
-    Json(body): Json<BanksRequest>,
-) -> Result<Json<BanksResponse>, ApiError> {
-    if body.banks.len() != 10 {
-        return Err(ApiError::BadRequest("banks_length_invalid".to_string()));
-    }
-    let _ = command_sender(&state)?;
-    let flags = body
-        .banks
-        .iter()
-        .map(|enabled| if *enabled { "0" } else { "1" })
-        .collect::<String>();
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    let set_result = send_raw_command(&state, &format!("SCG,{}", flags), false).await;
-    let _ = set_result?;
-    *state.banks.write().unwrap() = body.banks.clone();
-    broadcast_banks_update(&state);
-    Ok(Json(BanksResponse { banks: body.banks }))
-}
-
-/// Send a Hold or Scan ControlCommand to the poll loop and wait for its
-/// scanner-side reply. The poll loop updates commanded_mode inside the same
-/// match arm that issues the KEY write, so on success the next poll tick
-/// broadcasts the new mode — no separate live.mode write needed here.
-async fn send_mode_command(
-    state: &AppState,
-    make_cmd: impl FnOnce(
-            Option<std::sync::mpsc::Sender<Result<String, String>>>,
-        ) -> ControlCommand
-        + Send
-        + 'static,
-    error_tag: &'static str,
-) -> Result<(), ApiError> {
-    let sender = command_sender(state)?;
-    tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
-        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
-        sender
-            .send(make_cmd(Some(reply_tx)))
-            .map_err(|_| ApiError::SendFailed)?;
-        let response = match reply_rx.recv_timeout(Duration::from_secs(3)) {
-            Ok(Ok(r)) => r,
-            Ok(Err(m)) => return Err(ApiError::BadRequest(m)),
-            Err(_) => return Err(ApiError::BadRequest("command_timeout".to_string())),
-        };
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest(format!("{}_failed", error_tag)));
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|_| ApiError::SendFailed)?
-}
-
-async fn post_hold(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    send_mode_command(&state, |reply| ControlCommand::Hold { reply }, "hold").await?;
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn post_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    send_mode_command(&state, |reply| ControlCommand::Scan { reply }, "scan").await?;
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-#[derive(Deserialize)]
-struct KeyRequest {
-    key: String,
-}
-
-async fn post_key(
-    State(state): State<AppState>,
-    Json(body): Json<KeyRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let key = body.key.to_uppercase();
-    let cmd = match key.as_str() {
-        "H" => Some(ControlCommand::Hold { reply: None }),
-        "S" => Some(ControlCommand::Scan { reply: None }),
-        _ => None,
-    };
-    if let Some(cmd) = cmd {
-        let tx = state.command_tx.lock().unwrap();
-        let tx = tx.as_ref().ok_or(ApiError::NoScanner)?;
-        tx.send(cmd).map_err(|_| ApiError::SendFailed)?;
-    } else {
-        let primary = send_raw_command(&state, &format!("KEY,{},P", key), false).await;
-        if primary.is_err() {
-            let _ = send_raw_command(&state, &format!("KEY,{}", key), false).await?;
-        }
-    }
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn post_frequency(
-    State(state): State<AppState>,
-    Json(body): Json<FrequencyRequest>,
-) -> Result<Json<LiveState>, ApiError> {
-    validate_frequency(body.frequency).map_err(ApiError::BadRequest)?;
-    validate_modulation(&body.modulation).map_err(ApiError::BadRequest)?;
-    let tx = state.command_tx.lock().unwrap();
-    let tx = tx.as_ref().ok_or(ApiError::NoScanner)?;
-    tx.send(ControlCommand::Direct {
-        frequency: body.frequency,
-        modulation: body.modulation.to_uppercase(),
-    })
-    .map_err(|_| ApiError::SendFailed)?;
-    Ok(Json(state.live.read().unwrap().clone()))
-}
-
-#[derive(Deserialize)]
-struct LockoutRequest {
-    mode: String,
-    frequency: Option<f64>,
-    channel: Option<u16>,
-}
-
-async fn post_lockout(
-    State(state): State<AppState>,
-    Json(body): Json<LockoutRequest>,
-) -> Result<Json<Value>, ApiError> {
-    match body.mode.as_str() {
-        "temporary" => {
-            let live = state.live.read().unwrap().clone();
-            let channel = body
-                .channel
-                .or(live.channel)
-                .ok_or_else(|| ApiError::BadRequest("channel_required".to_string()))?;
-            let frequency = body.frequency.unwrap_or(live.frequency);
-            let was_locked = state
-                .temporary_lockouts
-                .read()
-                .unwrap()
-                .contains_key(&channel);
-            let locked = if was_locked {
-                if command_sender(&state).is_ok() {
-                    let updated = set_channel_lockout_on_scanner(&state, channel, false).await?;
-                    state
-                        .shadow
-                        .write()
-                        .unwrap()
-                        .channels
-                        .insert(channel, updated);
-                }
-                state.temporary_lockouts.write().unwrap().remove(&channel);
-                false
-            } else {
-                if command_sender(&state).is_ok() {
-                    let updated = set_channel_lockout_on_scanner(&state, channel, true).await?;
-                    state
-                        .shadow
-                        .write()
-                        .unwrap()
-                        .channels
-                        .insert(channel, updated);
-                }
-                state
-                    .temporary_lockouts
-                    .write()
-                    .unwrap()
-                    .insert(channel, frequency);
-                true
-            };
-            Ok(Json(json!({
-                "mode": "temporary",
-                "frequency": frequency,
-                "locked": locked,
-                "channel": channel
-            })))
-        }
-        "permanent" => {
-            let live = state.live.read().unwrap().clone();
-            let index = body
-                .channel
-                .or(live.channel)
-                .ok_or_else(|| ApiError::BadRequest("channel_required".to_string()))?;
-            let updated = if command_sender(&state).is_ok() {
-                let current = {
-                    let shadow = state.shadow.read().unwrap();
-                    shadow
-                        .channels
-                        .get(&index)
-                        .map(|c| c.lockout)
-                        .unwrap_or(false)
-                };
-                set_channel_lockout_on_scanner(&state, index, !current).await?
-            } else {
-                let mut shadow = state.shadow.write().unwrap();
-                let ch = shadow.channels.entry(index).or_insert(ChannelData {
-                    index,
-                    frequency: live.frequency,
-                    modulation: live.modulation,
-                    alpha_tag: live.alpha_tag.unwrap_or_default(),
-                    delay: 2,
-                    lockout: false,
-                    priority: false,
-                    tone_squelch: None,
-                    tone_squelch_kind: Default::default(),
-                    tone_dcs_code: None,
-                    bank: crate::protocol::index_to_bank(index),
-                });
-                ch.lockout = !ch.lockout;
-                ch.clone()
-            };
-            state
-                .shadow
-                .write()
-                .unwrap()
-                .channels
-                .insert(index, updated.clone());
-            state.temporary_lockouts.write().unwrap().remove(&index);
-            Ok(Json(json!({ "mode": "permanent", "channel": updated })))
-        }
-        _ => Err(ApiError::BadRequest("invalid_lockout_mode".to_string())),
-    }
-}
-
-#[derive(Deserialize)]
-struct MemoryChannelsQuery {
-    bank: Option<u8>,
-    lockout: Option<bool>,
-}
-
-async fn get_memory_channels(
-    State(state): State<AppState>,
-    Query(q): Query<MemoryChannelsQuery>,
-) -> Json<Vec<ChannelData>> {
-    let shadow = state.shadow.read().unwrap();
-    let mut channels: Vec<ChannelData> = shadow.channels.values().cloned().collect();
-    if let Some(bank) = q.bank {
-        channels.retain(|c| c.bank == bank);
-    }
-    if let Some(lockout) = q.lockout {
-        channels.retain(|c| c.lockout == lockout);
-    }
-    channels.sort_by_key(|c| c.index);
-    Json(channels)
-}
-
-async fn get_memory_channel(
-    State(state): State<AppState>,
-    Path(index): Path<u16>,
-) -> Result<Json<ChannelData>, ApiError> {
-    if command_sender(&state).is_ok() {
-        if let Ok(channel) = read_channel_from_scanner(&state, index).await {
-            state
-                .shadow
-                .write()
-                .unwrap()
-                .channels
-                .insert(index, channel.clone());
-            return Ok(Json(channel));
-        }
-    }
-    let shadow = state.shadow.read().unwrap();
-    shadow
-        .channels
-        .get(&index)
-        .cloned()
-        .map(Json)
-        .ok_or(ApiError::NotFound("not_found".to_string()))
-}
-
-async fn put_memory_channel(
-    State(state): State<AppState>,
-    Path(index): Path<u16>,
-    Json(mut body): Json<ChannelData>,
-) -> Result<Json<ChannelData>, ApiError> {
-    let _ = command_sender(&state)?;
-    if !(1..=500).contains(&index) {
-        return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
-    }
-    body.index = index;
-    if body.delay > 30 {
-        return Err(ApiError::BadRequest("delay_out_of_range".to_string()));
-    }
-    if body.bank > 10 {
-        return Err(ApiError::BadRequest("bank_out_of_range".to_string()));
-    }
-    if body.alpha_tag.len() > 16 {
-        return Err(ApiError::BadRequest("alpha_tag_too_long".to_string()));
-    }
-    let updated = write_channel_to_scanner(&state, &body).await?;
-    state
-        .shadow
-        .write()
-        .unwrap()
-        .channels
-        .insert(index, updated.clone());
-    Ok(Json(updated))
-}
-
-#[derive(Serialize)]
-struct MemorySyncResponse {
-    status: String,
-    task_id: String,
-}
-
-async fn post_memory_sync(
-    State(state): State<AppState>,
-) -> Result<Json<MemorySyncResponse>, ApiError> {
-    use std::sync::mpsc::Sender;
-
-    if let Some(task_id) = state.sync_task_id.lock().unwrap().clone() {
-        return Ok(Json(MemorySyncResponse {
-            status: "already_running".to_string(),
-            task_id,
-        }));
-    }
-
-    let task_id = format!("sync-{}", uuid_simple());
-    let tx = state.command_tx.lock().unwrap();
-    let tx: &Sender<ControlCommand> = tx.as_ref().ok_or(ApiError::NoScanner)?;
-    state.sync_cancel_requested.store(false, Ordering::Relaxed);
-    tx.send(ControlCommand::StartSync {
-        task_id: task_id.clone(),
-        max_channels: 500,
-    })
-    .map_err(|_| {
-        state.sync_task_id.lock().unwrap().take();
-        ApiError::SendFailed
-    })?;
-    *state.sync_task_id.lock().unwrap() = Some(task_id.clone());
-    Ok(Json(MemorySyncResponse {
-        status: "started".to_string(),
-        task_id,
-    }))
-}
-
-async fn cancel_memory_sync(State(state): State<AppState>) -> Json<Value> {
-    let task = state.sync_task_id.lock().unwrap().clone();
-    if let Some(task_id) = task {
-        state.sync_cancel_requested.store(true, Ordering::Relaxed);
-        return Json(json!({ "status": "cancelling", "task_id": task_id }));
-    }
-    Json(json!({ "status": "no_task" }))
-}
-
-async fn program_mode_start(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    if state.sync_task_id.lock().unwrap().is_some() {
-        return Err(ApiError::Conflict("sync_in_progress".to_string()));
-    }
-    let _ = command_sender(&state)?;
-    let pre_mode = state
-        .live
-        .read()
-        .map(|live| live.mode)
-        .unwrap_or(ScannerMode::Scan);
-    let forced_hold = pre_mode == ScannerMode::Scan;
-    if forced_hold {
-        if send_raw_command(&state, "KEY,H,P", false).await.is_err() {
-            let _ = send_raw_command(&state, "KEY,H", false).await;
-        }
-    }
-    // Manual PRG/EPG here (instead of ProgramModeGuard) because this handler
-    // intentionally leaves the scanner in program mode across HTTP requests.
-    // The matching EPG is in program_mode_end.
-    let _ = send_raw_command(&state, "PRG", false).await?;
-    state
-        .program_mode_forced_hold
-        .store(forced_hold, Ordering::Relaxed);
-    state.program_mode_active.store(true, Ordering::Relaxed);
-    if let Ok(mut live) = state.live.write() {
-        live.mode = ScannerMode::Programming;
-    }
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn program_mode_end(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let _ = send_raw_command(&state, "EPG", false).await?;
-    state.program_mode_active.store(false, Ordering::Relaxed);
-    let forced_hold = state
-        .program_mode_forced_hold
-        .swap(false, Ordering::Relaxed);
-    if forced_hold {
-        if send_raw_command(&state, "KEY,S,P", false).await.is_err() {
-            let _ = send_raw_command(&state, "KEY,S", false).await;
-        }
-    }
-    if let Ok(mut live) = state.live.write() {
-        live.mode = if forced_hold {
-            ScannerMode::Scan
-        } else {
-            ScannerMode::Hold
-        };
-    }
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-#[derive(Deserialize)]
-struct LockoutsQuery {
-    include_frequencies: Option<bool>,
-}
-
-#[derive(Serialize)]
-struct LockoutsResponse {
-    frequencies: Vec<f64>,
-    channels: Vec<u16>,
-    temporary_channels: Vec<Value>,
-}
-
-async fn get_lockouts(
-    State(state): State<AppState>,
-    Query(query): Query<LockoutsQuery>,
-) -> Result<Json<LockoutsResponse>, ApiError> {
-    let include_frequencies = query.include_frequencies.unwrap_or(true);
-    let mut channels: Vec<u16> = {
-        let shadow = state.shadow.read().unwrap();
-        shadow
-            .channels
-            .values()
-            .filter(|c| c.lockout)
-            .map(|c| c.index)
-            .collect()
-    };
-    channels.sort_unstable();
-
-    let mut temporary_channels: Vec<Value> = {
-        let temp = state.temporary_lockouts.read().unwrap();
-        temp.iter()
-            .map(|(channel, frequency)| json!({ "channel": channel, "frequency": frequency }))
-            .collect()
-    };
-    temporary_channels.sort_by(|a, b| {
-        a.get("channel")
-            .and_then(Value::as_u64)
-            .cmp(&b.get("channel").and_then(Value::as_u64))
-    });
-
-    let mut frequencies = Vec::new();
-    if include_frequencies {
-        let _ = command_sender(&state)?;
-        let from_scanner = read_frequency_lockouts_from_scanner(&state).await?;
-        let mut raw = state.frequency_lockouts.write().unwrap();
-        raw.clear();
-        raw.extend(from_scanner.iter().copied());
-        let raw = state.frequency_lockouts.read().unwrap();
-        frequencies = raw
-            .iter()
-            .map(|f| *f as f64 / 10000.0)
-            .collect::<Vec<f64>>();
-        frequencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    }
-
-    Ok(Json(LockoutsResponse {
-        frequencies,
-        channels,
-        temporary_channels,
-    }))
-}
-
-async fn get_lockout_status(
-    State(state): State<AppState>,
-    Path(frequency): Path<f64>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let raw = (frequency * 10000.0).round().max(0.0) as u32;
-    let from_scanner = read_frequency_lockouts_from_scanner(&state).await?;
-    let mut set = state.frequency_lockouts.write().unwrap();
-    set.clear();
-    set.extend(from_scanner.iter().copied());
-    let locked = state.frequency_lockouts.read().unwrap().contains(&raw);
-    Ok(Json(json!({ "frequency": frequency, "locked": locked })))
-}
-
-async fn clear_temporary_lockouts(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let channels = state
-        .temporary_lockouts
-        .read()
-        .unwrap()
-        .keys()
-        .copied()
-        .collect::<Vec<u16>>();
-    let mut cleared = Vec::new();
-    let mut failed = Vec::new();
-    for channel in channels {
-        match set_channel_lockout_on_scanner(&state, channel, false).await {
-            Ok(updated) => {
-                state
-                    .shadow
-                    .write()
-                    .unwrap()
-                    .channels
-                    .insert(channel, updated);
-                state.temporary_lockouts.write().unwrap().remove(&channel);
-                cleared.push(channel);
-            }
-            Err(_) => failed.push(channel),
-        }
-    }
-    cleared.sort_unstable();
-    failed.sort_unstable();
-    Ok(Json(json!({ "cleared": cleared, "failed": failed })))
-}
-
-async fn clear_global_lockouts(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let mut cleared = Vec::new();
-    let existing = read_frequency_lockouts_from_scanner(&state).await?;
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    for frequency in &existing {
-        let _ = send_raw_command(&state, &format!("ULF,{}", frequency), false).await;
-        cleared.push(*frequency as f64 / 10000.0);
-    }
-    cleared.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    state.frequency_lockouts.write().unwrap().clear();
-    Ok(Json(json!({ "cleared": cleared, "failed": [] })))
-}
-
-#[derive(Deserialize)]
-struct ClearChannelLockoutsRequest {
-    channels: Option<Vec<u16>>,
-}
-
-async fn clear_channel_lockouts(
-    State(state): State<AppState>,
-    Json(body): Json<ClearChannelLockoutsRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let targets: Vec<u16> = match body.channels {
-        Some(channels) if !channels.is_empty() => channels,
-        _ => {
-            let shadow = state.shadow.read().unwrap();
-            shadow
-                .channels
-                .values()
-                .filter(|c| c.lockout)
-                .map(|c| c.index)
-                .collect()
-        }
-    };
-
-    let mut cleared = Vec::new();
-    let mut failed = Vec::new();
-    for id in targets {
-        match set_channel_lockout_on_scanner(&state, id, false).await {
-            Ok(updated) => {
-                state.shadow.write().unwrap().channels.insert(id, updated);
-                cleared.push(id);
-            }
-            Err(_) => failed.push(id),
-        }
-    }
-    cleared.sort_unstable();
-    failed.sort_unstable();
-    Ok(Json(json!({ "cleared": cleared, "failed": failed })))
-}
-
-async fn get_volume(State(state): State<AppState>) -> Json<Value> {
-    if command_sender(&state).is_ok() {
-        if let Ok(response) = send_raw_command(&state, "VOL", false).await {
-            let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
-            if parts.first().map(|p| p.eq_ignore_ascii_case("VOL")) == Some(true) {
-                parts.remove(0);
-            }
-            if let Some(first) = parts.first() {
-                if let Ok(volume) = first.parse::<u8>() {
-                    if let Ok(mut live) = state.live.write() {
-                        live.volume = volume.min(15);
-                    }
-                }
-            }
-        }
-    }
-    let volume = state.live.read().unwrap().volume;
-    Json(json!({ "volume": volume }))
-}
-
-#[derive(Deserialize)]
-struct VolumeRequest {
-    volume: u8,
-}
-
-async fn set_volume(
-    State(state): State<AppState>,
-    Json(body): Json<VolumeRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if body.volume > 15 {
-        return Err(ApiError::BadRequest("volume_out_of_range".to_string()));
-    }
-    let response = send_raw_command(&state, &format!("VOL,{}", body.volume), false).await?;
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("VOL,")) {
-        return Err(ApiError::BadRequest("volume_failed".to_string()));
-    }
-    let mut live = state.live.write().unwrap();
-    live.volume = body.volume;
-    let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
-    let msg = json!({
-        "type": "state_update",
-        "timestamp": live.timestamp,
-        "sequence": seq,
-        "data": { "volume": body.volume }
-    });
-    let _ = state.ws_tx.send(msg.to_string());
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_squelch(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    let response = send_raw_command(&state, "SQL", false).await;
-    let response = response?;
-    let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
-    if parts.first().map(|p| p.eq_ignore_ascii_case("SQL")) == Some(true) {
-        parts.remove(0);
-    }
-    let level = parts
-        .first()
-        .and_then(|s| s.parse::<u8>().ok())
-        .unwrap_or(0);
-    let value = json!({ "level": level });
-    set_setting_section(&state, "squelch", value.clone());
-    Ok(Json(value))
-}
-
-#[derive(Deserialize)]
-struct SquelchRequest {
-    level: u8,
-}
-
-async fn set_squelch(
-    State(state): State<AppState>,
-    Json(body): Json<SquelchRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if body.level > 15 {
-        return Err(ApiError::BadRequest("squelch_out_of_range".to_string()));
-    }
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    let response = send_raw_command(&state, &format!("SQL,{}", body.level), false).await;
-    let response = response?;
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("SQL,")) {
-        return Err(ApiError::BadRequest("squelch_failed".to_string()));
-    }
-    set_setting_section(&state, "squelch", json!({ "level": body.level }));
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_config(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let snapshot = read_settings_snapshot_from_scanner(&state).await?;
-    *state.settings.write().unwrap() = snapshot.clone();
-    Ok(Json(snapshot))
-}
-
-async fn get_firmware(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let response = send_raw_command(&state, "VER", false).await?;
-    let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
-    if parts.first().map(|p| p.eq_ignore_ascii_case("VER")) == Some(true) {
-        parts.remove(0);
-    }
-    let firmware = parts.join(",").trim().to_string();
-    if let Ok(mut device) = state.device.write() {
-        device.firmware = Some(firmware.clone());
-    }
-    Ok(Json(json!({ "firmware": firmware })))
-}
-
-async fn get_backlight(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "BLT", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "BLT");
-            Ok::<Value, ApiError>(
-                json!({ "event": parts.first().cloned().unwrap_or_else(|| "AO".to_string()) }),
-            )
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "backlight", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "backlight",
-        json!({ "event": "AO" }),
-    )))
-}
-
-async fn set_backlight(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let event = body
-        .get("event")
-        .and_then(Value::as_str)
-        .unwrap_or("AO")
-        .to_uppercase();
-    if !matches!(event.as_str(), "AO" | "AF" | "KY" | "SQ" | "KS") {
-        return Err(ApiError::BadRequest("backlight_invalid".to_string()));
-    }
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(&state, &format!("BLT,{}", event), false).await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("backlight_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "backlight", json!({ "event": event }));
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_battery(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "BSV", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "BSV");
-            let value = parts
-                .first()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
-            Ok::<Value, ApiError>(json!({ "charge_time": value }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "battery", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "battery",
-        json!({ "charge_time": 16 }),
-    )))
-}
-
-async fn set_battery(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let charge_time = body
-        .get("charge_time")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| ApiError::BadRequest("battery_charge_time_out_of_range".to_string()))?
-        as u8;
-    if !(1..=16).contains(&charge_time) {
-        return Err(ApiError::BadRequest(
-            "battery_charge_time_out_of_range".to_string(),
-        ));
-    }
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(&state, &format!("BSV,{}", charge_time), false).await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("battery_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "battery", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_key_beep(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "KBP", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "KBP");
-            let level = parts
-                .first()
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(0);
-            let lock = parts.get(1).map(|s| s == "1").unwrap_or(false);
-            Ok::<Value, ApiError>(json!({ "level": level, "lock": lock }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "key_beep", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "key_beep",
-        json!({ "level": 1, "lock": false }),
-    )))
-}
-
-async fn set_key_beep(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let level = body
-        .get("level")
-        .and_then(Value::as_i64)
-        .ok_or_else(|| ApiError::BadRequest("beep_level_out_of_range".to_string()))?
-        as i32;
-    let lock = body.get("lock").and_then(Value::as_bool).unwrap_or(false);
-    if level != 99 && !(0..=15).contains(&level) {
-        return Err(ApiError::BadRequest("beep_level_out_of_range".to_string()));
-    }
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(
-            &state,
-            &format!("KBP,{},{}", level, if lock { 1 } else { 0 }),
-            false,
-        )
-        .await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("key_beep_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "key_beep", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_priority(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "PRI", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "PRI");
-            let mode = parts
-                .first()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
-            Ok::<Value, ApiError>(json!({ "mode": mode }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "priority", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "priority",
-        json!({ "mode": 0 }),
-    )))
-}
-
-async fn set_priority(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let mode = body
-        .get("mode")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| ApiError::BadRequest("priority_mode_invalid".to_string()))?
-        as u8;
-    if !matches!(mode, 0..=3) {
-        return Err(ApiError::BadRequest("priority_mode_invalid".to_string()));
-    }
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(&state, &format!("PRI,{}", mode), false).await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("priority_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "priority", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_search(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "SCO", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "SCO");
-            let delay = parts
-                .first()
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(0);
-            let code_search = parts.get(1).map(|s| s == "1").unwrap_or(false);
-            Ok::<Value, ApiError>(json!({ "delay": delay, "code_search": code_search }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "search", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "search",
-        json!({ "delay": 2, "code_search": false }),
-    )))
-}
-
-async fn set_search(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let delay = body
-        .get("delay")
-        .and_then(Value::as_i64)
-        .ok_or_else(|| ApiError::BadRequest("search_delay_invalid".to_string()))?
-        as i32;
-    let code_search = body
-        .get("code_search")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    if !matches!(delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
-        return Err(ApiError::BadRequest("search_delay_invalid".to_string()));
-    }
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(
-            &state,
-            &format!("SCO,{},{}", delay, if code_search { 1 } else { 0 }),
-            false,
-        )
-        .await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("SCO,")) {
-            return Err(ApiError::BadRequest("search_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "search", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_close_call(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "CLC", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "CLC");
-            let mode = parts
-                .first()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
-            let alert_beep = parts.get(1).map(|s| s == "1").unwrap_or(false);
-            let alert_light = parts.get(2).map(|s| s == "1").unwrap_or(false);
-            let band_raw = parts.get(3).cloned().unwrap_or_else(|| "00000".to_string());
-            let band = band_raw
-                .chars()
-                .take(5)
-                .map(|c| c == '1')
-                .collect::<Vec<bool>>();
-            let lockout = parts.get(4).map(|s| s == "1").unwrap_or(false);
-            Ok::<Value, ApiError>(json!({
-                "mode": mode,
-                "alert_beep": alert_beep,
-                "alert_light": alert_light,
-                "band": if band.len() == 5 { band } else { vec![false,false,false,false,false] },
-                "lockout": lockout
-            }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "close_call", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "close_call",
-        json!({
-            "mode": 0,
-            "alert_beep": false,
-            "alert_light": false,
-            "band": [false, false, false, false, false],
-            "lockout": false
-        }),
-    )))
-}
-
-async fn set_close_call(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let mode = body.get("mode").and_then(Value::as_u64).unwrap_or(0) as u8;
-    let alert_beep = body
-        .get("alert_beep")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let alert_light = body
-        .get("alert_light")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let band = body
-        .get("band")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_else(|| vec![Value::Bool(false); 5]);
-    if !matches!(mode, 0 | 1 | 2) || band.len() != 5 {
-        return Err(ApiError::BadRequest("close_call_mode_invalid".to_string()));
-    }
-    let band_str = band
-        .iter()
-        .map(|v| {
-            if v.as_bool().unwrap_or(false) {
-                "1"
-            } else {
-                "0"
-            }
-        })
-        .collect::<String>();
-    let lockout = body
-        .get("lockout")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(
-            &state,
-            &format!(
-                "CLC,{},{},{},{},{}",
-                mode,
-                if alert_beep { 1 } else { 0 },
-                if alert_light { 1 } else { 0 },
-                band_str,
-                if lockout { 1 } else { 0 }
-            ),
-            false,
-        )
-        .await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("close_call_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "close_call", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_service_search(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "SSG", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "SSG");
-            let flags = parts
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "1111111111".to_string());
-            let groups = if flags.eq_ignore_ascii_case("NG") {
-                vec![false; 10]
-            } else {
-                let mut g = flags
-                    .chars()
-                    .take(10)
-                    .map(|c| c == '0')
-                    .collect::<Vec<bool>>();
-                while g.len() < 10 {
-                    g.push(false);
-                }
-                g
-            };
-            Ok::<Value, ApiError>(json!({ "groups": groups }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "service_search", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "service_search",
-        json!({ "groups": [false, false, false, false, false, false, false, false, false, false] }),
-    )))
-}
-
-async fn set_service_search(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let groups = body
-        .get("groups")
-        .and_then(Value::as_array)
-        .ok_or_else(|| ApiError::BadRequest("group_length_invalid".to_string()))?;
-    if groups.len() != 10 {
-        return Err(ApiError::BadRequest("group_length_invalid".to_string()));
-    }
-    if command_sender(&state).is_ok() {
-        let flags = groups
-            .iter()
-            .map(|v| {
-                if v.as_bool().unwrap_or(false) {
-                    "0"
-                } else {
-                    "1"
-                }
-            })
-            .collect::<String>();
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(&state, &format!("SSG,{}", flags), false).await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("service_search_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "service_search", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_custom_search(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "CSG", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "CSG");
-            let flags = parts
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "1111111111".to_string());
-            let groups = if flags.eq_ignore_ascii_case("NG") {
-                vec![false; 10]
-            } else {
-                let mut g = flags
-                    .chars()
-                    .take(10)
-                    .map(|c| c == '0')
-                    .collect::<Vec<bool>>();
-                while g.len() < 10 {
-                    g.push(false);
-                }
-                g
-            };
-            Ok::<Value, ApiError>(json!({ "groups": groups }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "custom_search", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "custom_search",
-        json!({ "groups": [false, false, false, false, false, false, false, false, false, false] }),
-    )))
-}
-
-async fn set_custom_search(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let groups = body
-        .get("groups")
-        .and_then(Value::as_array)
-        .ok_or_else(|| ApiError::BadRequest("group_length_invalid".to_string()))?;
-    if groups.len() != 10 {
-        return Err(ApiError::BadRequest("group_length_invalid".to_string()));
-    }
-    if command_sender(&state).is_ok() {
-        let flags = groups
-            .iter()
-            .map(|v| {
-                if v.as_bool().unwrap_or(false) {
-                    "0"
-                } else {
-                    "1"
-                }
-            })
-            .collect::<String>();
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(&state, &format!("CSG,{}", flags), false).await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("custom_search_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "custom_search", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_custom_range(
-    State(state): State<AppState>,
-    Path(index): Path<u8>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() && (1..=10).contains(&index) {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, &format!("CSP,{}", index), false).await;
-                    let response = response?;
-            let mut parts = parse_command_parts(&response, "CSP");
-            if parts.first().and_then(|s| s.parse::<u8>().ok()) == Some(index) {
-                parts.remove(0);
-            }
-            let lower_raw = parts
-                .first()
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(0);
-            let upper_raw = parts
-                .get(1)
-                .and_then(|s| s.parse::<i64>().ok())
-                .unwrap_or(0);
-            Ok::<Value, ApiError>(json!({
-                "index": index,
-                "lower": (lower_raw as f64) / 10000.0,
-                "upper": (upper_raw as f64) / 10000.0
-            }))
-        }
-        .await;
-        if let Ok(value) = result {
-            return Ok(Json(value));
-        }
-    }
-    let config = state.settings.read().unwrap();
-    let from_snapshot = config
-        .get("custom_search_ranges")
-        .and_then(Value::as_array)
-        .and_then(|ranges| ranges.get(index.saturating_sub(1) as usize))
-        .cloned();
-    Ok(Json(from_snapshot.unwrap_or_else(
-        || json!({ "index": index, "lower": 0, "upper": 0 }),
-    )))
-}
-
-async fn set_custom_range(
-    State(state): State<AppState>,
-    Path(index): Path<u8>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if !(1..=10).contains(&index) {
-        return Err(ApiError::BadRequest("search_range_invalid".to_string()));
-    }
-    let lower = body.get("lower").and_then(Value::as_f64).unwrap_or(0.0);
-    let upper = body.get("upper").and_then(Value::as_f64).unwrap_or(0.0);
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(
-            &state,
-            &format!(
-                "CSP,{},{},{}",
-                index,
-                (lower * 10000.0).round() as i64,
-                (upper * 10000.0).round() as i64
-            ),
-            false,
-        )
-        .await;
-            let response = response?;
-        let upper_resp = response.trim().to_uppercase();
-        if !(upper_resp == "OK" || upper_resp.ends_with(",OK")) {
-            return Err(ApiError::BadRequest(
-                "custom_search_range_failed".to_string(),
-            ));
-        }
-    }
-    let mut config = state.settings.write().unwrap();
-    if let Value::Object(ref mut root) = *config {
-        let ranges = root
-            .entry("custom_search_ranges".to_string())
-            .or_insert_with(|| Value::Array(Vec::new()));
-        if let Value::Array(ref mut arr) = ranges {
-            let needed = index as usize;
-            while arr.len() < needed {
-                let i = arr.len() + 1;
-                arr.push(json!({ "index": i, "lower": 0, "upper": 0 }));
-            }
-            if needed > 0 {
-                let value = json!({
-                    "index": index,
-                    "lower": body.get("lower").cloned().unwrap_or(Value::from(0)),
-                    "upper": body.get("upper").cloned().unwrap_or(Value::from(0))
-                });
-                arr[needed - 1] = value;
-            }
-        }
-    }
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_weather(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "WXS", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "WXS");
-            let priority = parts.first().map(|s| s == "1").unwrap_or(false);
-            Ok::<Value, ApiError>(json!({ "priority": priority }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "weather", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "weather",
-        json!({ "priority": false }),
-    )))
-}
-
-async fn set_weather(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let priority = body
-        .get("priority")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(
-            &state,
-            &format!("WXS,{}", if priority { 1 } else { 0 }),
-            false,
-        )
-        .await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("weather_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "weather", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-async fn get_contrast(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    if command_sender(&state).is_ok() {
-        let result = async {
-            let _prg = ProgramModeGuard::enter(&state).await?;
-            let response = send_raw_command(&state, "CNT", false).await;
-                    let response = response?;
-            let parts = parse_command_parts(&response, "CNT");
-            let level = parts
-                .first()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
-            Ok::<Value, ApiError>(json!({ "level": level }))
-        }
-        .await;
-        if let Ok(value) = result {
-            set_setting_section(&state, "contrast", value.clone());
-            return Ok(Json(value));
-        }
-    }
-    Ok(Json(get_setting_section(
-        &state,
-        "contrast",
-        json!({ "level": 8 }),
-    )))
-}
-
-async fn set_contrast(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let level = body.get("level").and_then(Value::as_u64).unwrap_or(0) as u8;
-    if !(1..=15).contains(&level) {
-        return Err(ApiError::BadRequest("contrast_out_of_range".to_string()));
-    }
-    if command_sender(&state).is_ok() {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(&state, &format!("CNT,{}", level), false).await;
-            let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest("contrast_failed".to_string()));
-        }
-    }
-    set_setting_section(&state, "contrast", body);
-    Ok(Json(json!({ "status": "ok" })))
-}
-
-fn split_command_parts(response: &str) -> Vec<String> {
+pub(crate) fn split_command_parts(response: &str) -> Vec<String> {
     let mut parts = response
         .trim()
         .split(',')
@@ -1770,11 +388,11 @@ fn split_command_parts(response: &str) -> Vec<String> {
     parts
 }
 
-fn flags_to_bools(flags: &str) -> Vec<bool> {
+pub(crate) fn flags_to_bools(flags: &str) -> Vec<bool> {
     flags.trim().chars().map(|ch| ch == '0').collect()
 }
 
-fn on_off(value: &str) -> &'static str {
+pub(crate) fn on_off(value: &str) -> &'static str {
     if value == "1" {
         "On"
     } else {
@@ -1782,7 +400,7 @@ fn on_off(value: &str) -> &'static str {
     }
 }
 
-fn format_modulation(value: &str) -> String {
+pub(crate) fn format_modulation(value: &str) -> String {
     if value.eq_ignore_ascii_case("AUTO") || value.is_empty() {
         "Auto".to_string()
     } else {
@@ -1956,7 +574,7 @@ fn dcs_code_to_string(code: i32) -> Option<String> {
     Some(format!("DCS {:03}", value))
 }
 
-fn ctcss_dcs_to_string(code: &str) -> String {
+pub(crate) fn ctcss_dcs_to_string(code: &str) -> String {
     if code.is_empty() || code == "0" || code == "240" {
         return "Off".to_string();
     }
@@ -1977,802 +595,12 @@ fn ctcss_dcs_to_string(code: &str) -> String {
     "Off".to_string()
 }
 
-async fn export_bc125at_ss_file(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, ApiError> {
-    let _ = command_sender(&state)?;
-    if state.sync_task_id.lock().unwrap().is_some() {
-        return Err(ApiError::Conflict("sync_in_progress".to_string()));
-    }
-    let model = state
-        .device
-        .read()
-        .ok()
-        .and_then(|d| d.model.clone())
-        .unwrap_or_default()
-        .to_uppercase();
-    if !model.contains("BC125AT") && !model.contains("UBC125") {
-        return Err(ApiError::BadRequest("unsupported_model".to_string()));
-    }
-    let region = if model.contains("UBC") { "EUR" } else { "USA" };
-
-    let result = async {
-        let _prg = ProgramModeGuard::enter(&state).await?;
-
-        let backlight = split_command_parts(&send_raw_command(&state, "BLT", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "AF".to_string());
-        let kbp = split_command_parts(&send_raw_command(&state, "KBP", false).await?);
-        let beep_level = kbp.first().cloned().unwrap_or_else(|| "99".to_string());
-        let key_lock = kbp.get(1).cloned().unwrap_or_else(|| "0".to_string());
-        let charge_time = split_command_parts(&send_raw_command(&state, "BSV", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "16".to_string());
-        let priority_mode = split_command_parts(&send_raw_command(&state, "PRI", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "0".to_string());
-        let scan_flags = split_command_parts(&send_raw_command(&state, "SCG", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "1111111111".to_string());
-        let sco = split_command_parts(&send_raw_command(&state, "SCO", false).await?);
-        let search_delay = sco.first().cloned().unwrap_or_else(|| "0".to_string());
-        let search_code = sco.get(1).cloned().unwrap_or_else(|| "0".to_string());
-        let clc = split_command_parts(&send_raw_command(&state, "CLC", false).await?);
-        let cc_mode = clc.first().cloned().unwrap_or_else(|| "0".to_string());
-        let cc_beep = clc.get(1).cloned().unwrap_or_else(|| "0".to_string());
-        let cc_light = clc.get(2).cloned().unwrap_or_else(|| "0".to_string());
-        let cc_bands = clc.get(3).cloned().unwrap_or_else(|| "11111".to_string());
-        let cc_lockout = clc.get(4).cloned().unwrap_or_else(|| "0".to_string());
-        let service_flags = split_command_parts(&send_raw_command(&state, "SSG", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "1111111111".to_string());
-        let custom_flags = split_command_parts(&send_raw_command(&state, "CSG", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "1111111111".to_string());
-        let wx_pri = split_command_parts(&send_raw_command(&state, "WXS", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "0".to_string());
-        let contrast = split_command_parts(&send_raw_command(&state, "CNT", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "8".to_string());
-        let volume = split_command_parts(&send_raw_command(&state, "VOL", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "0".to_string());
-        let squelch = split_command_parts(&send_raw_command(&state, "SQL", false).await?)
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "0".to_string());
-
-        let mut custom_ranges = Vec::new();
-        for idx in 1..=10 {
-            let csp = split_command_parts(
-                &send_raw_command(&state, &format!("CSP,{}", idx), false).await?,
-            );
-            let lower_hz = csp
-                .get(1)
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v * 100)
-                .unwrap_or(0);
-            let upper_hz = csp
-                .get(2)
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v * 100)
-                .unwrap_or(0);
-            custom_ranges.push((idx, lower_hz, upper_hz));
-        }
-
-        let mut channels = Vec::new();
-        for idx in 1..=500 {
-            let cin = split_command_parts(
-                &send_raw_command(&state, &format!("CIN,{}", idx), false).await?,
-            );
-            let mut parts = cin;
-            if parts
-                .first()
-                .and_then(|v| v.parse::<u16>().ok())
-                .map(|v| v == idx)
-                .unwrap_or(false)
-            {
-                parts.remove(0);
-            }
-            let name = parts.first().cloned().unwrap_or_default();
-            let frequency_hz = parts
-                .get(1)
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v * 100)
-                .unwrap_or(0);
-            let modulation = format_modulation(parts.get(2).map(String::as_str).unwrap_or("Auto"));
-            let tone = ctcss_dcs_to_string(parts.get(3).map(String::as_str).unwrap_or("0"));
-            let delay = parts.get(4).cloned().unwrap_or_else(|| "2".to_string());
-            let lockout = on_off(parts.get(5).map(String::as_str).unwrap_or("0"));
-            let priority = on_off(parts.get(6).map(String::as_str).unwrap_or("0"));
-            channels.push((
-                idx,
-                name,
-                frequency_hz,
-                modulation,
-                tone,
-                lockout.to_string(),
-                delay,
-                priority.to_string(),
-            ));
-        }
-
-        const SERVICE_NAMES: [&str; 10] = [
-            "Police",
-            "Fire/Emergency",
-            "HAM Radio",
-            "Marine",
-            "Railroad",
-            "Civil Air",
-            "Military Air",
-            "CB Radio",
-            "FRS/GMRS/MURS",
-            "Racing",
-        ];
-        let backlight_display = match backlight.as_str() {
-            "AO" => "On",
-            "AF" => "Off",
-            "KY" => "Key",
-            "SQ" => "Squelch",
-            "KS" => "K+S",
-            _ => "Off",
-        };
-        let priority_display = match priority_mode.as_str() {
-            "1" => "On",
-            "2" => "Plus",
-            "3" => "DND",
-            _ => "Off",
-        };
-        let cc_mode_display = match cc_mode.as_str() {
-            "1" => "Pri",
-            "2" => "DND",
-            _ => "Off",
-        };
-        let misc_beep = if beep_level == "0" {
-            "Auto".to_string()
-        } else if beep_level == "99" {
-            "Off".to_string()
-        } else {
-            beep_level
-        };
-
-        let mut lines = Vec::new();
-        lines.push(format!(
-            "Misc\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            backlight_display,
-            misc_beep,
-            on_off(&key_lock),
-            contrast,
-            volume,
-            squelch,
-            charge_time,
-            region
-        ));
-        lines.push(format!("Priority\t{}", priority_display));
-        lines.push(format!("WxPri\t{}", on_off(&wx_pri)));
-
-        let service_enabled = flags_to_bools(&service_flags);
-        for (idx, name) in SERVICE_NAMES.iter().enumerate() {
-            let enabled = if service_enabled.get(idx).copied().unwrap_or(false) {
-                "On"
-            } else {
-                "Off"
-            };
-            lines.push(format!("Service\t{}\t{}\t{}", idx + 1, name, enabled));
-        }
-
-        let custom_enabled = flags_to_bools(&custom_flags);
-        for (idx, lower_hz, upper_hz) in custom_ranges {
-            let enabled = if custom_enabled
-                .get((idx - 1) as usize)
-                .copied()
-                .unwrap_or(false)
-            {
-                "On"
-            } else {
-                "Off"
-            };
-            lines.push(format!(
-                "Custom\t{}\tSearch Bnak{}\t{}\t{}\t{}",
-                idx, idx, lower_hz, upper_hz, enabled
-            ));
-        }
-
-        lines.push(format!(
-            "CloseCall\t{}\t{}\t{}\t{}",
-            cc_mode_display,
-            on_off(&cc_beep),
-            on_off(&cc_light),
-            on_off(&cc_lockout)
-        ));
-
-        let cc_band_flags = flags_to_bools(&cc_bands);
-        lines.push(format!(
-            "CloseCallBands\t{}\t{}\t{}\t{}\t{}",
-            if cc_band_flags.first().copied().unwrap_or(false) {
-                "On"
-            } else {
-                "Off"
-            },
-            if cc_band_flags.get(1).copied().unwrap_or(false) {
-                "On"
-            } else {
-                "Off"
-            },
-            if cc_band_flags.get(2).copied().unwrap_or(false) {
-                "On"
-            } else {
-                "Off"
-            },
-            if cc_band_flags.get(3).copied().unwrap_or(false) {
-                "On"
-            } else {
-                "Off"
-            },
-            if cc_band_flags.get(4).copied().unwrap_or(false) {
-                "On"
-            } else {
-                "Off"
-            }
-        ));
-
-        lines.push(format!(
-            "GeneralSearch\t{}\t{}",
-            search_delay,
-            on_off(&search_code)
-        ));
-
-        let scan_enabled = flags_to_bools(&scan_flags);
-        for idx in 1..=10 {
-            let enabled = if scan_enabled.get(idx - 1).copied().unwrap_or(false) {
-                "On"
-            } else {
-                "Off"
-            };
-            lines.push(format!("Conventional\t{}\tBank {}\t{}", idx, idx, enabled));
-        }
-
-        for (idx, name, frequency_hz, modulation, tone, lockout, delay, priority) in channels {
-            lines.push(format!(
-                "C-Freq\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                idx, name, frequency_hz, modulation, tone, lockout, delay, priority
-            ));
-        }
-
-        Ok::<String, ApiError>(format!("{}\n", lines.join("\n")))
-    }
-    .await;
-    let payload = result?;
-
-    Ok((
-        [
-            ("content-type", "text/plain"),
-            (
-                "content-disposition",
-                "attachment; filename=scanner.bc125at_ss",
-            ),
-        ],
-        payload,
-    ))
-}
-
-async fn export_csv(State(state): State<AppState>) -> impl IntoResponse {
-    let mut rows = Vec::new();
-    rows.push(
-        "Index,Frequency,Modulation,Alpha Tag,Delay,Lockout,Priority,CTCSS/DCS,Bank".to_string(),
-    );
-
-    let shadow = state.shadow.read().unwrap();
-    let mut channels: Vec<ChannelData> = shadow.channels.values().cloned().collect();
-    channels.sort_by_key(|c| c.index);
-    for ch in channels {
-        rows.push(format!(
-            "{},{},{},{},{},{},{},{},{}",
-            ch.index,
-            ch.frequency,
-            ch.modulation,
-            csv_escape(&ch.alpha_tag),
-            ch.delay,
-            ch.lockout,
-            ch.priority,
-            ch.tone_squelch.map(|v| v.to_string()).unwrap_or_default(),
-            ch.bank
-        ));
-    }
-
-    (
-        [
-            ("content-type", "text/csv"),
-            ("content-disposition", "attachment; filename=channels.csv"),
-        ],
-        rows.join("\n"),
-    )
-}
-
-async fn import_csv(
-    State(state): State<AppState>,
-    mut multipart: Multipart,
-) -> Result<Json<Value>, ApiError> {
-    let _ = command_sender(&state)?;
-    let mut csv_bytes: Option<Vec<u8>> = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| ApiError::BadRequest(format!("multipart_error: {}", e)))?
-    {
-        if field.name() == Some("file") {
-            let bytes = field
-                .bytes()
-                .await
-                .map_err(|e| ApiError::BadRequest(format!("upload_error: {}", e)))?;
-            csv_bytes = Some(bytes.to_vec());
-            break;
-        }
-    }
-
-    let Some(bytes) = csv_bytes else {
-        return Err(ApiError::BadRequest("file_required".to_string()));
-    };
-
-    let mut imported = 0;
-    let mut errors: Vec<Value> = Vec::new();
-
-    let mut rdr = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(bytes.as_slice());
-
-    for result in rdr.deserialize::<HashMap<String, String>>() {
-        match result {
-            Ok(row) => match parse_import_csv_row(&row) {
-                Ok(payload) => {
-                    if let Err(err) = write_channel_to_scanner(&state, &payload).await {
-                        errors.push(json!({ "row": row, "error": format!("{:?}", err) }));
-                        continue;
-                    }
-                    state
-                        .shadow
-                        .write()
-                        .unwrap()
-                        .channels
-                        .insert(payload.index, payload);
-                    imported += 1;
-                }
-                Err(err) => {
-                    errors.push(json!({ "row": row, "error": err }));
-                }
-            },
-            Err(err) => errors.push(json!({ "row": {}, "error": err.to_string() })),
-        }
-    }
-
-    Ok(Json(json!({ "imported": imported, "errors": errors })))
-}
-
-fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, String> {
-    let parse_bool = |v: &str| -> bool { v.trim().eq_ignore_ascii_case("true") };
-
-    let index: u16 = row
-        .get("Index")
-        .ok_or_else(|| "Missing Index".to_string())?
-        .parse()
-        .map_err(|_| "Invalid channel index".to_string())?;
-    if !(1..=500).contains(&index) {
-        return Err(format!("Invalid channel index: {} (must be 1-500)", index));
-    }
-
-    let frequency: f64 = row
-        .get("Frequency")
-        .ok_or_else(|| "Missing Frequency".to_string())?
-        .parse()
-        .map_err(|_| "Invalid frequency".to_string())?;
-    if !(25.0..=1300.0).contains(&frequency) {
-        return Err(format!("Invalid frequency: {}", frequency));
-    }
-
-    let delay: u8 = row
-        .get("Delay")
-        .map(|s| s.as_str())
-        .unwrap_or("2")
-        .parse()
-        .map_err(|_| "Invalid delay".to_string())?;
-    if delay > 30 {
-        return Err(format!("Invalid delay: {}", delay));
-    }
-
-    let bank: u8 = row
-        .get("Bank")
-        .map(|s| s.as_str())
-        .unwrap_or("1")
-        .parse()
-        .map_err(|_| "Invalid bank".to_string())?;
-    if !(1..=10).contains(&bank) {
-        return Err(format!("Invalid bank: {}", bank));
-    }
-
-    let tone_squelch = row
-        .get("CTCSS/DCS")
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.parse::<f64>())
-        .transpose()
-        .map_err(|_| "Invalid CTCSS/DCS".to_string())?;
-
-    let tone_squelch_kind = if tone_squelch.is_some() {
-        crate::state::ToneSquelchKind::Ctcss
-    } else {
-        crate::state::ToneSquelchKind::None
-    };
-
-    Ok(ChannelData {
-        index,
-        frequency,
-        modulation: row
-            .get("Modulation")
-            .map(|s| s.to_uppercase())
-            .unwrap_or_else(|| "FM".to_string()),
-        alpha_tag: row.get("Alpha Tag").cloned().unwrap_or_default(),
-        delay,
-        lockout: row.get("Lockout").map(|s| parse_bool(s)).unwrap_or(false),
-        priority: row.get("Priority").map(|s| parse_bool(s)).unwrap_or(false),
-        tone_squelch,
-        tone_squelch_kind,
-        tone_dcs_code: None,
-        bank,
-    })
-}
-
-fn csv_escape(value: &str) -> String {
+pub(crate) fn csv_escape(value: &str) -> String {
     if value.contains(',') || value.contains('"') || value.contains('\n') {
         format!("\"{}\"", value.replace('"', "\"\""))
     } else {
         value.to_string()
     }
-}
-
-async fn get_preferences(State(state): State<AppState>) -> Json<Value> {
-    Json(Value::Object(state.preferences.lock().unwrap().clone()))
-}
-
-async fn get_preference(
-    State(state): State<AppState>,
-    Path(key): Path<String>,
-) -> Result<Json<Value>, ApiError> {
-    let prefs = state.preferences.lock().unwrap();
-    let value = prefs
-        .get(&key)
-        .cloned()
-        .ok_or_else(|| ApiError::NotFound(format!("Unknown preference: {}", key)))?;
-    Ok(Json(json!({ "key": key, "value": value })))
-}
-
-async fn set_preference(
-    State(state): State<AppState>,
-    Path(key): Path<String>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let value = body
-        .get("value")
-        .cloned()
-        .ok_or_else(|| ApiError::BadRequest("value_required".to_string()))?;
-    state
-        .preferences
-        .lock()
-        .unwrap()
-        .insert(key.clone(), value.clone());
-    save_preference_to_db(&state.preferences_db_path, &key, &value);
-    Ok(Json(json!({ "key": key, "value": value })))
-}
-
-async fn set_preferences(
-    State(state): State<AppState>,
-    Json(body): Json<Value>,
-) -> Result<Json<Value>, ApiError> {
-    let Value::Object(map) = body else {
-        return Err(ApiError::BadRequest(
-            "invalid_preferences_payload".to_string(),
-        ));
-    };
-    let mut prefs = state.preferences.lock().unwrap();
-    for (k, v) in map {
-        save_preference_to_db(&state.preferences_db_path, &k, &v);
-        prefs.insert(k, v);
-    }
-    Ok(Json(Value::Object(prefs.clone())))
-}
-
-async fn reset_preferences(State(state): State<AppState>) -> Json<Value> {
-    reset_preferences_db(&state.preferences_db_path);
-    *state.preferences.lock().unwrap() = default_preferences();
-    Json(Value::Object(state.preferences.lock().unwrap().clone()))
-}
-
-async fn debug_glg(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let response = send_raw_command(&state, "GLG", true).await?;
-    Ok(Json(json!({ "response": response })))
-}
-
-async fn debug_scg(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    let response = send_raw_command(&state, "SCG", false).await;
-    Ok(Json(json!({ "response": response? })))
-}
-
-async fn debug_glf(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    let result = async {
-        let mut responses = Vec::new();
-        let first = send_raw_command(&state, "GLF,***", false).await?;
-        responses.push(format!("GLF,*** => {}", first.trim()));
-        let mut next = parse_glf_response(&first);
-        if next.is_none() {
-            let plain = send_raw_command(&state, "GLF", false).await?;
-            responses.push(format!("GLF => {}", plain.trim()));
-            next = parse_glf_response(&plain);
-        }
-        for _ in 0..20 {
-            let Some(value) = next else { break };
-            let response = send_raw_command(&state, &format!("GLF,{}", value), false).await?;
-            responses.push(format!("GLF,{} => {}", value, response.trim()));
-            next = parse_glf_response(&response);
-        }
-        Ok::<Vec<String>, ApiError>(responses)
-    }
-    .await;
-    Ok(Json(json!({ "responses": result? })))
-}
-
-async fn simulate_hit(State(state): State<AppState>) -> Json<Value> {
-    let now = epoch_now();
-    let live = LiveState {
-        timestamp: now,
-        frequency: 162.55,
-        modulation: "FM".to_string(),
-        squelch_open: true,
-        rssi: 75,
-        mode: ScannerMode::Scan,
-        channel: Some(1),
-        alpha_tag: Some("Test Channel".to_string()),
-        volume: 5,
-        battery: None,
-        stale: false,
-    };
-    broadcast_state_update(&state, &live);
-
-    let state_for_close = state.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        let close_live = LiveState {
-            timestamp: epoch_now(),
-            frequency: 162.55,
-            modulation: "FM".to_string(),
-            squelch_open: false,
-            rssi: 0,
-            mode: ScannerMode::Scan,
-            channel: Some(1),
-            alpha_tag: Some("Test Channel".to_string()),
-            volume: 5,
-            battery: None,
-            stale: false,
-        };
-        broadcast_state_update(&state_for_close, &close_live);
-    });
-
-    Json(json!({ "message": "Simulated hit", "frequency": 162.550, "duration": 2 }))
-}
-
-#[derive(Deserialize)]
-struct AnalyticsBusiestQuery {
-    limit: Option<usize>,
-    hours: Option<f64>,
-}
-
-async fn analytics_busiest(
-    State(state): State<AppState>,
-    Query(query): Query<AnalyticsBusiestQuery>,
-) -> Json<Value> {
-    let limit = query.limit.unwrap_or(10).max(1);
-    let hours = query.hours.unwrap_or(24.0).max(0.1);
-    let cutoff = epoch_now() - (hours * 3600.0);
-    let min_duration = min_hit_duration(&state);
-
-    let log = state.analytics_log.lock().unwrap();
-    let mut grouped: HashMap<String, (f64, Option<String>, Option<u16>, usize, f64, f64)> =
-        HashMap::new();
-    for hit in log
-        .iter()
-        .filter(|h| h.timestamp >= cutoff && h.duration >= min_duration)
-    {
-        let key = format!("{}|{}", hit.frequency, hit.channel.unwrap_or(0));
-        let entry = grouped.entry(key).or_insert((
-            hit.frequency,
-            hit.alpha_tag.clone(),
-            hit.channel,
-            0,
-            0.0,
-            0.0,
-        ));
-        entry.3 += 1;
-        entry.4 += hit.duration;
-        if hit.timestamp > entry.5 {
-            entry.5 = hit.timestamp;
-        }
-    }
-
-    let mut rows: Vec<Value> = grouped
-        .into_values()
-        .map(|(frequency, alpha_tag, channel, hit_count, total_duration, last_seen)| {
-            json!({
-                "frequency": frequency,
-                "alpha_tag": alpha_tag,
-                "channel": channel,
-                "hit_count": hit_count,
-                "avg_duration": if hit_count > 0 { total_duration / hit_count as f64 } else { 0.0 },
-                "last_seen": last_seen
-            })
-        })
-        .collect();
-    rows.sort_by(|a, b| {
-        b.get("hit_count")
-            .and_then(Value::as_u64)
-            .cmp(&a.get("hit_count").and_then(Value::as_u64))
-    });
-    rows.truncate(limit);
-    for (idx, row) in rows.iter_mut().enumerate() {
-        if let Value::Object(map) = row {
-            map.insert("rank".to_string(), Value::from((idx + 1) as u64));
-        }
-    }
-
-    Json(json!({ "channels": rows }))
-}
-
-async fn analytics_session_stats(State(state): State<AppState>) -> Json<Value> {
-    let session_id = (*state.session_id).clone();
-    let min_duration = min_hit_duration(&state);
-    let log = state.analytics_log.lock().unwrap();
-    let mut total_hits = 0usize;
-    let mut rssi_sum = 0u64;
-    let mut active_time_seconds = 0.0f64;
-    let mut unique_channels: HashSet<u16> = HashSet::new();
-
-    for hit in log
-        .iter()
-        .filter(|h| h.session_id == session_id && h.duration >= min_duration)
-    {
-        total_hits += 1;
-        rssi_sum += hit.rssi as u64;
-        active_time_seconds += hit.duration;
-        if let Some(ch) = hit.channel {
-            unique_channels.insert(ch);
-        }
-    }
-
-    Json(json!({
-        "total_hits": total_hits,
-        "avg_rssi": if total_hits > 0 { (rssi_sum as f64) / (total_hits as f64) } else { 0.0 },
-        "active_time_seconds": active_time_seconds,
-        "unique_channels": unique_channels.len()
-    }))
-}
-
-#[derive(Deserialize)]
-struct HourlyHeatmapQuery {
-    days: Option<u32>,
-}
-
-async fn analytics_hourly_heatmap(
-    State(state): State<AppState>,
-    Query(query): Query<HourlyHeatmapQuery>,
-) -> Json<Value> {
-    let days = query.days.unwrap_or(7).max(1);
-    let cutoff = epoch_now() - (days as f64 * 24.0 * 3600.0);
-    let min_duration = min_hit_duration(&state);
-    let log = state.analytics_log.lock().unwrap();
-    let mut bins: HashMap<(u32, u32), u64> = HashMap::new();
-    for hit in log
-        .iter()
-        .filter(|h| h.timestamp >= cutoff && h.duration >= min_duration)
-    {
-        let (day, hour) = day_hour(hit.timestamp);
-        *bins.entry((day, hour)).or_insert(0) += 1;
-    }
-    let mut heatmap = Vec::new();
-    let mut counts = Vec::new();
-    for ((day, hour), count) in bins {
-        counts.push(count as f64);
-        heatmap.push(json!({ "hour": hour, "day": day, "count": count }));
-    }
-    heatmap.sort_by(|a, b| {
-        a.get("day")
-            .and_then(Value::as_u64)
-            .cmp(&b.get("day").and_then(Value::as_u64))
-            .then_with(|| {
-                a.get("hour")
-                    .and_then(Value::as_u64)
-                    .cmp(&b.get("hour").and_then(Value::as_u64))
-            })
-    });
-    let min = counts
-        .iter()
-        .cloned()
-        .fold(0.0, |acc, v| if acc == 0.0 { v } else { acc.min(v) });
-    let max = counts.iter().cloned().fold(0.0, f64::max);
-    let avg = if counts.is_empty() {
-        0.0
-    } else {
-        counts.iter().sum::<f64>() / counts.len() as f64
-    };
-    Json(json!({ "heatmap": heatmap, "stats": { "min": min, "max": max, "avg": avg } }))
-}
-
-#[derive(Deserialize)]
-struct ActivityLogQuery {
-    limit: Option<usize>,
-    offset: Option<usize>,
-    start_time: Option<f64>,
-    end_time: Option<f64>,
-    channel: Option<u16>,
-}
-
-async fn analytics_activity_log(
-    State(state): State<AppState>,
-    Query(query): Query<ActivityLogQuery>,
-) -> Json<Value> {
-    let limit = query.limit.unwrap_or(100);
-    let offset = query.offset.unwrap_or(0);
-    let start = query.start_time.unwrap_or(0.0);
-    let end = query.end_time.unwrap_or(f64::MAX);
-    let channel_filter = query.channel;
-    let mut rows = state
-        .analytics_log
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|h| h.timestamp >= start && h.timestamp <= end)
-        .filter(|h| channel_filter.map(|c| h.channel == Some(c)).unwrap_or(true))
-        .cloned()
-        .collect::<Vec<ActivityHit>>();
-    rows.sort_by(|a, b| {
-        b.timestamp
-            .partial_cmp(&a.timestamp)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let slice = rows
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect::<Vec<ActivityHit>>();
-    Json(json!(slice))
-}
-
-#[derive(Deserialize)]
-struct AnalyticsCleanupQuery {
-    retention_days: Option<u32>,
-}
-
-async fn analytics_cleanup(
-    State(state): State<AppState>,
-    Query(query): Query<AnalyticsCleanupQuery>,
-) -> Json<Value> {
-    let days = query.retention_days.unwrap_or(30) as f64;
-    let cutoff = epoch_now() - (days * 24.0 * 3600.0);
-    let mut log = state.analytics_log.lock().unwrap();
-    let before = log.len();
-    log.retain(|h| h.timestamp >= cutoff);
-    let deleted_mem = before - log.len();
-    let deleted_db =
-        cleanup_analytics_db(&state.analytics_db_path, query.retention_days.unwrap_or(30));
-    Json(json!({ "deleted_records": deleted_mem.max(deleted_db) }))
 }
 
 #[derive(Debug)]
@@ -2802,31 +630,6 @@ impl IntoResponse for ApiError {
             })),
         )
             .into_response()
-    }
-}
-
-async fn ws_handler(
-    State(state): State<AppState>,
-    ws: WebSocketUpgrade,
-) -> axum::response::Response {
-    ws.on_upgrade(move |socket| handle_socket(state.clone(), socket))
-}
-
-async fn handle_socket(state: AppState, mut socket: WebSocket) {
-    let mut rx = state.ws_tx.subscribe();
-    loop {
-        tokio::select! {
-            Ok(msg) = rx.recv() => {
-                if socket.send(Message::Text(msg.into())).await.is_err() {
-                    break;
-                }
-            }
-            next = socket.recv() => {
-                if next.is_none() {
-                    break;
-                }
-            }
-        }
     }
 }
 
@@ -2938,7 +741,7 @@ pub fn default_state() -> AppState {
     }
 }
 
-fn default_preferences() -> Map<String, Value> {
+pub(crate) fn default_preferences() -> Map<String, Value> {
     let mut m = Map::new();
     m.insert("theme".to_string(), Value::String("dark".to_string()));
     m.insert(
@@ -2999,7 +802,7 @@ fn config_snapshot_value(firmware: Option<String>) -> Value {
     })
 }
 
-fn get_setting_section(state: &AppState, key: &str, fallback: Value) -> Value {
+pub(crate) fn get_setting_section(state: &AppState, key: &str, fallback: Value) -> Value {
     state
         .settings
         .read()
@@ -3009,7 +812,7 @@ fn get_setting_section(state: &AppState, key: &str, fallback: Value) -> Value {
         .unwrap_or(fallback)
 }
 
-fn set_setting_section(state: &AppState, key: &str, value: Value) {
+pub(crate) fn set_setting_section(state: &AppState, key: &str, value: Value) {
     let mut config = state.settings.write().unwrap();
     if let Value::Object(ref mut map) = *config {
         map.insert(key.to_string(), value);
@@ -3065,7 +868,7 @@ pub(crate) fn track_analytics_transition(
     }
 }
 
-fn min_hit_duration(state: &AppState) -> f64 {
+pub(crate) fn min_hit_duration(state: &AppState) -> f64 {
     let prefs = state.preferences.lock().unwrap();
     prefs
         .get("hit_min_duration")
@@ -3129,7 +932,7 @@ fn load_preferences_from_db(path: &str) -> Map<String, Value> {
     prefs
 }
 
-fn save_preference_to_db(path: &str, key: &str, value: &Value) {
+pub(crate) fn save_preference_to_db(path: &str, key: &str, value: &Value) {
     if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
@@ -3142,7 +945,7 @@ fn save_preference_to_db(path: &str, key: &str, value: &Value) {
     }
 }
 
-fn reset_preferences_db(path: &str) {
+pub(crate) fn reset_preferences_db(path: &str) {
     if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
@@ -3246,7 +1049,7 @@ fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
     }
 }
 
-fn cleanup_analytics_db(path: &str, retention_days: u32) -> usize {
+pub(crate) fn cleanup_analytics_db(path: &str, retention_days: u32) -> usize {
     if let Some(conn) = open_sqlite(path) {
         let cutoff = epoch_now() - (retention_days as f64 * 24.0 * 3600.0);
         if let Ok(deleted) = conn.execute(
@@ -3429,66 +1232,7 @@ fn open_sqlite(path: &str) -> Option<rusqlite::Connection> {
     Some(conn)
 }
 
-fn broadcast_state_update(state: &AppState, live: &LiveState) {
-    let prev_squelch_open = state.live.read().map(|g| g.squelch_open).unwrap_or(false);
-
-    if let Ok(mut guard) = state.live.write() {
-        *guard = live.clone();
-    }
-
-    track_analytics_transition(state, live, prev_squelch_open);
-
-    let sequence = state.sequence.fetch_add(1, Ordering::Relaxed);
-    let msg = json!({
-        "type": "state_update",
-        "timestamp": live.timestamp,
-        "sequence": sequence,
-        "data": {
-            "timestamp": live.timestamp,
-            "frequency": live.frequency,
-            "modulation": live.modulation,
-            "squelch_open": live.squelch_open,
-            "rssi": live.rssi,
-            "mode": live.mode,
-            "channel": live.channel,
-            "alpha_tag": live.alpha_tag,
-            "volume": live.volume,
-            "battery": live.battery,
-            "stale": live.stale,
-        }
-    });
-    let _ = state.ws_tx.send(msg.to_string());
-
-    if live.squelch_open && !prev_squelch_open {
-        let event = json!({
-            "type": "event",
-            "timestamp": live.timestamp,
-            "event": "scan_hit",
-            "data": {
-                "frequency": live.frequency,
-                "channel": live.channel,
-                "alpha_tag": live.alpha_tag,
-                "rssi": live.rssi,
-            }
-        });
-        let _ = state.ws_tx.send(event.to_string());
-    }
-}
-
-/// Push the current bank-enabled mask to all WebSocket subscribers. Call
-/// after any change to state.banks so the UI can mirror reality instead of
-/// holding a stale local copy.
-pub(crate) fn broadcast_banks_update(state: &AppState) {
-    let banks = state.banks.read().map(|g| g.clone()).unwrap_or_default();
-    let msg = json!({
-        "type": "banks_update",
-        "timestamp": epoch_now(),
-        "data": { "banks": banks },
-    });
-    let _ = state.ws_tx.send(msg.to_string());
-}
-
-fn epoch_now() -> f64 {
+pub(crate) fn epoch_now() -> f64 {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     SystemTime::now()
@@ -3497,7 +1241,7 @@ fn epoch_now() -> f64 {
         .unwrap_or(0.0)
 }
 
-fn day_hour(ts: f64) -> (u32, u32) {
+pub(crate) fn day_hour(ts: f64) -> (u32, u32) {
     let total_hours = (ts / 3600.0).floor() as i64;
     let hour = ((total_hours % 24) + 24) % 24;
     let days_since_epoch = total_hours.div_euclid(24);
@@ -3506,7 +1250,7 @@ fn day_hour(ts: f64) -> (u32, u32) {
     (day as u32, hour as u32)
 }
 
-fn parse_glf_response(response: &str) -> Option<u32> {
+pub(crate) fn parse_glf_response(response: &str) -> Option<u32> {
     for line in response.lines().map(str::trim).filter(|l| !l.is_empty()) {
         let mut parts = line.split(',').map(str::trim).collect::<Vec<&str>>();
         if parts.first().map(|p| p.eq_ignore_ascii_case("GLF")) == Some(true) {
@@ -3523,7 +1267,7 @@ fn parse_glf_response(response: &str) -> Option<u32> {
     None
 }
 
-fn parse_command_parts(response: &str, command: &str) -> Vec<String> {
+pub(crate) fn parse_command_parts(response: &str, command: &str) -> Vec<String> {
     let mut parts = response
         .split(',')
         .map(|s| s.trim().to_string())
@@ -3538,7 +1282,9 @@ fn parse_command_parts(response: &str, command: &str) -> Vec<String> {
     parts
 }
 
-async fn read_frequency_lockouts_from_scanner(state: &AppState) -> Result<Vec<u32>, ApiError> {
+pub(crate) async fn read_frequency_lockouts_from_scanner(
+    state: &AppState,
+) -> Result<Vec<u32>, ApiError> {
     let _ = send_raw_command(state, "PRG", false).await?;
     let mut values = Vec::new();
     let first = send_raw_command(state, "GLF,***", false).await?;
@@ -3560,7 +1306,9 @@ async fn read_frequency_lockouts_from_scanner(state: &AppState) -> Result<Vec<u3
     Ok(values)
 }
 
-async fn read_settings_snapshot_from_scanner(state: &AppState) -> Result<Value, ApiError> {
+pub(crate) async fn read_settings_snapshot_from_scanner(
+    state: &AppState,
+) -> Result<Value, ApiError> {
     let firmware_response = send_raw_command(state, "VER", false).await?;
     let firmware = {
         let mut parts = firmware_response
@@ -3707,7 +1455,10 @@ async fn read_settings_snapshot_from_scanner(state: &AppState) -> Result<Value, 
     result
 }
 
-async fn read_channel_from_scanner(state: &AppState, index: u16) -> Result<ChannelData, ApiError> {
+pub(crate) async fn read_channel_from_scanner(
+    state: &AppState,
+    index: u16,
+) -> Result<ChannelData, ApiError> {
     let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
     if !in_program_mode {
         let _ = send_raw_command(state, "PRG", false).await?;
@@ -3721,7 +1472,7 @@ async fn read_channel_from_scanner(state: &AppState, index: u16) -> Result<Chann
         .ok_or_else(|| ApiError::BadRequest("channel_read_failed".to_string()))
 }
 
-async fn write_channel_to_scanner(
+pub(crate) async fn write_channel_to_scanner(
     state: &AppState,
     channel: &ChannelData,
 ) -> Result<ChannelData, ApiError> {
@@ -3881,7 +1632,7 @@ async fn write_channel_to_scanner(
         .ok_or_else(|| ApiError::BadRequest("channel_readback_failed".to_string()))
 }
 
-async fn set_channel_lockout_on_scanner(
+pub(crate) async fn set_channel_lockout_on_scanner(
     state: &AppState,
     index: u16,
     locked: bool,
@@ -3954,7 +1705,7 @@ async fn set_channel_lockout_on_scanner(
         .ok_or_else(|| ApiError::BadRequest("lockout_failed".to_string()))
 }
 
-fn uuid_simple() -> String {
+pub(crate) fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let t = SystemTime::now()
