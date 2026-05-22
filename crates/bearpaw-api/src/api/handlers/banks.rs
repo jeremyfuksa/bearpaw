@@ -1,6 +1,9 @@
 use axum::extract::State;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
+
+use crate::protocol::{classify_response, ScannerReply};
 
 use super::super::{
     broadcast_banks_update, command_sender, send_raw_command, ApiError, AppState, ProgramModeGuard,
@@ -51,8 +54,22 @@ pub(crate) async fn set_banks(
         .map(|enabled| if *enabled { "0" } else { "1" })
         .collect::<String>();
     let _prg = ProgramModeGuard::enter(&state).await?;
-    let set_result = send_raw_command(&state, &format!("SCG,{}", flags), false).await;
-    let _ = set_result?;
+    let response = send_raw_command(&state, &format!("SCG,{}", flags), false).await?;
+    match classify_response(&response) {
+        ScannerReply::Ok => {}
+        ScannerReply::Ng => {
+            return Err(ApiError::BadRequest("banks_wrong_mode".to_string()));
+        }
+        ScannerReply::Err => {
+            warn!(
+                response = %response.trim(),
+                flags = %flags,
+                "scanner returned ERR on SCG set"
+            );
+            return Err(ApiError::BadRequest("banks_syntax_error".to_string()));
+        }
+        _ => return Err(ApiError::BadRequest("banks_failed".to_string())),
+    }
     *state.banks.write().unwrap() = body.banks.clone();
     broadcast_banks_update(&state);
     Ok(Json(BanksResponse { banks: body.banks }))

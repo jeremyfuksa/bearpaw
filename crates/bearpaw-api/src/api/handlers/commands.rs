@@ -5,7 +5,9 @@ use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use crate::protocol::index_to_bank;
+use tracing::warn;
+
+use crate::protocol::{classify_response, index_to_bank, ScannerReply};
 use crate::state::ChannelData;
 
 use super::super::{
@@ -37,11 +39,23 @@ async fn send_mode_command(
             Ok(Err(m)) => return Err(ApiError::BadRequest(m)),
             Err(_) => return Err(ApiError::BadRequest("command_timeout".to_string())),
         };
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK")) {
-            return Err(ApiError::BadRequest(format!("{}_failed", error_tag)));
+        match classify_response(&response) {
+            ScannerReply::Ok => Ok(()),
+            ScannerReply::Ng => Err(ApiError::BadRequest(format!("{}_wrong_mode", error_tag))),
+            ScannerReply::Err => {
+                warn!(
+                    error_tag = error_tag,
+                    response = %response.trim(),
+                    "scanner returned ERR — likely a malformed command from this caller"
+                );
+                Err(ApiError::BadRequest(format!("{}_syntax_error", error_tag)))
+            }
+            // EndOfList and Data are both unexpected for a Hold/Scan command —
+            // those replies should be a plain OK. Surface as generic failure.
+            ScannerReply::EndOfList | ScannerReply::Data(_) => {
+                Err(ApiError::BadRequest(format!("{}_failed", error_tag)))
+            }
         }
-        Ok(())
     })
     .await
     .map_err(|_| ApiError::SendFailed)?
@@ -227,9 +241,19 @@ pub(crate) async fn set_volume(
         return Err(ApiError::BadRequest("volume_out_of_range".to_string()));
     }
     let response = send_raw_command(&state, &format!("VOL,{}", body.volume), false).await?;
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("VOL,")) {
-        return Err(ApiError::BadRequest("volume_failed".to_string()));
+    match classify_response(&response) {
+        ScannerReply::Ok => {}
+        // Some firmwares echo `VOL,<n>` back instead of `VOL,OK`. Treat
+        // command-prefixed data as success here.
+        ScannerReply::Data(d) if d.to_uppercase().starts_with("VOL,") => {}
+        ScannerReply::Ng => {
+            return Err(ApiError::BadRequest("volume_wrong_mode".to_string()));
+        }
+        ScannerReply::Err => {
+            warn!(response = %response.trim(), "scanner returned ERR on VOL set");
+            return Err(ApiError::BadRequest("volume_syntax_error".to_string()));
+        }
+        _ => return Err(ApiError::BadRequest("volume_failed".to_string())),
     }
     let mut live = state.live.write().unwrap();
     live.volume = body.volume;
@@ -280,9 +304,18 @@ pub(crate) async fn set_squelch(
     let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, &format!("SQL,{}", body.level), false).await;
     let response = response?;
-    let upper = response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("SQL,")) {
-        return Err(ApiError::BadRequest("squelch_failed".to_string()));
+    match classify_response(&response) {
+        ScannerReply::Ok => {}
+        // Some firmwares echo `SQL,<n>` back instead of `SQL,OK`.
+        ScannerReply::Data(d) if d.to_uppercase().starts_with("SQL,") => {}
+        ScannerReply::Ng => {
+            return Err(ApiError::BadRequest("squelch_wrong_mode".to_string()));
+        }
+        ScannerReply::Err => {
+            warn!(response = %response.trim(), "scanner returned ERR on SQL set");
+            return Err(ApiError::BadRequest("squelch_syntax_error".to_string()));
+        }
+        _ => return Err(ApiError::BadRequest("squelch_failed".to_string())),
     }
     set_setting_section(&state, "squelch", json!({ "level": body.level }));
     Ok(Json(json!({ "status": "ok" })))
