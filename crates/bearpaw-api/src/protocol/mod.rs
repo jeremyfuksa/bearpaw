@@ -338,23 +338,21 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         _ => "FM".to_string(),
     };
     let tone_code = p.get(3).and_then(|s| s.parse::<u16>().ok()).unwrap_or(0);
+    // delay is signed (per BC125AT_PROTOCOL.md §5.3): valid values are
+    // `-10, -5, 0, 1, 2, 3, 4, 5`. Negatives are pre-delays. Default to 2
+    // (the most common firmware default) when the field is unparseable.
     let delay = p.get(4).and_then(|s| s.parse::<i8>().ok()).unwrap_or(2);
     let lockout = p.get(5).map(|s| *s == "1").unwrap_or(false);
     let priority = p.get(6).map(|s| *s == "1").unwrap_or(false);
 
     let (tone_squelch_kind, tone_squelch, tone_dcs_code) = decode_tone(tone_code);
 
-    // delay is stored as u8 in ChannelData; clamp negatives to 0 for now.
-    // (Negative pre-delays are valid wire values; surfacing them needs an
-    // i8 schema change which we defer.)
-    let delay_u8 = delay.max(0) as u8;
-
     Some(ChannelData {
         index,
         frequency,
         modulation,
         alpha_tag,
-        delay: delay_u8,
+        delay,
         lockout,
         priority,
         tone_squelch,
@@ -666,6 +664,22 @@ mod tests {
         // Search (code 127)
         let ch = parse_cin_response(4, "CIN,4,X,01451300,FM,127,2,0,0").unwrap();
         assert_eq!(ch.tone_squelch_kind, ToneSquelchKind::Search);
+    }
+
+    #[test]
+    fn cin_preserves_negative_pre_delay() {
+        // -5 and -10 are valid wire values (per BC125AT_PROTOCOL.md §5.3)
+        // representing pre-delays. The parser used to clamp these to 0,
+        // silently discarding what the user had programmed.
+        let ch = parse_cin_response(1, "CIN,1,Test,01451300,FM,0,-5,0,0").unwrap();
+        assert_eq!(ch.delay, -5);
+
+        let ch = parse_cin_response(2, "CIN,2,Test,01451300,FM,0,-10,0,0").unwrap();
+        assert_eq!(ch.delay, -10);
+
+        // Positives still round-trip.
+        let ch = parse_cin_response(3, "CIN,3,Test,01451300,FM,0,5,0,0").unwrap();
+        assert_eq!(ch.delay, 5);
     }
 
     #[test]
