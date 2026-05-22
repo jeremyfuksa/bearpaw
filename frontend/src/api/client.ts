@@ -210,10 +210,6 @@ export class ScannerAPIClient {
     });
   }
 
-  async getConfig(): Promise<ConfigSnapshot> {
-    return this.request<ConfigSnapshot>('/config');
-  }
-
   async getAllSettings(): Promise<ConfigSnapshot> {
     return this.request<ConfigSnapshot>('/settings/all');
   }
@@ -260,10 +256,6 @@ export class ScannerAPIClient {
       method: 'POST',
       body: JSON.stringify({ mode }),
     });
-  }
-
-  async getSearchSettings(): Promise<SearchSettings> {
-    return this.request<SearchSettings>('/settings/search');
   }
 
   async setSearchSettings(delay: number, code_search: boolean): Promise<void> {
@@ -315,10 +307,6 @@ export class ScannerAPIClient {
       method: 'POST',
       body: JSON.stringify({ index, lower, upper }),
     });
-  }
-
-  async getWeatherSettings(): Promise<WeatherSettings> {
-    return this.request<WeatherSettings>('/settings/weather');
   }
 
   async setWeatherSettings(priority: boolean): Promise<void> {

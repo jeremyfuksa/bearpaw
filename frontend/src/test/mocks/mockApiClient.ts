@@ -148,14 +148,6 @@ export const createMockApiClient = () => {
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return undefined;
     }),
-    getConfig: vi.fn(async () => {
-      const response = responses.get('/config');
-      if (response?.error) {
-        throw new APIError(response.error.message, response.error.status, response.error);
-      }
-      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
-      return mockApiResponses.config;
-    }),
     getAllSettings: vi.fn(async () => {
       const response = responses.get('/settings/all');
       if (response?.error) {
@@ -228,14 +220,6 @@ export const createMockApiClient = () => {
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return undefined;
     }),
-    getSearchSettings: vi.fn(async () => {
-      const response = responses.get('/settings/search');
-      if (response?.error) {
-        throw new APIError(response.error.message, response.error.status, response.error);
-      }
-      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
-      return mockApiResponses.search;
-    }),
     setSearchSettings: vi.fn(async (delay: number, code_search: boolean) => {
       const response = responses.get('/settings/search');
       if (response?.error) {
@@ -307,14 +291,6 @@ export const createMockApiClient = () => {
       }
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return undefined;
-    }),
-    getWeatherSettings: vi.fn(async () => {
-      const response = responses.get('/settings/weather');
-      if (response?.error) {
-        throw new APIError(response.error.message, response.error.status, response.error);
-      }
-      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
-      return mockApiResponses.weather;
     }),
     setWeatherSettings: vi.fn(async (priority: boolean) => {
       const response = responses.get('/settings/weather');
