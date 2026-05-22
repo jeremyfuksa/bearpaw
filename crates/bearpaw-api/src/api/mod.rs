@@ -431,23 +431,27 @@ impl IntoResponse for ApiError {
 pub async fn run_server(
     bind: &str,
     state: AppState,
-    serial_port: Option<(String, u32)>,
+    serial_port: Option<(String, u32, bool)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     run_server_with_shutdown(bind, state, serial_port, std::future::pending()).await
 }
 
 /// Like `run_server` but accepts a shutdown future. When the future resolves,
 /// the server drains in-flight requests and exits cleanly.
+///
+/// `serial_port` is `(port_or_usb_target, baud, assert_dtr_on_open)`. The
+/// DTR flag is only honoured by the serial transport; the USB transport
+/// ignores it.
 pub async fn run_server_with_shutdown(
     bind: &str,
     mut state: AppState,
-    serial_port: Option<(String, u32)>,
+    serial_port: Option<(String, u32, bool)>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some((port_name, baud)) = serial_port {
+    if let Some((port_name, baud, assert_dtr)) = serial_port {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
         state.command_tx = Arc::new(Mutex::new(Some(cmd_tx)));
-        spawn_poll_loop(state.clone(), port_name, baud, cmd_rx);
+        spawn_poll_loop(state.clone(), port_name, baud, assert_dtr, cmd_rx);
         if let Ok(mut d) = state.device.write() {
             d.connection_status = "connecting".to_string();
             d.diagnostic_code = None;
