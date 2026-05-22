@@ -93,10 +93,12 @@ export default function App() {
   const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
   const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
   const updatePreferences = useStore((state) => state.updatePreferences);
+  const banks = useStore((state) => state.banks);
+  const banksBusy = useStore((state) => state.banksBusy);
+  const setBanks = useStore((state) => state.setBanks);
+  const setBanksBusy = useStore((state) => state.setBanksBusy);
 
   const [currentTab, setCurrentTab] = useState<Tab>('Scan');
-  const [banks, setBanks] = useState<boolean[]>(() => Array.from({ length: 10 }, () => true));
-  const [banksBusy, setBanksBusy] = useState(false);
   const [toggleBusy, setToggleBusy] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [chartAnimate, setChartAnimate] = useState(false);
@@ -759,7 +761,9 @@ export default function App() {
       } catch (error) {
         console.warn('Failed to update banks', error);
         toast.error('Failed to update banks');
-        setBanks((prev) => prev.map((active, idx) => (idx === index ? !active : active)));
+        // Roll back the optimistic toggle: re-flip the bit we just changed.
+        const current = useStore.getState().banks;
+        setBanks(current.map((active, idx) => (idx === index ? !active : active)));
       } finally {
         setBanksBusy(false);
       }

@@ -23,6 +23,8 @@ export interface AppStore {
   liveState: LiveState | null;
   deviceInfo: DeviceInfo | null;
   channels: ChannelData[];
+  banks: boolean[];
+  banksBusy: boolean;
   activityLog: ActivityLogEntry[];
   fullActivityLog: ActivityLogEntry[];
   preferences: Preferences;
@@ -33,6 +35,8 @@ export interface AppStore {
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
   setDeviceInfo: (info: DeviceInfo | null) => void;
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
+  setBanks: (banks: boolean[]) => void;
+  setBanksBusy: (busy: boolean) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
@@ -73,10 +77,14 @@ const defaultLiveState: LiveState = {
   stale: true,
 };
 
+const defaultBanks: boolean[] = Array.from({ length: 10 }, () => true);
+
 export const useStore = create<AppStore>((set) => ({
   liveState: null,
   deviceInfo: null,
   channels: [],
+  banks: defaultBanks,
+  banksBusy: false,
   activityLog: [],
   fullActivityLog: [],
   preferences: defaultPreferences,
@@ -108,6 +116,9 @@ export const useStore = create<AppStore>((set) => ({
             ? channels
             : [],
     })),
+  setBanks: (banks) =>
+    set({ banks: banks.length === 10 ? banks : defaultBanks }),
+  setBanksBusy: (banksBusy) => set({ banksBusy }),
   addActivityLogEntry: (entry) =>
     set((prev) => ({
       activityLog: [entry, ...prev.activityLog].slice(0, 5),
