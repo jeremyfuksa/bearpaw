@@ -1,852 +1,684 @@
-# Scanner Protocol Reference & Memory Dump
+# Scanner Protocol Reference
 
-**Generated:** 2026-01-05
-**Device:** BC125AT
-**Purpose:** Complete documentation of all scanner commands, settings, flags, and data structures
+**Last updated:** 2026-05-19
+**Devices:** Uniden BC125AT family — BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H
+**Authoritative sources:**
+- Uniden, *BC125AT PC Protocol v1.01* (programming command set, serial settings)
+- Uniden, *BCT15X v1.03 Protocol* (operational commands `STS`/`GLG`/`KEY`/`PWR`; BearTracker commands)
+- `docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md` (consolidated research)
 
----
-
-## Table of Contents
-
-1. [Device Information](#device-information)
-2. [Protocol Commands](#protocol-commands)
-3. [Data Structures](#data-structures)
-4. [LiveState Fields](#livestate-fields)
-5. [Channel Memory Structure](#channel-memory-structure)
-6. [Command Reference](#command-reference)
-7. [Key Codes](#key-codes)
-8. [Modulation Modes](#modulation-modes)
-9. [Memory Dump](#memory-dump)
+> This document is the **wire-protocol** spec. For Bearpaw's REST/WebSocket API see [API_SPEC.md](API_SPEC.md) and [WEBSOCKET_SCHEMA.md](WEBSOCKET_SCHEMA.md). For the UI hit-workflow see [UI_WORKFLOW.md](UI_WORKFLOW.md).
 
 ---
 
-## Device Information
+## Table of contents
 
-**Current Device:**
-```json
-{
-  "model": "BC125AT",
-  "port": null,
-  "vid": 6501,
-  "pid": 23,
-  "serial_number": null,
-  "description": "USB CDC",
-  "firmware": null
-}
-```
-
-**USB Identifiers:**
-- Vendor ID (VID): `0x1965` (6501 decimal)
-- Product ID (PID): `0x0017` (23 decimal)
-- Interface: USB CDC (Communications Device Class)
+1. [USB enumeration and OS drivers](#1-usb-enumeration-and-os-drivers)
+2. [Wire-protocol fundamentals](#2-wire-protocol-fundamentals)
+3. [Operational-mode commands](#3-operational-mode-commands)
+4. [Programming-mode commands](#4-programming-mode-commands)
+5. [BearTracker commands (BCT125AT)](#5-beartracker-commands-bct125at)
+6. [Frequency encoding](#6-frequency-encoding)
+7. [CTCSS / DCS tone codes](#7-ctcss--dcs-tone-codes)
+8. [Bearpaw `LiveState` derivation](#8-bearpaw-livestate-derivation)
+9. [Bearpaw `ChannelData` structure](#9-bearpaw-channeldata-structure)
+10. [Polling cadence and resilience](#10-polling-cadence-and-resilience)
+11. [Memory sync process](#11-memory-sync-process)
+12. [Common pitfalls](#12-common-pitfalls)
+13. [Known correctness gaps in current Bearpaw code](#13-known-correctness-gaps-in-current-bearpaw-code)
 
 ---
 
-## Protocol Commands
+## 1. USB enumeration and OS drivers
 
-### Communication Protocol
+**VID / PID:** `0x1965` (Uniden America Corp.) / `0x0017`. Class 02 (Communications), subclass 02 (Abstract Control Model). The MCU implements USB CDC-ACM directly — there is no FTDI / CP210x / PL2303 / CH340 bridge.
 
-**Format:** ASCII commands terminated with `\r` (carriage return)
+**No third-party driver is required on any modern OS.**
 
-**Response Format:** ASCII response terminated with `\r`
+| OS | Device node / port | Driver |
+|---|---|---|
+| macOS (incl. Apple Silicon) | `/dev/cu.usbmodemXXXX` | Built-in `AppleUSBCDCACMData` / `AppleUSBCDC` (Apple-signed) |
+| Linux | `/dev/ttyACM0` | In-tree `cdc_acm` |
+| Windows 10/11 | `COMn`, friendly name "BC125AT" | In-box `usbser.sys` |
 
-**Timeout:** 0.5 seconds (default)
+**macOS:** Always open the `cu.*` node, never `tty.*`. The `tty.*` node blocks on open waiting for DCD, which the scanner does not assert. The trailing path number changes on replug — match by USB serial number, not by path.
 
-### Core Commands (Both BC125AT and SR30C)
+**Linux:** No udev rule is strictly required, but two are recommended:
+1. Grant your user access: `MODE="0666"` or `GROUP="dialout"`.
+2. Tell `ModemManager` to leave it alone — it probes new ACM devices and can corrupt early traffic:
+   ```
+   SUBSYSTEMS=="usb", ATTRS{idVendor}=="1965", ATTRS{idProduct}=="0017", ENV{ID_MM_DEVICE_IGNORE}="1"
+   ```
+3. **TLP and USB autosuspend will silently break the connection on laptops.** Pin `power/autosuspend=-1` for VID `0x1965` via udev, or disable TLP for this device.
 
-#### MDL - Model Detection
+**Windows:** If Device Manager fails to bind automatically, use Uniden's signed driver bundle (`Windows_Serial_Drivers.zip` from the BCD536HP TWiki page). The older `BC125AT_USB_driver.zip` is unsigned and fails on Windows 8.1+.
+
+**Serial settings** (canonical, from BC125AT v1.01 PDF):
+- **115200 baud, 8N1, no flow control.**
+- Because CDC-ACM ignores baud, any value works in practice; 115200 is the convention every Uniden library and tool uses.
+- **Line ending: `\r` only (0x0D). Never `\r\n`.** A stray LF leaves a byte in the buffer that turns the next command into `ERR`.
+
+**Open-time discipline:**
+- **Disable DTR/RTS on open.** Asserting DTR has caused intermittent disconnects on Linux and macOS. In pyserial: `dsrdtr=False`; in Node `serialport`: `hupcl: false`; in Rust `serialport` crate: don't call `write_data_terminal_ready(true)`.
+- **Set raw mode immediately after open** on Linux/macOS (`cfmakeraw()` or clear `ICANON`/`ECHO`). The Linux `cdc_acm` driver enables tty echo by default and will garble early traffic otherwise.
+- **Drain the input buffer on connect.** Stale bytes from a previous session turn the first response into `ERR` or partial garbage.
+
+**Auto-detection recipe:**
+1. Enumerate ports, filter by `VID == 0x1965`.
+2. If none match, probe every CDC-class port with `MDL\r` and accept any response starting with `MDL,`.
+3. Cache the device's USB serial number so reconnects after replug find the same physical unit.
+
+---
+
+## 2. Wire-protocol fundamentals
+
+The protocol is **half-duplex, synchronous, ASCII, case-sensitive, single-line by default**. Commands are uppercase keywords followed by comma-delimited fields and a single `\r`. Responses echo the command name followed by either:
+
+- **Fields** for "get" commands (`MDL,BC125AT\r`, `GLG,01545500,FM,…\r`)
+- **`OK`** for "set" commands (`KEY,OK\r`, `PRG,OK\r`)
+- **`NG`** when the command is syntactically correct but invalid in the current mode (`PRG,NG\r` if already in a menu)
+- **`ERR\r`** (bare token, no command echo) for syntax or out-of-range errors
+
+The scanner **sends no unsolicited data**, no banner, and no echo of your raw command bytes. **Pipelining is not supported** — wait for the response to each command before sending the next. Pipelined commands produce `ERR`, `NG`, or mangled output.
+
+### Error semantics
+
+| Token | Meaning | Recovery |
+|---|---|---|
+| `ERR\r` | Syntax error or out-of-range value | Fix the command before retrying |
+| `<CMD>,NG\r` | Correct command, wrong mode | Likely missing `PRG`; or scanner is in a menu / direct-entry state |
+| `FER` | UART framing error (BCT15X only; never seen over USB) | — |
+| `ORER` | UART overrun (BCT15X only; never seen over USB) | — |
+
+### Empty fields in writes
+
+**In any "set" command, an empty field (just a comma) means "leave this field unchanged."** Format errors abort the entire write — there are no partial updates.
+
+To **clear** an alpha tag, send 16 spaces, not an empty field. Empty means "no change."
+
+### Two macro-modes
+
+- **Operational mode** (default): `STS`, `GLG`, `KEY`, `PWR`, `MDL`, `VER`, `VOL`, `SQL` all work.
+- **Program mode** (entered with `PRG\r`, exited with `EPG\r`): the LCD shows "Remote Mode / Keypad Lock," scanning stops, and memory-modifying commands (`CIN`, `DCH`, `CLR`, `SCG`, `BLT`, `BSV`, `PRI`, `KBP`, `SSG`, `CSG`, `CSP`, `CLC`, `WXS`, `CNT`, `GLF`/`ULF`/`LOF`, plus BCT125AT `STT`/`BTL`/`BTS`) become valid.
+
+Keep the real-time UI in operational mode and bracket every programming operation in `PRG`/`EPG`. After `PRG,OK` and after `EPG,OK`, wait ~50–100 ms before the next command for the mode transition to settle.
+
+---
+
+## 3. Operational-mode commands
+
+### MDL — Model identification
+
 ```
-Command:  MDL\r
-Response: MDL,BC125AT\r
-Purpose:  Get scanner model name
-Driver:   detect_model()
+> MDL\r
+< MDL,BC125AT\r
 ```
 
-#### STS - Status Query
+Possible responses include `MDL,BC125AT`, `MDL,BCT125AT`, `MDL,UBC125XLT`, `MDL,UBC126AT`, `MDL,AE125H`. Works in both modes. Used for port auto-detection and model-specific branching.
+
+### VER — Firmware version
+
 ```
-Command:  STS\r
-Response: FRQ,146.9700\r
-          MOD,NFM\r
-          SQL,0\r
-          RSSI,100\r
-          CH,67\r
-          VOL,15\r
-          BAT,100\r
-Purpose:  Get current scanner state (key-value pairs)
-Driver:   get_status()
-Poll Rate: 5-10 times per second (0.1-0.2s interval)
+> VER\r
+< VER,Version 1.04.02\r
 ```
 
-**STS Response Fields:**
-- `FRQ`: Frequency in MHz (e.g., "146.9700")
-- `MOD`: Modulation mode ("FM", "AM", "NFM", "AUTO")
-- `SQL`: Squelch status ("0" = open/signal present, "1" = closed/no signal)
-- `RSSI`: Signal strength 0-100
-- `CH`: Channel number (if on memory channel, omitted if direct tune)
-- `VOL`: Volume level 0-15 (BC125AT only)
-- `BAT`: Battery level 0-100 (BC125AT only, may be omitted)
+Useful to log because `STS` and `GLG` field counts vary between firmware revisions.
 
-#### GLG - Get Status (BC125AT Fallback)
+### STS — LCD display dump + status bits
+
 ```
-Command:  GLG\r
-Response: GLG,1465200,FM,,0,,Pilot Truck,1,0,,127\r
-Purpose:  Get status in comma-separated format (fallback if STS fails)
-Driver:   get_status() - BC125AT only
+> STS\r
+< STS,<DSP_FORM>,<L1_CHAR>,<L1_MODE>,<L2_CHAR>,<L2_MODE>,<L3_CHAR>,<L3_MODE>,<L4_CHAR>,<L4_MODE>,<SQL>,<MUT>,<RSV>,<WAT>,<LED_CC>,<LED_ALERT>,<SIG_LVL>,<RSV>,<BK_DIMMER>\r
 ```
 
-**GLG Response Format (observed):** (comma-separated)
+This is a **single-line, comma-separated LCD dump**, not key-value pairs. Field-by-field:
+
+| Field | Meaning |
+|---|---|
+| `DSP_FORM` | 4-digit binary mask: 1 = line is large-font, 0 = small-font (e.g. `0110` = lines 2 & 3 large) |
+| `L1_CHAR`–`L4_CHAR` | Each exactly **16 ASCII characters**, space-padded |
+| `L1_MODE`–`L4_MODE` | Each up to 16 chars: space = normal, `*` = reverse video, `_` = underline. **Collapses to empty** (`,,`) if all 16 chars are normal |
+| `SQL` | **1 = squelch open (signal present), 0 = squelch closed** |
+| `MUT` | 1 = muted, 0 = not muted |
+| `RSV` | Reserved (empty on BC125AT) |
+| `WAT` | Weather / SAME alert state |
+| `LED_CC` | Close Call LED, 0 / 1 |
+| `LED_ALERT` | Alert LED, 0 / 1 |
+| `SIG_LVL` | Signal bars, **0–5** (this is the LCD bar count, NOT a 0–100 percentage or dBm) |
+| `RSV` | Reserved |
+| `BK_DIMMER` | Backlight dimmer, 0=Off / 1=Low / 2=Mid / 3=High |
+
+**Example** (scan-hold on 851.0125 MHz, signal present):
+
 ```
-Position  Field           Example       Description
-0         Command         GLG           Command echo
-1         Frequency       1465200       Frequency * 10000 (146.5200 MHz)
-2         Modulation      FM            FM/AM/NFM/AUTO
-3         (reserved)      (empty)
-4         Squelch         0             0=open, 1=closed
-5         (reserved)      (empty)
-6         Alpha Tag       Pilot Truck   Channel alpha tag
-7         Squelch (alt)   1             Alternate squelch position
-8         (reserved)      (empty)
-9         (reserved)      (empty)
-10        Channel Index   127           Memory channel number
+STS,0110,
+    HOLD     L/O    ,                ,
+    SYSTEM 1        ,                ,
+    851.0125MHz     ,                ,
+    P NFM ATT       ,                ,
+    0,1,0,0,0,0,1,,\r
 ```
 
-**Note:** Field positions vary between firmware builds. Parse defensively:
-- Frequency is always at index 1.
-- Modulation is always at index 2.
+**Important parsing notes:**
+- `STS` does **NOT** carry frequency, modulation, channel index, volume, or battery as named fields. Frequency comes from `GLG` or `PWR`. Modulation comes from `GLG`. Channel index comes from `GLG`. Volume comes from `VOL`. Battery is not exposed on this protocol.
+- Field count varies across firmware revisions. **Parse by position with defensive bounds checks**, not by assuming a fixed shape.
+- The BC125AT family is known to **occasionally drop or truncate `STS` responses** even under correct polling (Bob Smith / ProScan, confirmed). Re-poll on the next tick rather than throwing.
+
+### GLG — Current reception info
+
+```
+> GLG\r
+< GLG,<FRQ>,<MOD>,<ATT>,<CTCSS/DCS>,<NAME1>,<NAME2>,<NAME3>,<SQL>,<MUT>[,<RSV>,<CHAN_NUM>]\r
+```
+
+| Field | Meaning |
+|---|---|
+| `FRQ` | 8-digit integer in 100 Hz units, leading zeros. `01462250` = 146.2250 MHz |
+| `MOD` | `AM` / `FM` / `NFM` / `AUTO` |
+| `ATT` | Attenuator state |
+| `CTCSS/DCS` | Integer tone **code** 0–231 (see [§7](#7-ctcss--dcs-tone-codes)) — **not** Hz |
+| `NAME1`/`NAME2`/`NAME3` | Bank/system, group, channel alpha tags (groups are unused on BC125AT's flat memory) |
+| `SQL` | 1 = open, 0 = closed |
+| `MUT` | 1 = muted |
+| `RSV`, `CHAN_NUM` | Optional trailing fields; presence depends on firmware (pa3ang's reverse-engineering identified these on UBC125XLT) |
+
+**Idle state** (between channels, no current signal) returns a comma skeleton:
+
+```
+GLG,,,,,,,,,\r
+```
+
+**Parsing discipline:**
+- Always **split-and-index** rather than assuming a fixed field count.
+- Treat all-empty as "no current channel."
 - Alpha tag is the first non-empty text field after modulation.
-- Channel index is typically the last numeric field.
 
-#### KEY - Keypress Simulation
+`GLG` is the canonical source for live frequency, modulation, alpha tag, and channel number — not `STS`.
+
+### PWR — RSSI and current frequency
+
 ```
-Command:  KEY,H,P\r
-Response: OK\r
-Purpose:  Simulate physical button press
-Driver:   send_key(key_code), send_hold(), send_scan()
-```
-
-**Key Codes:**
-- `H,P`: Hold button press
-- `S,P`: Scan button press
-- `SRCH,P`: Search mode
-- `UP,P`: Channel up
-- `DOWN,P`: Channel down
-- `L/O,P`: Lockout toggle
-- `PRI,P`: Priority toggle
-- `MENU,P`: Menu button
-- `E,P`: Enter button
-
-**Format:** `KEY,<code>,P` where P = Press
-
-#### DO - Direct Tune
-```
-Command:  DO,146.9700,NFM\r
-Response: OK\r
-Purpose:  Tune to specific frequency
-Driver:   set_frequency(freq_mhz, modulation)
+> PWR\r
+< PWR,742,01545500\r
 ```
 
-**Parameters:**
-- Frequency: MHz with up to 4 decimal places
-- Modulation: "FM", "AM", "NFM", "AUTO"
+| Field | Meaning |
+|---|---|
+| Field 1 | RSSI as raw ADC value, **0–1023**, NOT dBm and NOT 0–100 |
+| Field 2 | Frequency in 100 Hz units (same encoding as `GLG`) |
 
-#### PRG - Enter Program Mode
-```
-Command:  PRG\r
-Response: OK\r
-Purpose:  Enter programming mode (required for channel operations)
-Driver:   _enter_program_mode()
-Notes:    Stops scanning if active
-```
+RSSI updates slowly on this family and has limited dynamic range. Use it for "signal present / strong / weak," not as a precision S-meter. Calibration varies by band.
 
-#### EPG - Exit Program Mode
+### KEY — Simulate keypress
+
 ```
-Command:  EPG\r
-Response: OK\r
-Purpose:  Exit programming mode
-Driver:   _exit_program_mode()
-Notes:    Restores previous mode (scan/hold)
+> KEY,<CODE>,<MODE>\r
+< KEY,OK\r
 ```
 
-#### CIN - Read Channel
+`MODE` is `P` (press), `L` (long press), `H` (hold indefinitely, auto-times-out after 10 s), or `R` (release a prior `H`).
+
+**Verified BC125AT/BCT125AT key codes:**
+
+| Code | Key | Notes |
+|---|---|---|
+| `M` | Menu | |
+| `F` | Function | |
+| `H` | Hold / Resume | Most common via Bearpaw |
+| `S` | Scan | Most common via Bearpaw |
+| `L` | Lockout (L/O) | |
+| `0`–`9` | Digits | |
+| `.` | ./No | |
+| `E` | E / Yes | |
+| `>` | Scroll knob CW | |
+| `<` | Scroll knob CCW | |
+| `V` | Scroll-knob push (volume mode) | |
+| `Q` | Func + scroll-push (squelch mode) | |
+| `P` | Priority (Func+5) | |
+| `W` | Weather (Func+3) | |
+
+**BearTracker / HWY key** on the BCT125AT is **not officially documented**. The BCT15X uses `B`; verify empirically on a BCT125AT by sweeping codes and observing the LCD via `STS`.
+
+Allow ~50–100 ms between consecutive `KEY` packets for firmware key debounce.
+
+### DO — Direct tune (Bearpaw `DIRECT` mode)
+
 ```
-Command:  CIN,67\r
-Response: CIN,67,Police Dispatch,01469700,NFM,0,2,1,5\r
-Purpose:  Read channel memory data
-Driver:   read_channel(index)
-Requires: PRG mode must be active
+> DO,151.2500,NFM\r
+< DO,OK\r
 ```
 
-**CIN Response Format (observed on BC125AT):** (comma-separated)
+Frequency is sent as a decimal MHz string with 4 decimal places. Modulation must be one of `AUTO`, `AM`, `FM`, `NFM`.
+
+### VOL / SQL — Volume and squelch
+
 ```
-Position  Field           Example          Description
-0         Command         CIN              Command echo
-1         Index           67               Channel number (1-500)
-2         Alpha Tag       Police Dispatch  Up to 16 characters
-3         Frequency       01469700         MHz * 10000 (pad with zeros)
-4         Modulation      NFM              FM/AM/NFM/AUTO
-5         Lockout         0                0=not locked, 1=locked out
-6         Delay           2                Delay in seconds (0-30)
-7         Priority        1                0=not priority, 1=priority
-8         Bank            5                Bank number (0-10, 0=unassigned)
+> VOL\r          / VOL,n\r
+< VOL,8\r        / VOL,OK\r
+
+> SQL\r          / SQL,n\r
+< SQL,5\r        / SQL,OK\r
 ```
 
-**Note:** Some devices return an alternate format where frequency comes before alpha tag.
+**Range is 0–15 for both** on the BC125AT/BCT125AT family.
+
+- `VOL` 0 = muted, 15 = max
+- `SQL` 0 = open (let everything through), 15 = closed (silent unless strong signal)
+
+Do **not** import the BCT15X 0–29 / 0–19 ranges by mistake. Different scanner family.
+
+Both work in operational and programming mode.
+
+### Battery
+
+The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `battery` field in Bearpaw's `LiveState` as always `None` for these models. (Some sibling models on different firmware may; do not assume.)
+
+### Operational command summary
+
+| Command | Direction | Example response | Notes |
+|---|---|---|---|
+| `MDL` | get | `MDL,BC125AT` | Both modes |
+| `VER` | get | `VER,Version 1.04.02` | Both modes |
+| `PRG` | enter | `PRG,OK` or `PRG,NG` | NG if in menu / direct entry |
+| `EPG` | exit | `EPG,OK` | Returns to scan or hold |
+| `VOL` / `VOL,n` | get/set | `VOL,8` / `VOL,OK` | Range 0–15; both modes |
+| `SQL` / `SQL,n` | get/set | `SQL,5` / `SQL,OK` | Range 0–15; both modes |
+| `STS` | get | LCD dump | Both modes; field count varies |
+| `GLG` | get | `GLG,01545500,FM,,76,Police,,Dispatch,1,0` | Both modes; empty when idle |
+| `PWR` | get | `PWR,742,01545500` | Both modes; RSSI 0–1023 |
+| `KEY,c,m` | set | `KEY,OK` | Both modes |
+| `DO,<f>,<m>` | set | `DO,OK` | Both modes |
+| `BLT` / `BLT,v` | get/set | `BLT,KY` / `BLT,OK` | Backlight: `AO`/`AF`/`KY`/`SQ`/`KS` |
 
 ---
 
-## Data Structures
+## 4. Programming-mode commands
 
-### LiveState (Real-time Scanner State)
+### CIN — Channel Info (read or write a memory channel)
+
+**Read:**
+```
+> PRG\r
+< PRG,OK\r
+> CIN,42\r
+< CIN,42,Tower Ground   ,01210000,AM,0,2,0,0\r
+> EPG\r
+< EPG,OK\r
+```
+
+**Write:**
+```
+> PRG\r
+< PRG,OK\r
+> CIN,1,Marine Ch 16   ,01560000,FM,0,2,0,0\r
+< CIN,OK\r
+> EPG\r
+< EPG,OK\r
+```
+
+**Field order (per Uniden BC125AT v1.01 PDF):**
+
+| Position | Field | Range / format |
+|---|---|---|
+| 0 | Command echo | `CIN` |
+| 1 | Index | 1–500 |
+| 2 | Alpha tag | ≤16 ASCII chars, space-padded; empty field means "unchanged" on write — pad with 16 spaces to clear |
+| 3 | Frequency | 8-digit integer in 100 Hz units (`01545000` = 154.5000 MHz); valid 25–512 MHz |
+| 4 | Modulation | `AUTO` / `AM` / `FM` / `NFM` |
+| 5 | **CTCSS/DCS code** | Integer 0–231 (see [§7](#7-ctcss--dcs-tone-codes)); 0 = none, 127 = SEARCH, 240 = NO_TONE |
+| 6 | Delay | One of `-10,-5,0,1,2,3,4,5` (seconds; negatives are pre-delays) |
+| 7 | Lockout | 0 = not locked, 1 = locked |
+| 8 | Priority | 0 = no, 1 = yes |
+
+**There is no `bank` field in `CIN`.** Bank membership is controlled by `SCG` (see below), which is a 10-digit mask covering all 500 channels' bank assignments. Do not look for a 9th `CIN` field — it doesn't exist.
+
+### Other programming commands
+
+| Command | Purpose | Notes |
+|---|---|---|
+| `DCH,n` | Delete channel `n` | |
+| `CLR` | Factory-reset all 500 channels + settings | **Takes ~30 s; scanner unresponsive during it.** Extend read timeout to 45–60 s for this command only. |
+| `SCG` / `SCG,<mask>` | Get/set channel-storage bank mask | 10-digit string; **`0` = bank enabled, `1` = bank disabled** (inverted from intuition). Order matches LCD icons 1,2,…,9,0 (bank "0" is bank 10). |
+| `SSG` / `SSG,<mask>` | Service-search bank mask | Same 0=on / 1=off convention. Banks: Police, Fire/Emerg, Ham, Marine, Railroad, Civil Air, Mil Air, CB, FRS/GMRS/MURS, Racing. |
+| `CSG` / `CSG,<mask>` | Custom-search range mask | Same convention |
+| `CSP,n` | Get/set custom range `n` upper/lower limits | |
+| `CLC` | Close Call config (mode, alert, band mask, lockout) | **Band-bit layout differs between PDF v1.00 and v1.01** — verify empirically |
+| `PRI` / `PRI,n` | Priority mode | 0 off / 1 on / 2 plus / 3 DND |
+| `KBP` | Key beep & keypad lock | |
+| `BSV,n` | Battery save / charge time | 1–16 hours |
+| `WXS` | Weather alert priority | |
+| `CNT` | LCD contrast | 1–15 |
+| `BLT` | Backlight behavior | `AO` always on / `AF` off / `KY` on keypress / `SQ` on squelch / `KS` keypress+squelch |
+| `GLF` | Walk the global lockout list | Returns one freq per call until end |
+| `LOF,freq` | Add frequency to lockout list | Up to 200 entries |
+| `ULF,freq` | Remove from lockout list | |
+
+### Memory architecture
+
+- **500 channels in a flat namespace**, divided into **10 banks of 50** (bank 1 = ch 1–50, bank 2 = 51–100, …, bank 10 = 451–500 — the "0" key on the LCD).
+- **One priority channel per bank max.**
+- **No systems, no groups, no sites, no trunking.** This is a conventional-only analog scanner.
+- No user-programmable BearTracker memory; BCT125AT BearTracker frequencies are baked into firmware per state.
+
+---
+
+## 5. BearTracker commands (BCT125AT)
+
+Uniden has **never published a BCT125AT-specific protocol PDF**. The commands below are inferred from the BCT15X v1.03 spec; third-party tools targeting the BCT125AT use this same set. **Verify each command on your unit before depending on it in shipping code.**
+
+These are all programming-mode commands — wrap them in `PRG` / `EPG`.
+
+### STT — Select active BearTracker state
+
+```
+> STT,TX\r
+< STT,OK\r
+```
+
+Two-letter US state abbreviation, or `CAN_xx` Canadian province code. The BCT requires a state at all times — there is no "off" value.
+
+### BTL — Per-category lockout
+
+```
+> BTL,<POL>,<DOT>,<HP>,<BT>\r
+< BTL,OK\r
+```
+
+Each field 0 (unlocked) or 1 (locked). Categories: Police, Department of Transportation, Highway Patrol, BearTracker mobile-extender. Example: `BTL,0,1,1,0\r` locks DOT and HP, leaves Police and BT active.
+
+### BTS — BearTracker options block
+
+```
+> BTS,<beep_tone>,<alert_level>,<tape>,<delay>,<conv_hold>,<trunked_hold>,<alert_light>\r
+< BTS,OK\r
+```
+
+| Field | Meaning |
+|---|---|
+| Alert beep tone | 0–9 |
+| Alert tone level | 0 = auto, 1–15 |
+| Tape-out record | Reserved on BCT125AT (no tape-out hardware) |
+| Delay | One of `-10,-5,-2,0,1,2,5,10,30` |
+| Conventional system hold time | seconds |
+| Trunked system hold time | Reserved on analog-only BCT125AT |
+| Alert light pattern | 0 off / 2 slow / 3 fast |
+
+### Not applicable on BCT125AT
+
+Inherited from BCT15X family but absent / always returns `NG` or `ERR`:
+
+- `BSP` (Band Scope)
+- `BBS` (Broadcast Screen)
+- GPS: `GGA`, `RMC`, `GDO`
+- Location alerts: `CLA`, `DLA`, `LIN`, `LIH`, `LIT`
+- `ESN`
+
+---
+
+## 6. Frequency encoding
+
+The protocol uses **integer 100 Hz units** for the wire form, formatted as 8 digits with leading zeros:
+
+```
+01469700  →  146.9700 MHz
+04421250  →  442.1250 MHz
+01518200  →  151.8200 MHz
+00250000  →   25.0000 MHz
+05120000  →  512.0000 MHz   (BC125AT upper limit)
+```
+
+**Valid range: 25.0000 – 512.0000 MHz on BC125AT.**
+
+Conversion:
+
+```python
+# wire → MHz
+mhz = int(wire_field) / 10_000.0
+
+# MHz → wire (in CIN, GLF, LOF, ULF)
+wire = f"{int(round(mhz * 10_000)):08d}"
+```
+
+**Note:** `DO` (direct tune) is the exception — it accepts decimal MHz with 4 decimal places:
+
+```
+DO,146.9700,NFM\r
+```
+
+---
+
+## 7. CTCSS / DCS tone codes
+
+`CIN` and `GLG` carry the tone as an **integer code 0–231**, not as a frequency in Hz. Bearpaw must translate.
+
+| Code range | Meaning |
+|---|---|
+| `0` | No tone / open squelch |
+| `64`–`113` | CTCSS tones, 67.0 Hz → 254.1 Hz |
+| `127` | SEARCH (scanner identifies tone on each hit) |
+| `128`–`231` | DCS codes |
+| `240` | NO_TONE (explicit "tone-squelched, but no tone configured") |
+
+### CTCSS table (code → Hz)
+
+```
+64  → 67.0      80  → 110.9     96  → 167.9
+65  → 71.9      81  → 114.8     97  → 173.8
+66  → 74.4      82  → 118.8     98  → 179.9
+67  → 77.0      83  → 123.0     99  → 186.2
+68  → 79.7      84  → 127.3     100 → 192.8
+69  → 82.5      85  → 131.8     101 → 203.5
+70  → 85.4      86  → 136.5     102 → 206.5
+71  → 88.5      87  → 141.3     103 → 210.7
+72  → 91.5      88  → 146.2     104 → 218.1
+73  → 94.8      89  → 151.4     105 → 225.7
+74  → 97.4      90  → 156.7     106 → 229.1
+75  → 100.0     91  → 159.8     107 → 233.6
+76  → 103.5     92  → 162.2     108 → 241.8
+77  → 107.2     93  → 165.5     109 → 250.3
+78  → —         94  → —         110 → 254.1
+79  → —         95  → —
+```
+
+(Codes 78/79/94/95 are not standard CTCSS frequencies; treat as reserved.)
+
+For DCS (codes 128–231), see RadioReference's CTCSS/DCS cross-reference. Most amateur and public-safety scanner programming uses CTCSS, not DCS.
+
+---
+
+## 8. Bearpaw `LiveState` derivation
+
+This is what the backend constructs and broadcasts. **Field sources differ from `STS` field names** — derive each field from the right command:
 
 ```python
 @dataclass
 class LiveState:
-    timestamp: float              # Unix timestamp (seconds.microseconds)
-    frequency: float              # MHz (e.g., 146.9700)
-    modulation: str               # "FM" | "AM" | "NFM" | "AUTO"
-    squelch_open: bool            # True = signal present, False = no signal
-    rssi: int                     # Signal strength 0-100
-    mode: str                     # "SCAN" | "HOLD" | "DIRECT"
-    channel: Optional[int]        # Channel index 1-500 (None if direct tune)
-    volume: int                   # Volume level 0-15 (BC125AT only)
-    battery: Optional[int]        # Battery level 0-100 (BC125AT only)
-    stale: bool                   # True if backend lost connection
+    timestamp: float              # Unix timestamp, backend-generated
+    frequency: float              # MHz, from GLG[1] / 10000  (or PWR[2] / 10000)
+    modulation: str               # "FM" | "AM" | "NFM" | "AUTO", from GLG[2]
+    squelch_open: bool            # True = signal present; from GLG SQL field (1=open)
+    rssi: int                     # Bearpaw scale 0–100, mapped from PWR (0–1023) or STS SIG_LVL (0–5)
+    mode: str                     # "SCAN" | "HOLD" | "DIRECT", commanded by scheduler — NOT a wire field
+    channel: Optional[int]        # 1–500 or None, from GLG trailing CHAN_NUM (firmware-dependent)
+    alpha_tag: Optional[str]      # First non-empty name field in GLG
+    volume: int                   # 0–15, from VOL
+    battery: Optional[int]        # Always None on BC125AT/BCT125AT protocol
+    stale: bool                   # Backend-set: true if reads have been failing
 ```
 
-**Field Details:**
+### Critical correctness rules
 
-**timestamp:**
-- Format: Unix timestamp with microsecond precision
-- Example: `1767649864.671031`
-- Updated on every poll (5-10 times per second)
+- **`mode` is not in the protocol.** It's tracked by the command scheduler as "the last commanded mode": `SCAN` after `KEY,S,P`, `HOLD` after `KEY,H,P`, `DIRECT` after `DO,…`. The scanner reports no mode enum. Do not look for a `MODE` key in `STS` — it doesn't exist.
+- **Squelch polarity:** `SQL=1` means **open** (signal present, scanner auto-paused). `SQL=0` means **closed** (no signal, scanner cycling if mode=SCAN). This is true in both `STS` and `GLG`.
+- **`battery` is always `None` for this family.** The protocol does not expose it.
+- **`rssi` mapping:** Either rescale `PWR` field 1 (0–1023 → 0–100) or surface `STS` `SIG_LVL` (0–5) directly. Don't pretend `STS` has a 0–100 `RSSI` key — it doesn't.
+- **Hit detection:** A "hit" is the transition `squelch_open: false → true` while `mode == "SCAN"`. The scanner pauses on the channel automatically; the wire `mode` does not change. See [UI_WORKFLOW.md](UI_WORKFLOW.md).
 
-**frequency:**
-- Range: 25.0000 - 512.0000 MHz (BC125AT)
-- Precision: 4 decimal places
-- Changes rapidly during scan mode
-- Stable when squelch_open=True or mode=HOLD/DIRECT
+### State transition examples
 
-**modulation:**
-- `"FM"`: Wideband FM
-- `"AM"`: Amplitude Modulation
-- `"NFM"`: Narrowband FM
-- `"AUTO"`: Scanner auto-detects
+**Normal scan cycle:**
+```jsonc
+// Scanning (cycling)
+{"mode": "SCAN", "squelch_open": false, "frequency": 146.970, "channel": 67}
+{"mode": "SCAN", "squelch_open": false, "frequency": 147.000, "channel": 68}
 
-**squelch_open:**
-- `True`: Signal detected, scanner paused on frequency
-- `False`: No signal, scanner cycling (if in SCAN mode)
-- **Critical:** This is the source of truth for "hits"
-- Hardware-controlled, not affected by user commands
+// Hit detected (squelch opens — scanner auto-pauses)
+{"mode": "SCAN", "squelch_open": true,  "frequency": 147.030, "rssi": 85, "channel": 69}
 
-**rssi:**
-- Range: 0-100
-- 0: No signal or very weak
-- 100: Maximum signal strength
-- Used for signal strength bars in UI
+// Listening
+{"mode": "SCAN", "squelch_open": true,  "rssi": 90}
 
-**mode:**
-- `"SCAN"`: User commanded scanner to cycle through channels
-- `"HOLD"`: User manually stopped on current frequency
-- `"DIRECT"`: User tuned to specific frequency
-- **Important:** Mode stays "SCAN" even when squelch_open=True (hit)
+// Signal ends, scanner resumes
+{"mode": "SCAN", "squelch_open": false, "frequency": 147.060, "channel": 70}
+```
 
-**channel:**
-- `1-500`: Channel index in memory
-- `None`: Direct tune (not on a memory channel)
-- Used to look up alpha_tag from shadow state
+**User presses Hold:**
+```jsonc
+// Before
+{"mode": "SCAN", "squelch_open": false, "frequency": 146.970}
 
-**volume:**
-- Range: 0-15
-- 0: Muted
-- 15: Maximum volume
-- BC125AT only (SR30C returns 0)
+// Scheduler sends: KEY,H,P\r → KEY,OK\r ; updates commanded_mode to "HOLD"
 
-**battery:**
-- Range: 0-100 (percentage)
-- `None`: Not available (USB powered or SR30C)
-- BC125AT only when battery powered
+// After
+{"mode": "HOLD", "frequency": 146.970}
+```
 
-**stale:**
-- `False`: Normal operation, data is current
-- `True`: Backend lost connection to scanner
-- Used to show connection error in UI
+**Direct tune:**
+```jsonc
+// Scheduler sends: DO,151.2500,NFM\r → DO,OK\r ; updates commanded_mode to "DIRECT"
+{"mode": "DIRECT", "frequency": 151.250, "channel": null}
+```
 
 ---
 
-### ChannelData (Memory Channel Structure)
+## 9. Bearpaw `ChannelData` structure
 
 ```python
 @dataclass
 class ChannelData:
-    index: int                    # Channel number 1-500
+    index: int                    # 1–500
     frequency: float              # MHz
-    modulation: str               # "FM" | "AM" | "NFM"
-    alpha_tag: str                # Up to 16 characters
-    delay: int                    # Delay in seconds (0-30)
+    modulation: str               # "FM" | "AM" | "NFM" | "AUTO"
+    alpha_tag: str                # ≤16 chars
+    delay: int                    # one of -10, -5, 0, 1, 2, 3, 4, 5 (seconds)
     lockout: bool                 # True = skip during scan
     priority: bool                # True = priority channel
-    tone_squelch: Optional[float] # CTCSS tone in Hz (or None)
-    bank: int                     # Bank 0-10 (0 = unassigned)
+    tone_squelch: Optional[float] # CTCSS in Hz (decoded from code), None for 0 / 240, "search" sentinel for 127
+    bank: int                     # 0–10, derived from SCG mask, NOT from CIN
 ```
 
-**Field Details:**
+### Mapping rules
 
-**index:**
-- Range: 1-500 (BC125AT), device-specific for other models
-- Unique identifier for this channel
-- Used as key in shadow state dictionary
-
-**frequency:**
-- Same format as LiveState.frequency
-- Programmed frequency for this channel
-- Must be within scanner's supported range
-
-**modulation:**
-- Same values as LiveState.modulation
-- Programmed modulation for this channel
-- "AUTO" not typically used in memory channels
-
-**alpha_tag:**
-- Max length: 16 characters
-- ASCII characters only
-- Empty string if not programmed
-- Examples: "Police Dispatch", "Fire Dept", "Local Repeater"
-
-**delay:**
-- Range: 0-30 seconds
-- Time scanner waits on channel after squelch closes
-- 0: No delay, resume scanning immediately
-- Typical: 2 seconds
-
-**lockout:**
-- `True`: Channel skipped during scan
-- `False`: Channel included in scan
-- User can toggle during operation
-
-**priority:**
-- `True`: Scanner checks this channel every 2 seconds during scan
-- `False`: Normal scan behavior
-- Used for important frequencies
-
-**tone_squelch:**
-- CTCSS (Continuous Tone-Coded Squelch System)
-- Common values: 67.0, 77.0, 82.5, 88.5, 94.8, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3, 131.8, 136.5, 141.3, 146.2, 151.4, 156.7, 162.2, 167.9, 173.8, 179.9, 186.2, 192.8, 203.5, 210.7, 218.1, 225.7, 233.6, 241.8, 250.3 Hz
-- `None`: No tone squelch (receive all signals on frequency)
-- Used to filter out unwanted transmissions
-
-**bank:**
-- Range: 0-10
-- 0: Not assigned to any bank
-- 1-10: Bank number
-- Banks allow organizing channels by category
-- User can scan specific banks
+- `tone_squelch` is **decoded** from the integer code in `CIN[5]` via the table in [§7](#7-ctcss--dcs-tone-codes). Bearpaw stores Hz for UI convenience but must remember to re-encode to a code when writing channels back.
+- `bank` is **synthesised**, not read from `CIN`. After memory sync, query `SCG` and apply the bank-membership rules to every channel index. (For a flat 10×50 layout: channel `n` belongs to bank `ceil(n/50)`, with the SCG mask determining whether that bank is currently *active* in scan, which is a separate concept from channel-to-bank assignment. On the BC125AT, channel-to-bank is fixed by index, not user-assignable. Document this in the UI.)
+- `delay` accepts the full Uniden range `-10, -5, 0, 1, 2, 3, 4, 5`. Negative values are "pre-delays" (start delaying *before* squelch closes). UI must validate against this set.
+- `alpha_tag` is space-padded on the wire to 16 chars. Strip trailing spaces for display, but **pad to 16 spaces when writing** to clear an existing tag.
 
 ---
 
-### DeviceInfo (Static Device Metadata)
+## 10. Polling cadence and resilience
 
-```python
-@dataclass
-class DeviceInfo:
-    model: Optional[str]          # "BC125AT", "SR30C", etc.
-    port: Optional[str]           # "/dev/ttyUSB0", "COM3", None for USB
-    vid: Optional[int]            # USB Vendor ID (6501 for Uniden)
-    pid: Optional[int]            # USB Product ID (23 for BC125AT)
-    serial_number: Optional[str]  # USB serial number (if available)
-    description: Optional[str]    # "USB CDC", "Serial Port", etc.
-    firmware: Optional[str]       # Firmware version (if available)
-```
+### Recommended cadence
 
----
+- **`STS` + `GLG`, back-to-back, every 100–250 ms** for a snappy UI. Conservative floor: 300–500 ms.
+- **`PWR` interleaved every ~500 ms** if a signal-strength bar is desired.
+- ProScan exposes 5 ms–2000 ms; below ~100 ms is uncomfortable for the BC125AT firmware.
 
-## LiveState Fields
+### Hard rules
 
-### Complete Field Reference
+1. **One command in flight at a time.** No pipelining. The scanner matches responses to commands purely by FIFO order — there are no transaction IDs.
+2. **Read until `\r`, never `\n`.** Never use fixed-byte reads — field widths are variable.
+3. **Defensively discard incomplete `STS` responses.** The firmware occasionally drops or truncates them. Re-poll on the next tick.
+4. **After `PRG,OK` and `EPG,OK`, wait ~50–100 ms** before the next command. Mode transitions can produce partial `STS` responses.
+5. **Extend read timeout for `CLR` to 45–60 s.** The scanner is unresponsive during a factory reset.
+6. **Reconnect with exponential backoff** (1 s → 2 s → 5 s → 10 s, capped) on three consecutive read timeouts.
+7. **Always issue `EPG` before closing the port** if you entered `PRG`. If the app crashed and left the scanner in Remote Mode, the recovery is to reopen the port and send `EPG\r`.
 
-| Field | Type | Range/Values | Source | Update Rate | Description |
-|-------|------|--------------|--------|-------------|-------------|
-| `timestamp` | float | Unix timestamp | Backend | Every poll | When this state was captured |
-| `frequency` | float | 25.0-512.0 MHz | STS:FRQ or GLG[1] | Every poll | Current tuned frequency |
-| `modulation` | str | FM/AM/NFM/AUTO | STS:MOD or GLG[2] | On change | Modulation mode |
-| `squelch_open` | bool | true/false | STS:SQL or GLG[4] | On change | Signal present (inverted: 0=open, 1=closed) |
-| `rssi` | int | 0-100 | STS:RSSI or GLG[11] | Every poll | Signal strength |
-| `mode` | str | SCAN/HOLD/DIRECT | Driver internal | On user command | Operational mode |
-| `channel` | int? | 1-500 or null | STS:CH | On change | Current channel index |
-| `volume` | int | 0-15 | STS:VOL | On change | Volume level (BC125AT) |
-| `battery` | int? | 0-100 or null | STS:BAT | On change | Battery % (BC125AT) |
-| `stale` | bool | true/false | Backend | On error | Connection lost |
+### Threading model
 
-### State Transition Examples
+- **Python:** Single dedicated worker thread doing blocking `pyserial.read_until(b'\r')` with 500 ms timeout, pushing parsed updates onto a `queue.Queue`. Avoid `pyserial-asyncio` for this hardware.
+- **Rust:** Owning task on a Tokio runtime with a mutex around the port; `serialport` crate's blocking I/O is fine in a `spawn_blocking` task, or use `tokio-serial`.
+- **Node.js:** `SerialPort` + `ReadlineParser` with `delimiter: '\r'`, plus an in-memory FIFO of pending command promises that resolve in arrival order.
 
-**Normal Scan Cycle:**
-```json
-// Scanning
-{"mode": "SCAN", "squelch_open": false, "frequency": 146.970, "channel": 67}
-{"mode": "SCAN", "squelch_open": false, "frequency": 147.000, "channel": 68}
-{"mode": "SCAN", "squelch_open": false, "frequency": 147.030, "channel": 69}
-
-// Hit detected (squelch opens)
-{"mode": "SCAN", "squelch_open": true, "frequency": 147.030, "rssi": 85, "channel": 69}
-
-// Listening (squelch still open)
-{"mode": "SCAN", "squelch_open": true, "rssi": 90}
-{"mode": "SCAN", "squelch_open": true, "rssi": 87}
-
-// Signal ends (squelch closes)
-{"mode": "SCAN", "squelch_open": false, "rssi": 10}
-
-// Resume scanning
-{"mode": "SCAN", "squelch_open": false, "frequency": 147.060, "channel": 70}
-```
-
-**User Presses Hold:**
-```json
-// Before
-{"mode": "SCAN", "squelch_open": false, "frequency": 146.970}
-
-// User presses Hold button → POST /api/v1/commands/hold
-// Backend sends: KEY,H,P\r
-
-// After (next poll)
-{"mode": "HOLD", "frequency": 146.970}
-// Frequency is now stable, won't change
-```
-
-**User Presses Scan (Resume):**
-```json
-// Before
-{"mode": "HOLD", "frequency": 146.970}
-
-// User presses Scan button → POST /api/v1/commands/scan
-// Backend sends: KEY,S,P\r
-
-// After (next poll)
-{"mode": "SCAN", "squelch_open": false}
-// Scanner resumes cycling through channels
-```
-
-**Direct Tune:**
-```json
-// Before
-{"mode": "SCAN", "frequency": 146.970, "channel": 67}
-
-// User tunes to 151.2500 MHz → POST /api/v1/frequency {frequency: 151.25, modulation: "NFM"}
-// Backend sends: DO,151.2500,NFM\r
-
-// After (next poll)
-{"mode": "DIRECT", "frequency": 151.250, "channel": null}
-// Not on a memory channel, manual frequency
-```
+The invariant is **one outstanding command at a time** — build that into the API, not the caller.
 
 ---
 
-## Channel Memory Structure
+## 11. Memory sync process
 
-### Memory Layout (BC125AT)
+Reading all 500 channels takes ~60 seconds.
 
-**Total Capacity:** 500 channels
-**Banks:** 10 (1-10)
-**Channels per Bank:** User-defined (any channel can be in any bank)
-**Unassigned:** Bank 0
+1. Backend: `PRG\r` → wait for `PRG,OK\r`, sleep 100 ms.
+2. For each channel 1..500:
+   - `CIN,<index>\r` → parse response into `ChannelData`.
+   - Yield to higher-priority commands periodically (the scheduler should preempt for user `KEY` / `DO`).
+   - Broadcast progress every ~10 channels.
+3. `EPG\r` → wait for `EPG,OK\r`, sleep 100 ms.
+4. Restore previous commanded mode (resend `KEY,H,P` or `KEY,S,P` as appropriate).
+5. Optionally: `SCG\r` to read bank mask and populate `ChannelData.bank` per [§9](#9-bearpaw-channeldata-structure).
 
-### Channel Index Mapping
-
-```
-Channel 1   → Index 1
-Channel 2   → Index 2
-...
-Channel 500 → Index 500
-```
-
-### Bank Organization
-
-Banks are a logical grouping, not physical partitions:
-- A channel can be in one bank or unassigned (bank 0)
-- Banks are scanned independently (user selects which banks to scan)
-- No fixed "channels per bank" limit
-
-**Example Bank Assignment:**
-```
-Channel 1-50:    Bank 1 (Police)
-Channel 51-100:  Bank 2 (Fire/EMS)
-Channel 101-150: Bank 3 (Public Service)
-Channel 151-200: Bank 0 (Unassigned/temp)
-Channel 201-300: Bank 4 (Amateur Radio)
-...
-```
-
-### Memory Sync Process
-
-**Duration:** ~60 seconds for 500 channels (BC125AT)
-**Method:** Sequential channel reads in program mode
-
-**Process:**
-1. Backend: `PRG\r` (enter program mode)
-2. For each channel 1-500:
-   - Backend: `CIN,<index>\r`
-   - Scanner: `CIN,<index>,<data>\r`
-   - Parse and store in shadow state
-3. Backend: `EPG\r` (exit program mode)
-4. Restore previous mode (scan/hold)
-
-**Progress Updates (WebSocket):**
-```json
-{"type": "progress", "task_id": "sync-abc123", "percent": 0, "message": "Starting memory sync..."}
-{"type": "progress", "task_id": "sync-abc123", "percent": 10, "message": "Reading channel 50 of 500..."}
-{"type": "progress", "task_id": "sync-abc123", "percent": 20, "message": "Reading channel 100 of 500..."}
+Progress messages:
+```jsonc
+{"type": "progress", "task_id": "sync-abc123", "percent": 0,   "message": "Starting memory sync..."}
+{"type": "progress", "task_id": "sync-abc123", "percent": 10,  "message": "Read 50 of 500 channels"}
 ...
 {"type": "progress", "task_id": "sync-abc123", "percent": 100, "message": "Memory sync complete"}
 ```
 
 ---
 
-## Command Reference
+## 12. Common pitfalls
 
-### Control Commands (API Endpoints)
-
-#### POST /api/v1/commands/hold
-**Purpose:** Stop scanning, hold on current frequency
-**Protocol:** `KEY,H,P\r`
-**Response:** `{"status": "ok"}` or HTTP 500 on error
-**State Change:** `mode: "SCAN" → "HOLD"`
-**Frontend Button:** "Hold" → "Scan" (toggle to active state)
-
-#### POST /api/v1/commands/scan
-**Purpose:** Start/resume scanning
-**Protocol:** `KEY,S,P\r`
-**Response:** `{"status": "ok"}` or HTTP 500 on error
-**State Change:** `mode: "HOLD" → "SCAN"`
-**Frontend Button:** "Scan" → "Hold" (toggle to default state)
-
-#### POST /api/v1/commands/key
-**Body:** `{"key": "UP"}`
-**Purpose:** Simulate any keypress
-**Protocol:** `KEY,<key>,P\r`
-**Response:** `{"status": "ok"}` or HTTP 500 on error
-**Available Keys:** H, S, UP, DOWN, L/O, PRI, MENU, E
-
-#### POST /api/v1/frequency
-**Body:** `{"frequency": 151.25, "modulation": "NFM"}`
-**Purpose:** Tune to specific frequency
-**Protocol:** `DO,151.2500,NFM\r`
-**Response:** `{"status": "ok"}` or HTTP 500 on error
-**State Change:** `mode: → "DIRECT"`, `channel: → null`
-
-#### POST /api/v1/memory/sync
-**Purpose:** Read all channels from scanner memory
-**Duration:** ~60 seconds
-**Response:** `{"status": "started", "task_id": "sync-abc123"}`
-**Progress:** WebSocket messages with `type: "progress"`
-
-#### POST /api/v1/memory/sync/cancel
-**Purpose:** Cancel running memory sync
-**Response:** `{"status": "cancelling", "task_id": "sync-abc123"}`
-
-### Query Commands (API Endpoints)
-
-#### GET /api/v1/status
-**Purpose:** Get current scanner state
-**Protocol:** `STS\r` (polled automatically every 0.1-0.2s)
-**Response:** `LiveStateModel` JSON
-**Usage:** Frontend calls on-demand or receives via WebSocket
-
-#### GET /api/v1/device/info
-**Purpose:** Get device metadata
-**Response:** `DeviceInfoModel` JSON
-**Static:** Does not change during session
-
-#### GET /api/v1/memory/channels
-**Query Param:** `?bank=5` (optional)
-**Purpose:** Get all channels or channels in specific bank
-**Response:** Array of `ChannelDataModel` JSON
-**Source:** Shadow state (in-memory cache)
-
-#### GET /api/v1/memory/channels/{channel_id}
-**Purpose:** Get single channel by index
-**Response:** `ChannelDataModel` JSON or HTTP 404
-**Source:** Shadow state
-
-#### GET /api/v1/memory/export/bc125at_ss
-**Purpose:** Download full BC125AT memory in Uniden `.bc125at_ss` format
-**Response:** `text/plain` file download
-**Notes:** Reads programming settings + all 500 channels; unavailable during an active sync
-
-#### GET /api/v1/health
-**Purpose:** Health check
-**Response:** `{"status": "ok"}`
+1. **Pipelining commands** → `ERR` / `NG` / mangled output. Wait for each response.
+2. **DTR/RTS toggling on open** → silent disconnect. Disable explicitly.
+3. **Opening `/dev/tty.usbmodem*` on macOS** → blocks on open. Use `cu.*`.
+4. **Reading until `\n`** → never arrives. Read until `\r`.
+5. **Matching device path number across replug** → wrong device on next reboot. Match by USB serial number.
+6. **TLP / USB autosuspend on Linux laptops** → silent disconnect. Disable for this VID.
+7. **Treating `ERR` and `NG` the same** → loses diagnostic value. `ERR` = fix the command; `NG` = enter the right mode first.
+8. **Empty CIN write field meaning "blank"** → it means "unchanged." Pad alpha tags with 16 spaces to clear.
+9. **`SCG`/`SSG`/`CSG` bank masks: `0` = enabled, `1` = disabled** — inverted from intuition. Document loudly in code.
+10. **Hard-coding `STS` field positions** → breaks on firmware update. Parse defensively.
+11. **Assuming `GLG` has a fixed field count** → breaks on firmware variants. Split-and-index, look for the named values.
+12. **Treating CTCSS field as Hz** → silently corrupts every channel with a tone. It's a code 0–231; translate via [§7](#7-ctcss--dcs-tone-codes).
+13. **Pushing firmware through the protocol** → bricking risk on early BC125AT units (firmware >1.03.01). Use Uniden's official updater.
+14. **`CLR` with default 500 ms read timeout** → false timeout error. Use 45–60 s for this one command.
+15. **Long alpha tags or non-ASCII** → silently truncated or rejected. ASCII only, ≤16 chars.
 
 ---
 
-## Key Codes
+## 13. Known correctness gaps in current Bearpaw code
 
-### Physical Button Mappings
+These are gaps identified by the 2026-05-19 protocol audit. Each is an upstream bug or design mismatch in the Rust crate.
 
-| Key Code | Physical Button | Function | Priority |
-|----------|----------------|----------|----------|
-| `H` | Hold/Resume | Toggle scan/hold | HIGH |
-| `S` | Scan | Start scanning | HIGH |
-| `UP` | Channel ▲ | Next channel | HIGH |
-| `DOWN` | Channel ▼ | Previous channel | HIGH |
-| `L/O` | L/O | Toggle lockout | MEDIUM |
-| `PRI` | PRI | Toggle priority | MEDIUM |
-| `MENU` | Menu | Open menu | LOW |
-| `E` | Enter | Confirm selection | LOW |
+1. **`parse_sts_response` in [crates/bearpaw-api/src/protocol/mod.rs](../crates/bearpaw-api/src/protocol/mod.rs) parses key-value pairs.** The real `STS` is a positional LCD dump. The function currently does not match any documented BC125AT firmware. Live state is probably being filled from `GLG` (or zero defaults) and the `STS` parse contributes nothing useful.
+2. **Squelch polarity inverted.** `livestate_from_sts` treats `SQL=0` as open. The protocol defines `SQL=1` as open. If hits are nonetheless working in practice, it's because state is sourced from a different code path.
+3. **`MODE` field in `STS` does not exist.** The parser reads `map["MODE"]`; this is dead code. Mode lives in the scheduler.
+4. **`CIN` parser fabricates a `bank` field that the protocol does not provide** and has heuristic "has_tone vs has_bank" branching. The real CIN order is fixed: `index, name, freq, mod, tone_code, delay, lockout, priority` (8 fields after the `CIN` keyword). Bank comes from `SCG` separately.
+5. **`tone_squelch` parsed as a float in Hz.** The wire value is an integer code 0–231; needs decoding via [§7](#7-ctcss--dcs-tone-codes).
+6. **`SerialTransport::open` unconditionally asserts DTR.** Should be removed or made opt-out by default. Asserting DTR has caused intermittent disconnects on macOS and Linux.
+7. **`SerialTransport::send` reads until first `\r`.** Fine for single-line responses, but `STS` returns 18 comma-separated fields on one line *which itself ends in `\r`* — so single-line read is correct for STS. The risk is leftover bytes from a previous command's response; `reset_input_buffer()` before each write would harden this (Python pattern).
+8. **No `MDL`-based port autodetect.** Bearpaw requires a port from config. Plug-and-play UX requires VID-filter + `MDL` probe at startup.
 
-**Format:** `KEY,<code>,P\r`
-**Example:** `KEY,H,P\r` (press Hold button)
-
-### Key Press vs Hold
-
-All commands use `P` (press) suffix. The scanner does not distinguish between short press and long hold via protocol - these are physical button behaviors only.
+See the protocol audit summary in `compass_artifact_wf-4d260a13...md` for full reasoning and the recommended fix order.
 
 ---
 
-## Modulation Modes
+## Reference docs
 
-### Supported Modes
+- **Uniden BC125AT PC Protocol v1.01:** http://info.uniden.com/twiki/pub/UnidenMan4/BC125AT/BC125AT_PC_Protocol_V1.01.pdf
+- **Uniden BCT15X v1.03 Protocol:** http://info.uniden.com/twiki/pub/UnidenMan4/BCT15XFirmwareUpdate/BCT15X_v1.03.00_Protocol.pdf
+- **RadioReference wiki:** https://wiki.radioreference.com/index.php/BC125AT
+- **Reverse-engineered GLG field map (pa3ang):** https://github.com/pa3ang/ubc125xlt
+- **Reference Python implementation:** https://github.com/fdev/bc125csv
+- **Reference Python CLI/lib:** https://github.com/itsmaxymoo/bc125py
+- **BCT15X-family operational commands (closest OSS impl):** https://github.com/suidroot/pyUniden
 
-| Mode | Full Name | Typical Use | Bandwidth |
-|------|-----------|-------------|-----------|
-| `FM` | Wideband FM | Broadcast radio, some amateur | 25 kHz |
-| `NFM` | Narrowband FM | Public safety, commercial, amateur | 12.5 kHz |
-| `AM` | Amplitude Modulation | Aircraft, some military, shortwave | Variable |
-| `AUTO` | Auto-detect | Scanner determines best mode | N/A |
+## Related Bearpaw docs
 
-### Mode Selection
-
-**In Memory Channels:**
-- Programmed per channel in `ChannelData.modulation`
-- Scanner uses stored mode when scanning that channel
-
-**In Direct Tune:**
-- User specifies in `POST /api/v1/frequency` request
-- Defaults to `"AUTO"` if not specified
-
-**AUTO Mode Behavior:**
-- Scanner analyzes signal characteristics
-- Selects FM, NFM, or AM automatically
-- May switch modes if signal changes
-- Useful when unsure of correct mode
-
----
-
-## Memory Dump
-
-### Current Scanner State
-
-**Captured:** 2026-01-05 00:00:00 UTC
-**Device:** BC125AT (USB CDC, VID:6501, PID:23)
-
-**Current Status:**
-```json
-{
-  "timestamp": 1767649864.671031,
-  "frequency": 146.97,
-  "modulation": "NFM",
-  "squelch_open": true,
-  "rssi": 100,
-  "mode": "SCAN",
-  "channel": null,
-  "volume": 0,
-  "battery": null,
-  "stale": false
-}
-```
-
-**Interpretation:**
-- Scanner is in SCAN mode
-- Currently on 146.97 MHz with NFM modulation
-- Squelch is OPEN (signal detected, scanner paused)
-- Signal strength at maximum (100)
-- Not on a memory channel (direct tune or temporary)
-- Volume data not available (USB mode or not reported)
-- Battery data not available (USB powered)
-
-### Channel Memory Dump
-
-**Note:** Memory sync in progress. Full channel data will be appended below once sync completes.
-
-**Sync Status:** Started at task_id: sync-15f2b4cf
-
----
-
-*Memory dump will be updated with full channel listing once sync completes...*
-
-### Complete Channel Memory Dump (All 500 Channels)
-
-**Sync Completed:** Task ID sync-15f2b4cf
-**Total Channels:** 500
-**Programmed Channels:** 289 (channels with frequency > 0.0)
-**Empty/Locked Channels:** 211
-
-**Memory Summary:**
-- **Programmed:** 289 channels with valid frequencies
-- **Empty/Locked:** 211 channels (frequency=0.0, lockout=true)
-- **Bank Assignment:** All channels in Bank 0 (unassigned)
-- **Alpha Tags:** Should contain user-programmed names from the scanner
-- **Delay:** All channels set to 2 seconds
-- **Lockout:** 211 channels locked out (skipped during scan)
-- **Priority:** No priority channels configured
-- **Tone Squelch:** No channels use CTCSS/tone squelch
-
-**Frequency Distribution:**
-- 2 Meters (144-148 MHz): 43 channels
-- 70 cm (420-450 MHz): 91 channels  
-- UHF Business (450-470 MHz): 119 channels
-- Other bands: 36 channels
-
-**Notable Observations:**
-1. Most alpha_tag fields contain "0" or "127" (not meaningful names)
-2. All channels use "AUTO" modulation (scanner auto-detects)
-3. No channels organized into banks (all bank=0)
-4. Many duplicate frequencies exist
-5. No tone squelch configured on any channel
-6. Significant number of locked-out channels (41%)
-
----
-
-### Raw Channel Data (JSON Format)
-
-```json
-[
-  {"index":1,"frequency":145.13,"modulation":"AUTO","alpha_tag":"WA0NQA Ararat U","delay":2,"lockout":false,"priority":false,"tone_squelch":null,"bank":0},
-  {"index":2,"frequency":162.4,"modulation":"AUTO","alpha_tag":"NOAA Channel 1","delay":2,"lockout":false,"priority":false,"tone_squelch":null,"bank":0},
-  {"index":3,"frequency":162.425,"modulation":"AUTO","alpha_tag":"NOAA Channel 2","delay":2,"lockout":false,"priority":false,"tone_squelch":null,"bank":0},
-  {"index":4,"frequency":162.45,"modulation":"AUTO","alpha_tag":"NOAA Channel 3","delay":2,"lockout":false,"priority":false,"tone_squelch":null,"bank":0},
-  {"index":5,"frequency":162.475,"modulation":"AUTO","alpha_tag":"NOAA Channel 4","delay":2,"lockout":false,"priority":false,"tone_squelch":null,"bank":0}
-]
-```
-
-**(Note: Showing first 21 channels for brevity. Full dump contains all 500 channels with identical structure.)**
-
-**Channel Data Structure (per entry):**
-- `index`: Channel number (1-500)
-- `frequency`: MHz (divided by 10000 from protocol, e.g., 1451300 → 145.13)
-- `modulation`: "AUTO" (all channels)
-- `alpha_tag`: Usually "0" or "127" (not descriptive)
-- `delay`: 2 seconds (all channels)
-- `lockout`: true/false (whether channel is skipped during scan)
-- `priority`: false (all channels)
-- `tone_squelch`: null (all channels)
-- `bank`: 0 (all channels unassigned)
-
----
-
-## Frequency Format Notes
-
-**Important:** The protocol returns frequencies multiplied by 10000 to avoid floating point.
-
-**Examples:**
-- Protocol: `1469700` → Application: `146.9700` MHz
-- Protocol: `4421250` → Application: `442.1250` MHz
-- Protocol: `1518200` → Application: `151.8200` MHz
-
-**Conversion:**
-```python
-protocol_freq = 1469700
-mhz = protocol_freq / 10000.0  # 146.97 MHz
-```
-
-**When sending to scanner:**
-```python
-mhz = 146.97
-protocol_command = f"DO,{mhz:.4f},NFM"  # DO,146.9700,NFM
-```
-
----
-
-## Usage Recommendations for Developers
-
-### Frontend Display
-
-When displaying channels in the UI:
-
-1. **Filter out locked channels** for scan lists (where `lockout: true`)
-2. **Show frequency with 4 decimal places** for accuracy
-3. **Use alpha_tag if meaningful**, otherwise show frequency as identifier
-4. **Group by bank** once users assign channels to banks
-5. **Sort by frequency** or index for easier navigation
-
-### Memory Management
-
-When building a channel editor:
-
-1. **Validate frequency range** against device capabilities (BC125AT: 25-512 MHz)
-2. **Enforce alpha_tag length** (16 characters max)
-3. **Limit delay** to 0-30 seconds
-4. **Validate tone squelch** against standard CTCSS tones
-5. **Limit bank** to 0-10
-
-### Programming Channels
-
-To write a channel (not currently implemented in this codebase):
-
-```
-Protocol sequence:
-1. PRG\r (enter program mode)
-2. CIN,<index>,<freq>,<mod>,<tag>,<delay>,<lockout>,<priority>,<tone>,<bank>\r
-3. EPG\r (exit program mode)
-```
-
-**Example (write channel 67):**
-```
-PRG\r
-CIN,67,442.1250,NFM,Police,2,0,1,123.0,5\r
-EPG\r
-```
-
----
-
-## Complete Protocol Command Summary
-
-| Command | Direction | Purpose | Response | Priority |
-|---------|-----------|---------|----------|----------|
-| `MDL\r` | → Scanner | Get model | `MDL,BC125AT\r` | CONTROL |
-| `STS\r` | → Scanner | Get status | Key-value pairs | TELEMETRY |
-| `GLG\r` | → Scanner | Get status (fallback) | CSV format | TELEMETRY |
-| `PRG\r` | → Scanner | Enter program mode | `OK\r` | BACKGROUND |
-| `EPG\r` | → Scanner | Exit program mode | `OK\r` | BACKGROUND |
-| `CIN,N\r` | → Scanner | Read channel N | Channel data | BACKGROUND |
-| `KEY,H,P\r` | → Scanner | Hold button press | `OK\r` | CONTROL |
-| `KEY,S,P\r` | → Scanner | Scan button press | `OK\r` | CONTROL |
-| `KEY,<code>,P\r` | → Scanner | Any button press | `OK\r` | CONTROL |
-| `DO,<f>,<m>\r` | → Scanner | Direct tune | `OK\r` | CONTROL |
-
----
-
-## API Endpoint Summary
-
-| Endpoint | Method | Purpose | Response |
-|----------|--------|---------|----------|
-| `/api/v1/health` | GET | Health check | `{"status": "ok"}` |
-| `/api/v1/status` | GET | Current state | `LiveStateModel` |
-| `/api/v1/device/info` | GET | Device metadata | `DeviceInfoModel` |
-| `/api/v1/commands/hold` | POST | Stop scanning | `{"status": "ok"}` |
-| `/api/v1/commands/scan` | POST | Start scanning | `{"status": "ok"}` |
-| `/api/v1/commands/key` | POST | Keypress | `{"status": "ok"}` |
-| `/api/v1/frequency` | POST | Direct tune | `{"status": "ok"}` |
-| `/api/v1/memory/channels` | GET | All channels | `[ChannelDataModel]` |
-| `/api/v1/memory/channels/{id}` | GET | Single channel | `ChannelDataModel` |
-| `/api/v1/memory/sync` | POST | Sync memory | `{"task_id": "..."}` |
-| `/api/v1/memory/sync/cancel` | POST | Cancel sync | `{"status": "..."}` |
-| `/api/v1/memory/export/bc125at_ss` | GET | Export full memory | `.bc125at_ss` file |
-| `/ws` | WebSocket | Live updates | State/event/progress |
-
----
-
-## Document Version
-
-**Created:** 2026-01-05  
-**Device:** BC125AT (USB CDC, VID:6501, PID:23)  
-**Backend Version:** 1.0.0  
-**Total Channels Documented:** 500  
-
-**References:**
-- Backend: `docs/BACKEND_SPEC.md`
-- Frontend: `docs/FRONTEND_SPEC.md`  
-- Workflow: `docs/UI_WORKFLOW.md`
-- Codebase: `CLAUDE.md`
-
----
-
-*End of Scanner Protocol Reference & Memory Dump*
+- [API_SPEC.md](API_SPEC.md) — REST API surface
+- [WEBSOCKET_SCHEMA.md](WEBSOCKET_SCHEMA.md) — live-update message shapes
+- [UI_WORKFLOW.md](UI_WORKFLOW.md) — hit detection and display rules
+- [RUST_BACKEND_PLAN.md](RUST_BACKEND_PLAN.md) — backend port phases
+- [USB_PERMISSIONS.md](USB_PERMISSIONS.md) — OS-level permission setup

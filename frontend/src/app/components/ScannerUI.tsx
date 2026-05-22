@@ -183,7 +183,7 @@ export function StatusHeader({
               isHolding ? 'text-brand-primary' : 'scanner-text',
             )}
           >
-            HOLD
+            {isHolding ? 'SCAN' : 'HOLD'}
           </p>
         </button>
       </div>
@@ -301,7 +301,7 @@ export function ScannerDisplay({
           </p>
           <div
             className={cn(
-              'shrink-0 transition-all duration-500',
+              'shrink-0 transition-all duration-500 flex items-center justify-end',
               variant === 'monitor'
                 ? 'size-20 opacity-80'
                 : variant === 'hero'
@@ -309,7 +309,15 @@ export function ScannerDisplay({
                   : 'size-[var(--size-icon-sm)]',
             )}
           >
-            {isError ? errorType === 'usb' ? <UsbErrorIcon /> : <SocketErrorIcon /> : null}
+            {isError ? (
+              errorType === 'usb' ? (
+                <UsbErrorIcon />
+              ) : (
+                <SocketErrorIcon />
+              )
+            ) : isScanning ? null : (
+              <SignalIcon strength={signalStrength} />
+            )}
           </div>
         </div>
 
