@@ -1,9 +1,7 @@
 import React from 'react';
-import { Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Slider } from './ui/slider';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import svgPaths from '../../imports/svg-govmzsdb93';
 import usbSvgPaths from '../../imports/svg-4af8p5er03';
 import socketSvgPaths from '../../imports/svg-10gl6kikm0';
@@ -118,8 +116,6 @@ interface StatusHeaderProps {
   isHolding: boolean;
   onHoldToggle: () => void;
   onLockout: (type: 'temporary' | 'permanent') => void;
-  isDashboardMode: boolean;
-  onDashboardToggle: () => void;
 }
 
 export function StatusHeader({
@@ -128,39 +124,9 @@ export function StatusHeader({
   isHolding,
   onHoldToggle,
   onLockout,
-  isDashboardMode,
-  onDashboardToggle,
 }: StatusHeaderProps) {
   return (
-    <div className="flex items-center justify-between relative shrink-0 w-full">
-      {/* Dashboard control */}
-      <div className="flex gap-2.5 items-center relative shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onDashboardToggle}
-              className="bg-scanner-default hover:bg-scanner-hover active:translate-y-[1px] active:shadow-none transition-all flex items-center justify-center px-1 py-0.5 rounded-scanner-sm border border-scanner-border shadow-button shrink-0 cursor-pointer"
-              aria-pressed={isDashboardMode}
-              aria-label={isDashboardMode ? 'Switch to monitor view' : 'Switch to dashboard view'}
-            >
-              {isDashboardMode ? (
-                <Minimize2 className="size-3.5" />
-              ) : (
-                <Maximize2 className="size-3.5" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent
-            side="bottom"
-            align="center"
-            className="scanner-select-content"
-            arrowClassName="bg-background fill-background"
-          >
-            {isDashboardMode ? 'Dashboard view' : 'Monitor view'}
-          </TooltipContent>
-        </Tooltip>
-      </div>
-
+    <div className="flex items-center justify-end relative shrink-0 w-full">
       {/* Native scanner controls */}
       <div className="flex gap-2.5 items-center relative shrink-0">
         <Popover>

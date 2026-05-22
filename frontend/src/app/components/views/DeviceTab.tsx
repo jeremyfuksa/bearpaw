@@ -59,12 +59,7 @@ export function DeviceTab() {
 
   const handlePreferenceChange = useCallback(
     async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
-      const backendKey =
-        key === 'startInDashboardMode'
-          ? 'start_dashboard_mode'
-          : key === 'hitMinDuration'
-            ? 'hit_min_duration'
-            : key;
+      const backendKey = key === 'hitMinDuration' ? 'hit_min_duration' : key;
       updatePreferences({ [key]: value } as Partial<Preferences>);
       try {
         await fetch(`${API_BASE}/preferences`, {
@@ -1482,23 +1477,6 @@ export function DeviceTab() {
                         {preferences.hitMinDuration}s
                       </span>
                     </div>
-                  </div>
-                  <div className="h-px bg-white/5" />
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">
-                        Start in Dashboard Mode
-                      </label>
-                      <p className="text-xs text-white/40">
-                        Launch directly into widget-based dashboard view
-                      </p>
-                    </div>
-                    <Switch
-                      checked={preferences.startInDashboardMode}
-                      onCheckedChange={(checked) =>
-                        handlePreferenceChange('startInDashboardMode', checked)
-                      }
-                    />
                   </div>
                   <div className="h-px bg-white/5" />
                   <div className="flex items-center justify-between">
