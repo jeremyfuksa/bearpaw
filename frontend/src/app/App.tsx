@@ -674,7 +674,6 @@ export default function App() {
               chartAnimate={chartAnimate}
               dashboardLoading={dashboardLoading}
               busiestChannels={busiestChannels}
-              sessionStats={sessionStats}
               hourlyHeatmap={hourlyHeatmap}
               heatmapStats={heatmapStats}
               onHoldToggle={handleToggle}
@@ -698,6 +697,7 @@ export default function App() {
         shellStatusText={shellStatusText}
         currentFrequency={liveState?.frequency ?? null}
         currentTab={currentTab}
+        sessionStats={currentTab === 'Scan' ? sessionStats : null}
       />
 
       <ActivityExportSheet

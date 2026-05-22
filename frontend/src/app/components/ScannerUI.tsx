@@ -10,12 +10,26 @@ import socketSvgPaths from '../../imports/svg-10gl6kikm0';
 
 // --- Status Bar ---
 
+export interface StatusBarSessionStats {
+  total_hits?: number | null;
+  unique_channels?: number | null;
+  active_time_seconds?: number | null;
+}
+
 interface StatusBarProps {
   connectionStatus: 'connected' | 'connecting' | 'disconnected';
   modelName?: string;
   shellStatusText?: string | null;
   currentFrequency?: number | null;
   currentTab: string;
+  sessionStats?: StatusBarSessionStats | null;
+}
+
+function formatActiveDuration(totalSeconds?: number | null) {
+  if (!totalSeconds || totalSeconds <= 0) return '0:00';
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 function getStatusDisplay(
@@ -37,6 +51,7 @@ export function StatusBar({
   shellStatusText,
   currentFrequency,
   currentTab,
+  sessionStats,
 }: StatusBarProps) {
   const { statusColor, statusText } = getStatusDisplay(connectionStatus, modelName);
   const freqText =
@@ -59,7 +74,29 @@ export function StatusBar({
         <p className="font-sans font-normal scanner-text-light text-xs text-nowrap">{statusText}</p>
         <p className="font-sans font-normal text-white/40 text-xs text-nowrap pl-2">{currentTab}</p>
       </div>
-      <div className="flex gap-3 items-center justify-end">
+      <div className="flex gap-4 items-center justify-end">
+        {sessionStats ? (
+          <div className="flex gap-3 items-center text-nowrap">
+            <span className="font-sans text-xs text-white/40">
+              Hits{' '}
+              <span className="font-mono font-medium text-white/80">
+                {sessionStats.total_hits ?? 0}
+              </span>
+            </span>
+            <span className="font-sans text-xs text-white/40">
+              Active{' '}
+              <span className="font-mono font-medium text-white/80">
+                {formatActiveDuration(sessionStats.active_time_seconds)}
+              </span>
+            </span>
+            <span className="font-sans text-xs text-white/40">
+              Channels{' '}
+              <span className="font-mono font-medium text-white/80">
+                {sessionStats.unique_channels ?? 0}
+              </span>
+            </span>
+          </div>
+        ) : null}
         {freqText ? (
           <p className="font-mono font-medium scanner-text-light text-xs text-nowrap">{freqText}</p>
         ) : null}
