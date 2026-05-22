@@ -59,7 +59,6 @@ export interface ScanViewProps {
   connectionStatus: ConnectionStatus;
   isHolding: boolean;
   isInitialSyncing: boolean;
-  syncProgressMessage: string;
   chartAnimate: boolean;
   dashboardLoading: boolean;
   busiestChannels: BusiestChannel[];
@@ -69,7 +68,6 @@ export interface ScanViewProps {
   onLockout: (type: 'temporary' | 'permanent') => void;
   onVolumeChange: (value: number) => void;
   onBankToggle: (index: number) => void;
-  onCancelSync: () => void;
   onOpenActivityExport: () => void;
 }
 
@@ -80,7 +78,6 @@ export function ScanView({
   connectionStatus,
   isHolding,
   isInitialSyncing,
-  syncProgressMessage,
   chartAnimate,
   dashboardLoading,
   busiestChannels,
@@ -90,7 +87,6 @@ export function ScanView({
   onLockout,
   onVolumeChange,
   onBankToggle,
-  onCancelSync,
   onOpenActivityExport,
 }: ScanViewProps) {
   const liveState = useStore((state) => state.liveState);
@@ -141,31 +137,17 @@ export function ScanView({
             onHoldToggle={onHoldToggle}
             onLockout={onLockout}
           />
-          <div className="relative flex-1 min-h-0 mb-3 flex">
-            <ScannerDisplay
-              mainText={mainText}
-              subText={subText}
-              mode={scannerMode}
-              signalStrength={signalStrength}
-              isScanning={isScanningRightNow}
-              isError={isError}
-              errorType={errorType}
-              variant="default"
-              className="h-full w-full"
-            />
-            {isInitialSyncing && (
-              <div className="absolute inset-x-4 bottom-4 flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/70 px-3 py-2 text-xs text-scanner-text-secondary shadow-lg backdrop-blur-sm">
-                <span>{syncProgressMessage || 'Loading channels from device...'}</span>
-                <button
-                  type="button"
-                  onClick={onCancelSync}
-                  className="rounded-md border border-white/15 bg-white/10 px-2 py-1 text-scanner-text-light transition-colors hover:bg-white/20"
-                >
-                  Cancel Sync
-                </button>
-              </div>
-            )}
-          </div>
+          <ScannerDisplay
+            mainText={mainText}
+            subText={subText}
+            mode={scannerMode}
+            signalStrength={signalStrength}
+            isScanning={isScanningRightNow}
+            isError={isError}
+            errorType={errorType}
+            variant="default"
+            className="flex-1 min-h-0 mb-3"
+          />
           <BankControls activeBanks={banks} onToggleBank={onBankToggle} />
         </div>
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { Loader2 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { cn } from '../lib/utils';
 import { StatusBar } from './components/ScannerUI';
@@ -647,7 +648,6 @@ export default function App() {
               connectionStatus={connectionStatus}
               isHolding={getScannerMode() === 'HOLD'}
               isInitialSyncing={isInitialSyncing}
-              syncProgressMessage={syncProgressMessage}
               chartAnimate={chartAnimate}
               dashboardLoading={dashboardLoading}
               busiestChannels={busiestChannels}
@@ -657,7 +657,6 @@ export default function App() {
               onLockout={handleLockout}
               onVolumeChange={handleVolumeChange}
               onBankToggle={handleBankToggle}
-              onCancelSync={handleCancelSync}
               onOpenActivityExport={() => setIsExportSheetOpen(true)}
             />
           )}
@@ -681,6 +680,38 @@ export default function App() {
         onClose={() => setIsExportSheetOpen(false)}
         hasActivity={fullActivityLog.length > 0}
       />
+
+      <AnimatePresence>
+        {isInitialSyncing && (
+          <motion.div
+            key="initial-sync-overlay"
+            role="status"
+            aria-live="polite"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          >
+            <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-white/10 bg-scanner-bg-dark p-6 shadow-lg">
+              <div className="flex items-center gap-2 text-white">
+                <Loader2 className="h-5 w-5 animate-spin text-brand-primary" />
+                <span className="text-sm font-medium">Syncing Scanner Memory</span>
+              </div>
+              <p className="text-center text-xs text-scanner-text-secondary">
+                {syncProgressMessage || 'Loading channels from device...'}
+              </p>
+              <button
+                type="button"
+                onClick={handleCancelSync}
+                className="rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-scanner-text-light transition-colors hover:bg-white/20"
+              >
+                Cancel Sync
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
