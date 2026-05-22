@@ -118,7 +118,11 @@ pub struct ChannelData {
     pub frequency: f64,
     pub modulation: String,
     pub alpha_tag: String,
-    pub delay: u8,
+    /// CIN delay field. Valid values per BC125AT_PROTOCOL.md §5.3 and
+    /// docs/SCANNER_PROTOCOL_REFERENCE.md §4: `-10, -5, 0, 1, 2, 3, 4, 5`
+    /// (seconds). Negative values are pre-delays — the scanner backs up
+    /// the audio buffer when a hit occurs. Signed to preserve those.
+    pub delay: i8,
     pub lockout: bool,
     pub priority: bool,
     /// Frequency in Hz when `tone_squelch_kind == Ctcss`. None otherwise.
