@@ -585,10 +585,17 @@ fn run_poll_loop_usb(
 /// Flip DeviceInfo into the disconnected state with a diagnostic message.
 /// Idempotent — safe to call from each reconnect-loop iteration even if
 /// the previous iteration already marked the device disconnected.
+///
+/// Broadcasts the new state over the WebSocket so the frontend's
+/// connection indicator updates immediately. Without this, the indicator
+/// stays green until the next REST `/device/info` fetch happens to land,
+/// which is rarely polled (frontend asks once on mount).
 fn mark_disconnected(state: &AppState, reason: &str) {
+    let mut changed = false;
     if let Ok(mut d) = state.device.write() {
         if d.connection_status != "disconnected" {
             d.connection_status = "disconnected".to_string();
+            changed = true;
         }
         d.diagnostic_code = Some("scanner_disconnected".to_string());
         d.diagnostic_message = Some(reason.to_string());
@@ -598,6 +605,44 @@ fn mark_disconnected(state: &AppState, reason: &str) {
     if let Ok(mut live) = state.live.write() {
         live.stale = true;
     }
+
+    // Only broadcast on edge transitions. The reconnect loop calls this
+    // every iteration during a long disconnect; we don't want to spam the
+    // WS with identical messages.
+    if changed {
+        broadcast_device_info(state);
+        broadcast_state_stale(state);
+    }
+}
+
+/// Push the current DeviceInfo over the WebSocket. The frontend listens
+/// for `{type: "device_info", data: ...}` and updates its store.
+fn broadcast_device_info(state: &AppState) {
+    let info = match state.device.read() {
+        Ok(d) => d.clone(),
+        Err(_) => return,
+    };
+    let msg = json!({
+        "type": "device_info",
+        "data": info,
+    });
+    let _ = state.ws_tx.send(msg.to_string());
+}
+
+/// Fire the `state_stale` event the frontend's WS handler watches for.
+/// Belt-and-suspenders with the `device_info` broadcast above — the
+/// frontend's `useConnectionStatus` checks both signals independently.
+fn broadcast_state_stale(state: &AppState) {
+    let timestamp = std::time::SystemTime::UNIX_EPOCH
+        .elapsed()
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    let msg = json!({
+        "type": "event",
+        "event": "state_stale",
+        "timestamp": timestamp,
+    });
+    let _ = state.ws_tx.send(msg.to_string());
 }
 
 /// Double the reconnect delay, capped at RECONNECT_BACKOFF_MAX_MS, so a
@@ -612,7 +657,11 @@ fn next_backoff(current: Duration) -> Duration {
 
 fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &str) {
     if let Some(model) = parse_mdl_response(mdl_resp) {
+        let mut transitioned_to_connected = false;
         if let Ok(mut d) = state.device.write() {
+            if d.connection_status != "connected" {
+                transitioned_to_connected = true;
+            }
             d.model = Some(model.clone());
             d.port = Some(port_label.to_string());
             d.connection_status = "connected".to_string();
@@ -627,6 +676,13 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             if let Some(serial) = crate::config::usb_serial_for_port(port_label) {
                 crate::config::save_last_scanner_cache(&serial, port_label, &model);
             }
+        }
+        // Push the new state to the frontend so its indicator flips back
+        // to green without waiting for a REST poll. Only broadcast on
+        // edge transitions so we don't spam the WS with identical messages
+        // on every poll tick.
+        if transitioned_to_connected {
+            broadcast_device_info(state);
         }
     } else {
         warn!("Invalid MDL response ignored: {}", mdl_resp.trim());
