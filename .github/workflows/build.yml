@@ -4,20 +4,15 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      build_all:
-        description: 'Build for all platforms'
-        required: false
-        type: boolean
-        default: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build on ${{ matrix.platform }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -32,19 +27,31 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             platform: linux-x86_64
-    
+
     runs-on: ${{ matrix.os }}
-    
+
+    env:
+      TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      WIN_CERTIFICATE_THUMBPRINT: ${{ secrets.WIN_CERTIFICATE_THUMBPRINT }}
+      WIN_CERTIFICATE_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ matrix.target }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libudev-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -60,75 +67,47 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Install frontend dependencies
-        run: |
-          cd frontend
-          npm install
+        working-directory: frontend
+        run: npm ci
 
-      - name: Build frontend
-        run: |
-          cd frontend
-          npm run build
-      
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-      
       - name: Build Tauri app
+        working-directory: frontend
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Sign macOS app
+        if: matrix.os == 'macos-latest' && env.APPLE_SIGNING_IDENTITY != ''
         run: |
-          npm run tauri build --target ${{ matrix.target }}
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-      
-      - name: Sign macOS app (if certificate available)
-        if: matrix.os == 'macos-latest' && secrets.APPLE_CERTIFICATE_PASSWORD != ''
+          xcrun codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" \
+            target/${{ matrix.target }}/release/bundle/macos/Bearpaw.app
+
+      - name: Sign Windows installer
+        if: matrix.os == 'windows-latest' && env.WIN_CERTIFICATE_THUMBPRINT != ''
+        shell: pwsh
         run: |
-          # Sign the .app bundle
-          xcrun codesign --force --deep --sign "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/Bearpaw.app
-      
-      - name: Create DMG for macOS
-        if: matrix.os == 'macos-latest'
-        run: |
-          # Create DMG if not already created
-          if [ ! -f src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg ]; then
-            cd src-tauri/target/${{ matrix.target }}/release/bundle/macos/
-            ls -la
-          fi
-      
-      - name: Sign Windows installer (if certificate available)
-        if: matrix.os == 'windows-latest' && secrets.WIN_CERTIFICATE_THUMBPRINT != ''
-        run: |
-          # Sign the .msi installer
-          signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 \
-            /sha1 /f "src-tauri\target\${{ matrix.target }}\release\bundle\msi\*.msi"
-        env:
-          WIN_CERTIFICATE_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
-      
-      - name: Generate update signature
-        if: secrets.TAURI_PRIVATE_KEY != ''
-        run: |
-          npm run tauri signer generate src-tauri/target/${{ matrix.target }}/release/bundle/
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-      
+          $msi = Get-ChildItem -Path "target/${{ matrix.target }}/release/bundle/msi" -Filter *.msi | Select-Object -First 1
+          if ($msi) {
+            signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /sha1 $env:WIN_CERTIFICATE_THUMBPRINT $msi.FullName
+          }
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: bearpaw-${{ matrix.platform }}
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
-            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
-            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
-            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+            target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            target/${{ matrix.target }}/release/bundle/macos/*.app
+            target/${{ matrix.target }}/release/bundle/msi/*.msi
+            target/${{ matrix.target }}/release/bundle/nsis/*.exe
+            target/${{ matrix.target }}/release/bundle/deb/*.deb
+            target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
           retention-days: 30
-  
+          if-no-files-found: ignore
+
   create-release:
     name: Create GitHub Release
     needs: build
@@ -136,41 +115,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
-      
-      - name: Generate latest.json
-        run: |
-          # Generate update manifest (you'll need to customize this)
-          node -e "
-            const version = '${{ github.ref_name }}'.replace('v', '');
-            const manifest = {
-              version: version,
-              notes: 'Automated release from CI',
-              pub_date: new Date().toISOString(),
-              platforms: {
-                'darwin-aarch64': { url: '', signature: '' },
-                'darwin-x86_64': { url: '', signature: '' },
-                'windows-x86_64': { url: '', signature: '' },
-                'linux-x86_64': { url: '', signature: '' }
-              }
-            };
-            console.log(JSON.stringify(manifest, null, 2));
-          " > latest.json
-      
+
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release-artifacts/**/*
           generate_release_notes: true
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
