@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { cn } from '../lib/utils';
-import { TabNav } from './components/ScannerUI';
+import { StatusBar } from './components/ScannerUI';
 import { getAPI, API_BASE } from '../api/useApi';
 import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
@@ -655,20 +655,10 @@ export default function App() {
         }}
       />
 
-      <div className="px-6 pt-4 pb-2">
-        <TabNav
-          currentTab={currentTab}
-          onTabChange={handleTabChange}
-          connectionStatus={connectionStatus}
-          modelName={deviceInfo?.model || 'BC125AT'}
-          shellStatusText={shellStatusText}
-        />
-      </div>
-
       <div
         className={cn(
           'relative flex-1 overflow-hidden',
-          currentTab === 'Scan' && !isDashboardMode ? 'p-0' : 'p-6 pt-2',
+          currentTab === 'Scan' && !isDashboardMode ? 'p-0' : 'p-6',
         )}
       >
         <AnimatePresence mode="wait">
@@ -701,6 +691,14 @@ export default function App() {
           {currentTab === 'Channels' && <ChannelsTab />}
         </AnimatePresence>
       </div>
+
+      <StatusBar
+        connectionStatus={connectionStatus}
+        modelName={deviceInfo?.model || 'BC125AT'}
+        shellStatusText={shellStatusText}
+        currentFrequency={liveState?.frequency ?? null}
+        currentTab={currentTab}
+      />
 
       <ActivityExportSheet
         isOpen={isExportSheetOpen}
