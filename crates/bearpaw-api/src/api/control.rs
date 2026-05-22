@@ -43,7 +43,7 @@ fn default_modulation() -> String {
     "FM".to_string()
 }
 
-/// Frequency range for BC125AT/SR30C (MHz).
+/// Frequency range for BC125AT (MHz).
 pub const FREQ_MIN: f64 = 25.0;
 pub const FREQ_MAX: f64 = 512.0;
 

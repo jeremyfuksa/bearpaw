@@ -31,7 +31,7 @@ crates/
 │   │   ├── lib.rs
 │   │   ├── main.rs       # optional standalone binary
 │   │   ├── transport/    # serial, USB
-│   │   ├── protocol/     # BC125AT, SR30C command/response
+│   │   ├── protocol/     # BC125AT command/response
 │   │   ├── scheduler/    # priority command queue
 │   │   ├── state/        # LiveState, ShadowState
 │   │   ├── api/          # Axum routes + WebSocket

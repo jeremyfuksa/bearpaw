@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bearpaw is a web-based control interface for Uniden scanners (BC125AT, SR30C). It's split into:
+Bearpaw is a web-based control interface for the Uniden BC125AT scanner. It's split into:
 - **Backend**: Python FastAPI service that talks to scanner hardware via serial/USB
 - **Frontend**: React + TypeScript + Vite SPA that provides a web UI
 
@@ -96,7 +96,7 @@ PRIORITY_BACKGROUND = 2   # Memory sync, channel reads - lowest
 5. Exits program mode (`EPG`)
 6. Restores previous mode
 
-Located in `protocol/bc125at.py:135-147` and `protocol/sr30c.py:133-145`.
+Located in `protocol/bc125at.py:135-147`.
 
 ### 3. Scanner State Transitions (The "Hit" Workflow)
 
@@ -167,20 +167,18 @@ liveState.squelch_open === true       // Hit detected
 
 **Store location**: `frontend/src/store/useStore.ts` (Zustand store with partial update merging).
 
-## Device Drivers
+## Device Driver
 
-Two protocol implementations (`protocol/bc125at.py`, `protocol/sr30c.py`):
+Single protocol implementation for the BC125AT family
+(`protocol/bc125at.py`).
 
-**BC125AT**:
-- Supports both `STS` (key-value) and `GLG` (comma-separated) status formats
-- Fallback: If `STS` fails, tries `GLG`
+- Supports `STS` (LCD dump) and `GLG` (comma-separated) status formats —
+  see `docs/SCANNER_PROTOCOL_REFERENCE.md` for the canonical wire spec
 - Returns battery level and volume
 
-**SR30C**:
-- Only supports `STS` format
-- No battery/volume data
-
-**Auto-detection**: `api.py:173-176` queries `MDL` command, uses "SR30C" substring to select driver.
+**Identification**: `api.py` queries the `MDL` command on connect; only
+BC125AT-family responses (BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H)
+are supported.
 
 **Common commands**:
 - `STS` - Get current status (frequency, squelch, rssi, etc.)
@@ -251,7 +249,6 @@ VITE_WS_URL=                   # WebSocket URL (auto-detected if empty)
 - `scheduler.py` - Priority queue for scanner commands
 - `state.py` - LiveState/ShadowState management
 - `protocol/bc125at.py` - BC125AT driver implementation
-- `protocol/sr30c.py` - SR30C driver implementation
 - `websocket.py` - WebSocket manager, broadcast logic
 - `sync.py` - Memory sync task (reads all channels)
 
@@ -300,7 +297,6 @@ backend/
     state.py                  # LiveState/ShadowState management
     protocol/
       bc125at.py              # BC125AT scanner driver
-      sr30c.py                # SR30C scanner driver
     transport.py              # Serial port communication
     transport_usb.py          # USB CDC communication
     websocket.py              # WebSocket manager
