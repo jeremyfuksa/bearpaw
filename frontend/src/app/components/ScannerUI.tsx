@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Slider } from './ui/slider';
 import usbSvgPaths from '../../imports/svg-4af8p5er03';
 import socketSvgPaths from '../../imports/svg-10gl6kikm0';
+import { FitText } from './FitText';
 
 // --- Status Bar ---
 
@@ -302,15 +303,16 @@ export function ScannerDisplay({
             ceilings are sized for 4K kiosk readability rather than a
             desktop window. */}
         <div className="flex flex-1 min-h-0 flex-col justify-center gap-[clamp(4px,2.5cqmin,40px)] border-y border-[rgba(28,31,38,0.6)] py-[clamp(4px,3cqmin,48px)]">
-          <p
+          <FitText
             className={cn(
-              'font-display font-extrabold text-[clamp(28px,22cqmin,360px)] leading-[1.2] tracking-tight text-[rgba(28,31,39,0.7)] whitespace-nowrap overflow-hidden text-ellipsis py-[0.05em]',
+              'font-display font-extrabold text-[clamp(28px,22cqmin,360px)] leading-[1.2] tracking-tight text-[rgba(28,31,39,0.7)] py-[0.05em]',
               isScanning && 'animate-pulse',
             )}
             title={isScanning ? undefined : mainText}
+            minFontSize={16}
           >
             {isScanning ? 'Scanning...' : mainText}
-          </p>
+          </FitText>
           <div className="flex w-full items-center justify-between gap-[clamp(8px,2.5cqmin,40px)]">
             <p className="font-display font-normal text-[clamp(12px,9cqmin,160px)] leading-tight text-[rgba(28,31,39,0.6)] truncate">
               {isScanning ? 'Searching for signal...' : subText || '—'}
