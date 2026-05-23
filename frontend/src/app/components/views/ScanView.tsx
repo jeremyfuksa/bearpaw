@@ -20,16 +20,19 @@ const HEATMAP_INTENSITY_CLASSES = [
 ] as const;
 
 function getRelativeTime(date: Date | number) {
+  // Compact form so the timestamp column stays narrow as the row font
+  // scales up for kiosk view — at 60px+ the long "15 minutes ago" was
+  // colliding with the freq + alpha columns.
   const timestamp = typeof date === 'number' ? date * 1000 : date.getTime();
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 10) return 'now';
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days}d`;
 }
 
 function normalizeSignal(value?: number) {
@@ -40,12 +43,12 @@ function normalizeSignal(value?: number) {
 
 function HitSignalBars({ strength }: { strength: number }) {
   return (
-    <div className="flex shrink-0 items-end gap-[clamp(1px,0.3cqmin,4px)]">
+    <div className="flex shrink-0 items-end gap-[clamp(1px,0.8cqmin,8px)]">
       {[1, 2, 3, 4, 5].map((bar) => (
         <span
           key={bar}
           className={cn(
-            'h-[clamp(8px,1cqmin,24px)] w-[clamp(2px,0.4cqmin,8px)] rounded-scanner-xs',
+            'h-[clamp(8px,3.5cqmin,56px)] w-[clamp(2px,1.2cqmin,18px)] rounded-scanner-xs',
             bar <= strength ? 'bg-green-500' : 'bg-white/10',
           )}
         />
@@ -53,6 +56,12 @@ function HitSignalBars({ strength }: { strength: number }) {
     </div>
   );
 }
+
+/** Fixed five-row layout — the most recent five hits always occupy the
+ *  list region. Each slot flex-1 to share the height evenly; empty
+ *  slots remain in place so the layout doesn't reflow when a hit
+ *  arrives and the oldest entry rotates out. */
+const HIT_SLOT_COUNT = 5;
 
 export interface ScanViewProps {
   mainText: string;
@@ -147,11 +156,11 @@ export function ScanView({
         </div>
 
         {/* Recent Hits */}
-        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-[clamp(8px,1.4cqmin,28px)] self-stretch">
-          <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-[clamp(6px,1cqmin,20px)]">
-            <div className="flex items-center gap-[clamp(6px,1cqmin,16px)]">
-              <Radio className="size-[clamp(14px,1.7cqmin,40px)] text-brand-primary" />
-              <h3 className="font-display font-bold text-[clamp(13px,1.8cqmin,36px)] text-scanner-text-light">
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-[clamp(8px,2.5cqmin,40px)] self-stretch">
+          <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-[clamp(6px,1.8cqmin,28px)]">
+            <div className="flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
+              <Radio className="size-[clamp(14px,3cqmin,52px)] text-brand-primary" />
+              <h3 className="font-display font-bold text-[clamp(13px,3.5cqmin,56px)] text-scanner-text-light">
                 Recent Hits
               </h3>
             </div>
@@ -163,12 +172,12 @@ export function ScanView({
                   disabled={fullActivityLog.length === 0}
                   className={cn(
                     'inline-flex items-center justify-center rounded-scanner-xs border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:border-white/20 hover:text-white',
-                    'h-[clamp(20px,2.6cqmin,56px)] w-[clamp(24px,3cqmin,64px)]',
+                    'h-[clamp(20px,4.5cqmin,72px)] w-[clamp(24px,5cqmin,84px)]',
                     fullActivityLog.length === 0 && 'opacity-50 cursor-not-allowed',
                   )}
                   aria-label="Export activity log"
                 >
-                  <FileText className="size-[clamp(12px,1.5cqmin,32px)]" />
+                  <FileText className="size-[clamp(12px,2.5cqmin,40px)]" />
                 </button>
               </TooltipTrigger>
               <TooltipContent
@@ -181,25 +190,33 @@ export function ScanView({
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto pr-2 flex flex-col gap-[clamp(2px,0.5cqmin,10px)]">
+          <div className="flex-1 min-h-0 flex flex-col gap-[clamp(2px,1.4cqmin,20px)] pr-2">
             {recentHits.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-white/20 text-[clamp(11px,1.4cqmin,28px)] italic">
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-white/20 text-[clamp(11px,3cqmin,52px)] italic">
                 Waiting for signals...
               </div>
             ) : (
-              recentHits.map((hit) => (
-                <div
-                  key={hit.id}
-                  className="grid items-center grid-cols-[clamp(80px,8cqmin,200px)_clamp(56px,6cqmin,160px)_minmax(0,1fr)_auto] gap-[clamp(8px,1.2cqmin,28px)] rounded-[4px] py-[clamp(2px,0.4cqmin,10px)] text-[clamp(11px,1.4cqmin,30px)] hover:bg-white/5"
-                >
-                  <span className="text-white/30 truncate">{getRelativeTime(hit.time)}</span>
-                  <span className="font-mono text-right text-brand-light">{hit.frequency}</span>
-                  <span className="truncate text-white/60" title={hit.tag}>
-                    {hit.tag}
-                  </span>
-                  <HitSignalBars strength={hit.strength} />
-                </div>
-              ))
+              Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
+                const hit = recentHits[idx];
+                if (!hit) {
+                  return <div key={`empty-${idx}`} className="flex-1" aria-hidden="true" />;
+                }
+                return (
+                  <div
+                    key={hit.id}
+                    className="grid items-center flex-1 grid-cols-[clamp(40px,5cqmin,100px)_clamp(72px,13cqmin,220px)_minmax(0,1fr)_auto] gap-[clamp(8px,2.5cqmin,40px)] rounded-[4px] px-[clamp(2px,1cqmin,12px)] text-[clamp(13px,5cqmin,72px)] hover:bg-white/5"
+                  >
+                    <span className="text-white/30 truncate">{getRelativeTime(hit.time)}</span>
+                    <span className="font-mono text-right text-brand-light truncate">
+                      {hit.frequency}
+                    </span>
+                    <span className="truncate text-white/60" title={hit.tag}>
+                      {hit.tag}
+                    </span>
+                    <HitSignalBars strength={hit.strength} />
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -215,8 +232,8 @@ export function ScanView({
       >
         {/* Busiest Channels */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
-          <h3 className="font-display font-bold text-[clamp(14px,1.8cqmin,36px)] mb-[clamp(8px,1.2cqmin,24px)] flex items-center gap-[clamp(6px,1cqmin,16px)]">
-            <Signal className="size-[clamp(14px,1.7cqmin,32px)] text-blue-400" /> Busiest Channels
+          <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)] flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
+            <Signal className="size-[clamp(14px,3cqmin,52px)] text-blue-400" /> Busiest Channels
           </h3>
           {dashboardLoading ? (
             <div className="flex-1 flex items-center justify-center text-white/20 text-xs">
@@ -258,13 +275,13 @@ export function ScanView({
 
         {/* Activity Heatmap */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
-          <h3 className="font-display font-bold text-[clamp(14px,1.8cqmin,36px)] mb-[clamp(8px,1.2cqmin,24px)] flex items-center gap-[clamp(6px,1cqmin,16px)]">
-            <Clock className="size-[clamp(14px,1.7cqmin,32px)] text-green-400" /> Activity Heatmap
+          <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)] flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
+            <Clock className="size-[clamp(14px,3cqmin,52px)] text-green-400" /> Activity Heatmap
           </h3>
           <div className="flex flex-1 flex-col justify-center gap-[var(--layout-heatmap-cell-gap)]">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, row) => (
-              <div key={day} className="flex items-center gap-[clamp(6px,1cqmin,16px)]">
-                <span className="text-[clamp(10px,1.3cqmin,24px)] text-white/30 w-[clamp(20px,2.5cqmin,48px)] text-right font-mono uppercase">
+              <div key={day} className="flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
+                <span className="text-[clamp(10px,2.4cqmin,40px)] text-white/30 w-[clamp(20px,4cqmin,72px)] text-right font-mono uppercase">
                   {day}
                 </span>
                 <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[var(--layout-heatmap-cell-gap)]">
@@ -291,7 +308,7 @@ export function ScanView({
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-[clamp(10px,1.3cqmin,24px)] text-white/30 mt-1 pl-[clamp(20px,3cqmin,56px)]">
+          <div className="flex justify-between text-[clamp(10px,2.4cqmin,40px)] text-white/30 mt-1 pl-[clamp(20px,4.5cqmin,80px)]">
             <span>00</span>
             <span>06</span>
             <span>12</span>
