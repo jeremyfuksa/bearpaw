@@ -310,6 +310,33 @@ export default function App() {
   }, [api, setChannels, setDeviceInfo, updateLiveState]);
 
   useEffect(() => {
+    // Refetch banks once the scanner is reachable AND any initial memory
+    // sync has settled. The initial `Promise.allSettled` mount-time
+    // fetch races against `startMemorySync` (both want PRG mode); if
+    // sync wins, the bank fetch errors out and the store keeps its
+    // all-enabled default. This effect closes the gap by re-asking the
+    // scanner once sync is done (or once we know sync isn't needed
+    // because channels are already populated).
+    if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
+    if (sync.inProgress) return; // wait for the sync to release PRG mode
+    let active = true;
+    api
+      .getBanks()
+      .then((result) => {
+        if (!active) return;
+        if (Array.isArray(result.banks) && result.banks.length === 10) {
+          setBanks(result.banks);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to refresh banks after sync', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, deviceInfo, sync.inProgress, sync.hasSyncedInitially, setBanks]);
+
+  useEffect(() => {
     if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
     if (useStore.getState().sync.inProgress) return;
     if (channels.length > 0) return;
