@@ -40,12 +40,12 @@ function normalizeSignal(value?: number) {
 
 function HitSignalBars({ strength }: { strength: number }) {
   return (
-    <div className="flex shrink-0 items-end gap-[2px]">
+    <div className="flex shrink-0 items-end gap-[clamp(1px,0.3cqmin,4px)]">
       {[1, 2, 3, 4, 5].map((bar) => (
         <span
           key={bar}
           className={cn(
-            'h-2 w-1 rounded-scanner-xs',
+            'h-[clamp(8px,1cqmin,24px)] w-[clamp(2px,0.4cqmin,8px)] rounded-scanner-xs',
             bar <= strength ? 'bg-green-500' : 'bg-white/10',
           )}
         />
@@ -125,8 +125,9 @@ export function ScanView({
       {/* Top row — bordered container holding the orange display panel and the Recent Hits
           list. Sized with flex-1 so it claims roughly half the available height alongside the
           bottom row of dashboard widgets; min-height guards against squeezing when the window
-          is short. */}
-      <div className="flex flex-1 min-h-[var(--layout-dashboard-main-height)] items-stretch gap-6 rounded-scanner-md border border-[rgba(128,152,176,0.5)] p-[9px] transition-all duration-500 ease-in-out">
+          is short. `container-type: size` here scopes Recent Hits' cqmin units to the top row,
+          so its type and controls scale alongside the Display when the window grows. */}
+      <div className="flex flex-1 min-h-[var(--layout-dashboard-main-height)] items-stretch gap-6 rounded-scanner-md border border-[rgba(128,152,176,0.5)] p-[9px] transition-all duration-500 ease-in-out [container-type:size]">
         <div className="shrink-0 self-stretch w-1/2">
           <ScannerDisplay
             mainText={mainText}
@@ -146,11 +147,11 @@ export function ScanView({
         </div>
 
         {/* Recent Hits */}
-        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-3 self-stretch">
-          <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-2">
-            <div className="flex items-center gap-2">
-              <Radio className="h-4 w-4 text-brand-primary" />
-              <h3 className="font-display font-bold text-[15px] text-scanner-text-light">
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-[clamp(8px,1.4cqmin,28px)] self-stretch">
+          <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-[clamp(6px,1cqmin,20px)]">
+            <div className="flex items-center gap-[clamp(6px,1cqmin,16px)]">
+              <Radio className="size-[clamp(14px,1.7cqmin,40px)] text-brand-primary" />
+              <h3 className="font-display font-bold text-[clamp(13px,1.8cqmin,36px)] text-scanner-text-light">
                 Recent Hits
               </h3>
             </div>
@@ -161,12 +162,13 @@ export function ScanView({
                   onClick={onOpenActivityExport}
                   disabled={fullActivityLog.length === 0}
                   className={cn(
-                    'inline-flex h-6 w-7 items-center justify-center rounded-scanner-xs border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:border-white/20 hover:text-white',
+                    'inline-flex items-center justify-center rounded-scanner-xs border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:border-white/20 hover:text-white',
+                    'h-[clamp(20px,2.6cqmin,56px)] w-[clamp(24px,3cqmin,64px)]',
                     fullActivityLog.length === 0 && 'opacity-50 cursor-not-allowed',
                   )}
                   aria-label="Export activity log"
                 >
-                  <FileText size={14} />
+                  <FileText className="size-[clamp(12px,1.5cqmin,32px)]" />
                 </button>
               </TooltipTrigger>
               <TooltipContent
@@ -179,16 +181,16 @@ export function ScanView({
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="flex-1 min-h-0 overflow-y-auto pr-2 flex flex-col gap-1">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-2 flex flex-col gap-[clamp(2px,0.5cqmin,10px)]">
             {recentHits.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-white/20 text-xs italic">
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-white/20 text-[clamp(11px,1.4cqmin,28px)] italic">
                 Waiting for signals...
               </div>
             ) : (
               recentHits.map((hit) => (
                 <div
                   key={hit.id}
-                  className="grid items-center grid-cols-[6rem_minmax(0,4rem)_minmax(0,1fr)_auto] gap-3 rounded-[4px] py-1 text-[13px] hover:bg-white/5"
+                  className="grid items-center grid-cols-[clamp(80px,8cqmin,200px)_clamp(56px,6cqmin,160px)_minmax(0,1fr)_auto] gap-[clamp(8px,1.2cqmin,28px)] rounded-[4px] py-[clamp(2px,0.4cqmin,10px)] text-[clamp(11px,1.4cqmin,30px)] hover:bg-white/5"
                 >
                   <span className="text-white/30 truncate">{getRelativeTime(hit.time)}</span>
                   <span className="font-mono text-right text-brand-light">{hit.frequency}</span>
@@ -204,16 +206,17 @@ export function ScanView({
       </div>
 
       {/* Dashboard Widgets — appear below, share the remaining vertical space 50/50 with the
-          top row. */}
+          top row. `container-type: size` here scopes each child widget's cqmin units to this
+          row so their headings and chart labels scale alongside the Display. */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-1 min-h-0 gap-6 overflow-hidden"
+        className="flex flex-1 min-h-0 gap-6 overflow-hidden [container-type:size]"
       >
         {/* Busiest Channels */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
-          <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
-            <Signal className="w-4 h-4 text-blue-400" /> Busiest Channels
+          <h3 className="font-display font-bold text-[clamp(14px,1.8cqmin,36px)] mb-[clamp(8px,1.2cqmin,24px)] flex items-center gap-[clamp(6px,1cqmin,16px)]">
+            <Signal className="size-[clamp(14px,1.7cqmin,32px)] text-blue-400" /> Busiest Channels
           </h3>
           {dashboardLoading ? (
             <div className="flex-1 flex items-center justify-center text-white/20 text-xs">
@@ -255,13 +258,13 @@ export function ScanView({
 
         {/* Activity Heatmap */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
-          <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-green-400" /> Activity Heatmap
+          <h3 className="font-display font-bold text-[clamp(14px,1.8cqmin,36px)] mb-[clamp(8px,1.2cqmin,24px)] flex items-center gap-[clamp(6px,1cqmin,16px)]">
+            <Clock className="size-[clamp(14px,1.7cqmin,32px)] text-green-400" /> Activity Heatmap
           </h3>
           <div className="flex flex-1 flex-col justify-center gap-[var(--layout-heatmap-cell-gap)]">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, row) => (
-              <div key={day} className="flex items-center gap-2">
-                <span className="text-xs text-white/30 w-5 text-right font-mono uppercase">
+              <div key={day} className="flex items-center gap-[clamp(6px,1cqmin,16px)]">
+                <span className="text-[clamp(10px,1.3cqmin,24px)] text-white/30 w-[clamp(20px,2.5cqmin,48px)] text-right font-mono uppercase">
                   {day}
                 </span>
                 <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[var(--layout-heatmap-cell-gap)]">
@@ -288,7 +291,7 @@ export function ScanView({
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-xs text-white/30 mt-1 pl-7">
+          <div className="flex justify-between text-[clamp(10px,1.3cqmin,24px)] text-white/30 mt-1 pl-[clamp(20px,3cqmin,56px)]">
             <span>00</span>
             <span>06</span>
             <span>12</span>
