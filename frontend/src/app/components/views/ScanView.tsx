@@ -136,7 +136,7 @@ export function ScanView({
           bottom row of dashboard widgets; min-height guards against squeezing when the window
           is short. `container-type: size` here scopes Recent Hits' cqmin units to the top row,
           so its type and controls scale alongside the Display when the window grows. */}
-      <div className="flex flex-1 min-h-[var(--layout-dashboard-main-height)] items-stretch gap-6 rounded-scanner-md border border-[rgba(128,152,176,0.5)] p-[9px] transition-all duration-500 ease-in-out [container-type:size]">
+      <div className="flex flex-1 min-h-[var(--layout-dashboard-main-height)] items-stretch gap-6 rounded-lg border border-white/5 bg-black/20 p-[9px] transition-all duration-500 ease-in-out [container-type:size]">
         <div className="shrink-0 self-stretch w-1/2">
           <ScannerDisplay
             mainText={mainText}
