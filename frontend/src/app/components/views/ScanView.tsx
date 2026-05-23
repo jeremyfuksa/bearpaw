@@ -199,7 +199,14 @@ export function ScanView({
             // (proper "tabbing"). Each row uses `grid-cols-subgrid` to inherit
             // the parent's column tracks, which lets us still hover-highlight
             // the whole row as a single element.
-            <div className="grid flex-1 min-h-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,minmax(0,1fr))] gap-x-[clamp(8px,2.5cqmin,40px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
+            //
+            // The timestamp column is `minmax(14ch, max-content)` rather than
+            // `auto` so it reserves room for the longest expected label
+            // ("59 seconds ago") and doesn't wobble as the relative-time
+            // string ticks ("17 seconds ago" → "18 seconds ago" → "1 minute
+            // ago" …). `ch` scales with the font, so the floor tracks the
+            // fluid type sizing automatically.
+            <div className="grid flex-1 min-h-0 grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,minmax(0,1fr))] gap-x-[clamp(8px,2.5cqmin,40px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
               {Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
                 const hit = recentHits[idx];
                 if (!hit) {
