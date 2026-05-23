@@ -156,7 +156,7 @@ export function ScanView({
         </div>
 
         {/* Recent Hits */}
-        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-[clamp(32px,3cqmin,60px)] self-stretch">
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-[clamp(32px,3cqmin,60px)] self-stretch py-[10px]">
           <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-[clamp(6px,1.8cqmin,28px)]">
             <div className="flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
               <Radio className="size-[clamp(14px,3cqmin,52px)] text-brand-primary" />
