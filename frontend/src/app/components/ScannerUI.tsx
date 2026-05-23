@@ -119,7 +119,7 @@ interface ScannerControlsProps {
 }
 
 const CONTROL_BUTTON_CLASSES =
-  'inline-flex items-center justify-center rounded-scanner-xs border border-[rgba(28,31,38,0.8)] px-[clamp(4px,1.5cqmin,20px)] py-[clamp(2px,0.6cqmin,10px)] font-display font-medium text-[clamp(9px,2.4cqmin,32px)] leading-none text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)] active:translate-y-[1px]';
+  'inline-flex items-center justify-center rounded-scanner-xs border border-[rgba(28,31,38,0.8)] px-[clamp(4px,3cqmin,32px)] py-[clamp(2px,1cqmin,16px)] font-display font-medium text-[clamp(9px,4.5cqmin,52px)] leading-none text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)] active:translate-y-[1px]';
 
 function ScannerControls({
   volume,
@@ -129,7 +129,7 @@ function ScannerControls({
   onLockout,
 }: ScannerControlsProps) {
   return (
-    <div className="flex shrink-0 items-center gap-[clamp(4px,1.2cqmin,20px)]">
+    <div className="flex shrink-0 items-center gap-[clamp(4px,2cqmin,28px)]">
       <Popover>
         <PopoverTrigger asChild>
           <button className={CONTROL_BUTTON_CLASSES} aria-label={`Volume ${volume}`}>
@@ -179,12 +179,12 @@ function ScannerControls({
 
 function DisplaySignalBars({ strength }: { strength: number }) {
   return (
-    <div className="flex shrink-0 items-end gap-[clamp(1px,0.4cqmin,6px)]">
+    <div className="flex shrink-0 items-end gap-[clamp(1px,1cqmin,12px)]">
       {[1, 2, 3, 4, 5].map((bar) => (
         <span
           key={bar}
           className={cn(
-            'h-[clamp(8px,2.6cqmin,56px)] w-[clamp(2px,0.8cqmin,14px)] rounded-scanner-xs',
+            'h-[clamp(8px,7cqmin,128px)] w-[clamp(2px,2cqmin,32px)] rounded-scanner-xs',
             bar <= strength ? 'bg-[rgba(28,31,38,0.8)]' : 'bg-[rgba(28,31,38,0.2)]',
           )}
         />
@@ -272,10 +272,10 @@ export function ScannerDisplay({
         className,
       )}
     >
-      <div className="relative flex h-full w-full flex-col gap-[clamp(4px,1.5cqmin,28px)] px-[clamp(8px,2.8cqmin,48px)] py-[clamp(6px,2.2cqmin,40px)]">
+      <div className="relative flex h-full w-full flex-col gap-[clamp(4px,2.5cqmin,40px)] px-[clamp(8px,4cqmin,64px)] py-[clamp(6px,3.5cqmin,56px)]">
         {/* Top row — USB / error indicator on the left, mini controls on the right */}
         <div className="flex w-full items-center justify-between">
-          <div className="relative shrink-0 size-[clamp(12px,3cqmin,56px)] text-[rgba(28,31,38,0.9)]">
+          <div className="relative shrink-0 size-[clamp(12px,5cqmin,80px)] text-[rgba(28,31,38,0.9)]">
             {isError ? (
               errorType === 'socket' ? (
                 <SocketErrorIcon />
@@ -283,7 +283,7 @@ export function ScannerDisplay({
                 <UsbErrorIcon />
               )
             ) : (
-              <Usb className="size-full" aria-label="Scanner connected" />
+              <Usb className="size-full -rotate-45" aria-label="Scanner connected" />
             )}
           </div>
           <ScannerControls
@@ -301,18 +301,18 @@ export function ScannerDisplay({
             sizes use cqmin so they scale with the panel's smaller side;
             ceilings are sized for 4K kiosk readability rather than a
             desktop window. */}
-        <div className="flex flex-1 min-h-0 flex-col justify-center gap-[clamp(4px,1.2cqmin,24px)] border-y border-[rgba(28,31,38,0.6)] py-[clamp(4px,1.5cqmin,32px)]">
+        <div className="flex flex-1 min-h-0 flex-col justify-center gap-[clamp(4px,2.5cqmin,40px)] border-y border-[rgba(28,31,38,0.6)] py-[clamp(4px,3cqmin,48px)]">
           <p
             className={cn(
-              'font-display font-extrabold text-[clamp(28px,10cqmin,220px)] leading-[1.05] tracking-tight text-[rgba(28,31,39,0.7)] truncate',
+              'font-display font-extrabold text-[clamp(28px,22cqmin,360px)] leading-[1.2] tracking-tight text-[rgba(28,31,39,0.7)] whitespace-nowrap overflow-hidden text-ellipsis py-[0.05em]',
               isScanning && 'animate-pulse',
             )}
             title={isScanning ? undefined : mainText}
           >
             {isScanning ? 'Scanning...' : mainText}
           </p>
-          <div className="flex w-full items-center justify-between gap-[clamp(8px,1.5cqmin,28px)]">
-            <p className="font-display font-normal text-[clamp(12px,4.5cqmin,96px)] leading-tight text-[rgba(28,31,39,0.6)] truncate">
+          <div className="flex w-full items-center justify-between gap-[clamp(8px,2.5cqmin,40px)]">
+            <p className="font-display font-normal text-[clamp(12px,9cqmin,160px)] leading-tight text-[rgba(28,31,39,0.6)] truncate">
               {isScanning ? 'Searching for signal...' : subText || '—'}
             </p>
             {!isScanning && !isError && <DisplaySignalBars strength={signalStrength} />}
@@ -344,7 +344,7 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
   const banks = Array.from({ length: 10 }, (_, i) => i + 1);
 
   return (
-    <div className="flex w-full items-center justify-between gap-[clamp(2px,0.6cqmin,14px)]">
+    <div className="flex w-full items-center justify-between gap-[clamp(2px,1.2cqmin,18px)]">
       {banks.map((bank, index) => {
         const isActive = activeBanks[index];
         const label = bank === 10 ? '0' : bank.toString();
@@ -356,7 +356,7 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
             aria-pressed={isActive}
             aria-label={`Bank ${label} ${isActive ? '(enabled)' : '(disabled)'}`}
             className={cn(
-              'inline-flex h-[clamp(18px,5cqmin,84px)] flex-1 items-center justify-center rounded-scanner-xs font-display font-medium text-[clamp(11px,3cqmin,52px)] leading-none transition-colors',
+              'inline-flex h-[clamp(18px,9cqmin,120px)] flex-1 items-center justify-center rounded-scanner-xs font-display font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors',
               isActive
                 ? 'bg-[rgba(28,31,38,0.7)] text-brand-primary hover:bg-[rgba(28,31,38,0.85)]'
                 : 'border border-[rgba(28,31,39,0.9)] text-[rgba(28,31,39,0.9)] hover:bg-[rgba(28,31,39,0.08)]',
