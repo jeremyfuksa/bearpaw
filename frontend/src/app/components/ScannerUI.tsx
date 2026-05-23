@@ -337,10 +337,14 @@ interface BankControlsProps {
 
 /**
  * Ten bank buttons (labelled 1–9, 0) embedded at the bottom of the
- * `ScannerDisplay`. Active (enabled) banks render filled with a dark
- * background + amber number; disabled banks render outlined with a
- * darker stroke + dark number — the contrast against the amber display
- * background is what carries the visual state.
+ * `ScannerDisplay`. The two states mirror the VOL / L-O / HOLD mini
+ * cluster up top so the whole panel speaks one visual language:
+ *
+ * - **Enabled** (currently scanning that bank): filled dark + amber
+ *   number — same treatment HOLD picks up when `isHolding` is true.
+ * - **Disabled** (skip this bank): outlined dark stroke + dark
+ *   number — same treatment the VOL / L-O / HOLD buttons wear in
+ *   their resting state (see `CONTROL_BUTTON_CLASSES` above).
  */
 export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
   const banks = Array.from({ length: 10 }, (_, i) => i + 1);
@@ -358,10 +362,10 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
             aria-pressed={isActive}
             aria-label={`Bank ${label} ${isActive ? '(enabled)' : '(disabled)'}`}
             className={cn(
-              'inline-flex h-[clamp(18px,9cqmin,120px)] flex-1 items-center justify-center rounded-scanner-xs font-display font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors',
+              'inline-flex h-[clamp(18px,9cqmin,120px)] flex-1 items-center justify-center rounded-scanner-xs font-display font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors active:translate-y-[1px]',
               isActive
                 ? 'bg-[rgba(28,31,38,0.7)] text-brand-primary hover:bg-[rgba(28,31,38,0.85)]'
-                : 'border border-[rgba(28,31,39,0.9)] text-[rgba(28,31,39,0.9)] hover:bg-[rgba(28,31,39,0.08)]',
+                : 'border border-[rgba(28,31,38,0.8)] text-[rgba(28,31,38,0.9)] hover:bg-[rgba(28,31,38,0.1)]',
             )}
           >
             {label}
