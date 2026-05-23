@@ -212,10 +212,21 @@ export function ScanView({
                 if (!hit) {
                   return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
                 }
+                // Each row's track is sized 1fr, so `items-center` would
+                // leave a half-row of empty space below the very bottom
+                // hit's text — a visible gap between the last row and
+                // the bottom edge of the Display panel beside it.
+                // `items-end` on the final row anchors that row's content
+                // flush to its track's bottom, which is the bottom of
+                // the panel, lining the two halves up.
+                const isLastRow = idx === HIT_SLOT_COUNT - 1;
                 return (
                   <div
                     key={hit.id}
-                    className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
+                    className={cn(
+                      'col-span-4 grid grid-cols-subgrid rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5',
+                      isLastRow ? 'items-end' : 'items-center',
+                    )}
                   >
                     <span className="whitespace-nowrap text-white/30">
                       {getRelativeTime(hit.time)}
