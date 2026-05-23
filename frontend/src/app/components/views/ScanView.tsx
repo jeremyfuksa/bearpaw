@@ -1,12 +1,12 @@
 import { motion } from 'motion/react';
-import { Activity, Clock, FileText, Play, Radio, Signal } from 'lucide-react';
+import { Clock, FileText, Radio, Signal } from 'lucide-react';
 import { useMemo } from 'react';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
 import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
-import { BankControls, ScannerDisplay, StatusHeader } from '../ScannerUI';
+import { ScannerDisplay } from '../ScannerUI';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import type { ScannerMode } from '../../App';
 
@@ -27,7 +27,9 @@ function getRelativeTime(date: Date | number) {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 function normalizeSignal(value?: number) {
@@ -36,9 +38,9 @@ function normalizeSignal(value?: number) {
   return Math.min(5, Math.round(value / 20));
 }
 
-function SignalBars({ strength }: { strength: number }) {
+function HitSignalBars({ strength }: { strength: number }) {
   return (
-    <>
+    <div className="flex shrink-0 items-end gap-[2px]">
       {[1, 2, 3, 4, 5].map((bar) => (
         <span
           key={bar}
@@ -48,7 +50,7 @@ function SignalBars({ strength }: { strength: number }) {
           )}
         />
       ))}
-    </>
+    </div>
   );
 }
 
@@ -74,7 +76,6 @@ export interface ScanViewProps {
 export function ScanView({
   mainText,
   subText,
-  scannerMode,
   connectionStatus,
   isHolding,
   isInitialSyncing,
@@ -102,8 +103,6 @@ export function ScanView({
         tag: entry.alpha_tag || '—',
         strength: normalizeSignal(entry.rssi),
         time: entry.timestamp,
-        hasAudio: entry.hasAudio ?? false,
-        channel: entry.channel ?? null,
       })),
     [activityLog],
   );
@@ -123,40 +122,37 @@ export function ScanView({
       className="flex flex-col gap-6 h-full relative"
       layout
     >
-      <div className="flex h-[var(--layout-dashboard-main-height)] gap-6 transition-all duration-500 ease-in-out">
-        <div
-          className={cn(
-            'flex flex-col gap-3 h-full transition-all duration-500 ease-in-out',
-            'w-[var(--layout-dashboard-panel-width)]',
-          )}
-        >
-          <StatusHeader
-            volume={liveState?.volume ?? 0}
-            onVolumeChange={onVolumeChange}
-            isHolding={isHolding}
-            onHoldToggle={onHoldToggle}
-            onLockout={onLockout}
-          />
+      {/* Top row — bordered container holding the orange display panel and the Recent Hits
+          list. Sized with flex-1 so it claims roughly half the available height alongside the
+          bottom row of dashboard widgets; min-height guards against squeezing when the window
+          is short. */}
+      <div className="flex flex-1 min-h-[var(--layout-dashboard-main-height)] items-stretch gap-6 rounded-scanner-md border border-[rgba(128,152,176,0.5)] p-[9px] transition-all duration-500 ease-in-out">
+        <div className="shrink-0 self-stretch w-1/2">
           <ScannerDisplay
             mainText={mainText}
             subText={subText}
-            mode={scannerMode}
             signalStrength={signalStrength}
             isScanning={isScanningRightNow}
             isError={isError}
             errorType={errorType}
-            variant="default"
-            className="flex-1 min-h-0 mb-3"
+            volume={liveState?.volume ?? 0}
+            isHolding={isHolding}
+            onVolumeChange={onVolumeChange}
+            onHoldToggle={onHoldToggle}
+            onLockout={onLockout}
+            banks={banks}
+            onBankToggle={onBankToggle}
           />
-          <BankControls activeBanks={banks} onToggleBank={onBankToggle} />
         </div>
 
         {/* Recent Hits */}
-        <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-4 overflow-hidden flex flex-col">
-          <h3 className="font-bold text-sm mb-3 flex items-center justify-between">
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-3 self-stretch">
+          <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-2">
             <div className="flex items-center gap-2">
               <Radio className="h-4 w-4 text-brand-primary" />
-              <span>Recent Hits</span>
+              <h3 className="font-display font-bold text-[15px] text-scanner-text-light">
+                Recent Hits
+              </h3>
             </div>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -165,7 +161,7 @@ export function ScanView({
                   onClick={onOpenActivityExport}
                   disabled={fullActivityLog.length === 0}
                   className={cn(
-                    'ml-auto inline-flex items-center justify-center rounded-scanner-sm border border-white/10 bg-white/5 px-2 py-1 text-white/80 hover:text-white hover:bg-white/10 hover:border-white/20 transition-colors',
+                    'inline-flex h-6 w-7 items-center justify-center rounded-scanner-xs border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:border-white/20 hover:text-white',
                     fullActivityLog.length === 0 && 'opacity-50 cursor-not-allowed',
                   )}
                   aria-label="Export activity log"
@@ -182,36 +178,24 @@ export function ScanView({
                 Export
               </TooltipContent>
             </Tooltip>
-          </h3>
-          <div className="flex-1 overflow-y-auto pr-1 space-y-2">
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto pr-2 flex flex-col gap-1">
             {recentHits.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-white/20 text-xs italic gap-2">
-                <Activity className="w-8 h-8 opacity-20" />
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-white/20 text-xs italic">
                 Waiting for signals...
               </div>
             ) : (
               recentHits.map((hit) => (
                 <div
                   key={hit.id}
-                  className="flex items-center text-xs py-1 px-2 hover:bg-white/5 rounded cursor-pointer group gap-2"
+                  className="grid items-center grid-cols-[6rem_minmax(0,4rem)_minmax(0,1fr)_auto] gap-3 rounded-[4px] py-1 text-[13px] hover:bg-white/5"
                 >
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {hit.hasAudio && (
-                      <Play className="h-3 w-3 shrink-0 fill-brand-primary/20 text-brand-primary" />
-                    )}
-                    <span className="text-white/60 truncate" title={hit.tag}>
-                      {hit.tag}
-                    </span>
-                  </div>
-                  <div className="flex gap-0.5 h-2 items-end">
-                    <SignalBars strength={hit.strength} />
-                  </div>
-                  <span className="w-[var(--size-hit-frequency-width)] text-right font-mono text-brand-light group-hover:text-brand-primary">
-                    {hit.frequency}
+                  <span className="text-white/30 truncate">{getRelativeTime(hit.time)}</span>
+                  <span className="font-mono text-right text-brand-light">{hit.frequency}</span>
+                  <span className="truncate text-white/60" title={hit.tag}>
+                    {hit.tag}
                   </span>
-                  <span className="w-[var(--size-hit-time-width)] whitespace-nowrap text-right text-xs text-white/30">
-                    {getRelativeTime(hit.time)}
-                  </span>
+                  <HitSignalBars strength={hit.strength} />
                 </div>
               ))
             )}
@@ -219,11 +203,12 @@ export function ScanView({
         </div>
       </div>
 
-      {/* Dashboard Widgets - Appear Below */}
+      {/* Dashboard Widgets — appear below, share the remaining vertical space 50/50 with the
+          top row. */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex-1 min-h-0 flex gap-6 overflow-hidden"
+        className="flex flex-1 min-h-0 gap-6 overflow-hidden"
       >
         {/* Busiest Channels */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
@@ -282,13 +267,6 @@ export function ScanView({
                 <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[var(--layout-heatmap-cell-gap)]">
                   {Array.from({ length: 24 }).map((_, col) => {
                     const heatmapData = hourlyHeatmap?.[row]?.[col] ?? 0;
-                    // Scale relative to max with a 1-bucket floor for any
-                    // non-zero count. Previously the formula divided by
-                    // (max - min); when only one cell was populated (or
-                    // every populated cell had the same count) max == min,
-                    // intensity stayed at 0, and the cell rendered with
-                    // `bg-heatmap-0` — visually identical to an empty cell,
-                    // so the whole heatmap looked blank.
                     let intensity = 0;
                     if (heatmapData > 0 && heatmapStats.max > 0) {
                       const normalized = heatmapData / heatmapStats.max;

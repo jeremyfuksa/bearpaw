@@ -498,11 +498,13 @@ export default function App() {
     if (!liveState) {
       return { mainText: '—', subText: 'No signal' };
     }
-    const main = liveState.alpha_tag || liveState.frequency?.toFixed(4) || '—';
+    const main = liveState.alpha_tag || liveState.frequency?.toFixed(3) || '—';
     const parts = [];
-    if (liveState.frequency) parts.push(liveState.frequency.toFixed(4));
+    if (liveState.frequency) parts.push(liveState.frequency.toFixed(3));
+    if (liveState.channel !== undefined && liveState.channel !== null) {
+      parts.push(`CH ${liveState.channel}`);
+    }
     if (liveState.modulation) parts.push(liveState.modulation);
-    if (liveState.channel !== undefined) parts.push(`CH${liveState.channel}`);
     return { mainText: main, subText: parts.join(' • ') };
   }, [deviceInfo, hasFreshLiveFrame, isInitialSyncing, liveState, syncProgressMessage]);
 
