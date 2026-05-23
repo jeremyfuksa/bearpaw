@@ -20,19 +20,19 @@ const HEATMAP_INTENSITY_CLASSES = [
 ] as const;
 
 function getRelativeTime(date: Date | number) {
-  // Compact form so the timestamp column stays narrow as the row font
-  // scales up for kiosk view — at 60px+ the long "15 minutes ago" was
-  // colliding with the freq + alpha columns.
   const timestamp = typeof date === 'number' ? date * 1000 : date.getTime();
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 10) return 'now';
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds} seconds ago`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes === 1) return '1 minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
+  if (hours === 1) return '1 hour ago';
+  if (hours < 24) return `${hours} hours ago`;
   const days = Math.floor(hours / 24);
-  return `${days}d`;
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
 }
 
 function normalizeSignal(value?: number) {
@@ -108,7 +108,7 @@ export function ScanView({
     () =>
       activityLog.map((entry) => ({
         id: entry.id,
-        frequency: entry.frequency.toFixed(4),
+        frequency: entry.frequency.toFixed(3),
         tag: entry.alpha_tag || '—',
         strength: normalizeSignal(entry.rssi),
         time: entry.timestamp,
@@ -190,35 +190,41 @@ export function ScanView({
               </TooltipContent>
             </Tooltip>
           </div>
-          <div className="flex-1 min-h-0 flex flex-col gap-[clamp(2px,1.4cqmin,20px)] pr-2">
-            {recentHits.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-white/20 text-[clamp(11px,3cqmin,52px)] italic">
-                Waiting for signals...
-              </div>
-            ) : (
-              Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
+          {recentHits.length === 0 ? (
+            <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 pr-2 text-white/20 text-[clamp(11px,3cqmin,52px)] italic">
+              Waiting for signals...
+            </div>
+          ) : (
+            // One grid for all five rows so every column lines up vertically
+            // (proper "tabbing"). Each row uses `grid-cols-subgrid` to inherit
+            // the parent's column tracks, which lets us still hover-highlight
+            // the whole row as a single element.
+            <div className="grid flex-1 min-h-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,minmax(0,1fr))] gap-x-[clamp(8px,2.5cqmin,40px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
+              {Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
                 const hit = recentHits[idx];
                 if (!hit) {
-                  return <div key={`empty-${idx}`} className="flex-1" aria-hidden="true" />;
+                  return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
                 }
                 return (
                   <div
                     key={hit.id}
-                    className="grid items-center flex-1 grid-cols-[clamp(40px,5cqmin,100px)_clamp(72px,13cqmin,220px)_minmax(0,1fr)_auto] gap-[clamp(8px,2.5cqmin,40px)] rounded-[4px] px-[clamp(2px,1cqmin,12px)] text-[clamp(13px,5cqmin,72px)] hover:bg-white/5"
+                    className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
                   >
-                    <span className="text-white/30 truncate">{getRelativeTime(hit.time)}</span>
-                    <span className="font-mono text-right text-brand-light truncate">
+                    <span className="whitespace-nowrap text-white/30">
+                      {getRelativeTime(hit.time)}
+                    </span>
+                    <span className="whitespace-nowrap text-right font-mono text-brand-light">
                       {hit.frequency}
                     </span>
-                    <span className="truncate text-white/60" title={hit.tag}>
+                    <span className="whitespace-nowrap text-white/60" title={hit.tag}>
                       {hit.tag}
                     </span>
                     <HitSignalBars strength={hit.strength} />
                   </div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       </div>
 
