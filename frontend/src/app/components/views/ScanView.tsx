@@ -206,27 +206,23 @@ export function ScanView({
             // string ticks ("17 seconds ago" → "18 seconds ago" → "1 minute
             // ago" …). `ch` scales with the font, so the floor tracks the
             // fluid type sizing automatically.
-            <div className="grid flex-1 min-h-0 grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,minmax(0,1fr))] gap-x-[clamp(8px,2.5cqmin,40px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
+            //
+            // Rows are sized `auto` (content height) and the grid uses
+            // `align-content: space-between` so the first hit sits at the
+            // top of the list, the last hit sits flush against the bottom
+            // (which aligns with the Display panel's bank row beside it),
+            // and the middle hits are spaced evenly between. The minimum
+            // `gap-y` keeps a small floor when the panel is short.
+            <div className="grid flex-1 min-h-0 grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,auto)] content-between gap-x-[clamp(12px,3.5cqmin,60px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
               {Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
                 const hit = recentHits[idx];
                 if (!hit) {
                   return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
                 }
-                // Each row's track is sized 1fr, so `items-center` would
-                // leave a half-row of empty space below the very bottom
-                // hit's text — a visible gap between the last row and
-                // the bottom edge of the Display panel beside it.
-                // `items-end` on the final row anchors that row's content
-                // flush to its track's bottom, which is the bottom of
-                // the panel, lining the two halves up.
-                const isLastRow = idx === HIT_SLOT_COUNT - 1;
                 return (
                   <div
                     key={hit.id}
-                    className={cn(
-                      'col-span-4 grid grid-cols-subgrid rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5',
-                      isLastRow ? 'items-end' : 'items-center',
-                    )}
+                    className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
                   >
                     <span className="whitespace-nowrap text-white/30">
                       {getRelativeTime(hit.time)}
