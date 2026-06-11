@@ -241,6 +241,21 @@ The BC125AT enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0
 - **Backend:** `cargo test -p bearpaw-api`. Fixtures driven by captures in `docs/wire_captures/`.
 - **Frontend:** `npm test -- --run` (vitest), `npm run lint`, `npm run type-check`, `npm run format:check`. All four run on every PR via `.github/workflows/tests.yml`.
 
+## Third-rail flows
+
+These are flows that have been broken-and-fixed at least once. Each one has a paired regression-guard test and a `REGRESSION GUARD:` comment in the relevant code site. Treat both as load-bearing — the comment exists to tell you why the code looks the way it does, the test exists to fail loudly if you regress it.
+
+When you touch code near one of these guards, **read the comment**, run the named test, and only proceed if it still passes. If you need to change the behavior intentionally, update the test and the comment together — don't delete the guard silently.
+
+| Flow | Code site | Test name | Why it broke before |
+| --- | --- | --- | --- |
+| WS subscription is stable across `liveState` updates | [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) WS-subscribe `useEffect` deps array | `frontend/src/app/__tests__/App.regression.test.tsx :: WS subscription is stable across liveState updates` | A PR added `liveState?.mode` to the deps array; the effect re-registered all four WS subscriptions on every poll tick (~5 Hz), cancelling in-flight scan-resume timers and producing visible "the app is misbehaving" churn. Handlers that need the latest mode must read it via `useStore.getState().liveState?.mode` at invocation time. |
+| Memory-sync overlay covers subsequent syncs | [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) overlay `<AnimatePresence>` block | `frontend/src/app/__tests__/App.regression.test.tsx :: memory-sync overlay covers subsequent syncs` | PR #102 lifted the overlay to cover the whole UI during sync but gated it on `isInitialSyncing = inProgress && !hasSyncedInitially`. After the first sync, `hasSyncedInitially` flipped permanently true, so File → Sync Memory ran 30-45 s of PRG/CIN/EPG with no overlay — users could click into Channels/Device and corrupt the in-flight bracket. Gate on `isMemorySyncing` directly. |
+| Cancel-sync runs the post-sync chain via the WS message | [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) `handleCancelSync` | `frontend/src/app/__tests__/App.regression.test.tsx :: handleCancelSync runs the post-sync chain via WS` | `handleCancelSync` synchronously set `inProgress: false` after the cancel API returned; the subsequent WS "Sync cancelled" message hit a progress handler that gated the post-sync chain on `currentSync.inProgress`, so channel-refresh and scan-resume were silently skipped on every cancel. The cancel handler must only request cancellation; the WS message is what flips `inProgress` and runs the chain. |
+| HOLD button label stays "HOLD" in both held/not-held states | [`frontend/src/app/components/ScannerUI.tsx`](frontend/src/app/components/ScannerUI.tsx) HOLD `<button>` | `frontend/src/app/components/__tests__/ScannerDisplay.test.tsx :: toggles HOLD button aria-pressed and aria-label when isHolding flips` | The visible label used to flip "HOLD" ↔ "SCAN" with `isHolding`, which implied "press here to resume" while simultaneously being the same control that entered HOLD. The held/not-held signal is now carried by `aria-pressed`, `aria-label`, and the highlight color — do not reintroduce a text-label flip. |
+
+When you add a flow to this table, also add a `REGRESSION GUARD:` comment at the code site pointing back to the test name.
+
 ## Memory sync performance
 
 Reading all 500 channels is slow (~30–45 s):

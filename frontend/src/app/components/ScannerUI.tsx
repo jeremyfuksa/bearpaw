@@ -120,7 +120,7 @@ interface ScannerControlsProps {
 }
 
 const CONTROL_BUTTON_CLASSES =
-  'inline-flex items-center justify-center rounded-scanner-xs border border-[rgba(28,31,38,0.8)] px-[clamp(4px,3cqmin,32px)] py-[clamp(2px,1cqmin,16px)] font-display font-medium text-[clamp(9px,4.5cqmin,52px)] leading-none text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)] active:translate-y-[1px]';
+  'inline-flex items-center justify-center rounded-scanner-xs border border-[rgba(28,31,38,0.8)] px-[clamp(4px,3cqmin,32px)] py-[clamp(2px,1cqmin,16px)] font-mono font-medium text-[clamp(9px,4.5cqmin,52px)] leading-none text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)] active:translate-y-[1px]';
 
 function ScannerControls({
   volume,
@@ -168,9 +168,10 @@ function ScannerControls({
           isHolding && 'bg-[rgba(28,31,38,0.8)] text-brand-primary',
         )}
         aria-pressed={isHolding}
+        aria-label={isHolding ? 'Resume scan' : 'Hold scanner'}
         onClick={onHoldToggle}
       >
-        {isHolding ? 'SCAN' : 'HOLD'}
+        HOLD
       </button>
     </div>
   );
@@ -314,7 +315,7 @@ export function ScannerDisplay({
             {isScanning ? 'Scanning...' : mainText}
           </FitText>
           <div className="flex w-full items-center justify-between gap-[clamp(8px,2.5cqmin,40px)]">
-            <p className="font-display font-normal text-[clamp(12px,9cqmin,160px)] leading-tight text-[rgba(28,31,39,0.6)] truncate">
+            <p className="font-mono font-normal text-[clamp(12px,9cqmin,160px)] leading-tight text-[rgba(28,31,39,0.6)] truncate">
               {isScanning ? 'Searching for signal...' : subText || '—'}
             </p>
             {!isScanning && !isError && <DisplaySignalBars strength={signalStrength} />}
@@ -362,7 +363,7 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
             aria-pressed={isActive}
             aria-label={`Bank ${label} ${isActive ? '(enabled)' : '(disabled)'}`}
             className={cn(
-              'inline-flex h-[clamp(18px,9cqmin,120px)] flex-1 items-center justify-center rounded-scanner-xs font-display font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors active:translate-y-[1px]',
+              'inline-flex h-[clamp(18px,9cqmin,120px)] flex-1 items-center justify-center rounded-scanner-xs font-mono font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors active:translate-y-[1px]',
               isActive
                 ? 'bg-[rgba(28,31,38,0.7)] text-brand-primary hover:bg-[rgba(28,31,38,0.85)]'
                 : 'border border-[rgba(28,31,38,0.8)] text-[rgba(28,31,38,0.9)] hover:bg-[rgba(28,31,38,0.1)]',

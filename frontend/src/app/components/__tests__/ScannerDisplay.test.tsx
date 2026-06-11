@@ -44,12 +44,22 @@ describe('ScannerDisplay', () => {
       expect(screen.getByRole('button', { name: 'Volume 12' })).toHaveTextContent('VOL 12');
     });
 
-    it('flips HOLD → SCAN when isHolding is true', () => {
+    it('toggles HOLD button aria-pressed and aria-label when isHolding flips', () => {
+      // REGRESSION GUARD: The visible label stays "HOLD" in both states; the
+      // held/not-held signal is conveyed by aria-pressed (for assistive tech),
+      // aria-label (assistive tech action description), and the highlight
+      // colour (sighted users). Do NOT reintroduce a text-label flip — the
+      // jarring HOLD↔SCAN swap was removed because it implied "press here to
+      // resume" while also being the same button you pressed to enter HOLD.
       const { rerender } = render(<ScannerDisplay {...defaultProps} isHolding={false} />);
-      expect(screen.getByRole('button', { name: /^HOLD$/i })).toBeInTheDocument();
+      const buttonNotHeld = screen.getByRole('button', { name: /Hold scanner/i });
+      expect(buttonNotHeld).toHaveTextContent('HOLD');
+      expect(buttonNotHeld).toHaveAttribute('aria-pressed', 'false');
 
       rerender(<ScannerDisplay {...defaultProps} isHolding={true} />);
-      expect(screen.getByRole('button', { name: /^SCAN$/i })).toBeInTheDocument();
+      const buttonHeld = screen.getByRole('button', { name: /Resume scan/i });
+      expect(buttonHeld).toHaveTextContent('HOLD');
+      expect(buttonHeld).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('renders 10 bank buttons reflecting enabled/disabled state', () => {
@@ -84,7 +94,7 @@ describe('ScannerDisplay', () => {
     it('calls onHoldToggle when HOLD button is clicked', async () => {
       const onHoldToggle = vi.fn();
       render(<ScannerDisplay {...defaultProps} onHoldToggle={onHoldToggle} />);
-      await userEvent.click(screen.getByRole('button', { name: /^HOLD$/i }));
+      await userEvent.click(screen.getByRole('button', { name: /Hold scanner/i }));
       expect(onHoldToggle).toHaveBeenCalledTimes(1);
     });
 
