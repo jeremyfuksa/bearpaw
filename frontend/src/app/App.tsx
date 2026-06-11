@@ -219,9 +219,11 @@ export default function App() {
           percent: 0,
         });
 
-        // Double-check PGM mode after a delay to account for mode transitions
+        // Double-check PGM mode after a delay to account for mode transitions.
+        // Read liveState via getState() — see REGRESSION GUARD below.
         programModeEntryTimeoutRef.current = setTimeout(() => {
-          const normalizedMode = (liveState?.mode ?? '').toString().trim().toUpperCase();
+          const currentLiveState = useStore.getState().liveState;
+          const normalizedMode = (currentLiveState?.mode ?? '').toString().trim().toUpperCase();
           setIsInProgramMode(normalizedMode === 'PGM');
         }, 500);
 
@@ -251,6 +253,16 @@ export default function App() {
         window.clearTimeout(scanResumeTimerRef.current);
       }
     };
+    // REGRESSION GUARD: App.regression.test.tsx :: WS subscription is stable
+    // across liveState updates.
+    // DO NOT add `liveState`, `liveState?.mode`, or any other high-frequency
+    // store-derived value to these deps. The poll loop pushes state_update
+    // messages at 5 Hz; if those values are in the deps array this effect
+    // tears down and re-registers all four WS subscriptions on every tick,
+    // cancelling in-flight scan-resume timers and producing the visible
+    // "scanning churn / random unresponsiveness" regression. If a handler
+    // needs the latest mode, read it via `useStore.getState().liveState?.mode`
+    // at handler-invocation time, not from the closed-over value.
   }, [
     api,
     currentTab,
@@ -260,7 +272,6 @@ export default function App() {
     updateLiveState,
     updateSync,
     ws,
-    liveState?.mode,
   ]);
 
   useEffect(() => {
@@ -372,16 +383,19 @@ export default function App() {
   }, []);
 
   const handleCancelSync = useCallback(async () => {
+    // REGRESSION GUARD: App.regression.test.tsx :: cancel sync runs the
+    // post-sync chain. Do NOT synchronously flip `inProgress: false` here.
+    // The WS "Sync cancelled" progress message arrives shortly after the
+    // cancel API returns, and the progress handler is what runs the
+    // post-sync chain (refresh channels, resume scan). If we pre-flip
+    // `inProgress: false`, the handler sees `currentSync.inProgress === false`
+    // and skips that chain — leaving the scanner in HOLD with stale channel
+    // state. Just request the cancellation and let the WS path complete it.
     try {
       const taskId = useStore.getState().sync.taskId || undefined;
+      updateSync({ message: 'Cancelling sync...' });
       await api.cancelSync(taskId);
       toast.info('Sync cancelled');
-      updateSync({
-        inProgress: false,
-        hasSyncedInitially: true,
-        taskId: null,
-        message: 'Loading channels from device...',
-      });
     } catch (error) {
       console.warn('Failed to cancel sync', error);
       toast.error('Unable to cancel sync');
@@ -725,10 +739,16 @@ export default function App() {
         hasActivity={fullActivityLog.length > 0}
       />
 
+      {/* REGRESSION GUARD: App.regression.test.tsx :: memory-sync overlay
+          covers subsequent syncs, not just initial. Gate on `isMemorySyncing`
+          (any in-progress sync) rather than `isInitialSyncing` (first-time
+          only) so that a user-triggered File → Sync Memory after the initial
+          sync still blocks the UI for the duration of the PRG bracket — the
+          original intent of #102. */}
       <AnimatePresence>
-        {isInitialSyncing && (
+        {isMemorySyncing && (
           <motion.div
-            key="initial-sync-overlay"
+            key="memory-sync-overlay"
             role="status"
             aria-live="polite"
             initial={{ opacity: 0 }}
