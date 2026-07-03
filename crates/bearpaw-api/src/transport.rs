@@ -25,14 +25,37 @@ impl TransportError {
             // `serialport::new(...).open()` failed at the OS layer — typically
             // ENOENT, which is what we see on unplug.
             TransportError::Open(_) => true,
-            TransportError::Io(e) => matches!(
-                e.kind(),
-                std::io::ErrorKind::NotFound
-                    | std::io::ErrorKind::BrokenPipe
-                    | std::io::ErrorKind::ConnectionAborted
-                    | std::io::ErrorKind::ConnectionReset
-                    | std::io::ErrorKind::UnexpectedEof
-            ),
+            TransportError::Io(e) => {
+                // Error kinds that unambiguously mean the node is gone.
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::NotFound
+                        | std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::UnexpectedEof
+                ) {
+                    return true;
+                }
+                // Never treat a plain read timeout (or an interrupted /
+                // would-block syscall) as a death certificate — those are
+                // normal transient conditions and must NOT force a reconnect.
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::Interrupted
+                        | std::io::ErrorKind::WouldBlock
+                ) {
+                    return false;
+                }
+                // REGRESSION GUARD: BUG_AUDIT H10 — on Linux a removed
+                // ttyACM*/ttyUSB* node yields EIO (5) or ENXIO (6), which std
+                // maps to ErrorKind::Uncategorized/Other and we previously
+                // classified as transient. The poll loop then warned at 5 Hz
+                // forever and never reconnected. Match the raw errno so unplug
+                // is detected. See `is_device_gone_classifies_linux_unplug_errno`.
+                matches!(e.raw_os_error(), Some(5) | Some(6))
+            }
         }
     }
 }
@@ -124,11 +147,46 @@ impl SerialTransport {
         result
     }
 
-    fn send_inner(
-        &self,
-        port: &mut dyn SerialPort,
-        cmd: &str,
-    ) -> Result<String, TransportError> {
+    /// Read and discard any stale bytes stranded in the input buffer by a
+    /// previous timed-out response. Without this, those leftover bytes become
+    /// the *next* command's reply and shift every request/response pair out of
+    /// alignment — the desync class CLAUDE.md pitfalls 2–3 warn about. Serial
+    /// analogue of `UsbTransport::drain_input`.
+    ///
+    /// REGRESSION GUARD: BUG_AUDIT H10 — the serial path only drained once at
+    /// open(), never before each command. Best-effort and non-blocking: it
+    /// gates each read on `bytes_to_read()` (so it returns immediately when the
+    /// buffer is empty), uses a tiny read timeout as a backstop, and restores
+    /// the port's prior timeout on return.
+    fn drain_input(&self, port: &mut dyn SerialPort) {
+        let saved = port.timeout();
+        if port.set_timeout(Duration::from_millis(2)).is_err() {
+            return;
+        }
+        let mut buf = [0u8; 128];
+        // Safety cap (~20 KB) so a device steadily emitting data can't spin
+        // here forever, matching UsbTransport::drain_input.
+        for _ in 0..160 {
+            match port.bytes_to_read() {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+            match port.read(&mut buf) {
+                Ok(0) => break,
+                Ok(_) => continue,
+                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => break,
+                Err(_) => break,
+            }
+        }
+        let _ = port.set_timeout(saved);
+    }
+
+    fn send_inner(&self, port: &mut dyn SerialPort, cmd: &str) -> Result<String, TransportError> {
+        // Clear any bytes stranded by a previous timed-out response before we
+        // write, so this command's reply isn't shifted by stale input.
+        self.drain_input(port);
+
         // BC125AT wire format: CR-only (`\r`, 0x0D) terminator, never CRLF.
         // A stray LF leaves a byte in the input buffer and turns the next
         // command into ERR. See docs/BC125AT_PROTOCOL.md §2 and §3.
@@ -173,6 +231,21 @@ impl SerialTransport {
     ) -> Result<String, TransportError> {
         use std::time::Instant;
         let idle_timeout = Duration::from_millis(50);
+        // Overall deadline so a device that stops answering *without* raising
+        // an I/O error (a wedged-but-open port — another program left the
+        // scanner in PRG, a half-dead cable) can't spin the poll thread
+        // forever. Scaled off the per-read timeout with a 2s floor; with the
+        // default 500ms timeout this is 2s. Mirrors the USB transport, which
+        // errors on timeout-with-no-data (transport_usb.rs read_multiline).
+        //
+        // REGRESSION GUARD: BUG_AUDIT C7 — the Ok(0)/TimedOut arms used to
+        // `continue` unconditionally while `out` was still empty, so a silent
+        // device hung this function (and every STS poll) indefinitely. A
+        // timeout/EOF with an empty buffer past the deadline MUST return Err;
+        // the completed-line path (non-empty buffer, idle elapsed) is
+        // unchanged.
+        let overall_deadline = Duration::from_millis(self.timeout_ms.saturating_mul(4).max(2000));
+        let start = Instant::now();
         let mut out = Vec::new();
         let mut last = Instant::now();
         let mut b = [0u8; 64];
@@ -181,6 +254,13 @@ impl SerialTransport {
                 Ok(0) => {
                     if !out.is_empty() && last.elapsed() >= idle_timeout {
                         break;
+                    }
+                    if out.is_empty() && start.elapsed() >= overall_deadline {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "serial multiline read produced no data before deadline",
+                        )
+                        .into());
                     }
                     thread::sleep(Duration::from_millis(5));
                     continue;
@@ -192,6 +272,13 @@ impl SerialTransport {
                 Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
                     if !out.is_empty() && last.elapsed() >= idle_timeout {
                         break;
+                    }
+                    if out.is_empty() && start.elapsed() >= overall_deadline {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "serial multiline read produced no data before deadline",
+                        )
+                        .into());
                     }
                     continue;
                 }
@@ -246,4 +333,39 @@ mod tests {
         let err = TransportError::Io(std::io::Error::from(std::io::ErrorKind::Interrupted));
         assert!(!err.is_device_gone());
     }
+
+    #[test]
+    fn is_device_gone_classifies_linux_unplug_errno() {
+        // A removed ttyACM*/ttyUSB* node on Linux surfaces as EIO (5) or
+        // ENXIO (6), which std maps to Uncategorized/Other. These mean the
+        // device is gone and must trigger a reconnect. (BUG_AUDIT H10)
+        let eio = TransportError::Io(std::io::Error::from_raw_os_error(5));
+        assert!(eio.is_device_gone(), "EIO means the tty node went away");
+
+        let enxio = TransportError::Io(std::io::Error::from_raw_os_error(6));
+        assert!(enxio.is_device_gone(), "ENXIO means the tty node went away");
+    }
+
+    #[test]
+    fn is_device_gone_ignores_unrelated_errno() {
+        // A genuinely transient / unrelated errno (e.g. ENOSPC = 28) must NOT
+        // be classified as the device disappearing — otherwise a stray error
+        // would force a needless reconnect. Guards the errno match above from
+        // being widened accidentally.
+        let enospc = TransportError::Io(std::io::Error::from_raw_os_error(28));
+        assert!(!enospc.is_device_gone());
+
+        // EINTR (4) / EAGAIN (11) are transient syscall conditions.
+        let eintr = TransportError::Io(std::io::Error::from_raw_os_error(4));
+        assert!(!eintr.is_device_gone());
+        let eagain = TransportError::Io(std::io::Error::from_raw_os_error(11));
+        assert!(!eagain.is_device_gone());
+    }
+
+    // NOTE: `read_response_multiline`'s no-data deadline (BUG_AUDIT C7) and
+    // `drain_input` (H10) are not unit-tested here because `dyn SerialPort`
+    // has no lightweight in-memory implementation to construct (it requires a
+    // real OS handle, control-line state, etc.). The behavior is covered by
+    // the REGRESSION GUARD comments at each site; exercise them with a real or
+    // stubbed port at the integration layer if one becomes available.
 }

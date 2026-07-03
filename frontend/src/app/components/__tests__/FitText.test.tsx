@@ -46,9 +46,13 @@ describe('FitText', () => {
     const orig = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
     (globalThis as { ResizeObserver?: unknown }).ResizeObserver = undefined;
     try {
-      // Silence the inevitable warning the missing constructor triggers.
+      // Silence any warning the missing constructor might trigger.
       const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-      expect(() => render(<FitText>Probe</FitText>)).toThrow();
+      let container: HTMLElement | undefined;
+      expect(() => {
+        container = render(<FitText>Probe</FitText>).container;
+      }).not.toThrow();
+      expect(container?.textContent).toBe('Probe');
       err.mockRestore();
     } finally {
       (globalThis as { ResizeObserver?: unknown }).ResizeObserver = orig;

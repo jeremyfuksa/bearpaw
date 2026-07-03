@@ -348,6 +348,16 @@ pub fn rssi_raw_to_scaled(raw: u16) -> u8 {
 /// `ChannelData.tone_squelch` field is populated from a code→Hz translation
 /// via `protocol::tones::decode_tone`.
 pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
+    // REGRESSION GUARD (#134): reject scanner error / end-of-list replies.
+    // Without this, `CIN,NG` / `CIN,ERR` / bare `-1` are parsed as a channel
+    // whose alpha tag is "NG"/"ERR", which memory sync then caches and serves
+    // as real channel data (and, when PRG is refused, wipes the whole cache
+    // with 500 phantom "NG" channels).
+    match classify_response(response) {
+        ScannerReply::Err | ScannerReply::Ng | ScannerReply::EndOfList => return None,
+        _ => {}
+    }
+
     let line = response.lines().find(|l| !l.trim().is_empty())?.trim();
     let line = line.strip_suffix('\r').unwrap_or(line);
     let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
@@ -360,11 +370,16 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
     if p.first().map(|s| s.eq_ignore_ascii_case("CIN")) == Some(true) {
         p = &p[1..];
     }
-    // Index field — skip if present and matches.
-    if let Some(first) = p.first() {
-        if first.parse::<u16>().ok() == Some(index) {
-            p = &p[1..];
-        }
+    // Index field. The wire always echoes `CIN,<index>,...`. If the echoed
+    // index is numeric but does not match what we asked for, the response
+    // stream has desynced (e.g. a late reply arriving after a timeout) —
+    // reject it rather than mis-parsing the index digits as the alpha tag and
+    // storing the channel under the wrong key. See #134. A non-numeric first
+    // field (index already stripped by the transport) falls through as before.
+    match p.first().and_then(|s| s.parse::<u16>().ok()) {
+        Some(echoed) if echoed == index => p = &p[1..],
+        Some(_) => return None,
+        None => {}
     }
 
     // Empty channel slot: short or all-empty payload.
@@ -749,6 +764,37 @@ mod tests {
         let ch = parse_cin_response(99, "CIN,99,,,,,,,").unwrap();
         assert_eq!(ch.frequency, 0.0);
         assert_eq!(ch.alpha_tag, "");
+    }
+
+    // REGRESSION GUARD: see issue #134. Error/terminator replies must not be
+    // parsed into phantom channels named "NG"/"ERR".
+    #[test]
+    fn cin_rejects_error_replies() {
+        assert!(
+            parse_cin_response(1, "CIN,NG").is_none(),
+            "CIN,NG is not a channel"
+        );
+        assert!(
+            parse_cin_response(1, "CIN,ERR").is_none(),
+            "CIN,ERR is not a channel"
+        );
+        assert!(parse_cin_response(1, "NG").is_none());
+        assert!(parse_cin_response(1, "ERR").is_none());
+        assert!(parse_cin_response(1, "-1").is_none());
+    }
+
+    // REGRESSION GUARD: see issue #134. A reply echoing a different index than
+    // requested (FIFO desync after a timeout) must be rejected, not stored
+    // under the wrong key with the index digits parsed as the alpha tag.
+    #[test]
+    fn cin_rejects_index_mismatch() {
+        // Asked for 5, scanner echoed 6 → desync.
+        assert!(
+            parse_cin_response(5, "CIN,6,Ararat UHF,01451300,AUTO,0,2,0,0").is_none(),
+            "mismatched echo index must be rejected"
+        );
+        // Matching index still parses.
+        assert!(parse_cin_response(6, "CIN,6,Ararat UHF,01451300,AUTO,0,2,0,0").is_some());
     }
 
     #[test]

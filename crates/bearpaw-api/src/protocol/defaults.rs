@@ -49,7 +49,11 @@ mod tests {
                 lower,
                 upper
             );
-            assert!(*lower >= 25.0, "range {} lower below scanner minimum", i + 1);
+            assert!(
+                *lower >= 25.0,
+                "range {} lower below scanner minimum",
+                i + 1
+            );
             assert!(
                 *upper <= 512.0,
                 "range {} upper above scanner maximum",

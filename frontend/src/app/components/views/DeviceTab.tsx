@@ -39,6 +39,19 @@ interface SearchRange {
   end: string;
 }
 
+// Frontend uses camelCase preference keys; the backend persists snake_case
+// (see default_preferences() in api/mod.rs). Map every key that differs so
+// saved values round-trip through App.tsx's snake_case load path.
+const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
+  hitMinDuration: 'hit_min_duration',
+  mqttEnabled: 'mqtt_enabled',
+  mqttHost: 'mqtt_host',
+  mqttPort: 'mqtt_port',
+  mqttTopicPrefix: 'mqtt_topic_prefix',
+  mqttQos: 'mqtt_qos',
+  mqttRetain: 'mqtt_retain',
+};
+
 export function DeviceTab() {
   const api = getAPI();
   const connectionStatus = useConnectionStatus();
@@ -59,7 +72,7 @@ export function DeviceTab() {
 
   const handlePreferenceChange = useCallback(
     async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
-      const backendKey = key === 'hitMinDuration' ? 'hit_min_duration' : key;
+      const backendKey = PREFERENCE_KEY_MAP[key] ?? key;
       updatePreferences({ [key]: value } as Partial<Preferences>);
       try {
         await fetch(`${API_BASE}/preferences`, {
@@ -99,14 +112,11 @@ export function DeviceTab() {
   ]);
 
   // Service Search Settings
-  const [serviceSearchGroups, setServiceSearchGroups] = useState<boolean[]>([
-    false,
-    false,
-    false,
-    false,
-    false,
-    false,
-  ]);
+  // The BC125AT exposes exactly 10 service-search band groups; the backend
+  // (set_service_search) rejects any payload that is not exactly 10 booleans.
+  const [serviceSearchGroups, setServiceSearchGroups] = useState<boolean[]>(() =>
+    Array(10).fill(false),
+  );
   const [searchDelay, setSearchDelay] = useState(3);
   const [codeSearchEnabled, setCodeSearchEnabled] = useState(false);
 
@@ -235,9 +245,11 @@ export function DeviceTab() {
           setCloseCallBands(settings.close_call.band);
         }
 
-        // Populate service search settings
+        // Populate service search settings. Always normalize to exactly 10
+        // booleans so toggles never send a short/sparse array to the backend.
         if (settings.service_search) {
-          setServiceSearchGroups(settings.service_search.groups);
+          const loaded = settings.service_search.groups ?? [];
+          setServiceSearchGroups(Array.from({ length: 10 }, (_, i) => loaded[i] ?? false));
         }
 
         // Populate search settings
@@ -294,9 +306,11 @@ export function DeviceTab() {
 
   const toggleAllSelected = useCallback(
     (checked: boolean) => {
-      setSelectedChannels(checked ? lockedChannels.map((ch) => ch.index) : []);
+      // Operate only on the currently-filtered locked channels so "Select Page"
+      // never selects/unlocks channels hidden by the active search/bank filter.
+      setSelectedChannels(checked ? filteredLockedChannels.map((ch) => ch.index) : []);
     },
-    [lockedChannels],
+    [filteredLockedChannels],
   );
 
   const handleUnlockSelected = useCallback(
@@ -940,6 +954,7 @@ export function DeviceTab() {
                     <span className="text-xs font-medium text-white/70">Contrast</span>
                     <Slider
                       value={[contrast]}
+                      min={1}
                       max={15}
                       step={1}
                       className="w-[var(--size-select-medium)]"
@@ -1190,6 +1205,8 @@ export function DeviceTab() {
                   'Civil Air',
                   'Military Air',
                   'CB',
+                  'FRS/GMRS/MURS',
+                  'Racing',
                 ].map((service, index) => (
                   <div key={service} className="flex items-center justify-between group">
                     <label

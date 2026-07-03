@@ -14,9 +14,7 @@ pub(crate) async fn ws_handler(
 ) -> axum::response::Response {
     // Browsers always send Origin on a WS upgrade. The CORS layer does not
     // run on the upgrade response, so the origin check has to live here.
-    let origin = headers
-        .get(header::ORIGIN)
-        .and_then(|v| v.to_str().ok());
+    let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok());
     if !ws_origin_allowed(origin) {
         return (StatusCode::FORBIDDEN, "origin_not_allowed").into_response();
     }
@@ -24,12 +22,30 @@ pub(crate) async fn ws_handler(
 }
 
 async fn handle_socket(state: AppState, mut socket: WebSocket) {
+    use tokio::sync::broadcast::error::RecvError;
+
     let mut rx = state.ws_tx.subscribe();
     loop {
         tokio::select! {
-            Ok(msg) = rx.recv() => {
-                if socket.send(Message::Text(msg.into())).await.is_err() {
-                    break;
+            // REGRESSION GUARD: see issue #141. Match the full Result here, not
+            // `Ok(msg) = rx.recv()`. With the `Ok(..)` pattern, a
+            // RecvError::Lagged (the broadcast channel is bounded and the poll
+            // loop produces ~5-10 msgs/s) makes the arm's pattern fail to match,
+            // and tokio::select! then DISABLES this branch for the rest of the
+            // call — forwarding silently stops until the client sends a frame.
+            result = rx.recv() => {
+                match result {
+                    Ok(msg) => {
+                        if socket.send(Message::Text(msg.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    // Client fell behind and skipped `n` messages. The next
+                    // full state_update carries the current state, so just
+                    // keep going rather than tearing down the socket.
+                    Err(RecvError::Lagged(_)) => continue,
+                    // Sender dropped: server is shutting down.
+                    Err(RecvError::Closed) => break,
                 }
             }
             next = socket.recv() => {

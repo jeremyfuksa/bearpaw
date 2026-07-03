@@ -21,16 +21,16 @@
 //! mode. The Drop impl sends EPG and clears the suspend flag even if the
 //! caller panicked or returned an error in the middle.
 
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use tracing::warn;
 
-use super::AppState;
-use super::ApiError;
 use super::send_raw_command;
+use super::ApiError;
+use super::AppState;
 
 /// Delay after `PRG,OK` (and after `EPG` is queued in Drop) for the
 /// scanner's mode transition to settle. Without this, the next command

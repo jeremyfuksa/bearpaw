@@ -141,7 +141,7 @@ function ScannerControls({
           <span className="sr-only">Volume {volume}</span>
           <Slider
             defaultValue={[volume]}
-            max={20}
+            max={15}
             step={1}
             onValueChange={(vals) => onVolumeChange(vals[0])}
           />
