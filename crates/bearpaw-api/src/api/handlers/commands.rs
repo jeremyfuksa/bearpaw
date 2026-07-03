@@ -148,6 +148,9 @@ pub(crate) async fn post_lockout(
                 .channel
                 .or(live.channel)
                 .ok_or_else(|| ApiError::BadRequest("channel_required".to_string()))?;
+            if !(1..=500).contains(&channel) {
+                return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
+            }
             let frequency = body.frequency.unwrap_or(live.frequency);
             let was_locked = state
                 .temporary_lockouts
@@ -196,6 +199,9 @@ pub(crate) async fn post_lockout(
                 .channel
                 .or(live.channel)
                 .ok_or_else(|| ApiError::BadRequest("channel_required".to_string()))?;
+            if !(1..=500).contains(&index) {
+                return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
+            }
             let updated = if command_sender(&state).is_ok() {
                 let current = {
                     let shadow = state.shadow.read().unwrap();

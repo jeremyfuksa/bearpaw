@@ -99,16 +99,14 @@ pub(crate) async fn set_battery(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Validate the range on the wide type BEFORE narrowing to u8 — otherwise
+    // e.g. 257 truncates to 1 and slips past a post-cast `1..=16` check. #143.
     let charge_time = body
         .get("charge_time")
         .and_then(Value::as_u64)
+        .filter(|&v| (1..=16).contains(&v))
         .ok_or_else(|| ApiError::BadRequest("battery_charge_time_out_of_range".to_string()))?
         as u8;
-    if !(1..=16).contains(&charge_time) {
-        return Err(ApiError::BadRequest(
-            "battery_charge_time_out_of_range".to_string(),
-        ));
-    }
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("BSV,{}", charge_time), false).await;
@@ -155,15 +153,14 @@ pub(crate) async fn set_key_beep(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Validate before narrowing (99 = "auto" sentinel). #143.
     let level = body
         .get("level")
         .and_then(Value::as_i64)
+        .filter(|&v| v == 99 || (0..=15).contains(&v))
         .ok_or_else(|| ApiError::BadRequest("beep_level_out_of_range".to_string()))?
         as i32;
     let lock = body.get("lock").and_then(Value::as_bool).unwrap_or(false);
-    if level != 99 && !(0..=15).contains(&level) {
-        return Err(ApiError::BadRequest("beep_level_out_of_range".to_string()));
-    }
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
@@ -214,14 +211,13 @@ pub(crate) async fn set_priority(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Validate before narrowing — 256 would truncate to 0 and pass. #143.
     let mode = body
         .get("mode")
         .and_then(Value::as_u64)
+        .filter(|&v| (0..=3).contains(&v))
         .ok_or_else(|| ApiError::BadRequest("priority_mode_invalid".to_string()))?
         as u8;
-    if !matches!(mode, 0..=3) {
-        return Err(ApiError::BadRequest("priority_mode_invalid".to_string()));
-    }
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("PRI,{}", mode), false).await;
@@ -268,18 +264,18 @@ pub(crate) async fn set_search(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Validate before narrowing — a large i64 could wrap into a valid i32
+    // delay. #143.
     let delay = body
         .get("delay")
         .and_then(Value::as_i64)
+        .filter(|&v| matches!(v, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5))
         .ok_or_else(|| ApiError::BadRequest("search_delay_invalid".to_string()))?
         as i32;
     let code_search = body
         .get("code_search")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if !matches!(delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
-        return Err(ApiError::BadRequest("search_delay_invalid".to_string()));
-    }
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
@@ -351,7 +347,12 @@ pub(crate) async fn set_close_call(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
-    let mode = body.get("mode").and_then(Value::as_u64).unwrap_or(0) as u8;
+    // Validate before narrowing — 256 truncates to 0 and passes. #143.
+    let mode = match body.get("mode").and_then(Value::as_u64) {
+        Some(v) if (0..=2).contains(&v) => v as u8,
+        None => 0,
+        Some(_) => return Err(ApiError::BadRequest("close_call_mode_invalid".to_string())),
+    };
     let alert_beep = body
         .get("alert_beep")
         .and_then(Value::as_bool)
@@ -365,7 +366,8 @@ pub(crate) async fn set_close_call(
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_else(|| vec![Value::Bool(false); 5]);
-    if !matches!(mode, 0 | 1 | 2) || band.len() != 5 {
+    // mode is already range-validated above; band must be exactly 5 entries.
+    if band.len() != 5 {
         return Err(ApiError::BadRequest("close_call_mode_invalid".to_string()));
     }
     let band_str = band
@@ -763,10 +765,11 @@ pub(crate) async fn set_contrast(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
-    let level = body.get("level").and_then(Value::as_u64).unwrap_or(0) as u8;
-    if !(1..=15).contains(&level) {
-        return Err(ApiError::BadRequest("contrast_out_of_range".to_string()));
-    }
+    // Validate before narrowing — 264 truncates to 8 and passes `1..=15`. #143.
+    let level = match body.get("level").and_then(Value::as_u64) {
+        Some(v) if (1..=15).contains(&v) => v as u8,
+        _ => return Err(ApiError::BadRequest("contrast_out_of_range".to_string())),
+    };
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("CNT,{}", level), false).await;
