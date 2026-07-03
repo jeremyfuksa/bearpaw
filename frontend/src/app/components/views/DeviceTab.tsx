@@ -1361,7 +1361,7 @@ export function DeviceTab() {
                     </div>
                     <div>
                       <h3 className="font-bold text-white text-sm">Bearpaw</h3>
-                      <div className="text-xs text-white/40">v2.4.0-beta</div>
+                      <div className="text-xs text-white/40">v{__APP_VERSION__}</div>
                     </div>
                   </div>
                   <p className="text-xs text-white/60 leading-relaxed">

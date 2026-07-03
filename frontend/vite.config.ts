@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import path from 'path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import pkg from './package.json';
 
 export default defineConfig({
   plugins: [
@@ -45,5 +46,8 @@ export default defineConfig({
   // Environment variables
   define: {
     __TAURI__: process.env.TAURI === 'true',
+    // Surface the package version to the UI so the About panel doesn't drift
+    // from the real version. See issue #149.
+    __APP_VERSION__: JSON.stringify(pkg.version),
   },
 });
