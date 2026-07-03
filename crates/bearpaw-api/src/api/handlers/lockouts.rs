@@ -52,14 +52,18 @@ pub(crate) async fn get_lockouts(
     if include_frequencies {
         let _ = command_sender(&state)?;
         let from_scanner = read_frequency_lockouts_from_scanner(&state).await?;
-        let mut raw = state.frequency_lockouts.write().unwrap();
-        raw.clear();
-        raw.extend(from_scanner.iter().copied());
-        let raw = state.frequency_lockouts.read().unwrap();
-        frequencies = raw
-            .iter()
-            .map(|f| *f as f64 / 10000.0)
-            .collect::<Vec<f64>>();
+        // Take the write lock once, update the cache, and read the values back
+        // off the SAME guard. Re-locking with .read() while this write guard is
+        // still alive deadlocks — std::sync::RwLock is not reentrant. See #133.
+        {
+            let mut raw = state.frequency_lockouts.write().unwrap();
+            raw.clear();
+            raw.extend(from_scanner.iter().copied());
+            frequencies = raw
+                .iter()
+                .map(|f| *f as f64 / 10000.0)
+                .collect::<Vec<f64>>();
+        }
         frequencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     }
 

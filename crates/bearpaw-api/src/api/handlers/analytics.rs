@@ -28,9 +28,10 @@ pub(crate) async fn analytics_busiest(
     let log = state.analytics_log.lock().unwrap();
     let mut grouped: HashMap<String, (f64, Option<String>, Option<u16>, usize, f64, f64)> =
         HashMap::new();
-    for hit in log.iter().filter(|h| {
-        cutoff.is_none_or(|c| h.timestamp >= c) && h.duration >= min_duration
-    }) {
+    for hit in log
+        .iter()
+        .filter(|h| cutoff.is_none_or(|c| h.timestamp >= c) && h.duration >= min_duration)
+    {
         let key = format!("{}|{}", hit.frequency, hit.channel.unwrap_or(0));
         let entry = grouped.entry(key).or_insert((
             hit.frequency,

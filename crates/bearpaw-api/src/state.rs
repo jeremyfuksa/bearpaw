@@ -114,6 +114,12 @@ pub enum ToneSquelchKind {
 /// One channel from scanner memory (CIN read).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ChannelData {
+    // REGRESSION GUARD: channeldata_index_serde_default (tests in this file) —
+    // the frontend PUT /memory/channels/{index} body omits `index` (the path
+    // carries it, and put_memory_channel overwrites body.index from the path).
+    // Without a serde default, axum rejects every channel edit with 422
+    // "missing field `index`". See issue #131.
+    #[serde(default)]
     pub index: u16,
     pub frequency: f64,
     pub modulation: String,
@@ -142,4 +148,33 @@ pub struct ChannelData {
 pub struct ShadowState {
     pub channels: HashMap<u16, ChannelData>,
     pub last_sync: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // REGRESSION GUARD: see issue #131. The frontend sends channel-edit PUT
+    // bodies without an `index` field. If ChannelData::index loses its
+    // #[serde(default)], this deserialization fails and every channel edit
+    // 422s before the handler runs.
+    #[test]
+    fn channeldata_deserializes_without_index() {
+        let body = r#"{
+            "frequency": 146.52,
+            "modulation": "FM",
+            "alpha_tag": "Simplex",
+            "delay": 2,
+            "lockout": false,
+            "priority": false,
+            "bank": 1
+        }"#;
+        let ch: ChannelData = serde_json::from_str(body).expect("must deserialize without index");
+        assert_eq!(
+            ch.index, 0,
+            "missing index defaults to 0 (handler overwrites from path)"
+        );
+        assert_eq!(ch.frequency, 146.52);
+        assert_eq!(ch.alpha_tag, "Simplex");
+    }
 }

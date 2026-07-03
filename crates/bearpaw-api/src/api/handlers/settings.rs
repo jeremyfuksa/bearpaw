@@ -22,7 +22,7 @@ pub(crate) async fn get_backlight(State(state): State<AppState>) -> Result<Json<
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "BLT", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "BLT");
             Ok::<Value, ApiError>(
                 json!({ "event": parts.first().cloned().unwrap_or_else(|| "AO".to_string()) }),
@@ -57,7 +57,7 @@ pub(crate) async fn set_backlight(
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("BLT,{}", event), false).await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("backlight_failed".to_string()));
@@ -73,7 +73,7 @@ pub(crate) async fn get_battery(State(state): State<AppState>) -> Result<Json<Va
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "BSV", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "BSV");
             let value = parts
                 .first()
@@ -112,7 +112,7 @@ pub(crate) async fn set_battery(
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("BSV,{}", charge_time), false).await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("battery_failed".to_string()));
@@ -128,7 +128,7 @@ pub(crate) async fn get_key_beep(State(state): State<AppState>) -> Result<Json<V
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "KBP", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "KBP");
             let level = parts
                 .first()
@@ -172,7 +172,7 @@ pub(crate) async fn set_key_beep(
             false,
         )
         .await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("key_beep_failed".to_string()));
@@ -188,7 +188,7 @@ pub(crate) async fn get_priority(State(state): State<AppState>) -> Result<Json<V
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "PRI", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "PRI");
             let mode = parts
                 .first()
@@ -225,7 +225,7 @@ pub(crate) async fn set_priority(
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("PRI,{}", mode), false).await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("priority_failed".to_string()));
@@ -241,7 +241,7 @@ pub(crate) async fn get_search(State(state): State<AppState>) -> Result<Json<Val
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "SCO", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "SCO");
             let delay = parts
                 .first()
@@ -288,7 +288,7 @@ pub(crate) async fn set_search(
             false,
         )
         .await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("SCO,")) {
             return Err(ApiError::BadRequest("search_failed".to_string()));
@@ -304,7 +304,7 @@ pub(crate) async fn get_close_call(State(state): State<AppState>) -> Result<Json
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "CLC", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "CLC");
             let mode = parts
                 .first()
@@ -397,7 +397,7 @@ pub(crate) async fn set_close_call(
             false,
         )
         .await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("close_call_failed".to_string()));
@@ -415,7 +415,7 @@ pub(crate) async fn get_service_search(
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "SSG", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "SSG");
             let flags = parts
                 .first()
@@ -474,7 +474,7 @@ pub(crate) async fn set_service_search(
             .collect::<String>();
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("SSG,{}", flags), false).await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("service_search_failed".to_string()));
@@ -492,7 +492,7 @@ pub(crate) async fn get_custom_search(
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "CSG", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "CSG");
             let flags = parts
                 .first()
@@ -551,7 +551,7 @@ pub(crate) async fn set_custom_search(
             .collect::<String>();
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("CSG,{}", flags), false).await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("custom_search_failed".to_string()));
@@ -570,7 +570,7 @@ pub(crate) async fn get_custom_range(
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, &format!("CSP,{}", index), false).await;
-                    let response = response?;
+            let response = response?;
             let mut parts = parse_command_parts(&response, "CSP");
             if parts.first().and_then(|s| s.parse::<u8>().ok()) == Some(index) {
                 parts.remove(0);
@@ -648,7 +648,7 @@ pub(crate) async fn set_custom_range(
             false,
         )
         .await;
-            let response = response?;
+        let response = response?;
         let upper_resp = response.trim().to_uppercase();
         if !(upper_resp == "OK" || upper_resp.ends_with(",OK")) {
             return Err(ApiError::BadRequest(
@@ -686,7 +686,7 @@ pub(crate) async fn get_weather(State(state): State<AppState>) -> Result<Json<Va
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "WXS", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "WXS");
             let priority = parts.first().map(|s| s == "1").unwrap_or(false);
             Ok::<Value, ApiError>(json!({ "priority": priority }))
@@ -721,7 +721,7 @@ pub(crate) async fn set_weather(
             false,
         )
         .await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("weather_failed".to_string()));
@@ -737,7 +737,7 @@ pub(crate) async fn get_contrast(State(state): State<AppState>) -> Result<Json<V
         let result = async {
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "CNT", false).await;
-                    let response = response?;
+            let response = response?;
             let parts = parse_command_parts(&response, "CNT");
             let level = parts
                 .first()
@@ -770,7 +770,7 @@ pub(crate) async fn set_contrast(
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(&state, &format!("CNT,{}", level), false).await;
-            let response = response?;
+        let response = response?;
         let upper = response.trim().to_uppercase();
         if !(upper == "OK" || upper.ends_with(",OK")) {
             return Err(ApiError::BadRequest("contrast_failed".to_string()));

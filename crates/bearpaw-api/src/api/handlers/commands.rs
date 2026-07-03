@@ -21,9 +21,7 @@ use super::super::{
 /// broadcasts the new mode — no separate live.mode write needed here.
 async fn send_mode_command(
     state: &AppState,
-    make_cmd: impl FnOnce(
-            Option<std::sync::mpsc::Sender<Result<String, String>>>,
-        ) -> ControlCommand
+    make_cmd: impl FnOnce(Option<std::sync::mpsc::Sender<Result<String, String>>>) -> ControlCommand
         + Send
         + 'static,
     error_tag: &'static str,
@@ -300,9 +298,7 @@ pub(crate) async fn set_volume(
     Ok(Json(json!({ "status": "ok" })))
 }
 
-pub(crate) async fn get_squelch(
-    State(state): State<AppState>,
-) -> Result<Json<Value>, ApiError> {
+pub(crate) async fn get_squelch(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, "SQL", false).await;
