@@ -409,14 +409,12 @@ fn run_poll_loop_usb(
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
                     ControlCommand::Hold { reply } => {
-                        let response = transport
-                            .send(&mut session, KEY_HOLD)
-                            .map_err(|e| {
-                                if e.is_device_gone() {
-                                    session_dead = true;
-                                }
-                                e.to_string()
-                            });
+                        let response = transport.send(&mut session, KEY_HOLD).map_err(|e| {
+                            if e.is_device_gone() {
+                                session_dead = true;
+                            }
+                            e.to_string()
+                        });
                         if response.is_ok() {
                             commanded_mode = ScannerMode::Hold;
                         }
@@ -425,14 +423,12 @@ fn run_poll_loop_usb(
                         }
                     }
                     ControlCommand::Scan { reply } => {
-                        let response = transport
-                            .send(&mut session, KEY_SCAN)
-                            .map_err(|e| {
-                                if e.is_device_gone() {
-                                    session_dead = true;
-                                }
-                                e.to_string()
-                            });
+                        let response = transport.send(&mut session, KEY_SCAN).map_err(|e| {
+                            if e.is_device_gone() {
+                                session_dead = true;
+                            }
+                            e.to_string()
+                        });
                         if response.is_ok() {
                             commanded_mode = ScannerMode::Scan;
                         }
@@ -483,14 +479,12 @@ fn run_poll_loop_usb(
                                     e.to_string()
                                 })
                         } else {
-                            transport
-                                .send(&mut session, &command)
-                                .map_err(|e| {
-                                    if e.is_device_gone() {
-                                        session_dead = true;
-                                    }
-                                    e.to_string()
-                                })
+                            transport.send(&mut session, &command).map_err(|e| {
+                                if e.is_device_gone() {
+                                    session_dead = true;
+                                }
+                                e.to_string()
+                            })
                         };
                         let _ = reply.send(response);
                     }

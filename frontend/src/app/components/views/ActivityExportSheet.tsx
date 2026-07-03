@@ -13,9 +13,24 @@ interface ActivityExportSheetProps {
 
 type Timeframe = 'today' | 'week' | 'month' | 'all' | 'custom';
 
-function getUnixTime(date: Date | null): number {
-  if (!date) return 0;
-  return Math.floor(date.getTime() / 1000);
+// The backend applies no hard cap on `limit` (analytics.rs defaults to 100 when
+// omitted), so request a high ceiling to avoid silently truncating "All Time".
+const EXPORT_ROW_LIMIT = 100000;
+
+// The <input type="date"> onChange stores `new Date('YYYY-MM-DD')`, which JS
+// parses as UTC midnight. Read the calendar day back via the UTC accessors and
+// re-anchor it to the local day so the exported range matches what the user saw.
+function getCustomStartTime(date: Date | null): number | null {
+  if (!date) return null;
+  const start = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0);
+  return Math.floor(start.getTime() / 1000);
+}
+
+function getCustomEndTime(date: Date | null): number | null {
+  if (!date) return null;
+  // End of the selected day (inclusive) so the end day's hits aren't dropped.
+  const end = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59);
+  return Math.floor(end.getTime() / 1000);
 }
 
 function getStartOfToday(): number {
@@ -77,11 +92,21 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
         break;
       case 'all':
         break;
-      case 'custom':
-        params.append('start_time', String(getUnixTime(customStartDate)));
-        params.append('end_time', String(getUnixTime(customEndDate)));
+      case 'custom': {
+        // Only append bounds that are actually set. An unset date falls back to
+        // the full range on that side (backend defaults start=0 / end=MAX)
+        // instead of collapsing to start_time=0&end_time=0 (empty CSV).
+        const start = getCustomStartTime(customStartDate);
+        const end = getCustomEndTime(customEndDate);
+        if (start !== null) params.append('start_time', String(start));
+        if (end !== null) params.append('end_time', String(end));
         break;
+      }
     }
+
+    // Always request a high row ceiling so exports aren't capped at the
+    // backend's default of 100 rows.
+    params.append('limit', String(EXPORT_ROW_LIMIT));
 
     return params;
   };
@@ -127,6 +152,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
       onClose();
     } catch (error) {
       console.error('Failed to export activity log', error);
+      toast.error('Failed to export activity log');
     } finally {
       setIsExporting(false);
     }

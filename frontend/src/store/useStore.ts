@@ -49,6 +49,7 @@ export interface AppStore {
   memoryEditingIndex: number | null;
 
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
+  resetSequence: () => void;
   setDeviceInfo: (info: DeviceInfo | null) => void;
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
   setBanks: (banks: boolean[]) => void;
@@ -131,6 +132,13 @@ export const useStore = create<AppStore>((set) => ({
         lastSequence: sequence ?? prev.lastSequence,
       };
     }),
+
+  // Reset the WS sequence gate. The backend reseeds its sequence counter to 0
+  // on (re)start, so after a backend restart the fresh low sequences (1, 2, 3…)
+  // would otherwise be dropped as stale against a stale `lastSequence` from the
+  // previous connection — freezing the UI until the counter caught up. Call
+  // this whenever the WebSocket (re)connects.
+  resetSequence: () => set({ lastSequence: 0 }),
 
   setDeviceInfo: (deviceInfo) => set({ deviceInfo }),
   setChannels: (channels) =>

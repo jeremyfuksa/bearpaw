@@ -25,6 +25,31 @@ describe('useStore', () => {
       expect(result.current.liveState?.frequency).toBe(145.5);
     });
 
+    it('should let a low sequence through again after resetSequence (reconnect)', () => {
+      const { result } = renderHook(() => useStore());
+
+      // Simulate a long-running backend: lastSequence has climbed high.
+      act(() => {
+        result.current.updateLiveState({ frequency: 145.5 }, 5000);
+      });
+      expect(result.current.liveState?.frequency).toBe(145.5);
+
+      // A restarted backend reseeds at 0 and sends sequence 1 — normally dropped.
+      act(() => {
+        result.current.updateLiveState({ frequency: 146.0 }, 1);
+      });
+      expect(result.current.liveState?.frequency).toBe(145.5);
+
+      // On reconnect the gate is reset, so the fresh low sequence is accepted.
+      act(() => {
+        result.current.resetSequence();
+      });
+      act(() => {
+        result.current.updateLiveState({ frequency: 146.0 }, 1);
+      });
+      expect(result.current.liveState?.frequency).toBe(146.0);
+    });
+
     it('should bootstrap initial state from partial updates', () => {
       const { result } = renderHook(() => useStore());
 

@@ -231,8 +231,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/preferences/:key",
-            get(handlers::preferences::get_preference)
-                .put(handlers::preferences::put_preference),
+            get(handlers::preferences::get_preference).put(handlers::preferences::put_preference),
         )
         .route(
             "/api/v1/analytics/busiest-channels",
@@ -397,7 +396,6 @@ pub(crate) fn format_modulation(value: &str) -> String {
         value.to_uppercase()
     }
 }
-
 
 pub(crate) fn csv_escape(value: &str) -> String {
     if value.contains(',') || value.contains('"') || value.contains('\n') {
@@ -1618,10 +1616,7 @@ mod tests {
         // Spot-check the first entry (25.0–27.995 MHz, "CB / 11m").
         assert_eq!(ranges[0].get("index"), Some(&serde_json::json!(1)));
         assert_eq!(ranges[0].get("lower"), Some(&serde_json::json!(25.0)));
-        assert_eq!(
-            ranges[0].get("label"),
-            Some(&serde_json::json!("CB / 11m"))
-        );
+        assert_eq!(ranges[0].get("label"), Some(&serde_json::json!("CB / 11m")));
     }
 
     fn temp_db_file(name: &str) -> PathBuf {

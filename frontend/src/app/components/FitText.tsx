@@ -59,6 +59,17 @@ export function FitText({ children, className, minFontSize = 12, title }: FitTex
     };
 
     fit();
+
+    // ResizeObserver is absent in some environments (SSR, older jsdom, a few
+    // embedded webviews). Guard construction so a missing constructor doesn't
+    // throw and unmount the whole tree — the one synchronous fit() above still
+    // sizes the text; we just don't get live re-fitting on container resize.
+    if (typeof ResizeObserver === 'undefined') {
+      return () => {
+        cancelAnimationFrame(rafId);
+      };
+    }
+
     const observer = new ResizeObserver(fit);
     observer.observe(container);
     return () => {

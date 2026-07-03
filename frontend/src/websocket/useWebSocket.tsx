@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ScannerWebSocket } from './ScannerWebSocket';
+import { useStore } from '../store/useStore';
 
 function resolveDefaultWsURL(): string {
   const tauriMarker = (window as Window & { __TAURI__?: unknown }).__TAURI__;
@@ -59,6 +60,12 @@ export function WebSocketProvider({ children, url }: { children: React.ReactNode
       if ('status' in data) {
         setConnected(data.status === 'connected');
         setConnecting(data.status === 'connecting');
+        if (data.status === 'connected') {
+          // The backend reseeds its WS sequence counter to 0 on (re)start.
+          // Reset our gate on every (re)connect so a restarted backend's fresh
+          // low sequences aren't dropped as stale (issue #136).
+          useStore.getState().resetSequence();
+        }
       }
     });
 

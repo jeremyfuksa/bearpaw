@@ -20,13 +20,7 @@ const KNOWN_SCANNER_USB_IDS: &[(u16, u16)] = &[
 /// Used by the autodetect MDL-probe step to confirm a candidate serial
 /// port is the scanner before committing to it. See
 /// `docs/BC125AT_PROTOCOL.md` §5.1.
-const ACCEPTED_MDL_MODELS: &[&str] = &[
-    "BC125AT",
-    "BCT125AT",
-    "UBC125XLT",
-    "UBC126AT",
-    "AE125H",
-];
+const ACCEPTED_MDL_MODELS: &[&str] = &["BC125AT", "BCT125AT", "UBC125XLT", "UBC126AT", "AE125H"];
 
 /// Sidecar filename for the most-recently-confirmed scanner. Lets us prefer
 /// the same physical unit across reconnects when multiple scanners would
