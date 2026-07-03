@@ -1097,6 +1097,16 @@ pub(crate) async fn read_frequency_lockouts_from_scanner(
     state: &AppState,
 ) -> Result<Vec<u32>, ApiError> {
     let _ = send_raw_command(state, "PRG", false).await?;
+    // REGRESSION GUARD (#138): run the GLF walk in a helper so EPG is ALWAYS
+    // sent afterward, even if a GLF read errors mid-walk. A `?` that returned
+    // early before the EPG would strand the scanner in program mode and leave
+    // the poll loop suspended (program_mode_active never clears).
+    let result = read_frequency_lockouts_walk(state).await;
+    let _ = send_raw_command(state, "EPG", false).await;
+    result
+}
+
+async fn read_frequency_lockouts_walk(state: &AppState) -> Result<Vec<u32>, ApiError> {
     let mut values = Vec::new();
     let first = send_raw_command(state, "GLF,***", false).await?;
     let mut next = parse_glf_response(&first);
@@ -1113,7 +1123,6 @@ pub(crate) async fn read_frequency_lockouts_from_scanner(
         let response = send_raw_command(state, &format!("GLF,{}", value), false).await?;
         next = parse_glf_response(&response);
     }
-    let _ = send_raw_command(state, "EPG", false).await;
     Ok(values)
 }
 
@@ -1321,7 +1330,18 @@ pub(crate) async fn write_channel_to_scanner(
         let _ = send_raw_command(state, "PRG", false).await?;
     }
     let raw = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
-    let raw = raw?;
+    // REGRESSION GUARD (#138): if the read errors after we entered PRG, send
+    // EPG before propagating — a bare `?` here would leave the scanner stuck
+    // in program mode with polling suspended.
+    let raw = match raw {
+        Ok(r) => r,
+        Err(e) => {
+            if !in_program_mode {
+                let _ = send_raw_command(state, "EPG", false).await;
+            }
+            return Err(e);
+        }
+    };
     let mut parts = raw
         .split(',')
         .map(|s| s.trim().to_string())
@@ -1453,7 +1473,17 @@ pub(crate) async fn set_channel_lockout_on_scanner(
         let _ = send_raw_command(state, "PRG", false).await?;
     }
     let response = send_raw_command(state, &format!("CIN,{}", index), false).await;
-    let response = response?;
+    // REGRESSION GUARD (#138): send EPG before propagating a read error so the
+    // scanner isn't left in program mode with polling suspended.
+    let response = match response {
+        Ok(r) => r,
+        Err(e) => {
+            if !in_program_mode {
+                let _ = send_raw_command(state, "EPG", false).await;
+            }
+            return Err(e);
+        }
+    };
 
     let mut parts = response
         .split(',')
