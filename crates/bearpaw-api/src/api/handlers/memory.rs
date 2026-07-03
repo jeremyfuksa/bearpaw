@@ -38,6 +38,13 @@ pub(crate) async fn get_memory_channel(
     State(state): State<AppState>,
     Path(index): Path<u16>,
 ) -> Result<Json<ChannelData>, ApiError> {
+    // Reject out-of-range indexes before touching the scanner. Without this,
+    // `CIN,0` / `CIN,501` go to the wire and (pre-#134) surfaced as phantom
+    // channels; now they'd just error, but a 400 is the documented contract
+    // and avoids a pointless round-trip. #143.
+    if !(1..=500).contains(&index) {
+        return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
+    }
     if command_sender(&state).is_ok() {
         if let Ok(channel) = read_channel_from_scanner(&state, index).await {
             state

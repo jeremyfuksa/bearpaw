@@ -1578,6 +1578,53 @@ mod tests {
         assert!(body.get("mqtt_enabled").is_some());
     }
 
+    // REGRESSION GUARD (#143): out-of-range channel indexes must be rejected
+    // with 400 before any scanner round-trip, not sent to the wire as CIN,0 /
+    // CIN,501.
+    #[tokio::test]
+    async fn get_memory_channel_rejects_out_of_range_index() {
+        for idx in ["0", "501", "60000"] {
+            let app = router(default_state());
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .method(Method::GET)
+                        .uri(format!("/api/v1/memory/channels/{idx}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::BAD_REQUEST,
+                "index {idx} must be rejected"
+            );
+            let body = json_body(response).await;
+            assert_eq!(body["error"], "channel_out_of_range");
+        }
+    }
+
+    // REGRESSION GUARD (#143): post_lockout must range-check the channel index.
+    #[tokio::test]
+    async fn post_lockout_rejects_out_of_range_channel() {
+        let app = router(default_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/lockout")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"mode":"temporary","channel":600}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = json_body(response).await;
+        assert_eq!(body["error"], "channel_out_of_range");
+    }
+
     #[tokio::test]
     async fn analytics_activity_log_returns_array() {
         let app = router(default_state());

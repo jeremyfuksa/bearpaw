@@ -31,6 +31,7 @@ use tracing::warn;
 use super::send_raw_command;
 use super::ApiError;
 use super::AppState;
+use crate::protocol::{classify_response, ScannerReply};
 
 /// Delay after `PRG,OK` (and after `EPG` is queued in Drop) for the
 /// scanner's mode transition to settle. Without this, the next command
@@ -80,7 +81,19 @@ impl ProgramModeGuard {
             active: false,
         };
         match send_raw_command(state, "PRG", false).await {
-            Ok(_) => {
+            Ok(resp) => {
+                // REGRESSION GUARD (#140): a transport-level Ok is not enough —
+                // the scanner can answer `PRG,NG`/`ERR` (e.g. it's in a menu).
+                // Treating that as success leaves an "active" guard that
+                // suspends polling and whose Drop sends a spurious EPG, while
+                // every subsequent CIN/SCG fails. Require an actual OK.
+                if !matches!(classify_response(&resp), ScannerReply::Ok) {
+                    // guard.active stays false → Drop clears the flag, no EPG.
+                    return Err(ApiError::BadRequest(format!(
+                        "program_mode_refused: {}",
+                        resp.trim()
+                    )));
+                }
                 guard.active = true;
                 // Let the LCD/firmware settle on the new mode before the
                 // caller fires its first PRG-only command. Skipping this
