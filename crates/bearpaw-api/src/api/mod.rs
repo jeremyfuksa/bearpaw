@@ -34,7 +34,7 @@ use tokio::sync::broadcast;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{info, warn};
 
-use crate::protocol::parse_cin_response;
+use crate::protocol::{classify_response, parse_cin_response, tones, ScannerReply};
 use crate::state::{ChannelData, DeviceInfo, LiveState, ScannerMode, ShadowState};
 
 #[derive(Clone)]
@@ -1297,113 +1297,23 @@ pub(crate) async fn read_channel_from_scanner(
         .ok_or_else(|| ApiError::BadRequest("channel_read_failed".to_string()))
 }
 
-pub(crate) async fn write_channel_to_scanner(
-    state: &AppState,
-    channel: &ChannelData,
-) -> Result<ChannelData, ApiError> {
-    fn looks_like_frequency(value: &str) -> bool {
-        if value.is_empty() {
-            return false;
-        }
-        value.contains('.')
-            || (value.chars().all(|c| c.is_ascii_digit())
-                && value.parse::<i64>().unwrap_or(0) >= 10000)
-    }
-    fn format_frequency(value: f64, template: &str) -> String {
-        if template.contains('.') {
-            format!("{:.4}", value)
-        } else {
-            let raw = (value * 10000.0).round() as i64;
-            let width = if template.chars().all(|c| c.is_ascii_digit()) {
-                std::cmp::max(8, template.len())
-            } else {
-                8
-            };
-            format!("{:0width$}", raw, width = width)
-        }
-    }
-    fn format_tone_value(value: Option<f64>) -> String {
-        match value {
-            None => "0".to_string(),
-            Some(v) if v.fract() == 0.0 => format!("{}", v as i64),
-            Some(v) => format!("{}", v),
-        }
-    }
-
-    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
-    if !in_program_mode {
-        let _ = send_raw_command(state, "PRG", false).await?;
-    }
-    let raw = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
-    // REGRESSION GUARD (#138): if the read errors after we entered PRG, send
-    // EPG before propagating — a bare `?` here would leave the scanner stuck
-    // in program mode with polling suspended.
-    let raw = match raw {
-        Ok(r) => r,
-        Err(e) => {
-            if !in_program_mode {
-                let _ = send_raw_command(state, "EPG", false).await;
-            }
-            return Err(e);
-        }
-    };
-    let mut parts = raw
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect::<Vec<String>>();
-    if parts
-        .first()
-        .map(|p| p.eq_ignore_ascii_case("CIN"))
-        .unwrap_or(false)
-    {
-        parts.remove(0);
-    }
-    if parts
-        .first()
-        .and_then(|v| v.parse::<u16>().ok())
-        .map(|v| v == channel.index)
-        .unwrap_or(false)
-    {
-        parts.remove(0);
-    }
-    if parts.is_empty() {
-        if !in_program_mode {
-            let _ = send_raw_command(state, "EPG", false).await;
-        }
-        return Err(ApiError::BadRequest("channel_read_failed".to_string()));
-    }
-
-    let has_bank = parts.len() >= 8
-        && parts
-            .last()
-            .and_then(|v| v.parse::<u8>().ok())
-            .map(|v| v <= 10)
-            .unwrap_or(false);
-    let has_tone = if parts.len() == 7 {
-        let lockout_candidate = parts.get(3).map(|s| s.as_str()).unwrap_or("");
-        let delay_candidate = parts.get(4).map(|s| s.as_str()).unwrap_or("");
-        let priority_candidate = parts.get(5).map(|s| s.as_str()).unwrap_or("");
-        let bank_candidate = parts.get(6).map(|s| s.as_str()).unwrap_or("");
-        !(matches!(lockout_candidate, "0" | "1")
-            && delay_candidate.parse::<u8>().is_ok()
-            && matches!(priority_candidate, "0" | "1")
-            && bank_candidate
-                .parse::<u8>()
-                .map(|v| v <= 10)
-                .unwrap_or(false))
-    } else {
-        parts.len() >= 8
-    };
-
-    let template_freq = if parts.len() > 1 && looks_like_frequency(&parts[1]) {
-        parts[1].clone()
-    } else {
-        parts
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "00000000".to_string())
-    };
-
+/// Build the payload (everything after `CIN,<index>,`) for a CIN write.
+///
+/// Wire order — verified against this hardware 2026-07-08
+/// (`docs/wire_captures/2026-07-08/cin-write-order-probe.txt`): write order
+/// equals read order, `name, freq, mod, tone, delay, lockout, priority`.
+/// No bank field exists on the wire (bank comes from `SCG`).
+///
+/// Encoding rules this enforces (#132):
+/// - Tone goes on the wire as the 0–231 CODE, never Hz. CTCSS Hz is encoded
+///   via `tones::ctcss_hz_to_code`; DCS uses `tone_dcs_code`; unknown values
+///   are a validation error rather than a silent wrong tone.
+/// - An empty alpha tag is written as 16 spaces — an empty wire field means
+///   "leave unchanged", so writing `""` would keep the old name (empirically
+///   confirmed by the 2026-07-08 probe).
+/// - Modulation is whitelisted (comma injection through this field reached
+///   the wire before).
+pub(crate) fn build_cin_write_payload(channel: &ChannelData) -> Result<String, ApiError> {
     let alpha_tag = channel
         .alpha_tag
         .replace(',', " ")
@@ -1411,61 +1321,117 @@ pub(crate) async fn write_channel_to_scanner(
         .chars()
         .take(16)
         .collect::<String>();
+    let alpha_tag = if alpha_tag.is_empty() {
+        " ".repeat(16)
+    } else {
+        alpha_tag
+    };
+
     let modulation = if channel.modulation.is_empty() {
         "AUTO".to_string()
     } else {
-        channel.modulation.to_uppercase()
+        channel.modulation.trim().to_uppercase()
     };
-    let delay_value = channel.delay.to_string();
-    let lockout_value = if channel.lockout { "1" } else { "0" }.to_string();
-    let priority_value = if channel.priority { "1" } else { "0" }.to_string();
-    let bank_value = channel.bank.to_string();
-    let tone_value = format_tone_value(channel.tone_squelch);
-
-    let mut values = if has_tone {
-        vec![
-            alpha_tag,
-            format_frequency(channel.frequency, &template_freq),
-            modulation,
-            tone_value,
-            delay_value,
-            lockout_value,
-            priority_value,
-        ]
-    } else {
-        vec![
-            alpha_tag,
-            format_frequency(channel.frequency, &template_freq),
-            modulation,
-            lockout_value,
-            delay_value,
-            priority_value,
-            bank_value.clone(),
-        ]
-    };
-    if has_tone && has_bank {
-        values.push(bank_value);
+    if !matches!(modulation.as_str(), "AUTO" | "AM" | "FM" | "NFM") {
+        return Err(ApiError::BadRequest("modulation_invalid".to_string()));
     }
 
-    let write_cmd = format!("CIN,{},{}", channel.index, values.join(","));
+    use crate::state::ToneSquelchKind;
+    let tone_code: u16 = match channel.tone_squelch_kind {
+        ToneSquelchKind::None => 0,
+        ToneSquelchKind::Search => 127,
+        ToneSquelchKind::Ctcss => {
+            let hz = channel
+                .tone_squelch
+                .ok_or_else(|| ApiError::BadRequest("tone_missing".to_string()))?;
+            tones::ctcss_hz_to_code(hz)
+                .ok_or_else(|| ApiError::BadRequest("tone_invalid".to_string()))?
+        }
+        ToneSquelchKind::Dcs => {
+            let code = channel
+                .tone_dcs_code
+                .ok_or_else(|| ApiError::BadRequest("tone_missing".to_string()))?;
+            if tones::dcs_code_to_number(code).is_none() {
+                return Err(ApiError::BadRequest("tone_invalid".to_string()));
+            }
+            code
+        }
+    };
+
+    // 8-digit zero-padded integer in units of 100 Hz — the only frequency
+    // shape observed on the wire (capture: `01451300` = 145.13 MHz).
+    let freq = format!("{:08}", (channel.frequency * 10000.0).round() as i64);
+
+    Ok(format!(
+        "{},{},{},{},{},{},{}",
+        alpha_tag,
+        freq,
+        modulation,
+        tone_code,
+        channel.delay,
+        if channel.lockout { "1" } else { "0" },
+        if channel.priority { "1" } else { "0" },
+    ))
+}
+
+pub(crate) async fn write_channel_to_scanner(
+    state: &AppState,
+    channel: &ChannelData,
+) -> Result<ChannelData, ApiError> {
+    let payload = build_cin_write_payload(channel)?;
+
+    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
+    if !in_program_mode {
+        let _ = send_raw_command(state, "PRG", false).await?;
+    }
+    let write_cmd = format!("CIN,{},{}", channel.index, payload);
     let write_response = send_raw_command(state, &write_cmd, false).await;
     let read_response = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
+    // REGRESSION GUARD (#138): EPG must be sent before any early return so
+    // the scanner isn't left stuck in program mode with polling suspended.
     if !in_program_mode {
         let _ = send_raw_command(state, "EPG", false).await;
     }
 
-    let write_response = write_response?;
-    let upper = write_response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK") || upper.contains("OK")) {
-        return Err(ApiError::BadRequest(if write_response.trim().is_empty() {
-            "channel_write_failed".to_string()
-        } else {
-            write_response.trim().to_string()
-        }));
+    match classify_response(&write_response?) {
+        ScannerReply::Ok => {}
+        ScannerReply::Ng => {
+            return Err(ApiError::BadRequest("channel_write_wrong_mode".to_string()));
+        }
+        _ => return Err(ApiError::BadRequest("channel_write_rejected".to_string())),
     }
+
     let read_response = read_response?;
-    parse_cin_response(channel.index, &read_response)
-        .ok_or_else(|| ApiError::BadRequest("channel_readback_failed".to_string()))
+    let readback = parse_cin_response(channel.index, &read_response)
+        .ok_or_else(|| ApiError::BadRequest("channel_readback_failed".to_string()))?;
+
+    // Read-back-verify: the scanner replied OK, but OK does not prove the
+    // fields persisted as sent. Compare what came back against what we wrote
+    // and refuse to report success on a mismatch. Alpha comparison is on the
+    // sanitised value (comma-stripped, 16-char cap, trimmed) because that is
+    // what actually went to the wire.
+    let wrote_alpha = channel
+        .alpha_tag
+        .replace(',', " ")
+        .trim()
+        .chars()
+        .take(16)
+        .collect::<String>();
+    let persisted = (readback.frequency - channel.frequency).abs() < 0.00005
+        && readback.alpha_tag.trim() == wrote_alpha
+        && readback.delay == channel.delay
+        && readback.lockout == channel.lockout
+        && readback.priority == channel.priority;
+    if !persisted {
+        warn!(
+            index = channel.index,
+            wrote = %write_cmd,
+            read_back = %read_response.trim(),
+            "CIN write not persisted as sent"
+        );
+        return Err(ApiError::BadRequest("channel_not_persisted".to_string()));
+    }
+    Ok(readback)
 }
 
 pub(crate) async fn set_channel_lockout_on_scanner(
@@ -1473,6 +1439,12 @@ pub(crate) async fn set_channel_lockout_on_scanner(
     index: u16,
     locked: bool,
 ) -> Result<ChannelData, ApiError> {
+    // Read the channel through the real parser, flip the lockout bit, and
+    // write it back through the same fixed-order builder every other CIN
+    // write uses. The old positional-index surgery guessed the lockout slot
+    // with the has_tone heuristic and, for the common tone=0 layout, wrote
+    // into the TONE field instead (#132) — "unlock" reported success while
+    // leaving the channel locked.
     let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
     if !in_program_mode {
         let _ = send_raw_command(state, "PRG", false).await?;
@@ -1489,66 +1461,52 @@ pub(crate) async fn set_channel_lockout_on_scanner(
             return Err(e);
         }
     };
-
-    let mut parts = response
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect::<Vec<String>>();
-    if parts
-        .first()
-        .map(|p| p.eq_ignore_ascii_case("CIN"))
-        .unwrap_or(false)
-    {
-        parts.remove(0);
-    }
-    if parts
-        .first()
-        .and_then(|v| v.parse::<u16>().ok())
-        .map(|v| v == index)
-        .unwrap_or(false)
-    {
-        parts.remove(0);
-    }
-    while parts.len() < 7 {
-        parts.push(String::new());
-    }
-
-    let has_tone = if parts.len() == 7 {
-        let lockout_candidate = parts.get(3).map(|s| s.as_str()).unwrap_or("");
-        let delay_candidate = parts.get(4).map(|s| s.as_str()).unwrap_or("");
-        let priority_candidate = parts.get(5).map(|s| s.as_str()).unwrap_or("");
-        let bank_candidate = parts.get(6).map(|s| s.as_str()).unwrap_or("");
-        !(matches!(lockout_candidate, "0" | "1")
-            && delay_candidate.parse::<u8>().is_ok()
-            && matches!(priority_candidate, "0" | "1")
-            && bank_candidate.parse::<u8>().is_ok())
-    } else {
-        parts.len() >= 8
-    };
-    let lockout_idx = if has_tone { 5 } else { 3 };
-    if parts.len() <= lockout_idx {
-        if !in_program_mode {
-            let _ = send_raw_command(state, "EPG", false).await;
+    let channel = match parse_cin_response(index, &response) {
+        Some(c) => c,
+        None => {
+            if !in_program_mode {
+                let _ = send_raw_command(state, "EPG", false).await;
+            }
+            return Err(ApiError::BadRequest("lockout_failed".to_string()));
         }
-        return Err(ApiError::BadRequest("lockout_failed".to_string()));
-    }
-    parts[lockout_idx] = if locked { "1" } else { "0" }.to_string();
+    };
 
-    let write_cmd = format!("CIN,{},{}", index, parts.join(","));
+    let mut updated = channel;
+    updated.lockout = locked;
+    let payload = match build_cin_write_payload(&updated) {
+        Ok(p) => p,
+        Err(e) => {
+            if !in_program_mode {
+                let _ = send_raw_command(state, "EPG", false).await;
+            }
+            return Err(e);
+        }
+    };
+
+    let write_cmd = format!("CIN,{},{}", index, payload);
     let write_response = send_raw_command(state, &write_cmd, false).await;
     let read_response = send_raw_command(state, &format!("CIN,{}", index), false).await;
     if !in_program_mode {
         let _ = send_raw_command(state, "EPG", false).await;
     }
 
-    let write_response = write_response?;
-    let upper = write_response.trim().to_uppercase();
-    if !(upper == "OK" || upper.ends_with(",OK")) {
-        return Err(ApiError::BadRequest("lockout_failed".to_string()));
+    match classify_response(&write_response?) {
+        ScannerReply::Ok => {}
+        _ => return Err(ApiError::BadRequest("lockout_failed".to_string())),
     }
     let read_response = read_response?;
-    parse_cin_response(index, &read_response)
-        .ok_or_else(|| ApiError::BadRequest("lockout_failed".to_string()))
+    let readback = parse_cin_response(index, &read_response)
+        .ok_or_else(|| ApiError::BadRequest("lockout_failed".to_string()))?;
+    if readback.lockout != locked {
+        warn!(
+            index,
+            wanted = locked,
+            read_back = readback.lockout,
+            "lockout write not persisted as sent"
+        );
+        return Err(ApiError::BadRequest("lockout_not_persisted".to_string()));
+    }
+    Ok(readback)
 }
 
 pub(crate) fn uuid_simple() -> String {
@@ -1574,6 +1532,94 @@ mod tests {
             .await
             .expect("read response body");
         serde_json::from_slice(&bytes).expect("valid json")
+    }
+
+    fn test_channel() -> ChannelData {
+        ChannelData {
+            index: 42,
+            frequency: 145.13,
+            modulation: "FM".to_string(),
+            alpha_tag: "Test Chan".to_string(),
+            delay: 2,
+            lockout: false,
+            priority: true,
+            tone_squelch: None,
+            tone_squelch_kind: crate::state::ToneSquelchKind::None,
+            tone_dcs_code: None,
+            bank: 1,
+        }
+    }
+
+    // REGRESSION GUARD (#132): CIN write order is name, freq, mod, tone,
+    // delay, lockout, priority — verified against hardware 2026-07-08
+    // (docs/wire_captures/2026-07-08/cin-write-order-probe.txt). The old
+    // has_tone heuristic emitted lockout/delay/priority/bank for tone=0
+    // channels, putting bank in the scanner's priority field.
+    #[test]
+    fn cin_payload_uses_verified_field_order_for_tone_0() {
+        let payload = build_cin_write_payload(&test_channel()).unwrap();
+        assert_eq!(payload, "Test Chan,01451300,FM,0,2,0,1");
+    }
+
+    #[test]
+    fn cin_payload_encodes_ctcss_as_wire_code_not_hz() {
+        let mut ch = test_channel();
+        ch.tone_squelch_kind = crate::state::ToneSquelchKind::Ctcss;
+        ch.tone_squelch = Some(100.0);
+        let payload = build_cin_write_payload(&ch).unwrap();
+        // 100.0 Hz is wire code 76. Writing "100" would be 189.9 Hz.
+        assert_eq!(payload, "Test Chan,01451300,FM,76,2,0,1");
+    }
+
+    #[test]
+    fn cin_payload_preserves_dcs_code() {
+        let mut ch = test_channel();
+        ch.tone_squelch_kind = crate::state::ToneSquelchKind::Dcs;
+        ch.tone_dcs_code = Some(151);
+        let payload = build_cin_write_payload(&ch).unwrap();
+        assert_eq!(payload, "Test Chan,01451300,FM,151,2,0,1");
+    }
+
+    #[test]
+    fn cin_payload_rejects_non_canonical_ctcss_hz() {
+        let mut ch = test_channel();
+        ch.tone_squelch_kind = crate::state::ToneSquelchKind::Ctcss;
+        ch.tone_squelch = Some(100.5);
+        assert!(build_cin_write_payload(&ch).is_err());
+    }
+
+    #[test]
+    fn cin_payload_rejects_modulation_injection() {
+        let mut ch = test_channel();
+        ch.modulation = "FM,0,0,1,0".to_string();
+        assert!(build_cin_write_payload(&ch).is_err());
+    }
+
+    #[test]
+    fn cin_payload_clears_empty_alpha_with_16_spaces() {
+        // An empty wire field means "unchanged" (2026-07-08 probe), so a
+        // cleared name must go out as 16 spaces or the old name survives.
+        let mut ch = test_channel();
+        ch.alpha_tag = String::new();
+        let payload = build_cin_write_payload(&ch).unwrap();
+        assert_eq!(payload, "                ,01451300,FM,0,2,0,1");
+    }
+
+    #[test]
+    fn cin_payload_sanitizes_alpha_commas_and_length() {
+        let mut ch = test_channel();
+        ch.alpha_tag = "A,B,C this name is way too long".to_string();
+        let payload = build_cin_write_payload(&ch).unwrap();
+        assert!(payload.starts_with("A B C this name "));
+        assert_eq!(payload.split(',').count(), 7);
+    }
+
+    #[test]
+    fn cin_payload_preserves_negative_predelay() {
+        let mut ch = test_channel();
+        ch.delay = -10;
+        let payload = build_cin_write_payload(&ch).unwrap();
+        assert_eq!(payload, "Test Chan,01451300,FM,0,-10,0,1");
     }
 
     // REGRESSION GUARD (#150): /health is documented and referenced by the

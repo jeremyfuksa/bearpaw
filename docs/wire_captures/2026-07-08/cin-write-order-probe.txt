@@ -1,0 +1,27 @@
+==> MDL
+<== MDL,BC125AT
+==> VER
+<== VER,Version 1.06.06
+==> PRG
+<== PRG,OK
+==> CIN,500
+<== CIN,500,,00000000,AUTO,0,2,1,0
+--- scratch channel 500; original: CIN,500,,00000000,AUTO,0,2,1,0
+==> CIN,500,WRTPROBE,01462500,FM,76,1,0,0
+<== CIN,OK
+==> CIN,500
+<== CIN,500,WRTPROBE,01462500,FM,76,1,0,0
+==> DCH,500
+<== DCH,OK
+==> CIN,500
+<== CIN,500,,00000000,AUTO,0,2,1,0
+==> EPG
+<== EPG,OK
+
+=== RESULTS (fw VER,Version 1.06.06) ===
+write reply : CIN,OK
+read-back   : CIN,500,WRTPROBE,01462500,FM,76,1,0,0
+restored    : CIN,500,,00000000,AUTO,0,2,1,0 (original: CIN,500,,00000000,AUTO,0,2,1,0)
+tone-slot=76 delay-slot=1 lockout-slot=0
+VERDICT: write order == read order (tone, delay, lockout, priority)
+tone round-trip: wrote code 76 (100.0 Hz), read back 76

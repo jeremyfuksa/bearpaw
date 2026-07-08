@@ -206,6 +206,7 @@ After v1.0.0 shipped, a fresh decompile of the official Uniden Sentinel app (`BC
 - **Reference says:** `CIN` read returns `..., ctcss, lockout, delay, priority` while write sends `..., ctcss, delay, lockout, priority` — i.e., delay and lockout are *swapped* on write.
 - **Our hardware says:** Read order is `..., ctcss, delay, lockout, priority` on firmware 1.06.06 — confirmed in Finding 4 above (sample 4 `CIN,4,Trimble 640,01466400,AUTO,0,2,1,0` has delay=2, lockout=1, priority=0).
 - **Verdict:** captures win on the *read* side. The write-side order is genuinely unknown for our firmware because Bearpaw doesn't currently write CIN. **Implementing CIN writes requires a write→read-back verification step on this hardware first**, before assuming the reference's claim or assuming the read order applies symmetrically.
+- **RESOLVED 2026-07-08:** the write→read-back probe ran on this hardware (fw 1.06.06) — transcript in `docs/wire_captures/2026-07-08/cin-write-order-probe.txt`, reproducible via `cargo run -p bearpaw-api --example cin_write_probe`. **Write order equals read order** (`name, freq, mod, ctcss, delay, lockout, priority`): a payload with delay-slot=1 / lockout-slot=0 (both legal in either slot) read back as delay=1, lockout=0. The reference's swap claim is wrong for this firmware. Bonus confirmations: an **empty write field means "unchanged"** (empty name left the prior name in place; clear with 16 spaces), tone code 76 round-trips intact, and `DCH,<n>` restores factory-empty state (`,00000000,AUTO,0,2,1,0`).
 
 ### Governing rule
 
