@@ -137,7 +137,7 @@ export function ScanView({
           is short. `container-type: size` here scopes Recent Hits' cqmin units to the top row,
           so its type and controls scale alongside the Display when the window grows. */}
       <div className="flex flex-1 min-h-[var(--layout-dashboard-main-height)] items-stretch gap-6 rounded-lg border border-white/5 bg-black/20 p-[9px] transition-all duration-500 ease-in-out [container-type:size]">
-        <div className="shrink-0 self-stretch w-1/2">
+        <div className="flex-1 min-w-0 self-stretch">
           <ScannerDisplay
             mainText={mainText}
             subText={subText}
