@@ -39,7 +39,6 @@ export interface AppStore {
   deviceInfo: DeviceInfo | null;
   channels: ChannelData[];
   banks: boolean[];
-  banksBusy: boolean;
   sync: SyncState;
   activityLog: ActivityLogEntry[];
   fullActivityLog: ActivityLogEntry[];
@@ -53,7 +52,6 @@ export interface AppStore {
   setDeviceInfo: (info: DeviceInfo | null) => void;
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
   setBanks: (banks: boolean[]) => void;
-  setBanksBusy: (busy: boolean) => void;
   updateSync: (patch: Partial<SyncState>) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
@@ -110,7 +108,6 @@ export const useStore = create<AppStore>((set) => ({
   deviceInfo: null,
   channels: [],
   banks: defaultBanks,
-  banksBusy: false,
   sync: defaultSync,
   activityLog: [],
   fullActivityLog: [],
@@ -151,7 +148,6 @@ export const useStore = create<AppStore>((set) => ({
             : [],
     })),
   setBanks: (banks) => set({ banks: banks.length === 10 ? banks : defaultBanks }),
-  setBanksBusy: (banksBusy) => set({ banksBusy }),
   updateSync: (patch) => set((prev) => ({ sync: { ...prev.sync, ...patch } })),
   addActivityLogEntry: (entry) =>
     set((prev) => ({
