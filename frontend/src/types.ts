@@ -22,7 +22,16 @@ export interface ChannelData {
   delay: number;
   lockout: boolean;
   priority: boolean;
+  /** CTCSS frequency in Hz when tone_squelch_kind === 'ctcss'; null/absent otherwise. */
   tone_squelch?: number | null;
+  /**
+   * Tone discriminator, mirroring the backend's ToneSquelchKind. Must be
+   * passed through on channel edits — omitting it deserializes as 'none' on
+   * the backend and erases DCS/Search squelch on any edit (#132).
+   */
+  tone_squelch_kind?: 'none' | 'ctcss' | 'dcs' | 'search';
+  /** DCS wire code (128–231) when tone_squelch_kind === 'dcs'. */
+  tone_dcs_code?: number | null;
   bank: number;
 }
 

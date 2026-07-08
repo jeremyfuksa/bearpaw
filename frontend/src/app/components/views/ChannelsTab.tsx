@@ -265,12 +265,29 @@ export function ChannelsTab() {
             ? null
             : Number.parseFloat(draft?.tone_squelch ?? '');
 
+        const toneHz = Number.isFinite(parsedTone ?? NaN) ? parsedTone : null;
+        // Tone discriminator (#132): the edit sheet's tone field is
+        // CTCSS-only. A typed value means CTCSS; an empty field means "keep
+        // the channel's DCS/Search squelch" (the sheet never displayed a
+        // value for those kinds, so empty is not a clear) but means "cleared"
+        // when the original kind was CTCSS. Omitting the kind entirely would
+        // deserialize as 'none' on the backend and erase DCS on every edit.
+        const originalKind = channel.tone_squelch_kind ?? (channel.tone_squelch ? 'ctcss' : 'none');
+        const toneKind =
+          toneHz !== null
+            ? ('ctcss' as const)
+            : originalKind === 'dcs' || originalKind === 'search'
+              ? originalKind
+              : ('none' as const);
+
         const normalized = {
           frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
           alpha_tag: draft?.alpha_tag ?? channel.alpha_tag ?? '',
           modulation: draft?.modulation ?? channel.modulation ?? 'AUTO',
           delay: Number.isFinite(parsedDelay) ? parsedDelay : channel.delay,
-          tone_squelch: Number.isFinite(parsedTone ?? NaN) ? parsedTone : null,
+          tone_squelch: toneHz,
+          tone_squelch_kind: toneKind,
+          tone_dcs_code: toneKind === 'dcs' ? (channel.tone_dcs_code ?? null) : null,
           lockout: draft?.lockout ?? channel.lockout,
           priority: draft?.priority ?? channel.priority,
         };
