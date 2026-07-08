@@ -349,7 +349,7 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 |---|---|---|
 | `DCH,n` | Delete channel `n` | |
 | `CLR` | Factory-reset all 500 channels + settings | **Takes ~30 s; scanner unresponsive during it.** Extend read timeout to 45–60 s for this command only. |
-| `SCG` / `SCG,<mask>` | Get/set channel-storage bank mask | 10-digit string; **`0` = bank enabled, `1` = bank disabled** (inverted from intuition). Order matches LCD icons 1,2,…,9,0 (bank "0" is bank 10). |
+| `SCG` / `SCG,<mask>` | Get/set channel-storage bank mask | 10-digit string; **`0` = bank enabled, `1` = bank disabled** (inverted from intuition). Order matches LCD icons 1,2,…,9,0 (bank "0" is bank 10). **Write persistence verified 2026-07-08** on firmware 1.06.06 via live write→read-back inside one PRG bracket (`SCG,0000111110` → `SCG,OK` → read-back matched, both directions); Bearpaw's `set_banks` re-verifies on every write regardless. |
 | `SSG` / `SSG,<mask>` | Service-search bank mask | Same 0=on / 1=off convention. Banks: Police, Fire/Emerg, Ham, Marine, Railroad, Civil Air, Mil Air, CB, FRS/GMRS/MURS, Racing. |
 | `CSG` / `CSG,<mask>` | Custom-search range mask | Same convention |
 | `CSP,n` | Get/set custom range `n` upper/lower limits | |
