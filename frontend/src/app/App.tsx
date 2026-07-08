@@ -55,9 +55,7 @@ export default function App() {
   const setChannels = useStore((state) => state.setChannels);
   const updatePreferences = useStore((state) => state.updatePreferences);
   const banks = useStore((state) => state.banks);
-  const banksBusy = useStore((state) => state.banksBusy);
   const setBanks = useStore((state) => state.setBanks);
-  const setBanksBusy = useStore((state) => state.setBanksBusy);
   const sync = useStore((state) => state.sync);
   const updateSync = useStore((state) => state.updateSync);
   const isMemorySyncing = sync.inProgress;
@@ -91,6 +89,20 @@ export default function App() {
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scanResumeInFlightRef = useRef(false);
   const scanResumeTimerRef = useRef<number | null>(null);
+  // Bank-toggle debounce. Each click updates `bankDesiredRef` to the latest
+  // desired mask and resets a 300ms timer; the flush only fires after the
+  // user stops clicking. Without this, rapid toggling hits the scanner with
+  // one PRG/SCG/EPG cycle per click, which visibly thrashes the LCD between
+  // "Remote Mode" and scan. `bankFlushInFlightRef` keeps writes serial so
+  // two POSTs never race for PRG mode.
+  const bankDesiredRef = useRef<boolean[] | null>(null);
+  const bankFlushTimerRef = useRef<number | null>(null);
+  const bankFlushInFlightRef = useRef(false);
+  // Captured mode at the start of a bank-toggle burst. PRG/EPG leaves the
+  // scanner in HOLD on this firmware, so if the user was scanning when they
+  // first clicked, the post-flush resume puts them back in SCAN. Null
+  // between bursts so we don't keep stomping HOLD.
+  const bankPreToggleModeRef = useRef<string | null>(null);
 
   const requestScanResume = useCallback(
     (reason: string, options: { delayMs?: number; toastOnError?: boolean } = {}) => {
@@ -638,28 +650,71 @@ export default function App() {
     [triggerPermanentLockout, triggerTemporaryLockout],
   );
 
-  const handleBankToggle = useCallback(
-    async (index: number) => {
-      if (banksBusy) return;
-      const nextBanks = banks.map((active, idx) => (idx === index ? !active : active));
-      setBanks(nextBanks);
-      setBanksBusy(true);
-      try {
-        const result = await api.setBanks(nextBanks);
-        if (Array.isArray(result.banks) && result.banks.length === 10) {
-          setBanks(result.banks);
+  const flushBankWrite = useCallback(async () => {
+    if (bankFlushInFlightRef.current) return;
+    bankFlushInFlightRef.current = true;
+    try {
+      while (bankDesiredRef.current) {
+        const target = bankDesiredRef.current;
+        bankDesiredRef.current = null;
+        try {
+          await api.setBanks(target);
+        } catch (error) {
+          console.warn('Failed to update banks', error);
+          toast.error('Failed to update banks');
+          // Re-read from the scanner so the UI reconverges with reality
+          // instead of holding the optimistic mask the scanner rejected.
+          try {
+            const result = await api.getBanks();
+            if (Array.isArray(result.banks) && result.banks.length === 10) {
+              setBanks(result.banks);
+            }
+          } catch {
+            // Refetch also failed (sync running, etc.) — nothing to do.
+          }
         }
-      } catch (error) {
-        console.warn('Failed to update banks', error);
-        toast.error('Failed to update banks');
-        // Roll back the optimistic toggle: re-flip the bit we just changed.
-        const current = useStore.getState().banks;
-        setBanks(current.map((active, idx) => (idx === index ? !active : active)));
-      } finally {
-        setBanksBusy(false);
       }
+      if (bankPreToggleModeRef.current === 'SCAN' && connected) {
+        // Let the scanner settle after EPG before nudging it back to scan.
+        // EPG is fire-and-forget from the ProgramModeGuard's Drop, then the
+        // poll thread drains it on its next iteration (POLL_INTERVAL_MS is
+        // 200ms). Worst case: poll thread is mid-STS (50–200ms) when EPG
+        // is queued, drains EPG only at the next iteration boundary, then
+        // the BC125AT itself needs 50–100ms for the mode transition. We
+        // wait 350ms to cover the worst case so KEY,S,P doesn't race the
+        // transition. Bypassing requestScanResume because its in-flight
+        // cooldown can drop our resume after the sync-completion resume.
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
+        try {
+          await api.sendScan();
+        } catch (error) {
+          console.warn('Failed to resume scan after bank toggle', error);
+        }
+      }
+      bankPreToggleModeRef.current = null;
+    } finally {
+      bankFlushInFlightRef.current = false;
+    }
+  }, [api, setBanks, connected]);
+
+  const handleBankToggle = useCallback(
+    (index: number) => {
+      if (bankPreToggleModeRef.current === null) {
+        bankPreToggleModeRef.current = getScannerMode();
+      }
+      const baseline = bankDesiredRef.current ?? banks;
+      const nextBanks = baseline.map((active, idx) => (idx === index ? !active : active));
+      setBanks(nextBanks);
+      bankDesiredRef.current = nextBanks;
+      if (bankFlushTimerRef.current !== null) {
+        window.clearTimeout(bankFlushTimerRef.current);
+      }
+      bankFlushTimerRef.current = window.setTimeout(() => {
+        bankFlushTimerRef.current = null;
+        void flushBankWrite();
+      }, 300);
     },
-    [api, banks, banksBusy],
+    [banks, setBanks, flushBankWrite, getScannerMode],
   );
 
   const handleVolumeChange = useCallback(
