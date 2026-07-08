@@ -203,10 +203,15 @@ export default function App() {
 
     const unsubscribeProgress = ws.on('progress', (message) => {
       const payload = message as ProgressMessage;
+      // ONLY trust the explicit completion text. The backend sends
+      // `progress(100, "Exiting program mode...")` BEFORE finish() clears
+      // sync_task_id, then `progress(100, "Sync complete")` after.
+      // Trusting percent>=100 fires the completion handler too early —
+      // post-sync getBanks/etc race into the still-set sync_task_id and
+      // get 409. memory_sync.rs guarantees the text patterns only appear
+      // after finish() has actually run.
       const isComplete =
-        payload.percent >= 100 ||
-        /sync complete/i.test(payload.message) ||
-        /sync cancelled/i.test(payload.message);
+        /sync complete/i.test(payload.message) || /sync cancelled/i.test(payload.message);
 
       if (payload.message) {
         updateSync({ message: payload.message });
@@ -243,9 +248,34 @@ export default function App() {
           .getChannels()
           .then((channelData) => setChannels(channelData))
           .then(() => {
+            // Schedule scan-resume FIRST (it's a setTimeout, fires at
+            // T+1500 regardless of what else is happening). Then kick
+            // off bank refresh in the background — if that fails, it
+            // must NOT block scan-resume from firing.
             if (currentTab === 'Scan') {
-              requestScanResume('sync completion', { toastOnError: true });
+              // 1500ms delay covers worst-case post-sync mode-transition
+              // settle plus any concurrent PRG cycles. KEY,S,P with
+              // default delayMs:0 fires before the scanner is receptive
+              // and the scan never resumes.
+              requestScanResume('sync completion', {
+                delayMs: 1500,
+                toastOnError: true,
+              });
             }
+            // Background bank refresh — fire-and-forget so a 409/timeout
+            // doesn't take scan-resume down with it. Failure here just
+            // means the UI's bank state stays at whatever it was; the
+            // existing bank-refetch useEffect is a second chance.
+            api
+              .getBanks()
+              .then((result) => {
+                if (Array.isArray(result.banks) && result.banks.length === 10) {
+                  setBanks(result.banks);
+                }
+              })
+              .catch((error) => {
+                console.warn('Failed to refresh banks after sync', error);
+              });
           })
           .catch((error) =>
             console.warn('[Progress] Failed to refresh channels after sync', error),
