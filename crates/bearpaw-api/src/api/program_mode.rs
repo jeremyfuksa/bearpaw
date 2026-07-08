@@ -131,6 +131,11 @@ impl Drop for ProgramModeGuard {
                 command: "EPG".to_string(),
                 multiline: false,
                 reply: reply_tx,
+                // EPG is exempt from expiry in the drain (see
+                // control::should_execute_queued), but give it a generous
+                // deadline anyway so the intent is explicit: the bracket
+                // closer must run no matter how late.
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
             });
             // Don't block on the reply: the poll thread will execute EPG
             // on its next drain, and we've already cleared the flag so
