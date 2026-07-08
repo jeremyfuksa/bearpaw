@@ -9,10 +9,14 @@ pub enum ControlCommand {
     /// HTTP handler can validate the OK ack.
     Hold {
         reply: Option<std::sync::mpsc::Sender<Result<String, String>>>,
+        /// Discard-after instant (#139) — see `Raw::deadline`.
+        deadline: std::time::Instant,
     },
     /// Press Scan (KEY,S,P).
     Scan {
         reply: Option<std::sync::mpsc::Sender<Result<String, String>>>,
+        /// Discard-after instant (#139) — see `Raw::deadline`.
+        deadline: std::time::Instant,
     },
     Direct {
         frequency: f64,
@@ -28,7 +32,58 @@ pub enum ControlCommand {
         command: String,
         multiline: bool,
         reply: std::sync::mpsc::Sender<Result<String, String>>,
+        /// Discard-after instant (#139). `send_raw_command` gives up on the
+        /// reply after 3 s, but the command used to stay queued and execute
+        /// whenever the poll thread next drained — a timed-out PRG could put
+        /// the scanner into program mode minutes later with nothing to take
+        /// it out. The poll loop checks this before executing.
+        deadline: std::time::Instant,
     },
+}
+
+/// Whether a queued `Raw` command should still execute when the poll thread
+/// drains it (#139).
+///
+/// Expired commands are discarded — with one exception: `EPG` always
+/// executes, even late. EPG is the program-mode bracket-closer; discarding a
+/// late EPG is exactly the "scanner stuck in Remote Mode until power-cycle"
+/// failure this deadline exists to prevent, just from the other direction.
+pub fn should_execute_queued(command: &str, deadline: std::time::Instant) -> bool {
+    if command.trim().eq_ignore_ascii_case("EPG") {
+        return true;
+    }
+    std::time::Instant::now() <= deadline
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_execute_queued;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn unexpired_commands_execute() {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        assert!(should_execute_queued("KEY,S,P", deadline));
+        assert!(should_execute_queued("PRG", deadline));
+    }
+
+    #[test]
+    fn expired_commands_are_discarded() {
+        let deadline = Instant::now() - Duration::from_secs(1);
+        assert!(!should_execute_queued("KEY,S,P", deadline));
+        assert!(
+            !should_execute_queued("PRG", deadline),
+            "a stale PRG must never fire — it strands the scanner in Remote Mode (#139)"
+        );
+    }
+
+    #[test]
+    fn epg_always_executes_even_expired() {
+        let deadline = Instant::now() - Duration::from_secs(60);
+        assert!(should_execute_queued("EPG", deadline));
+        assert!(should_execute_queued("epg", deadline));
+        assert!(should_execute_queued(" EPG ", deadline));
+    }
 }
 
 /// Request body for POST /api/v1/frequency

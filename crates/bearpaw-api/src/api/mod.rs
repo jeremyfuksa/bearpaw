@@ -321,6 +321,9 @@ pub(crate) async fn send_raw_command(
                 command,
                 multiline,
                 reply: reply_tx,
+                // Matches the recv_timeout below: once the HTTP caller has
+                // given up, the queued command must not execute later (#139).
+                deadline: std::time::Instant::now() + Duration::from_secs(3),
             })
             .map_err(|_| ApiError::SendFailed)?;
         match reply_rx.recv_timeout(Duration::from_secs(3)) {
