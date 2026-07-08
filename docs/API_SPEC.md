@@ -160,7 +160,8 @@ Standard error format for all failed requests.
 
 #### GET /health
 
-Check if API server is running.
+Liveness probe — returns 200 whenever the HTTP server is up. Says nothing
+about scanner connectivity (use `/status` / `/device/info` for that).
 
 **Request:** None
 
@@ -169,10 +170,12 @@ Check if API server is running.
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "timestamp": 1704412800.123
 }
 ```
+
+`version` is the backend crate version (`CARGO_PKG_VERSION`).
 
 ---
 
@@ -194,12 +197,14 @@ Get current scanner live state.
   "mode": "SCAN",
   "channel": 25,
   "volume": 10,
-  "battery": 85
+  "battery": 85,
+  "stale": false
 }
 ```
 
-**Errors:**
-- `503 Service Unavailable` if scanner disconnected
+Always returns `200 OK`. When the scanner is disconnected the last-known
+state is returned with `"stale": true` — clients should read `stale` (and
+`/device/info`'s `connection_status`) rather than expecting a 503 here.
 
 ---
 
@@ -282,26 +287,31 @@ Simulate keypress on scanner.
 
 ```json
 {
-  "key": "UP"
+  "key": "^"
 }
 ```
 
-**Valid Key Codes:**
-- `UP` - Channel up
-- `DOWN` - Channel down
-- `FUNC` - Function key
+**Valid Key Codes** (single-character wire codes, per the scanner's `KEY`
+protocol — the allowlist in `handlers/commands.rs`):
+- `^` - Channel up
+- `V` - Channel down
+- `<` / `>` - Left / right
 - `E` - Enter
-- `L_OUT` - Lockout
-- `MENU` - Menu
+- `.` - Dot / decimal
+- `0`–`9` - Digits
+- `F` - Function
 - `H` - Hold (equivalent to POST /commands/hold)
 - `S` - Scan (equivalent to POST /commands/scan)
+- `L` - Lockout
+- `M` - Menu
+- `R`, `Q`, `P`, `W` - Reserved scanner keys
 
 **Response:** `200 OK`
 
 ```json
 {
   "status": "ok",
-  "key": "UP"
+  "key": "^"
 }
 ```
 
@@ -361,26 +371,24 @@ Get list of scanner memory channels.
 - `/memory/channels?bank=1` - Only bank 1 channels
 - `/memory/channels?lockout=false` - Only non-locked-out channels
 
-**Response:** `200 OK`
+**Response:** `200 OK` — a bare JSON array of channel objects (not wrapped in
+an envelope):
 
 ```json
-{
-  "channels": [
-    {
-      "index": 25,
-      "frequency": 151.2500,
-      "modulation": "FM",
-      "alpha_tag": "Police Dispatch",
-      "delay": 2,
-      "lockout": false,
-      "priority": true,
-      "tone_squelch": 123.0,
-      "bank": 1
-    }
-  ],
-  "count": 1,
-  "last_sync": 1704412800.0
-}
+[
+  {
+    "index": 25,
+    "frequency": 151.2500,
+    "modulation": "FM",
+    "alpha_tag": "Police Dispatch",
+    "delay": 2,
+    "lockout": false,
+    "priority": true,
+    "tone_squelch": 123.0,
+    "tone_squelch_kind": "ctcss",
+    "bank": 1
+  }
+]
 ```
 
 **Errors:**
@@ -425,25 +433,26 @@ Start full memory sync from scanner (read all channels).
 
 **Request:** None
 
-**Response:** `202 Accepted`
+**Response:** `200 OK`
 
 ```json
 {
   "status": "started",
-  "task_id": "sync-abc123",
-  "estimated_duration": 60.0
+  "task_id": "sync-abc123"
 }
 ```
+
+If a sync is already running, this returns `200 OK` with
+`{"status": "already_running", "task_id": "<existing>"}` (not a 409).
 
 **Behavior:**
 - Async operation (returns immediately)
 - Progress updates via WebSocket (`progress` message type)
-- Shadow state updated incrementally
+- Shadow state updated only after a clean, complete walk
 - Scanner enters PRG mode (normal operation suspended)
 
 **Errors:**
 - `503 Service Unavailable` if scanner disconnected
-- `409 Conflict` if sync already in progress
 
 **Progress Tracking:** Subscribe to WebSocket `progress` messages with `task_id`
 
@@ -469,25 +478,24 @@ Download full scanner memory in Uniden `.bc125at_ss` format.
 
 ---
 
-#### DELETE /memory/sync/{task_id}
+#### POST /memory/sync/cancel
 
-Cancel in-progress memory sync.
+Request cancellation of the in-progress memory sync. Cancellation is
+cooperative — this only sets the cancel flag; the sync loop stops at the next
+channel boundary and the WebSocket `progress` stream emits "Sync cancelled".
 
-**Path Parameters:**
-- `task_id`: Task ID from POST /memory/sync
+**Request:** None
 
 **Response:** `200 OK`
 
 ```json
 {
-  "status": "cancelled",
+  "status": "cancelling",
   "task_id": "sync-abc123"
 }
 ```
 
-**Errors:**
-- `404 Not Found` if task does not exist
-- `400 Bad Request` if task already completed
+If no sync is running, returns `200 OK` with `{"status": "no_task"}`.
 
 ---
 
@@ -721,6 +729,31 @@ Get activity log entries with optional filtering.
 
 **Errors:**
 - `503 Service Unavailable` if analytics not enabled
+
+---
+
+### 3.7 Additional implemented endpoints
+
+These routes are implemented (see `crates/bearpaw-api/src/api/mod.rs` `router()`
+and `handlers/`) but were not previously covered above. Listed here so the spec
+matches the running surface; the handler is the source of truth for exact
+request/response shapes.
+
+| Method(s) | Path | Purpose |
+| --- | --- | --- |
+| GET, POST | `/api/v1/banks` | Read / set the 10-char bank-enable mask (`'1'` = disabled). |
+| GET, POST | `/api/v1/volume` | Read / set scanner volume (0–15). |
+| GET, POST | `/api/v1/squelch` | Read / set squelch level. |
+| GET | `/api/v1/config` (alias `/api/v1/settings/all`) | Full settings snapshot read from the scanner. |
+| GET, POST | `/api/v1/settings/backlight`, `/battery`, `/close-call`, `/contrast`, `/custom-search`, `/custom-search/defaults`, `/custom-search/ranges/{index}`, `/key-beep`, `/priority`, `/search`, `/service-search`, `/weather` | Individual global-setting getters/setters (each brackets its work in PRG). |
+| GET | `/api/v1/lockouts` | Frequency + channel + temporary lockouts. |
+| POST | `/api/v1/lockouts/clear`, `/lockouts/channels/clear`, `/lockouts/temporary/clear` | Clear the respective lockout sets. |
+| POST | `/api/v1/memory/program-mode/start`, `/memory/program-mode/end` | Open / close a manual program-mode session across requests. |
+| POST | `/api/v1/memory/import/csv` | Import channels from CSV. |
+
+> Note: `POST /api/v1/preferences` is currently an alias for `reset_preferences`
+> (it clears all preferences); use `POST /api/v1/preferences/reset` explicitly and
+> `PUT /api/v1/preferences/{key}` to set a single preference.
 
 ---
 

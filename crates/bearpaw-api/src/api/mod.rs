@@ -95,6 +95,7 @@ const ANALYTICS_SCHEMA_VERSION: i32 = 1;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/api/v1/health", get(handlers::status::get_health))
         .route("/api/v1/status", get(handlers::status::get_status))
         .route(
             "/api/v1/device/info",
@@ -1569,6 +1570,29 @@ mod tests {
             .await
             .expect("read response body");
         serde_json::from_slice(&bytes).expect("valid json")
+    }
+
+    // REGRESSION GUARD (#150): /health is documented and referenced by the
+    // frontend contract test; it must be routed and return 200 regardless of
+    // scanner connectivity.
+    #[tokio::test]
+    async fn health_returns_ok_without_scanner() {
+        let app = router(default_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["status"], "ok");
+        assert!(body.get("version").is_some());
+        assert!(body.get("timestamp").is_some());
     }
 
     #[tokio::test]
