@@ -366,11 +366,15 @@ export class ScannerAPIClient {
     });
   }
 
-  async cancelSync(taskId?: string): Promise<void> {
-    await this.request('/memory/sync/cancel', {
+  async cancelSync(taskId?: string): Promise<{ status?: string; task_id?: string }> {
+    return this.request<{ status?: string; task_id?: string }>('/memory/sync/cancel', {
       method: 'POST',
       body: taskId ? JSON.stringify({ task_id: taskId }) : undefined,
     });
+  }
+
+  async getSyncStatus(): Promise<{ in_progress: boolean; task_id: string | null }> {
+    return this.request<{ in_progress: boolean; task_id: string | null }>('/memory/sync/status');
   }
 
   async exportBc125atSs(): Promise<string> {
