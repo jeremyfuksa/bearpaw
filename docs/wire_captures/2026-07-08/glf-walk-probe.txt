@@ -1,0 +1,45 @@
+   Compiling bearpaw-api v1.1.1 (/Users/jeremyfuksa/Dev/bearpaw/crates/bearpaw-api)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.06s
+     Running `target/debug/examples/glf_walk_probe`
+==> MDL
+<== MDL,BC125AT
+==> VER
+<== VER,Version 1.06.06
+==> PRG
+<== PRG,OK
+--- baseline walk (bare GLF, documented form) ---
+==> GLF
+<== GLF,-1
+--- baseline lockouts: []
+--- add probe lockouts ---
+==> LOF,04625625
+<== LOF,OK
+==> LOF,04675625
+<== LOF,OK
+--- bare-GLF walk with probes present ---
+==> GLF
+<== GLF,04625625
+==> GLF
+<== GLF,04675625
+==> GLF
+<== GLF,-1
+--- walk saw: ["GLF,04625625", "GLF,04675625"]
+--- parameterized forms (current Bearpaw behavior) ---
+==> GLF,***
+<== GLF,OK
+==> GLF,04625625
+<== GLF,OK
+--- cleanup ---
+==> ULF,04625625
+<== ULF,OK
+==> ULF,04675625
+<== ULF,OK
+==> GLF
+<== GLF,-1
+==> EPG
+<== EPG,OK
+
+=== RESULTS ===
+baseline: []
+with probes: ["GLF,04625625", "GLF,04675625"]
+after cleanup: []

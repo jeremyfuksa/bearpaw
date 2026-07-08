@@ -3,6 +3,8 @@ use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::protocol::{classify_response, ScannerReply};
+
 use super::super::{
     command_sender, read_frequency_lockouts_from_scanner, send_raw_command,
     set_channel_lockout_on_scanner, ApiError, AppState, ProgramModeGuard,
@@ -112,15 +114,41 @@ pub(crate) async fn clear_global_lockouts(
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     let mut cleared = Vec::new();
+    let mut failed = Vec::new();
     let existing = read_frequency_lockouts_from_scanner(&state).await?;
     let _prg = ProgramModeGuard::enter(&state).await?;
     for frequency in &existing {
-        let _ = send_raw_command(&state, &format!("ULF,{}", frequency), false).await;
-        cleared.push(*frequency as f64 / 10000.0);
+        // ULF takes the 8-digit zero-padded 100 Hz encoding, same as LOF —
+        // verified on hardware 2026-07-08 (glf-walk-probe capture, #142).
+        // Classify the reply instead of ignoring it: a refused ULF must show
+        // up in `failed`, not be reported as cleared.
+        let reply = send_raw_command(&state, &format!("ULF,{:08}", frequency), false).await;
+        let ok = matches!(
+            reply.map(|r| classify_response(&r)),
+            Ok(ScannerReply::Ok)
+        );
+        if ok {
+            cleared.push(*frequency as f64 / 10000.0);
+        } else {
+            failed.push(*frequency as f64 / 10000.0);
+        }
     }
     cleared.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    state.frequency_lockouts.write().unwrap().clear();
-    Ok(Json(json!({ "cleared": cleared, "failed": [] })))
+    failed.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    // Only forget lockouts we actually removed; failures stay cached so a
+    // retry can find them.
+    if failed.is_empty() {
+        state.frequency_lockouts.write().unwrap().clear();
+    } else {
+        let cleared_raw: Vec<u32> = existing
+            .iter()
+            .copied()
+            .filter(|f| cleared.contains(&(*f as f64 / 10000.0)))
+            .collect();
+        let mut cache = state.frequency_lockouts.write().unwrap();
+        cache.retain(|f| !cleared_raw.contains(f));
+    }
+    Ok(Json(json!({ "cleared": cleared, "failed": failed })))
 }
 
 #[derive(Deserialize)]

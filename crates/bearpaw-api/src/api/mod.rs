@@ -1112,21 +1112,25 @@ pub(crate) async fn read_frequency_lockouts_from_scanner(
 }
 
 async fn read_frequency_lockouts_walk(state: &AppState) -> Result<Vec<u32>, ApiError> {
+    // GLF is a bare-command cursor iterator: send `GLF` repeatedly and the
+    // scanner steps through its lockout list, replying `GLF,<freq8>` per
+    // entry and `GLF,-1` at the end. Verified on hardware 2026-07-08
+    // (docs/wire_captures/2026-07-08/glf-walk-probe.txt, fw 1.06.06,
+    // reproducible via `cargo run -p bearpaw-api --example glf_walk_probe`).
+    // The parameterized forms this walk used to send (`GLF,***`,
+    // `GLF,<value>`) are answered with a payload-less `GLF,OK` and do NOT
+    // iterate — that's why at most one lockout was ever read (#142). The
+    // firmware caps the list at 100 entries; 110 bounds a runaway loop.
     let mut values = Vec::new();
-    let first = send_raw_command(state, "GLF,***", false).await?;
-    let mut next = parse_glf_response(&first);
-    if next.is_none() {
-        let fallback = send_raw_command(state, "GLF", false).await?;
-        next = parse_glf_response(&fallback);
-    }
-    for _ in 0..600 {
-        let Some(value) = next else { break };
-        if values.contains(&value) {
+    for _ in 0..110 {
+        let response = send_raw_command(state, "GLF", false).await?;
+        if matches!(classify_response(&response), ScannerReply::EndOfList) {
             break;
         }
+        let Some(value) = parse_glf_response(&response) else {
+            break;
+        };
         values.push(value);
-        let response = send_raw_command(state, &format!("GLF,{}", value), false).await?;
-        next = parse_glf_response(&response);
     }
     Ok(values)
 }
