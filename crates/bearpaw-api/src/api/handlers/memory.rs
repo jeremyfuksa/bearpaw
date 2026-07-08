@@ -138,6 +138,18 @@ pub(crate) async fn post_memory_sync(
     }))
 }
 
+/// Snapshot of whether a memory sync is currently running. Exists so the
+/// frontend can re-check after a WebSocket reconnect: if "Sync complete" was
+/// broadcast into a dead socket, the client's `inProgress` flag is stale and
+/// the full-screen overlay would otherwise stay up forever (#137).
+pub(crate) async fn get_memory_sync_status(State(state): State<AppState>) -> Json<Value> {
+    let task_id = state.sync_task_id.lock().unwrap().clone();
+    Json(json!({
+        "in_progress": task_id.is_some(),
+        "task_id": task_id,
+    }))
+}
+
 pub(crate) async fn cancel_memory_sync(State(state): State<AppState>) -> Json<Value> {
     let task = state.sync_task_id.lock().unwrap().clone();
     if let Some(task_id) = task {

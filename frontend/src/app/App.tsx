@@ -203,10 +203,15 @@ export default function App() {
 
     const unsubscribeProgress = ws.on('progress', (message) => {
       const payload = message as ProgressMessage;
+      // ONLY trust the explicit completion text. The backend sends
+      // `progress(100, "Exiting program mode...")` BEFORE finish() clears
+      // sync_task_id, then `progress(100, "Sync complete")` after.
+      // Trusting percent>=100 fires the completion handler too early —
+      // post-sync getBanks/etc race into the still-set sync_task_id and
+      // get 409. memory_sync.rs guarantees the text patterns only appear
+      // after finish() has actually run.
       const isComplete =
-        payload.percent >= 100 ||
-        /sync complete/i.test(payload.message) ||
-        /sync cancelled/i.test(payload.message);
+        /sync complete/i.test(payload.message) || /sync cancelled/i.test(payload.message);
 
       if (payload.message) {
         updateSync({ message: payload.message });
@@ -243,9 +248,34 @@ export default function App() {
           .getChannels()
           .then((channelData) => setChannels(channelData))
           .then(() => {
+            // Schedule scan-resume FIRST (it's a setTimeout, fires at
+            // T+1500 regardless of what else is happening). Then kick
+            // off bank refresh in the background — if that fails, it
+            // must NOT block scan-resume from firing.
             if (currentTab === 'Scan') {
-              requestScanResume('sync completion', { toastOnError: true });
+              // 1500ms delay covers worst-case post-sync mode-transition
+              // settle plus any concurrent PRG cycles. KEY,S,P with
+              // default delayMs:0 fires before the scanner is receptive
+              // and the scan never resumes.
+              requestScanResume('sync completion', {
+                delayMs: 1500,
+                toastOnError: true,
+              });
             }
+            // Background bank refresh — fire-and-forget so a 409/timeout
+            // doesn't take scan-resume down with it. Failure here just
+            // means the UI's bank state stays at whatever it was; the
+            // existing bank-refetch useEffect is a second chance.
+            api
+              .getBanks()
+              .then((result) => {
+                if (Array.isArray(result.banks) && result.banks.length === 10) {
+                  setBanks(result.banks);
+                }
+              })
+              .catch((error) => {
+                console.warn('Failed to refresh banks after sync', error);
+              });
           })
           .catch((error) =>
             console.warn('[Progress] Failed to refresh channels after sync', error),
@@ -279,6 +309,7 @@ export default function App() {
     api,
     currentTab,
     requestScanResume,
+    setBanks,
     setChannels,
     setDeviceInfo,
     updateLiveState,
@@ -293,6 +324,70 @@ export default function App() {
       updateLiveState({ stale: true });
     }
   }, [connected, updateLiveState]);
+
+  const hasConnectedOnceRef = useRef(false);
+  useEffect(() => {
+    // #137: reconcile sync state against the backend when the WS (re)connects.
+    // If the final "Sync complete"/"Sync cancelled" progress message was
+    // broadcast while the socket was down, our `inProgress` flag is stale and
+    // the blocking overlay would stay up forever — there is no other signal
+    // that clears it. Conversely, if the backend is mid-sync and we don't know
+    // (page reloaded during a sync, or a second client started one), adopt it
+    // so the overlay guards the open PRG bracket.
+    if (!connected) return;
+    const isReconnect = hasConnectedOnceRef.current;
+    hasConnectedOnceRef.current = true;
+    let active = true;
+    api
+      .getSyncStatus()
+      .then((status) => {
+        if (!active) return;
+        const currentSync = useStore.getState().sync;
+        if (!currentSync.inProgress && status.in_progress) {
+          updateSync({
+            inProgress: true,
+            taskId: status.task_id,
+            message: 'Syncing scanner memory...',
+          });
+          return;
+        }
+        // REGRESSION GUARD: App.regression.test.tsx :: sync-status reconnect
+        // probe only clears state on reconnects. On the initial connect this
+        // probe races the auto-start-sync effect: the status snapshot can be
+        // served before POST /memory/sync registers the task, and acting on
+        // it would drop the overlay over a live PRG bracket — the exact
+        // hazard #137 exists to prevent.
+        if (isReconnect && currentSync.inProgress && !status.in_progress) {
+          updateSync({
+            inProgress: false,
+            hasSyncedInitially: true,
+            percent: 100,
+            message: 'Sync complete',
+          });
+          api
+            .getChannels()
+            .then((channelData) => {
+              if (active) setChannels(channelData);
+            })
+            .catch((error) =>
+              console.warn('[SyncStatus] Failed to refresh channels after reconnect', error),
+            );
+          if (currentTab === 'Scan') {
+            // Same settle delay as the WS completion path: the sync's EPG has
+            // long since run, but the scanner may still be mode-transitioning
+            // if completion was recent.
+            requestScanResume('sync status reconciliation', { delayMs: 1500 });
+          }
+        }
+      })
+      .catch((error) => {
+        // Best-effort probe; a failed status check just leaves state as-is.
+        console.warn('[SyncStatus] status probe failed', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, connected, currentTab, requestScanResume, setChannels, updateSync]);
 
   useEffect(() => {
     let active = true;
@@ -396,17 +491,26 @@ export default function App() {
 
   const handleCancelSync = useCallback(async () => {
     // REGRESSION GUARD: App.regression.test.tsx :: cancel sync runs the
-    // post-sync chain. Do NOT synchronously flip `inProgress: false` here.
-    // The WS "Sync cancelled" progress message arrives shortly after the
-    // cancel API returns, and the progress handler is what runs the
-    // post-sync chain (refresh channels, resume scan). If we pre-flip
-    // `inProgress: false`, the handler sees `currentSync.inProgress === false`
-    // and skips that chain — leaving the scanner in HOLD with stale channel
-    // state. Just request the cancellation and let the WS path complete it.
+    // post-sync chain. Do NOT synchronously flip `inProgress: false` when the
+    // backend acknowledges with "cancelling". The WS "Sync cancelled" progress
+    // message arrives shortly after the cancel API returns, and the progress
+    // handler is what runs the post-sync chain (refresh channels, resume
+    // scan). If we pre-flip `inProgress: false`, the handler sees
+    // `currentSync.inProgress === false` and skips that chain — leaving the
+    // scanner in HOLD with stale channel state.
+    //
+    // The ONE exception is a "no_task" reply (#137): the backend has no
+    // running sync, so no WS message will ever arrive to clear our state and
+    // the blocking overlay would stay up forever. There's no PRG bracket open
+    // and no post-sync chain to run — just clear the local flag.
     try {
       const taskId = useStore.getState().sync.taskId || undefined;
       updateSync({ message: 'Cancelling sync...' });
-      await api.cancelSync(taskId);
+      const result = await api.cancelSync(taskId);
+      if (result.status === 'no_task') {
+        updateSync({ inProgress: false, taskId: null, message: 'No sync in progress' });
+        return;
+      }
       toast.info('Sync cancelled');
     } catch (error) {
       console.warn('Failed to cancel sync', error);

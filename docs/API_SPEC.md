@@ -458,6 +458,28 @@ If a sync is already running, this returns `200 OK` with
 
 ---
 
+#### GET /memory/sync/status
+
+Snapshot of whether a memory sync is currently running. Intended for clients
+re-checking after a WebSocket reconnect: if the final "Sync complete" progress
+message was broadcast while the socket was down, the client's local
+in-progress flag is stale until it queries this endpoint.
+
+**Request:** None
+
+**Response:** `200 OK`
+
+```json
+{
+  "in_progress": true,
+  "task_id": "sync-abc123"
+}
+```
+
+When no sync is running, `in_progress` is `false` and `task_id` is `null`.
+
+---
+
 #### GET /memory/export/bc125at_ss
 
 Download full scanner memory in Uniden `.bc125at_ss` format.

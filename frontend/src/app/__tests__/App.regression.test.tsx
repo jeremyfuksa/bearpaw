@@ -126,13 +126,39 @@ describe('App.tsx regression guards', () => {
     // on every cancel. Scanner stayed in HOLD; user had to manually press
     // Scan. Fix: handleCancelSync only requests cancellation; the WS
     // progress message is what flips inProgress and runs the chain.
+    //
+    // #137 amendment: when the backend replies "no_task" there is no running
+    // sync, so no WS message will ever arrive — clearing locally is the ONLY
+    // way the overlay comes down. That branch (and only that branch) may set
+    // `inProgress: false`.
 
-    it('handleCancelSync body does not set inProgress: false', () => {
+    /**
+     * Removes the `if (result.status === 'no_task') { ... return; }` branch
+     * so the remaining body can be checked for the historical unconditional
+     * pre-flip.
+     */
+    function stripNoTaskBranch(body: string): string {
+      return body.replace(
+        /if\s*\(\s*result\.status\s*===\s*'no_task'\s*\)\s*\{[\s\S]*?return;\s*\}/,
+        '',
+      );
+    }
+
+    it('handleCancelSync does not set inProgress: false outside the no_task branch', () => {
       const body = extractHandleCancelSyncBody(APP_SOURCE);
-      // The literal regression: `inProgress: false` inside an updateSync call.
-      // We also reject `inProgress: !true` / `inProgress: 1 > 2` etc. via the
-      // direct keyword match — this is the historically-reintroduced shape.
-      expect(body).not.toMatch(/inProgress\s*:\s*false/);
+      // The literal regression: an unconditional `inProgress: false` that
+      // races the WS "Sync cancelled" message and skips the post-sync chain.
+      expect(stripNoTaskBranch(body)).not.toMatch(/inProgress\s*:\s*false/);
+    });
+
+    it('handleCancelSync clears local state when the backend reports no_task', () => {
+      // The stuck-overlay half of #137: on no_task no WS message is coming,
+      // so the handler itself must drop `inProgress` or the z-50 overlay
+      // stays up until a reload.
+      const body = extractHandleCancelSyncBody(APP_SOURCE);
+      expect(body).toMatch(
+        /if\s*\(\s*result\.status\s*===\s*'no_task'\s*\)\s*\{[\s\S]*?inProgress\s*:\s*false[\s\S]*?return;\s*\}/,
+      );
     });
 
     it('handleCancelSync body does not set hasSyncedInitially', () => {
@@ -141,6 +167,23 @@ describe('App.tsx regression guards', () => {
       // overlay) and was part of the same regression.
       const body = extractHandleCancelSyncBody(APP_SOURCE);
       expect(body).not.toMatch(/hasSyncedInitially\s*:/);
+    });
+  });
+
+  describe('sync-status reconnect probe only clears state on reconnects', () => {
+    // History (#137): the reconnect reconciliation probe added to fix the
+    // stuck-overlay case must NOT run its clear direction on the initial
+    // connect. On mount the probe races the auto-start-sync effect — the
+    // GET /memory/sync/status snapshot can be served before POST /memory/sync
+    // registers the task, and acting on that stale "not syncing" answer
+    // drops the blocking overlay while a PRG bracket is open. Adopting a
+    // running sync (set inProgress: true) is safe in both cases and stays
+    // unconditional.
+
+    it('the clear-direction reconciliation is gated on isReconnect', () => {
+      expect(APP_SOURCE).toMatch(
+        /if\s*\(\s*isReconnect\s*&&\s*currentSync\.inProgress\s*&&\s*!status\.in_progress\s*\)/,
+      );
     });
   });
 });

@@ -197,6 +197,10 @@ pub fn router(state: AppState) -> Router {
             post(handlers::memory::post_memory_sync),
         )
         .route(
+            "/api/v1/memory/sync/status",
+            get(handlers::memory::get_memory_sync_status),
+        )
+        .route(
             "/api/v1/memory/sync/cancel",
             post(handlers::memory::cancel_memory_sync),
         )
