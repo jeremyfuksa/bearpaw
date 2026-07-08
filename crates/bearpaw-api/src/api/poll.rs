@@ -144,7 +144,15 @@ fn run_poll_loop(
             // Drain control commands (hold, scan, direct, start sync)
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
-                    ControlCommand::Hold { reply } => {
+                    ControlCommand::Hold { reply, deadline } => {
+                        // #139: don't press keys the caller gave up on.
+                        if !super::control::should_execute_queued(KEY_HOLD, deadline) {
+                            warn!("discarding expired queued Hold");
+                            if let Some(r) = reply {
+                                let _ = r.send(Err("command_expired".to_string()));
+                            }
+                            continue;
+                        }
                         let response = transport.send(port.as_mut(), KEY_HOLD).map_err(|e| {
                             if e.is_device_gone() {
                                 session_dead = true;
@@ -158,7 +166,14 @@ fn run_poll_loop(
                             let _ = r.send(response);
                         }
                     }
-                    ControlCommand::Scan { reply } => {
+                    ControlCommand::Scan { reply, deadline } => {
+                        if !super::control::should_execute_queued(KEY_SCAN, deadline) {
+                            warn!("discarding expired queued Scan");
+                            if let Some(r) = reply {
+                                let _ = r.send(Err("command_expired".to_string()));
+                            }
+                            continue;
+                        }
                         let response = transport.send(port.as_mut(), KEY_SCAN).map_err(|e| {
                             if e.is_device_gone() {
                                 session_dead = true;
@@ -204,7 +219,16 @@ fn run_poll_loop(
                         command,
                         multiline,
                         reply,
+                        deadline,
                     } => {
+                        // #139: the HTTP caller gave up on this command long
+                        // ago — executing it now would surprise the user (or,
+                        // for a stale PRG, strand the scanner in Remote Mode).
+                        if !super::control::should_execute_queued(&command, deadline) {
+                            warn!(command = %command, "discarding expired queued command");
+                            let _ = reply.send(Err("command_expired".to_string()));
+                            continue;
+                        }
                         let response = if multiline {
                             transport
                                 .send_and_read_multiline(port.as_mut(), &command)
@@ -408,7 +432,15 @@ fn run_poll_loop_usb(
         while !session_dead {
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
-                    ControlCommand::Hold { reply } => {
+                    ControlCommand::Hold { reply, deadline } => {
+                        // #139: see the serial drain.
+                        if !super::control::should_execute_queued(KEY_HOLD, deadline) {
+                            warn!("discarding expired queued Hold");
+                            if let Some(r) = reply {
+                                let _ = r.send(Err("command_expired".to_string()));
+                            }
+                            continue;
+                        }
                         let response = transport.send(&mut session, KEY_HOLD).map_err(|e| {
                             if e.is_device_gone() {
                                 session_dead = true;
@@ -422,7 +454,14 @@ fn run_poll_loop_usb(
                             let _ = r.send(response);
                         }
                     }
-                    ControlCommand::Scan { reply } => {
+                    ControlCommand::Scan { reply, deadline } => {
+                        if !super::control::should_execute_queued(KEY_SCAN, deadline) {
+                            warn!("discarding expired queued Scan");
+                            if let Some(r) = reply {
+                                let _ = r.send(Err("command_expired".to_string()));
+                            }
+                            continue;
+                        }
                         let response = transport.send(&mut session, KEY_SCAN).map_err(|e| {
                             if e.is_device_gone() {
                                 session_dead = true;
@@ -468,7 +507,15 @@ fn run_poll_loop_usb(
                         command,
                         multiline,
                         reply,
+                        deadline,
                     } => {
+                        // #139: see the serial drain — expired commands are
+                        // discarded instead of executing arbitrarily late.
+                        if !super::control::should_execute_queued(&command, deadline) {
+                            warn!(command = %command, "discarding expired queued command");
+                            let _ = reply.send(Err("command_expired".to_string()));
+                            continue;
+                        }
                         let response = if multiline {
                             transport
                                 .send_and_read_multiline(&mut session, &command)

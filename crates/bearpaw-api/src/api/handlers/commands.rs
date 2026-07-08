@@ -60,12 +60,28 @@ async fn send_mode_command(
 }
 
 pub(crate) async fn post_hold(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    send_mode_command(&state, |reply| ControlCommand::Hold { reply }, "hold").await?;
+    send_mode_command(
+        &state,
+        |reply| ControlCommand::Hold {
+            reply,
+            deadline: std::time::Instant::now() + Duration::from_secs(3),
+        },
+        "hold",
+    )
+    .await?;
     Ok(Json(json!({ "status": "ok" })))
 }
 
 pub(crate) async fn post_scan(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    send_mode_command(&state, |reply| ControlCommand::Scan { reply }, "scan").await?;
+    send_mode_command(
+        &state,
+        |reply| ControlCommand::Scan {
+            reply,
+            deadline: std::time::Instant::now() + Duration::from_secs(3),
+        },
+        "scan",
+    )
+    .await?;
     Ok(Json(json!({ "status": "ok" })))
 }
 
@@ -94,9 +110,19 @@ pub(crate) async fn post_key(
     if !ALLOWED_KEY_CODES.iter().any(|&c| c == key) {
         return Err(ApiError::BadRequest("invalid_key".to_string()));
     }
+    // Fire-and-forget senders still get a deadline: the caller isn't waiting,
+    // but a keypress queued behind a 20-40s memory sync should be dropped,
+    // not delivered to a scanner the user walked away from (#139).
+    let key_deadline = std::time::Instant::now() + Duration::from_secs(3);
     let cmd = match key.as_str() {
-        "H" => Some(ControlCommand::Hold { reply: None }),
-        "S" => Some(ControlCommand::Scan { reply: None }),
+        "H" => Some(ControlCommand::Hold {
+            reply: None,
+            deadline: key_deadline,
+        }),
+        "S" => Some(ControlCommand::Scan {
+            reply: None,
+            deadline: key_deadline,
+        }),
         _ => None,
     };
     if let Some(cmd) = cmd {
