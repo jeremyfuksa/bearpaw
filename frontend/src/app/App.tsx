@@ -554,10 +554,10 @@ export default function App() {
     const main = liveState.alpha_tag || liveState.frequency?.toFixed(3) || '—';
     const parts = [];
     if (liveState.frequency) parts.push(liveState.frequency.toFixed(3));
+    if (liveState.modulation) parts.push(liveState.modulation);
     if (liveState.channel !== undefined && liveState.channel !== null) {
       parts.push(`CH ${liveState.channel}`);
     }
-    if (liveState.modulation) parts.push(liveState.modulation);
     return { mainText: main, subText: parts.join(' • ') };
   }, [deviceInfo, hasFreshLiveFrame, isInitialSyncing, liveState, syncProgressMessage]);
 
