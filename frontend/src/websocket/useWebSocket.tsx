@@ -1,11 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ScannerWebSocket } from './ScannerWebSocket';
 import { useStore } from '../store/useStore';
+import { isTauriRuntime } from '../tauri-shell';
 
 function resolveDefaultWsURL(): string {
-  const tauriMarker = (window as Window & { __TAURI__?: unknown }).__TAURI__;
-  const isTauri = typeof tauriMarker === 'object' && tauriMarker !== null;
-  if (isTauri) {
+  if (isTauriRuntime()) {
     return 'ws://localhost:8000/ws';
   }
 

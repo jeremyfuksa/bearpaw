@@ -1,15 +1,9 @@
 import { ScannerAPIClient } from './client';
-
-// Detect Tauri runtime only when the marker is truthy/object-like.
-// In browser builds, __TAURI__ may exist as a false boolean sentinel.
-const isTauri = (() => {
-  const marker = (window as Window & { __TAURI__?: unknown }).__TAURI__;
-  return typeof marker === 'object' && marker !== null;
-})();
+import { isTauriRuntime } from '../tauri-shell';
 
 // Backend URL configuration — exported so non-hook code can resolve API URLs
 // without hardcoding paths that break in Tauri's file:// context.
-export const API_BASE = isTauri
+export const API_BASE = isTauriRuntime()
   ? 'http://localhost:8000/api/v1'
   : import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
