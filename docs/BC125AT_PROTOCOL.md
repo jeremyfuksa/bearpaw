@@ -569,9 +569,10 @@ Full table — 157 entries.
 | 79 | 110.9 | 96 | 177.3 | 113 | 254.1 |
 | 80 | 114.8 | 97 | 179.9 | | |
 
-> Note: codes 78, 79, 94, 95 are listed by Sentinel as standard CTCSS but
-> `protocol::tones` treats them as reserved (not standard CTCSS
-> frequencies). Cross-check before adopting Sentinel's exact mapping.
+> Note: this table is authoritative and `protocol::tones` matches it
+> exactly (fixed in #130). An earlier Bearpaw table omitted 69.3 Hz,
+> shifted codes 65–113 by one slot, and wrongly treated 78/79/94/95 as
+> "reserved" — they are real tones (107.2, 110.9, 171.3, 173.8 Hz).
 
 **DCS codes (`128`–`231`):**
 
