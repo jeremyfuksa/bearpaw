@@ -803,7 +803,7 @@ mod tests {
         assert_eq!(decode_tone(0), (ToneSquelchKind::None, None, None));
         assert_eq!(decode_tone(240), (ToneSquelchKind::None, None, None));
         assert_eq!(decode_tone(127), (ToneSquelchKind::Search, None, None));
-        assert_eq!(decode_tone(75), (ToneSquelchKind::Ctcss, Some(100.0), None));
+        assert_eq!(decode_tone(76), (ToneSquelchKind::Ctcss, Some(100.0), None));
         assert_eq!(decode_tone(150), (ToneSquelchKind::Dcs, None, Some(150)));
     }
 
@@ -837,8 +837,8 @@ mod tests {
         assert_eq!(ch.tone_squelch_kind, ToneSquelchKind::None);
         assert_eq!(ch.tone_squelch, None);
 
-        // CTCSS 100.0 Hz (code 75)
-        let ch = parse_cin_response(2, "CIN,2,X,01451300,FM,75,2,0,0").unwrap();
+        // CTCSS 100.0 Hz (code 76, per the corrected #130 table)
+        let ch = parse_cin_response(2, "CIN,2,X,01451300,FM,76,2,0,0").unwrap();
         assert_eq!(ch.tone_squelch_kind, ToneSquelchKind::Ctcss);
         assert_eq!(ch.tone_squelch, Some(100.0));
 

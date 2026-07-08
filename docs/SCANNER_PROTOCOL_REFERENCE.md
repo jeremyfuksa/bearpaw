@@ -473,25 +473,33 @@ DO,146.9700,NFM\r
 ### CTCSS table (code → Hz)
 
 ```
-64  → 67.0      80  → 110.9     96  → 167.9
-65  → 71.9      81  → 114.8     97  → 173.8
-66  → 74.4      82  → 118.8     98  → 179.9
-67  → 77.0      83  → 123.0     99  → 186.2
-68  → 79.7      84  → 127.3     100 → 192.8
-69  → 82.5      85  → 131.8     101 → 203.5
-70  → 85.4      86  → 136.5     102 → 206.5
-71  → 88.5      87  → 141.3     103 → 210.7
-72  → 91.5      88  → 146.2     104 → 218.1
-73  → 94.8      89  → 151.4     105 → 225.7
-74  → 97.4      90  → 156.7     106 → 229.1
-75  → 100.0     91  → 159.8     107 → 233.6
-76  → 103.5     92  → 162.2     108 → 241.8
-77  → 107.2     93  → 165.5     109 → 250.3
-78  → —         94  → —         110 → 254.1
-79  → —         95  → —
+64  → 67.0      81  → 118.8     98  → 183.5
+65  → 69.3      82  → 123.0     99  → 186.2
+66  → 71.9      83  → 127.3     100 → 189.9
+67  → 74.4      84  → 131.8     101 → 192.8
+68  → 77.0      85  → 136.5     102 → 196.6
+69  → 79.7      86  → 141.3     103 → 199.5
+70  → 82.5      87  → 146.2     104 → 203.5
+71  → 85.4      88  → 151.4     105 → 206.5
+72  → 88.5      89  → 156.7     106 → 210.7
+73  → 91.5      90  → 159.8     107 → 218.1
+74  → 94.8      91  → 162.2     108 → 225.7
+75  → 97.4      92  → 165.5     109 → 229.1
+76  → 100.0     93  → 167.9     110 → 233.6
+77  → 103.5     94  → 171.3     111 → 241.8
+78  → 107.2     95  → 173.8     112 → 250.3
+79  → 110.9     96  → 177.3     113 → 254.1
+80  → 114.8     97  → 179.9
 ```
 
-(Codes 78/79/94/95 are not standard CTCSS frequencies; treat as reserved.)
+50 contiguous tones, codes 64–113, no gaps — the standard EIA CTCSS set.
+This matches `BC125AT_PROTOCOL.md` §7.2 (decompiled Sentinel) and is
+cross-confirmed by bc125py and bc125csv. **History (#130):** an earlier
+version of this table omitted 69.3 Hz, shifting every tone from code 65 up
+by one slot, and fabricated "reserved" gaps at 78/79/94/95 to absorb the
+drift — a channel with CTCSS 100.0 Hz (wire code 76) displayed as 103.5.
+If a future source disagrees with this table, suspect the source: the
+50-tone list is the industry-standard set every Uniden document agrees on.
 
 For DCS (codes 128–231), see RadioReference's CTCSS/DCS cross-reference. Most amateur and public-safety scanner programming uses CTCSS, not DCS.
 

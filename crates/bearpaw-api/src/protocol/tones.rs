@@ -5,70 +5,75 @@
 //! different things:
 //!
 //! - `0` — no tone configured (open squelch)
-//! - `64..=113` — CTCSS (with four gaps at 78, 79, 94, 95; those codes are
-//!   not standard CTCSS frequencies and are treated as reserved)
+//! - `64..=113` — CTCSS: 50 contiguous tones, 67.0–254.1 Hz, no gaps (the
+//!   standard EIA CTCSS set)
 //! - `127` — SEARCH (scanner identifies the tone itself on each hit)
 //! - `128..=231` — DCS digital code
 //! - `240` — NO_TONE (explicit "tone-squelched, but no tone configured")
 //!
-//! Canonical table: `docs/SCANNER_PROTOCOL_REFERENCE.md` §7 (sourced from
-//! Uniden's BC125AT PC Protocol v1.01 and BCT15X v1.03 specs). Code-range
-//! semantics also documented in `docs/BC125AT_PROTOCOL.md` §6.2 and §7.2.
-//! Codes 78, 79, 94, 95 are listed by Sentinel as standard CTCSS but are
-//! treated as reserved here (they're not on any standard CTCSS frequency
-//! chart); see `ctcss_code_to_hz` below.
+//! Canonical table: `docs/BC125AT_PROTOCOL.md` §7.2 (decompiled Sentinel),
+//! mirrored in `docs/SCANNER_PROTOCOL_REFERENCE.md` §7 and cross-confirmed
+//! by bc125py and bc125csv. History (#130): an earlier version of this
+//! table omitted 69.3 Hz, which shifted every tone from code 65 up by one
+//! slot and fabricated "reserved" gaps at 78/79/94/95 to absorb the drift.
+//! There are no reserved gaps — all 50 codes map to real tones.
 
 /// Translate a CTCSS code (64–113) to its frequency in Hz.
 ///
-/// Returns `None` for codes outside the CTCSS range, the four reserved
-/// gap codes (78, 79, 94, 95), the SEARCH sentinel (127), and DCS codes.
+/// Returns `None` for codes outside the CTCSS range, including the SEARCH
+/// sentinel (127) and DCS codes.
 pub fn ctcss_code_to_hz(code: u16) -> Option<f64> {
     let hz = match code {
         64 => 67.0,
-        65 => 71.9,
-        66 => 74.4,
-        67 => 77.0,
-        68 => 79.7,
-        69 => 82.5,
-        70 => 85.4,
-        71 => 88.5,
-        72 => 91.5,
-        73 => 94.8,
-        74 => 97.4,
-        75 => 100.0,
-        76 => 103.5,
-        77 => 107.2,
-        // 78, 79 — reserved (not standard CTCSS frequencies)
-        80 => 110.9,
-        81 => 114.8,
-        82 => 118.8,
-        83 => 123.0,
-        84 => 127.3,
-        85 => 131.8,
-        86 => 136.5,
-        87 => 141.3,
-        88 => 146.2,
-        89 => 151.4,
-        90 => 156.7,
-        91 => 159.8,
-        92 => 162.2,
-        93 => 165.5,
-        // 94, 95 — reserved
-        96 => 167.9,
-        97 => 173.8,
-        98 => 179.9,
+        65 => 69.3,
+        66 => 71.9,
+        67 => 74.4,
+        68 => 77.0,
+        69 => 79.7,
+        70 => 82.5,
+        71 => 85.4,
+        72 => 88.5,
+        73 => 91.5,
+        74 => 94.8,
+        75 => 97.4,
+        76 => 100.0,
+        77 => 103.5,
+        78 => 107.2,
+        79 => 110.9,
+        80 => 114.8,
+        81 => 118.8,
+        82 => 123.0,
+        83 => 127.3,
+        84 => 131.8,
+        85 => 136.5,
+        86 => 141.3,
+        87 => 146.2,
+        88 => 151.4,
+        89 => 156.7,
+        90 => 159.8,
+        91 => 162.2,
+        92 => 165.5,
+        93 => 167.9,
+        94 => 171.3,
+        95 => 173.8,
+        96 => 177.3,
+        97 => 179.9,
+        98 => 183.5,
         99 => 186.2,
-        100 => 192.8,
-        101 => 203.5,
-        102 => 206.5,
-        103 => 210.7,
-        104 => 218.1,
-        105 => 225.7,
-        106 => 229.1,
-        107 => 233.6,
-        108 => 241.8,
-        109 => 250.3,
-        110 => 254.1,
+        100 => 189.9,
+        101 => 192.8,
+        102 => 196.6,
+        103 => 199.5,
+        104 => 203.5,
+        105 => 206.5,
+        106 => 210.7,
+        107 => 218.1,
+        108 => 225.7,
+        109 => 229.1,
+        110 => 233.6,
+        111 => 241.8,
+        112 => 250.3,
+        113 => 254.1,
         _ => return None,
     };
     Some(hz)
@@ -130,6 +135,7 @@ pub fn dcs_code_to_number(code: u16) -> Option<u16> {
         169 => 246,
         170 => 251,
         171 => 252,
+        172 => 255,
         173 => 261,
         174 => 263,
         175 => 265,
@@ -228,22 +234,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ctcss_canonical_endpoints() {
+    fn ctcss_canonical_anchors() {
+        // Anchor points from BC125AT_PROTOCOL.md §7.2 — chosen to catch the
+        // historical off-by-one (#130): every value below was wrong (or
+        // absent) in the shifted table.
         assert_eq!(ctcss_code_to_hz(64), Some(67.0));
-        assert_eq!(ctcss_code_to_hz(75), Some(100.0));
-        assert_eq!(ctcss_code_to_hz(88), Some(146.2));
-        assert_eq!(ctcss_code_to_hz(110), Some(254.1));
+        assert_eq!(ctcss_code_to_hz(65), Some(69.3));
+        assert_eq!(ctcss_code_to_hz(76), Some(100.0));
+        assert_eq!(ctcss_code_to_hz(78), Some(107.2));
+        assert_eq!(ctcss_code_to_hz(94), Some(171.3));
+        assert_eq!(ctcss_code_to_hz(113), Some(254.1));
     }
 
     #[test]
-    fn ctcss_reserved_gaps_return_none() {
-        for gap in [78u16, 79, 94, 95] {
-            assert_eq!(
-                ctcss_code_to_hz(gap),
-                None,
-                "code {} is reserved (non-standard CTCSS)",
-                gap
+    fn ctcss_all_50_codes_are_contiguous_and_ascending() {
+        // The EIA set is 50 tones with no gaps; a reintroduced gap or shift
+        // shows up as a None or a non-monotonic step.
+        let mut prev = 0.0;
+        for code in 64u16..=113 {
+            let hz = ctcss_code_to_hz(code)
+                .unwrap_or_else(|| panic!("code {} must map to a tone (no reserved gaps)", code));
+            assert!(
+                hz > prev,
+                "code {} ({} Hz) must be higher than code {} ({} Hz)",
+                code,
+                hz,
+                code - 1,
+                prev
             );
+            prev = hz;
         }
     }
 
@@ -251,7 +270,7 @@ mod tests {
     fn ctcss_out_of_range_return_none() {
         assert_eq!(ctcss_code_to_hz(0), None);
         assert_eq!(ctcss_code_to_hz(63), None);
-        assert_eq!(ctcss_code_to_hz(111), None);
+        assert_eq!(ctcss_code_to_hz(114), None);
         assert_eq!(ctcss_code_to_hz(127), None);
         assert_eq!(ctcss_code_to_hz(150), None);
     }
@@ -260,9 +279,22 @@ mod tests {
     fn dcs_endpoints() {
         assert_eq!(dcs_code_to_number(128), Some(23));
         assert_eq!(dcs_code_to_number(170), Some(251));
+        assert_eq!(dcs_code_to_number(172), Some(255)); // was missing (#130)
         assert_eq!(dcs_code_to_number(231), Some(754));
         assert_eq!(dcs_code_to_label(128).as_deref(), Some("DCS 023"));
         assert_eq!(dcs_code_to_label(231).as_deref(), Some("DCS 754"));
+    }
+
+    #[test]
+    fn dcs_all_104_codes_map() {
+        // 128..=231 is 104 codes; every one is a real DCS number.
+        for code in 128u16..=231 {
+            assert!(
+                dcs_code_to_number(code).is_some(),
+                "DCS code {} must map to a number",
+                code
+            );
+        }
     }
 
     #[test]
@@ -277,8 +309,8 @@ mod tests {
         assert_eq!(tone_code_label("0"), "Off");
         assert_eq!(tone_code_label("240"), "Off");
         assert_eq!(tone_code_label("127"), "Srch");
-        assert_eq!(tone_code_label("75"), "100.0");
-        assert_eq!(tone_code_label("88"), "146.2");
+        assert_eq!(tone_code_label("76"), "100.0");
+        assert_eq!(tone_code_label("88"), "151.4");
         assert_eq!(tone_code_label("128"), "DCS 023");
         assert_eq!(tone_code_label("bogus"), "Off");
     }
