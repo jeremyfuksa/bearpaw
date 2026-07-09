@@ -317,12 +317,17 @@ pub(crate) async fn set_volume(
         }
         _ => return Err(ApiError::BadRequest("volume_failed".to_string())),
     }
-    let mut live = state.live.write().unwrap();
-    live.volume = body.volume;
+    let timestamp = {
+        let mut live = state.live.write().unwrap();
+        live.volume = body.volume;
+        live.timestamp
+    };
+    // Take-and-send under the shared lock (#143) — see broadcast_live_update.
+    let _send_guard = state.sequence_send.lock().unwrap();
     let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
     let msg = json!({
         "type": "state_update",
-        "timestamp": live.timestamp,
+        "timestamp": timestamp,
         "sequence": seq,
         "data": { "volume": body.volume }
     });
@@ -335,6 +340,14 @@ pub(crate) async fn get_squelch(State(state): State<AppState>) -> Result<Json<Va
     let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, "SQL", false).await;
     let response = response?;
+    // Strict parse (#143): an NG/ERR/garbage reply used to become level 0,
+    // get cached, and be served as a real value. Surface the failure instead.
+    if matches!(
+        classify_response(&response),
+        ScannerReply::Ng | ScannerReply::Err
+    ) {
+        return Err(ApiError::BadRequest("squelch_read_failed".to_string()));
+    }
     let mut parts = response.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
     if parts.first().map(|p| p.eq_ignore_ascii_case("SQL")) == Some(true) {
         parts.remove(0);
@@ -342,7 +355,7 @@ pub(crate) async fn get_squelch(State(state): State<AppState>) -> Result<Json<Va
     let level = parts
         .first()
         .and_then(|s| s.parse::<u8>().ok())
-        .unwrap_or(0);
+        .ok_or_else(|| ApiError::BadRequest("squelch_read_failed".to_string()))?;
     let value = json!({ "level": level });
     set_setting_section(&state, "squelch", value.clone());
     Ok(Json(value))

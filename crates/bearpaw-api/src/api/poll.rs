@@ -45,12 +45,28 @@ pub fn spawn_poll_loop(
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
 ) {
     thread::spawn(move || {
-        if let Err(e) = run_poll_loop(state.clone(), &port_name, baud, assert_dtr, cmd_rx) {
-            error!("Poll loop exited: {}", e);
-            if let Ok(mut d) = state.device.write() {
-                d.connection_status = "disconnected".to_string();
-                d.diagnostic_message = Some(e.to_string());
+        // catch_unwind (#143): a panic inside the poll loop (e.g. a poisoned
+        // mutex unwrap) unwinds the thread WITHOUT hitting the Err branch —
+        // the UI stayed "connected" forever while every command timed out.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_poll_loop(state.clone(), &port_name, baud, assert_dtr, cmd_rx)
+        }));
+        let message = match result {
+            Ok(Ok(())) => return,
+            Ok(Err(e)) => e.to_string(),
+            Err(panic) => {
+                let text = panic
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| panic.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "poll thread panicked".to_string());
+                format!("poll thread panicked: {}", text)
             }
+        };
+        error!("Poll loop exited: {}", message);
+        if let Ok(mut d) = state.device.write() {
+            d.connection_status = "disconnected".to_string();
+            d.diagnostic_message = Some(message);
         }
     });
 }
@@ -192,12 +208,26 @@ fn run_poll_loop(
                         modulation,
                     } => {
                         let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
-                        if let Err(e) = transport.send(port.as_mut(), &do_cmd) {
-                            if e.is_device_gone() {
-                                session_dead = true;
+                        // Only track Direct mode when the scanner accepted the
+                        // DO command (#143) — Hold/Scan already gate this way.
+                        match transport.send(port.as_mut(), &do_cmd) {
+                            Ok(resp)
+                                if matches!(
+                                    crate::protocol::classify_response(&resp),
+                                    crate::protocol::ScannerReply::Ok
+                                ) =>
+                            {
+                                commanded_mode = ScannerMode::Direct;
+                            }
+                            Ok(resp) => {
+                                warn!(response = %resp.trim(), "DO command not acknowledged");
+                            }
+                            Err(e) => {
+                                if e.is_device_gone() {
+                                    session_dead = true;
+                                }
                             }
                         }
-                        commanded_mode = ScannerMode::Direct;
                     }
                     ControlCommand::StartSync {
                         task_id,
@@ -480,12 +510,26 @@ fn run_poll_loop_usb(
                         modulation,
                     } => {
                         let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
-                        if let Err(e) = transport.send(&mut session, &do_cmd) {
-                            if e.is_device_gone() {
-                                session_dead = true;
+                        // Only track Direct mode when the scanner accepted the
+                        // DO command (#143) — Hold/Scan already gate this way.
+                        match transport.send(&mut session, &do_cmd) {
+                            Ok(resp)
+                                if matches!(
+                                    crate::protocol::classify_response(&resp),
+                                    crate::protocol::ScannerReply::Ok
+                                ) =>
+                            {
+                                commanded_mode = ScannerMode::Direct;
+                            }
+                            Ok(resp) => {
+                                warn!(response = %resp.trim(), "DO command not acknowledged");
+                            }
+                            Err(e) => {
+                                if e.is_device_gone() {
+                                    session_dead = true;
+                                }
                             }
                         }
-                        commanded_mode = ScannerMode::Direct;
                     }
                     ControlCommand::StartSync {
                         task_id,
@@ -830,7 +874,6 @@ fn process_poll_tick(
 
 fn broadcast_live_update(state: &AppState, live: LiveState) {
     let prev_squelch_open = state.live.read().map(|g| g.squelch_open).unwrap_or(false);
-    let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
 
     track_analytics_transition(state, &live, prev_squelch_open);
 
@@ -838,6 +881,10 @@ fn broadcast_live_update(state: &AppState, live: LiveState) {
         *g = live.clone();
     }
 
+    // Take-and-send under the shared lock (#143) so a concurrent producer
+    // (e.g. set_volume) can't interleave sequence numbers out of order.
+    let _send_guard = state.sequence_send.lock().unwrap();
+    let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
     let msg = json!({
         "type": "state_update",
         "sequence": seq,

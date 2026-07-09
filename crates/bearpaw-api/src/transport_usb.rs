@@ -59,7 +59,11 @@ impl UsbTransport {
         let ctx = Context::new()?;
         let devices = ctx.devices()?;
         for dev in devices.iter() {
-            let desc = dev.device_descriptor()?;
+            // An unreadable descriptor on an UNRELATED device must not fail
+            // the whole open (#143) — skip it and keep scanning the bus.
+            let Ok(desc) = dev.device_descriptor() else {
+                continue;
+            };
             if desc.vendor_id() == self.vid && desc.product_id() == self.pid {
                 let handle = dev.open()?;
                 let _ = handle.set_active_configuration(1);

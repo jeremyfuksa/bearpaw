@@ -104,11 +104,33 @@ pub fn load_config(path: Option<&str>) -> Config {
     let Ok(raw) = fs::read_to_string(p) else {
         return Config::default();
     };
-    if path.ends_with(".toml") {
-        toml::from_str(&raw).unwrap_or_default()
+    // A config file that EXISTS but doesn't parse is a startup error, not a
+    // silent fall-through to defaults (#143) — running with defaults when the
+    // user explicitly configured usb_vid/usb_pid means "scanner not found"
+    // with no hint why.
+    let cfg: Config = if path.ends_with(".toml") {
+        match toml::from_str(&raw) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: failed to parse config {}: {}", path, e);
+                std::process::exit(2);
+            }
+        }
     } else {
-        serde_yaml::from_str(&raw).unwrap_or_default()
+        match serde_yaml::from_str(&raw) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: failed to parse config {}: {}", path, e);
+                std::process::exit(2);
+            }
+        }
+    };
+    if cfg.device.usb_vid.is_some() != cfg.device.usb_pid.is_some() {
+        eprintln!(
+            "warning: config sets only one of device.usb_vid / device.usb_pid — both are required for the direct-USB path; ignoring"
+        );
     }
+    cfg
 }
 
 /// Resolve serial port from config: explicit port first, then USB auto-detect.

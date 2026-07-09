@@ -108,6 +108,11 @@ pub(crate) async fn analytics_session_stats(State(state): State<AppState>) -> Js
 #[derive(Deserialize)]
 pub(crate) struct HourlyHeatmapQuery {
     days: Option<u32>,
+    /// Client UTC offset in minutes EAST of UTC (local = UTC + offset), e.g.
+    /// -300 for CDT. Without it the server buckets in UTC (#143) — the
+    /// backend has no timezone database, so local bucketing is the client's
+    /// call to make. Clamped to ±14 h.
+    tz_offset_minutes: Option<i32>,
 }
 
 pub(crate) async fn analytics_hourly_heatmap(
@@ -115,6 +120,7 @@ pub(crate) async fn analytics_hourly_heatmap(
     Query(query): Query<HourlyHeatmapQuery>,
 ) -> Json<Value> {
     let days = query.days.unwrap_or(7).max(1);
+    let tz_shift_secs = f64::from(query.tz_offset_minutes.unwrap_or(0).clamp(-840, 840)) * 60.0;
     let cutoff = epoch_now() - (days as f64 * 24.0 * 3600.0);
     let min_duration = min_hit_duration(&state);
     let log = state.analytics_log.lock().unwrap();
@@ -123,7 +129,7 @@ pub(crate) async fn analytics_hourly_heatmap(
         .iter()
         .filter(|h| h.timestamp >= cutoff && h.duration >= min_duration)
     {
-        let (day, hour) = day_hour(hit.timestamp);
+        let (day, hour) = day_hour(hit.timestamp + tz_shift_secs);
         *bins.entry((day, hour)).or_insert(0) += 1;
     }
     let mut heatmap = Vec::new();
