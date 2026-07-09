@@ -772,10 +772,17 @@ request/response shapes.
 | POST | `/api/v1/lockouts/clear`, `/lockouts/channels/clear`, `/lockouts/temporary/clear` | Clear the respective lockout sets. |
 | POST | `/api/v1/memory/program-mode/start`, `/memory/program-mode/end` | Open / close a manual program-mode session across requests. |
 | POST | `/api/v1/memory/import/csv` | Import channels from CSV. |
+| GET | `/api/v1/analytics/busiest-channels` | Busiest channels; `limit` (default 10), `hours` scopes the window (default: all history). |
+| GET | `/api/v1/analytics/session-stats` | Hit count / avg RSSI / active seconds / unique channels for the current backend session. |
+| GET | `/api/v1/analytics/hourly-heatmap` | 7×24 hit bins; `days` (default 7), `tz_offset_minutes` (minutes east of UTC, e.g. -300 for CDT) for local-time bucketing — default is UTC. |
+| POST | `/api/v1/analytics/cleanup` | Delete hits older than `retention_days` (default 30). |
 
-> Note: `POST /api/v1/preferences` is currently an alias for `reset_preferences`
-> (it clears all preferences); use `POST /api/v1/preferences/reset` explicitly and
-> `PUT /api/v1/preferences/{key}` to set a single preference.
+> Note: `POST /api/v1/preferences` was previously a destructive alias for
+> `reset_preferences` — POSTing a preferences object to the collection URL (a
+> natural client mistake) wiped all preferences. The alias is removed (#150);
+> resetting requires the explicit `POST /api/v1/preferences/reset`, and single
+> preferences are set with `PUT /api/v1/preferences/{key}`. `POST
+> /api/v1/preferences` now returns 405.
 
 ---
 
