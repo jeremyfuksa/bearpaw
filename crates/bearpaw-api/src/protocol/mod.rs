@@ -504,7 +504,7 @@ pub fn index_to_bank(index: u16) -> u8 {
 }
 
 /// Decode the CTCSS/DCS code field into kind + Hz + DCS code.
-fn decode_tone(code: u16) -> (ToneSquelchKind, Option<f64>, Option<u16>) {
+pub(crate) fn decode_tone(code: u16) -> (ToneSquelchKind, Option<f64>, Option<u16>) {
     match code {
         0 | 240 => (ToneSquelchKind::None, None, None),
         127 => (ToneSquelchKind::Search, None, None),
@@ -580,6 +580,16 @@ pub fn livestate_from_frames(
     let channel = glg.and_then(|g| g.channel);
     let alpha_tag = glg.and_then(|g| g.alpha_tag.clone());
 
+    // Tone is a property of the currently-received signal, so it's only
+    // meaningful while the squelch is open. When closed (scanning/idle), emit
+    // no tone regardless of a stale GLG tone field.
+    let (tone_squelch_kind, tone_squelch, tone_dcs_code) = if squelch_open {
+        glg.map(|g| decode_tone(g.tone_code)).unwrap_or_default()
+    } else {
+        Default::default()
+    };
+    let tone_dcs_label = tone_dcs_code.and_then(tones::dcs_code_to_label);
+
     LiveState {
         timestamp,
         frequency,
@@ -593,6 +603,10 @@ pub fn livestate_from_frames(
         // Battery is not exposed by the BC125AT/BCT125AT protocol.
         battery: None,
         stale: false,
+        tone_squelch_kind,
+        tone_squelch,
+        tone_dcs_code,
+        tone_dcs_label,
     }
 }
 
@@ -1044,5 +1058,44 @@ mod tests {
         assert!(validate_channel_name("A\tB").is_err(), "tab");
         assert!(validate_channel_name("Ñame").is_err(), "non-ASCII");
         assert!(validate_channel_name("🦀").is_err(), "emoji");
+    }
+
+    // ---- Live tone decode (2026-07-08 live-tone-display feature) ----
+
+    // GLG with CTCSS code 76 (= 100.0 Hz per tones.rs) and squelch OPEN.
+    const GLG_CTCSS_OPEN: &str = "GLG,04626125,NFM,,76,,,GMRS CH 03,1,0,,75,";
+    // Same tone, squelch CLOSED — tone must be suppressed.
+    const GLG_CTCSS_CLOSED: &str = "GLG,04626125,NFM,,76,,,GMRS CH 03,0,1,,75,";
+    // GLG with DCS code 151 (= DCS 134 per tones.rs) and squelch OPEN.
+    const GLG_DCS_OPEN: &str = "GLG,04626125,NFM,,151,,,GMRS CH 03,1,0,,75,";
+
+    #[test]
+    fn livestate_decodes_ctcss_tone_when_squelch_open() {
+        let glg = parse_glg_response(GLG_CTCSS_OPEN).unwrap();
+        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0);
+        assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Ctcss);
+        assert_eq!(live.tone_squelch, Some(100.0));
+        assert_eq!(live.tone_dcs_code, None);
+        assert_eq!(live.tone_dcs_label, None);
+    }
+
+    #[test]
+    fn livestate_suppresses_tone_when_squelch_closed() {
+        let glg = parse_glg_response(GLG_CTCSS_CLOSED).unwrap();
+        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0);
+        assert_eq!(live.tone_squelch_kind, ToneSquelchKind::None);
+        assert_eq!(live.tone_squelch, None);
+        assert_eq!(live.tone_dcs_code, None);
+        assert_eq!(live.tone_dcs_label, None);
+    }
+
+    #[test]
+    fn livestate_decodes_dcs_tone_with_label_when_squelch_open() {
+        let glg = parse_glg_response(GLG_DCS_OPEN).unwrap();
+        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0);
+        assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Dcs);
+        assert_eq!(live.tone_squelch, None);
+        assert_eq!(live.tone_dcs_code, Some(151));
+        assert_eq!(live.tone_dcs_label.as_deref(), Some("DCS 134"));
     }
 }

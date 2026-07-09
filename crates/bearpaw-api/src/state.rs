@@ -70,6 +70,18 @@ pub struct LiveState {
     pub battery: Option<u8>,
     #[serde(default)]
     pub stale: bool,
+    /// Tone squelch decoded from the live GLG frame during an active hit.
+    /// `None` / defaulted while the squelch is closed (tone is meaningless
+    /// when no signal is present). Mirrors `ChannelData`'s tone shape plus a
+    /// pre-formatted DCS label so the frontend needs no DCS table.
+    #[serde(default)]
+    pub tone_squelch_kind: ToneSquelchKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tone_squelch: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tone_dcs_code: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tone_dcs_label: Option<String>,
 }
 
 /// Device and connection info.
