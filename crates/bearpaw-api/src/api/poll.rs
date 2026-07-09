@@ -882,6 +882,10 @@ fn broadcast_live_update(state: &AppState, live: LiveState) {
             "volume": live.volume,
             "battery": live.battery,
             "stale": live.stale,
+            "tone_squelch_kind": live.tone_squelch_kind,
+            "tone_squelch": live.tone_squelch,
+            "tone_dcs_code": live.tone_dcs_code,
+            "tone_dcs_label": live.tone_dcs_label,
         }
     });
     let _ = state.ws_tx.send(msg.to_string());

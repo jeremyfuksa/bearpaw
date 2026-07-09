@@ -47,7 +47,11 @@ Current scanner receiver state.
   "mode": "SCAN",
   "channel": 25,
   "volume": 10,
-  "battery": 85
+  "battery": 85,
+  "tone_squelch_kind": "ctcss",
+  "tone_squelch": 123.0,
+  "tone_dcs_code": null,
+  "tone_dcs_label": null
 }
 ```
 
@@ -62,6 +66,12 @@ Current scanner receiver state.
 | `channel` | number or null | Current channel number | 1-500 or null |
 | `volume` | number | Volume level | 0-15 |
 | `battery` | number or null | Battery percentage | 0-100 or null (if AC) |
+| `tone_squelch_kind` | string | Tone discriminator for live signal | "none", "ctcss", "dcs", "search" |
+| `tone_squelch` | number or null | CTCSS frequency (Hz) when tone_squelch_kind === "ctcss" | 67.0 - 254.1 or null |
+| `tone_dcs_code` | number or null | DCS code when tone_squelch_kind === "dcs" | 128-231 or null |
+| `tone_dcs_label` | string or null | Display label (e.g., "DCS 023") when tone_squelch_kind === "dcs" | "DCS NNN" or null |
+
+**Note:** The tone fields (`tone_squelch_kind`, `tone_squelch`, `tone_dcs_code`, `tone_dcs_label`) are only populated while `squelch_open === true` (during a hit).
 
 ### 2.2 ChannelData
 
