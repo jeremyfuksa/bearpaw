@@ -39,7 +39,6 @@ pub struct Config {
 pub struct DeviceConfig {
     pub port: Option<String>,
     pub baud: Option<u32>,
-    pub transport: Option<String>,
     #[serde(default = "default_auto_detect")]
     pub auto_detect: bool,
     pub usb_vid: Option<u16>,
@@ -57,7 +56,6 @@ impl Default for DeviceConfig {
         Self {
             port: None,
             baud: None,
-            transport: None,
             auto_detect: default_auto_detect(),
             usb_vid: None,
             usb_pid: None,

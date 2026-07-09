@@ -208,6 +208,12 @@ After v1.0.0 shipped, a fresh decompile of the official Uniden Sentinel app (`BC
 - **Verdict:** captures win on the *read* side. The write-side order is genuinely unknown for our firmware because Bearpaw doesn't currently write CIN. **Implementing CIN writes requires a write→read-back verification step on this hardware first**, before assuming the reference's claim or assuming the read order applies symmetrically.
 - **RESOLVED 2026-07-08:** the write→read-back probe ran on this hardware (fw 1.06.06) — transcript in `docs/wire_captures/2026-07-08/cin-write-order-probe.txt`, reproducible via `cargo run -p bearpaw-api --example cin_write_probe`. **Write order equals read order** (`name, freq, mod, ctcss, delay, lockout, priority`): a payload with delay-slot=1 / lockout-slot=0 (both legal in either slot) read back as delay=1, lockout=0. The reference's swap claim is wrong for this firmware. Bonus confirmations: an **empty write field means "unchanged"** (empty name left the prior name in place; clear with 16 spaces), tone code 76 round-trips intact, and `DCH,<n>` restores factory-empty state (`,00000000,AUTO,0,2,1,0`).
 
+### Conflict 3 — `DO` direct tune (added 2026-07-08)
+
+- **Our own docs said:** `DO,<freq>,<mod>` direct-tunes the scanner (SCANNER_PROTOCOL_REFERENCE command table; API_SPEC documented `POST /frequency` on top of it). The decompiled reference has no `DO` section at all.
+- **Our hardware says:** `DO,162.5500,NFM`, `DO,01625500,NFM`, and `QSH,01625500` all answer `ERR` on fw 1.06.06 (`docs/wire_captures/2026-07-08/direct-tune-probe.txt`).
+- **Verdict:** no wire direct-tune command exists on this firmware — direct entry is keypad-only (HOLD + digits + E). The never-routed `ControlCommand::Direct` plumbing was removed (#149) and `POST /frequency` is documented as unavailable.
+
 ### Governing rule
 
 Whenever `BC125AT_PROTOCOL.md` disagrees with a wire capture from this hardware, the capture wins. Document the disagreement in `docs/SCANNER_PROTOCOL_REFERENCE.md`; do not reshape the Rust code to match the reference's claim.

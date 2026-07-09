@@ -139,7 +139,6 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 | `GLG` | Canonical live frequency/mod/tone/name/squelch | any |
 | `PWR` | RSSI (0–1023 raw) | any |
 | `KEY,<key>,P` | Virtual keypress | any |
-| `DO,<freq>,<mod>` | Direct tune | any |
 | `PRG` / `EPG` | Enter/exit program mode | — |
 | `CIN,<index>` | Read channel data | PRG |
 | `GLF` / `LOF` / `ULF` | Walk/add/remove global lockouts | PRG |
