@@ -26,10 +26,33 @@ Endpoint: `/ws`
     "frequency": 151.2500,
     "modulation": "FM",
     "squelch_open": true,
-    "rssi": 75
+    "rssi": 75,
+    "tone_squelch_kind": "ctcss",
+    "tone_squelch": 123.0,
+    "tone_dcs_code": null,
+    "tone_dcs_label": null
   }
 }
 ```
+
+**Note:** The `tone_squelch_kind`, `tone_squelch`, `tone_dcs_code`, and `tone_dcs_label` fields are only populated while `squelch_open === true` (during a hit); they are omitted or null otherwise.
+
+#### state_update data fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `frequency` | number | Current frequency (MHz) |
+| `modulation` | string | Modulation mode |
+| `squelch_open` | boolean | True if signal present |
+| `rssi` | number | Signal strength |
+| `mode` | string | Receiver mode |
+| `channel` | number or null | Current channel number |
+| `volume` | number | Volume level |
+| `battery` | number or null | Battery percentage |
+| `tone_squelch_kind` | string | Tone discriminator: "none", "ctcss", "dcs", "search" |
+| `tone_squelch` | number or null | CTCSS frequency (Hz) when tone_squelch_kind === "ctcss" |
+| `tone_dcs_code` | number or null | DCS code (128-231) when tone_squelch_kind === "dcs" |
+| `tone_dcs_label` | string or null | Display label (e.g., "DCS 023") when tone_squelch_kind === "dcs" |
 
 ### Event
 

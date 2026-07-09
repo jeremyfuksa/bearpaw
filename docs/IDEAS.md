@@ -31,11 +31,3 @@ a Kerchunk one.
 - Radius / how many channels to pull, and how to let the user prune.
 - Data source access: RadioReference is subscription-gated; check terms before
   building against it.
-
-## Live tone display
-
-`GlgFrame.tone_code` is already parsed off the wire on every GLG poll but
-never surfaced (#149 item 9). Decoding it via `protocol::tones` and carrying
-it in `LiveState` would let the Scan display show the active CTCSS/DCS tone
-during a hit — useful for identifying co-channel users. Needs a `LiveState`
-field, WS schema addition, and a small display slot in `ScannerDisplay`.
