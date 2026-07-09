@@ -75,6 +75,12 @@ pub(crate) async fn put_memory_channel(
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
     body.index = index;
+    // Frequency must be 0 (clear the slot) or inside the BC125AT's coverage
+    // (#143 — validate_frequency existed but was never called on this path).
+    if body.frequency != 0.0 && super::super::control::validate_frequency(body.frequency).is_err()
+    {
+        return Err(ApiError::BadRequest("frequency_out_of_range".to_string()));
+    }
     // Valid CIN delay values per docs/BC125AT_PROTOCOL.md §5.3.
     if !matches!(body.delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
         return Err(ApiError::BadRequest("delay_out_of_range".to_string()));
