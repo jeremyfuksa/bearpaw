@@ -203,32 +203,6 @@ fn run_poll_loop(
                             let _ = r.send(response);
                         }
                     }
-                    ControlCommand::Direct {
-                        frequency,
-                        modulation,
-                    } => {
-                        let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
-                        // Only track Direct mode when the scanner accepted the
-                        // DO command (#143) — Hold/Scan already gate this way.
-                        match transport.send(port.as_mut(), &do_cmd) {
-                            Ok(resp)
-                                if matches!(
-                                    crate::protocol::classify_response(&resp),
-                                    crate::protocol::ScannerReply::Ok
-                                ) =>
-                            {
-                                commanded_mode = ScannerMode::Direct;
-                            }
-                            Ok(resp) => {
-                                warn!(response = %resp.trim(), "DO command not acknowledged");
-                            }
-                            Err(e) => {
-                                if e.is_device_gone() {
-                                    session_dead = true;
-                                }
-                            }
-                        }
-                    }
                     ControlCommand::StartSync {
                         task_id,
                         max_channels,
@@ -505,32 +479,6 @@ fn run_poll_loop_usb(
                             let _ = r.send(response);
                         }
                     }
-                    ControlCommand::Direct {
-                        frequency,
-                        modulation,
-                    } => {
-                        let do_cmd = format!("DO,{:.4},{}", frequency, modulation);
-                        // Only track Direct mode when the scanner accepted the
-                        // DO command (#143) — Hold/Scan already gate this way.
-                        match transport.send(&mut session, &do_cmd) {
-                            Ok(resp)
-                                if matches!(
-                                    crate::protocol::classify_response(&resp),
-                                    crate::protocol::ScannerReply::Ok
-                                ) =>
-                            {
-                                commanded_mode = ScannerMode::Direct;
-                            }
-                            Ok(resp) => {
-                                warn!(response = %resp.trim(), "DO command not acknowledged");
-                            }
-                            Err(e) => {
-                                if e.is_device_gone() {
-                                    session_dead = true;
-                                }
-                            }
-                        }
-                    }
                     ControlCommand::StartSync {
                         task_id,
                         max_channels,
@@ -791,6 +739,14 @@ struct PollState {
     /// Count of ticks where STS.sql and GLG.sql disagreed. Should be 0 in
     /// normal operation; non-zero values may indicate a parser bug.
     squelch_disagreements: u64,
+    /// Consecutive ticks where EVERY parse failed (#149): the port is open
+    /// but the scanner isn't producing anything usable. After
+    /// STALE_AFTER_FAILED_TICKS of this, the display is marked stale so the
+    /// UI stops showing a frozen frequency as live.
+    consecutive_failed_ticks: u32,
+    /// True once the parse-failure staleness has been broadcast, so a long
+    /// outage doesn't spam identical state_stale events.
+    stale_broadcast: bool,
 }
 
 impl PollState {
@@ -799,9 +755,17 @@ impl PollState {
             last_pwr: None,
             dropped_sts: 0,
             squelch_disagreements: 0,
+            consecutive_failed_ticks: 0,
+            stale_broadcast: false,
         }
     }
 }
+
+/// Ticks of all-parse-failure before the live display is marked stale
+/// (#149). 15 ticks x 200ms = ~3s — long enough to ride out the firmware's
+/// documented occasional STS truncation, short enough that a wedged scanner
+/// doesn't show a frozen "live" frequency for minutes.
+const STALE_AFTER_FAILED_TICKS: u32 = 15;
 
 /// One poll tick's worth of parsed responses, assembled into LiveState.
 ///
@@ -858,8 +822,25 @@ fn process_poll_tick(
 
     if sts.is_none() && glg.is_none() && pwr_effective.is_none() {
         debug!("All poll-tick parses failed ({})", source);
+        // Time-based staleness (#149): live.stale used to flip only on a
+        // hard disconnect, so persistent parse failures (scanner wedged,
+        // half-dead cable) froze the display silently with stale=false.
+        poll.consecutive_failed_ticks = poll.consecutive_failed_ticks.saturating_add(1);
+        if poll.consecutive_failed_ticks >= STALE_AFTER_FAILED_TICKS && !poll.stale_broadcast {
+            warn!(
+                "no parseable scanner responses for {} consecutive ticks ({}) — marking live state stale",
+                poll.consecutive_failed_ticks, source
+            );
+            if let Ok(mut live) = state.live.write() {
+                live.stale = true;
+            }
+            broadcast_state_stale(state);
+            poll.stale_broadcast = true;
+        }
         return false;
     }
+    poll.consecutive_failed_ticks = 0;
+    poll.stale_broadcast = false;
 
     let live = livestate_from_frames(
         sts.as_ref(),

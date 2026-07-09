@@ -250,14 +250,14 @@ RSSI updates slowly on this family and has limited dynamic range. Use it for "si
 
 Allow ~50–100 ms between consecutive `KEY` packets for firmware key debounce.
 
-### DO — Direct tune (Bearpaw `DIRECT` mode)
+### DO — Direct tune: DOES NOT EXIST on this firmware
 
-```
-> DO,151.2500,NFM\r
-< DO,OK\r
-```
-
-Frequency is sent as a decimal MHz string with 4 decimal places. Modulation must be one of `AUTO`, `AM`, `FM`, `NFM`.
+**Disproven 2026-07-08** (`docs/wire_captures/2026-07-08/direct-tune-probe.txt`,
+fw 1.06.06): `DO,162.5500,NFM`, `DO,01625500,NFM`, and `QSH,01625500` all
+answer `ERR`. The `DO,OK` exchange this section previously showed was never
+captured from hardware — the decompiled reference has no `DO` section either.
+Direct frequency entry on the BC125AT is keypad-only: `KEY,H,P`, then digit
+keys, then `KEY,E,P`.
 
 ### VOL / SQL — Volume and squelch
 
@@ -296,7 +296,6 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 | `GLG` | get | `GLG,01545500,FM,,76,Police,,Dispatch,1,0` | Both modes; empty when idle |
 | `PWR` | get | `PWR,742,01545500` | Both modes; RSSI 0–1023 |
 | `KEY,c,m` | set | `KEY,OK` | Both modes |
-| `DO,<f>,<m>` | set | `DO,OK` | Both modes |
 | `BLT` / `BLT,v` | get/set | `BLT,KY` / `BLT,OK` | Backlight: `AO`/`AF`/`KY`/`SQ`/`KS` |
 
 ---
