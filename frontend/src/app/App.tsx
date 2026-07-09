@@ -15,7 +15,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useMenuEvents } from '../hooks/useMenuEvents';
 import { useShellStatusText } from '../hooks/useShellStatusText';
 import { openExternalUrl } from '../tauri-shell';
-import type { ProgressMessage, StateUpdateMessage } from '../types';
+import type { BanksUpdateMessage, ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ScanView } from './components/views/ScanView';
@@ -160,12 +160,6 @@ export default function App() {
             checkUpdates: prefs.check_updates ?? true,
             dataRetentionDays: prefs.data_retention_days || 30,
             audioOutputDevice: prefs.audio_output_device || 'default',
-            mqttEnabled: prefs.mqtt_enabled ?? false,
-            mqttHost: prefs.mqtt_host || '127.0.0.1',
-            mqttPort: prefs.mqtt_port || 1883,
-            mqttTopicPrefix: prefs.mqtt_topic_prefix || 'scanner',
-            mqttQos: prefs.mqtt_qos ?? 0,
-            mqttRetain: prefs.mqtt_retain ?? false,
           };
           console.log('[Preferences] Setting in store:', frontendPrefs);
           updatePreferences(frontendPrefs);
@@ -283,11 +277,23 @@ export default function App() {
       }
     });
 
+    // banks_update (#149): backend-initiated bank changes (memory sync,
+    // second client) previously never reached the UI — the broadcast had no
+    // subscriber.
+    const unsubscribeBanks = ws.on('banks_update', (message) => {
+      const payload = message as BanksUpdateMessage;
+      const nextBanks = payload.data?.banks;
+      if (Array.isArray(nextBanks) && nextBanks.length === 10) {
+        setBanks(nextBanks);
+      }
+    });
+
     return () => {
       unsubscribeState();
       unsubscribeEvent();
       unsubscribeDeviceInfo();
       unsubscribeProgress();
+      unsubscribeBanks();
       // NOTE (#144): do NOT clear scanResumeTimerRef / programModeEntry
       // timers here. This effect re-runs on currentTab/connected changes;
       // clearing app-lifetime timers in its cleanup cancelled pending
