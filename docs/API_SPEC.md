@@ -321,7 +321,14 @@ protocol — the allowlist in `handlers/commands.rs`):
 
 ---
 
-#### POST /frequency
+#### POST /frequency — NOT AVAILABLE
+
+**Removed (#149).** BC125AT firmware 1.06.06 has no wire direct-tune command:
+`DO` (both frequency encodings) and `QSH` all answer `ERR`
+(`docs/wire_captures/2026-07-08/direct-tune-probe.txt`). Direct frequency
+entry on this scanner is keypad-only (HOLD + digits + E), which clients can
+drive via `POST /commands/key` if needed. The section below is retained for
+historical context of the originally-planned contract.
 
 Tune to specific frequency (direct entry mode).
 

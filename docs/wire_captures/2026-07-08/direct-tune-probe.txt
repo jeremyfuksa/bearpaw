@@ -1,0 +1,18 @@
+# Direct-tune probe — 2026-07-08, BC125AT fw 1.06.06 (USB direct transport)
+# Question: does a wire direct-tune command exist? Our API_SPEC documented
+# POST /frequency backed by `DO,<freq>,<mod>`; the decompiled reference has
+# no DO section at all. Result: NO — both DO forms and QSH answer ERR.
+
+==> DO,162.5500,NFM
+<== ERR
+==> DO,01625500,NFM
+<== ERR
+==> QSH,01625500
+<== QSH,ERR
+==> STS
+<== STS,011000,              ,,AA0OS - IA      ,,CH197  444.9750,,            ,,                ,,1234         ,,1,0,0,0,,,5,,3
+# (scanner unaffected; resumed scanning with KEY,S,P afterward)
+
+# VERDICT: fw 1.06.06 accepts neither DO (either frequency encoding) nor QSH.
+# Direct frequency entry on the BC125AT is keypad-only (HOLD + digits + E).
+# The ControlCommand::Direct plumbing was removed as unimplementable (#149).

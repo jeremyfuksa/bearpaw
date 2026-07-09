@@ -94,6 +94,15 @@ pub(crate) async fn put_memory_channel(
     if validate_wire_field(&body.alpha_tag).is_err() {
         return Err(ApiError::BadRequest("alpha_tag_invalid".to_string()));
     }
+    // Charset validation against the scanner's documented allowlist (#149 —
+    // validate_channel_name existed as groundwork with no caller). Empty is
+    // allowed: it means "clear the slot" and the writer encodes it as 16
+    // spaces.
+    if !body.alpha_tag.is_empty() {
+        if let Err(reason) = crate::protocol::validate_channel_name(&body.alpha_tag) {
+            return Err(ApiError::BadRequest(format!("alpha_tag_invalid: {}", reason)));
+        }
+    }
     if validate_wire_field(&body.modulation).is_err() {
         return Err(ApiError::BadRequest("modulation_invalid".to_string()));
     }
