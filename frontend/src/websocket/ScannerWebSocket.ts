@@ -43,10 +43,6 @@ export class ScannerWebSocket {
     this.ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as WSMessage;
-        if (message.type === 'ping') {
-          this.ws?.send(JSON.stringify({ type: 'pong' }));
-          return;
-        }
         if (this.debug) {
           console.info('[ws]', message);
         }

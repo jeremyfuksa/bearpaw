@@ -12,7 +12,6 @@ import {
   Heart,
   Code,
   ExternalLink,
-  Wifi,
 } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
@@ -44,12 +43,6 @@ interface SearchRange {
 // saved values round-trip through App.tsx's snake_case load path.
 const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   hitMinDuration: 'hit_min_duration',
-  mqttEnabled: 'mqtt_enabled',
-  mqttHost: 'mqtt_host',
-  mqttPort: 'mqtt_port',
-  mqttTopicPrefix: 'mqtt_topic_prefix',
-  mqttQos: 'mqtt_qos',
-  mqttRetain: 'mqtt_retain',
 };
 
 export function DeviceTab() {
@@ -1469,7 +1462,10 @@ export function DeviceTab() {
                         Automatically connect to the last used device
                       </p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch
+                      checked={preferences.autoConnect}
+                      onCheckedChange={(checked) => handlePreferenceChange('autoConnect', checked)}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -1503,142 +1499,11 @@ export function DeviceTab() {
                         Notify when a new firmware version is available
                       </p>
                     </div>
-                    <Switch defaultChecked />
-                  </div>
-                </div>
-              </section>
-
-              {/* Audio Settings */}
-              <section className="space-y-4">
-                <h3 className="text-sm font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
-                  <Radio className="w-4 h-4 text-white/50" /> Audio & Recording
-                </h3>
-                <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-6">
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-sm font-medium text-white">Audio Output Device</label>
-                      <span className="text-xs text-white/40">System Default</span>
-                    </div>
-                    <Select defaultValue="default">
-                      <SelectTrigger className="w-full bg-white/5 border-white/10 text-xs">
-                        <SelectValue placeholder="Select device" />
-                      </SelectTrigger>
-                      <SelectContent className="scanner-select-content">
-                        <SelectItem value="default">System Default</SelectItem>
-                        <SelectItem value="speakers">Speakers (Realtek Audio)</SelectItem>
-                        <SelectItem value="headphones">Headphones (USB Audio)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <label className="text-sm font-medium text-white">
-                        Recording Buffer Size
-                      </label>
-                      <span className="text-xs text-white/40">2048 samples</span>
-                    </div>
-                    <Slider defaultValue={[50]} max={100} step={1} />
-                  </div>
-                </div>
-              </section>
-
-              {/* MQTT Settings */}
-              <section className="space-y-4">
-                <h3 className="text-sm font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
-                  <Wifi className="w-4 h-4 text-white/50" /> MQTT
-                </h3>
-                <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">Enable MQTT</label>
-                      <p className="text-xs text-white/40">Publish scanner state to MQTT broker</p>
-                    </div>
                     <Switch
-                      checked={preferences.mqttEnabled}
-                      onCheckedChange={(checked) => handlePreferenceChange('mqttEnabled', checked)}
+                      checked={preferences.checkUpdates}
+                      onCheckedChange={(checked) => handlePreferenceChange('checkUpdates', checked)}
                     />
                   </div>
-
-                  {preferences.mqttEnabled && (
-                    <>
-                      <div className="h-px bg-white/5" />
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <label className="text-sm font-medium text-white">Broker Host</label>
-                          <input
-                            type="text"
-                            value={preferences.mqttHost}
-                            onChange={(e) => handlePreferenceChange('mqttHost', e.target.value)}
-                            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
-                            placeholder="127.0.0.1"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-sm font-medium text-white">Broker Port</label>
-                          <input
-                            type="number"
-                            value={preferences.mqttPort}
-                            onChange={(e) =>
-                              handlePreferenceChange('mqttPort', parseInt(e.target.value))
-                            }
-                            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
-                            placeholder="1883"
-                            min="1"
-                            max="65535"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-sm font-medium text-white">Topic Prefix</label>
-                          <input
-                            type="text"
-                            value={preferences.mqttTopicPrefix}
-                            onChange={(e) =>
-                              handlePreferenceChange('mqttTopicPrefix', e.target.value)
-                            }
-                            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-brand-primary/50"
-                            placeholder="scanner"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-sm font-medium text-white">QoS Level</label>
-                          <Select
-                            value={String(preferences.mqttQos)}
-                            onValueChange={(value) =>
-                              handlePreferenceChange('mqttQos', parseInt(value))
-                            }
-                          >
-                            <SelectTrigger className="w-full bg-white/5 border-white/10 text-white h-9 text-sm">
-                              <SelectValue placeholder="Select QoS" />
-                            </SelectTrigger>
-                            <SelectContent className="scanner-select-content">
-                              <SelectItem value="0">0 - At most once</SelectItem>
-                              <SelectItem value="1">1 - At least once</SelectItem>
-                              <SelectItem value="2">2 - Exactly once</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <label className="text-sm font-medium text-white">
-                              Retain Messages
-                            </label>
-                            <p className="text-xs text-white/40">Keep last message on broker</p>
-                          </div>
-                          <Switch
-                            checked={preferences.mqttRetain}
-                            onCheckedChange={(checked) =>
-                              handlePreferenceChange('mqttRetain', checked)
-                            }
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
                 </div>
               </section>
 
@@ -1653,15 +1518,19 @@ export function DeviceTab() {
                       <label className="text-sm font-medium text-white">Data Retention</label>
                       <p className="text-xs text-white/40">Auto-delete older logs</p>
                     </div>
-                    <Select defaultValue="forever">
+                    <Select
+                      value={String(preferences.dataRetentionDays)}
+                      onValueChange={(value) =>
+                        handlePreferenceChange('dataRetentionDays', parseInt(value))
+                      }
+                    >
                       <SelectTrigger className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-xs text-white">
                         <SelectValue placeholder="Select retention" />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-900 border-white/10 text-white">
-                        <SelectItem value="forever">Keep Forever</SelectItem>
-                        <SelectItem value="30days">30 Days</SelectItem>
-                        <SelectItem value="90days">90 Days</SelectItem>
-                        <SelectItem value="1year">1 Year</SelectItem>
+                        <SelectItem value="30">30 Days</SelectItem>
+                        <SelectItem value="90">90 Days</SelectItem>
+                        <SelectItem value="365">1 Year</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
