@@ -118,15 +118,20 @@ describe('ScannerWebSocket', () => {
       expect(mockEmit).toHaveBeenCalledWith('state_update', testMessage);
     });
 
-    it('should respond to ping messages with pong', () => {
-      const testMessage: WSMessage = { type: 'ping' };
+    it('emits banks_update messages to subscribers (#149)', () => {
+      const mockEmit = vi.spyOn(ws, 'emit' as any);
+      const testMessage: WSMessage = {
+        type: 'banks_update',
+        timestamp: 123,
+        data: { banks: [true, true, false, false, false, false, false, false, false, false] },
+      };
       ws.connect();
 
       if (mockWs.onmessage) {
         mockWs.onmessage({ data: JSON.stringify(testMessage) } as MessageEvent);
       }
 
-      expect(mockWs.send).toHaveBeenCalledWith(JSON.stringify({ type: 'pong' }));
+      expect(mockEmit).toHaveBeenCalledWith('banks_update', testMessage);
     });
 
     it('should emit error events for JSON parse errors', () => {

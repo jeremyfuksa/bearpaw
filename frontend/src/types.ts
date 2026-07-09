@@ -64,10 +64,12 @@ export type WSMessage =
   | EventMessage
   | ProgressMessage
   | ErrorMessage
-  | PingMessage;
+  | BanksUpdateMessage;
 
-export interface PingMessage {
-  type: 'ping';
+export interface BanksUpdateMessage {
+  type: 'banks_update';
+  timestamp: number;
+  data: { banks: boolean[] };
 }
 
 export interface StateUpdateMessage {

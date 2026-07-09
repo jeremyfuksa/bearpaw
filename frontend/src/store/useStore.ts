@@ -10,12 +10,6 @@ export interface Preferences {
   checkUpdates: boolean;
   dataRetentionDays: number;
   audioOutputDevice: string;
-  mqttEnabled: boolean;
-  mqttHost: string;
-  mqttPort: number;
-  mqttTopicPrefix: string;
-  mqttQos: number;
-  mqttRetain: boolean;
 }
 
 /**
@@ -71,12 +65,6 @@ const defaultPreferences: Preferences = {
   checkUpdates: true,
   dataRetentionDays: 30,
   audioOutputDevice: 'default',
-  mqttEnabled: false,
-  mqttHost: '127.0.0.1',
-  mqttPort: 1883,
-  mqttTopicPrefix: 'scanner',
-  mqttQos: 0,
-  mqttRetain: false,
 };
 
 const defaultLiveState: LiveState = {
