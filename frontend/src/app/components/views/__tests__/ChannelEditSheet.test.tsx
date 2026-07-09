@@ -1,17 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { Mock } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChannelEditSheet } from '../ChannelEditSheet';
 import { createTestChannel, createTestChannelDraft } from '../../../../test/fixtures';
 import type { ChannelDraft, ChannelData } from '../../../../types';
 
+/**
+ * The sheet keeps a LOCAL working copy of the draft (#146): edits only reach
+ * the parent through onSave. There is deliberately no onFieldChange prop any
+ * more — the old per-keystroke store writes meant Cancel kept the edits and
+ * they uploaded with the next Upload Changes.
+ */
 describe('ChannelEditSheet', () => {
   let mockChannel: ChannelData;
   let mockDraft: ChannelDraft;
-  let mockOnSave: (draft: ChannelDraft) => Promise<void>;
-  let mockOnFieldChange: (field: keyof ChannelDraft, value: string | boolean) => void;
-  let mockOnClear: () => void;
-  let mockOnClose: () => void;
+  let mockOnSave: Mock<(draft: ChannelDraft) => Promise<void>>;
+  let mockOnClose: Mock<() => void>;
+
+  const renderSheet = (isOpen = true) =>
+    render(
+      <ChannelEditSheet
+        channel={mockChannel}
+        draft={mockDraft}
+        isOpen={isOpen}
+        onClose={mockOnClose}
+        onSave={mockOnSave}
+      />,
+    );
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,645 +43,195 @@ describe('ChannelEditSheet', () => {
     });
     mockDraft = createTestChannelDraft();
     mockOnSave = vi.fn().mockResolvedValue(undefined);
-    mockOnFieldChange = vi.fn();
-    mockOnClear = vi.fn();
     mockOnClose = vi.fn();
   });
 
   describe('Rendering', () => {
-    it('should render edit sheet when isOpen is true', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
+    it('renders when open', () => {
+      renderSheet();
       expect(screen.getByText(/Edit Channel 1/i)).toBeInTheDocument();
     });
 
-    it('should not render edit sheet when isOpen is false', () => {
-      render(
+    it('does not render when closed', () => {
+      renderSheet(false);
+      expect(screen.queryByText(/Edit Channel 1/i)).not.toBeInTheDocument();
+    });
+
+    it('renders the close button', () => {
+      renderSheet();
+      expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('Local draft (Cancel discards edits)', () => {
+    it('typing updates the local field, not the parent', async () => {
+      renderSheet();
+      const freq = screen.getByLabelText('Frequency');
+      await userEvent.clear(freq);
+      await userEvent.type(freq, '146.5200');
+      expect(freq).toHaveValue('146.5200');
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it('Cancel closes without saving the edits', async () => {
+      renderSheet();
+      const alpha = screen.getByLabelText('Alpha Tag');
+      await userEvent.clear(alpha);
+      await userEvent.type(alpha, 'Edited Name');
+      await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+      expect(mockOnClose).toHaveBeenCalled();
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it('Save commits the edited draft to the parent', async () => {
+      renderSheet();
+      const alpha = screen.getByLabelText('Alpha Tag');
+      await userEvent.clear(alpha);
+      await userEvent.type(alpha, 'Edited Name');
+      await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
+      await waitFor(() => expect(mockOnSave).toHaveBeenCalledTimes(1));
+      expect(mockOnSave.mock.calls[0][0]).toMatchObject({ alpha_tag: 'Edited Name' });
+      expect(mockOnClose).toHaveBeenCalled();
+    });
+
+    it('reopening reseeds from the prop draft (discarded edits stay gone)', async () => {
+      const { rerender } = renderSheet();
+      const alpha = screen.getByLabelText('Alpha Tag');
+      await userEvent.clear(alpha);
+      await userEvent.type(alpha, 'Edited Name');
+
+      rerender(
         <ChannelEditSheet
           channel={mockChannel}
           draft={mockDraft}
           isOpen={false}
           onClose={mockOnClose}
           onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
         />,
       );
-      expect(screen.queryByText(/Edit Channel 1/i)).not.toBeInTheDocument();
-    });
-
-    it('should render close button', () => {
-      render(
+      rerender(
         <ChannelEditSheet
           channel={mockChannel}
           draft={mockDraft}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
         />,
       );
-      expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
+      expect(screen.getByLabelText('Alpha Tag')).toHaveValue(mockDraft.alpha_tag);
     });
   });
 
-  describe('Frequency Field', () => {
-    it('should render frequency input with initial value', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      expect(input).toHaveValue('151.2500');
+  describe('Frequency validation (coverage bands, not a contiguous range)', () => {
+    it.each(['30.0000', '146.5200', '300.0000', '462.5500', '0'])(
+      'accepts in-band or zero frequency %s',
+      async (value) => {
+        renderSheet();
+        const freq = screen.getByLabelText('Frequency');
+        await userEvent.clear(freq);
+        await userEvent.type(freq, value);
+        expect(screen.queryByText(/Frequency must be/i)).not.toBeInTheDocument();
+      },
+    );
+
+    it.each(['20.0000', '90.0000', '200.0000', '390.0000', '520.0000'])(
+      'rejects gap/out-of-range frequency %s',
+      async (value) => {
+        renderSheet();
+        const freq = screen.getByLabelText('Frequency');
+        await userEvent.clear(freq);
+        await userEvent.type(freq, value);
+        expect(screen.getByText(/Frequency must be in a covered band/i)).toBeInTheDocument();
+      },
+    );
+  });
+
+  describe('Delay (canonical CIN set)', () => {
+    it('offers exactly the scanner-legal delay values', async () => {
+      renderSheet();
+      const trigger = screen.getByRole('combobox', { name: /delay/i });
+      await userEvent.click(trigger);
+      for (const value of ['-10', '-5', '0', '1', '2', '3', '4', '5']) {
+        expect(screen.getByRole('option', { name: value })).toBeInTheDocument();
+      }
+      expect(screen.queryByRole('option', { name: '10' })).not.toBeInTheDocument();
     });
 
-    it('should call onFieldChange when frequency changes', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      fireEvent.change(input, { target: { value: '155.7500' } });
-      expect(mockOnFieldChange).toHaveBeenLastCalledWith('frequency', '155.7500');
-    });
-
-    it('should show error for invalid frequency', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      fireEvent.change(input, { target: { value: 'invalid' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
-      });
-    });
-
-    it('should show error for frequency out of range (below min)', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      fireEvent.change(input, { target: { value: '20.0000' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Frequency must be 25-512 MHz/i)).toBeInTheDocument();
-      });
-    });
-
-    it('should show error for frequency out of range (above max)', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      fireEvent.change(input, { target: { value: '600.0000' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Frequency must be 25-512 MHz/i)).toBeInTheDocument();
-      });
+    it('selecting a pre-delay saves it', async () => {
+      renderSheet();
+      const trigger = screen.getByRole('combobox', { name: /delay/i });
+      await userEvent.click(trigger);
+      await userEvent.click(screen.getByRole('option', { name: '-5' }));
+      await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
+      await waitFor(() => expect(mockOnSave).toHaveBeenCalled());
+      expect(mockOnSave.mock.calls[0][0]).toMatchObject({ delay: '-5' });
     });
   });
 
-  describe('Alpha Tag Field', () => {
-    it('should render alpha tag input with initial value', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/alpha tag/i);
-      expect(input).toHaveValue('Test Channel');
+  describe('Tone validation (canonical CTCSS set)', () => {
+    it('accepts a standard tone and empty', async () => {
+      renderSheet();
+      const tone = screen.getByLabelText('Tone Squelch');
+      await userEvent.type(tone, '100.0');
+      expect(screen.queryByText(/Not a standard CTCSS tone/i)).not.toBeInTheDocument();
+      await userEvent.clear(tone);
+      expect(screen.queryByText(/Not a standard CTCSS tone/i)).not.toBeInTheDocument();
     });
 
-    it('should call onFieldChange when alpha tag changes', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/alpha tag/i);
-      fireEvent.change(input, { target: { value: 'Updated Tag' } });
-      expect(mockOnFieldChange).toHaveBeenLastCalledWith('alpha_tag', 'Updated Tag');
-    });
-
-    it('should enforce maxLength of 16', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/alpha tag/i) as HTMLInputElement;
-      expect(input.maxLength).toBe(16);
+    it('rejects a non-canonical tone value', async () => {
+      renderSheet();
+      const tone = screen.getByLabelText('Tone Squelch');
+      await userEvent.type(tone, '101.5');
+      expect(screen.getByText(/Not a standard CTCSS tone/i)).toBeInTheDocument();
     });
   });
 
-  describe('Modulation Field', () => {
-    it('should render modulation select with initial value', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      expect(screen.getByText(/FM/i)).toBeInTheDocument();
-    });
-
-    it('should render all modulation options', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const selectTrigger = screen.getByRole('combobox');
-      await userEvent.click(selectTrigger);
-      expect(screen.getByText(/AUTO/i)).toBeInTheDocument();
-      expect(screen.getByText(/AM/i)).toBeInTheDocument();
-      expect(screen.getByText(/NFM/i)).toBeInTheDocument();
-    });
-
-    it('should call onFieldChange when modulation changes', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const selectTrigger = screen.getByRole('combobox');
-      await userEvent.click(selectTrigger);
-
-      const option = screen.getByRole('option', { name: /AM/i });
-      await userEvent.click(option);
-
-      expect(mockOnFieldChange).toHaveBeenCalledWith('modulation', 'AM');
+  describe('Modulation', () => {
+    it('renders all modulation options and selecting one saves it', async () => {
+      renderSheet();
+      const trigger = screen.getByRole('combobox', { name: /modulation/i });
+      await userEvent.click(trigger);
+      expect(screen.getByRole('option', { name: 'AUTO' })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'NFM' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('option', { name: 'AM' }));
+      await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
+      await waitFor(() => expect(mockOnSave).toHaveBeenCalled());
+      expect(mockOnSave.mock.calls[0][0]).toMatchObject({ modulation: 'AM' });
     });
   });
 
-  describe('Tone Squelch Field', () => {
-    it('should render tone squelch input with initial value', () => {
-      const draftWithTone = createTestChannelDraft({ tone_squelch: '162.2' });
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={draftWithTone}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/tone/i);
-      expect(input).toHaveValue('162.2');
-    });
-
-    it('should call onFieldChange when tone squelch changes', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/tone/i);
-      fireEvent.change(input, { target: { value: '192.8' } });
-      expect(mockOnFieldChange).toHaveBeenLastCalledWith('tone_squelch', '192.8');
-    });
-
-    it('should show error for tone below 0', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/tone/i);
-      fireEvent.change(input, { target: { value: '-10' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Tone must be 0-999/i)).toBeInTheDocument();
-      });
-    });
-
-    it('should show error for tone above 999', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/tone/i);
-      fireEvent.change(input, { target: { value: '1500' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Tone must be 0-999/i)).toBeInTheDocument();
-      });
+  describe('Switches', () => {
+    it('toggling lockout/priority is committed on save', async () => {
+      renderSheet();
+      await userEvent.click(screen.getByRole('switch', { name: /lockout/i }));
+      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+      await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
+      await waitFor(() => expect(mockOnSave).toHaveBeenCalled());
+      expect(mockOnSave.mock.calls[0][0]).toMatchObject({ lockout: true, priority: true });
     });
   });
 
-  describe('Delay Field', () => {
-    it('should render delay input with initial value', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/delay/i);
-      expect(input).toHaveValue('2');
-    });
-
-    it('should call onFieldChange when delay changes', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/delay/i);
-      fireEvent.change(input, { target: { value: '5' } });
-      expect(mockOnFieldChange).toHaveBeenLastCalledWith('delay', '5');
-    });
-
-    it('should show error for delay below 0', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/delay/i);
-      fireEvent.change(input, { target: { value: '-5' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
-      });
-    });
-
-    it('should show error for delay above 30', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/delay/i);
-      fireEvent.change(input, { target: { value: '50' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
-      });
+  describe('Clear', () => {
+    it('Clear empties the local draft; Save commits the cleared slot', async () => {
+      renderSheet();
+      await userEvent.click(screen.getByRole('button', { name: /^clear$/i }));
+      expect(screen.getByLabelText('Frequency')).toHaveValue('0');
+      expect(screen.getByLabelText('Alpha Tag')).toHaveValue('');
+      await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
+      await waitFor(() => expect(mockOnSave).toHaveBeenCalled());
+      expect(mockOnSave.mock.calls[0][0]).toMatchObject({ frequency: '0', alpha_tag: '' });
     });
   });
 
-  describe('Lockout Switch', () => {
-    it('should render lockout switch', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      expect(screen.getByRole('switch', { name: /lockout/i })).toBeInTheDocument();
-    });
-
-    it('should call onFieldChange when lockout is toggled', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const lockoutSwitch = screen.getByRole('switch', { name: /lockout/i });
-      await userEvent.click(lockoutSwitch);
-      expect(mockOnFieldChange).toHaveBeenCalledWith('lockout', true);
-    });
-  });
-
-  describe('Priority Switch', () => {
-    it('should render priority switch', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      expect(screen.getByRole('switch', { name: /priority/i })).toBeInTheDocument();
-    });
-
-    it('should call onFieldChange when priority is toggled', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const prioritySwitch = screen.getByRole('switch', { name: /priority/i });
-      await userEvent.click(prioritySwitch);
-      expect(mockOnFieldChange).toHaveBeenCalledWith('priority', true);
-    });
-  });
-
-  describe('Save and Cancel Buttons', () => {
-    it('should render save button', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      expect(screen.getByRole('button', { name: /Save Draft/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Clear/i })).toBeInTheDocument();
-    });
-
-    it('should render cancel button', () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
-    });
-
-    it('should call onSave when save button is clicked', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const saveButton = screen.getByRole('button', { name: /Save Draft/i });
-      await userEvent.click(saveButton);
-      await waitFor(() => {
-        expect(mockOnSave).toHaveBeenCalledWith(mockDraft);
-      });
-    });
-
-    it('should call onClose when cancel button is clicked', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const cancelButton = screen.getByRole('button', { name: /Cancel/i });
-      await userEvent.click(cancelButton);
-      expect(mockOnClose).toHaveBeenCalled();
-    });
-
-    it('should disable save button when there are errors', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      fireEvent.change(input, { target: { value: 'invalid' } });
-      const saveButton = screen.getByRole('button', { name: /Save Draft/i });
-      await waitFor(() => {
-        expect(saveButton).toBeDisabled();
-      });
-    });
-
-    it('should show saving state while saving', async () => {
-      const savingPromise = new Promise<void>((resolve) => setTimeout(resolve, 100));
-      (mockOnSave as ReturnType<typeof vi.fn>).mockReturnValue(savingPromise);
-
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const saveButton = screen.getByRole('button', { name: /Save Draft/i });
-      await userEvent.click(saveButton);
-
-      expect(screen.getByText(/Saving\.\.\./i)).toBeInTheDocument();
-    });
-  });
-
-  describe('Error Display', () => {
-    it('should display error message below invalid frequency field', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      fireEvent.change(input, { target: { value: 'abc' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
-      });
-    });
-
-    it('should display error message below invalid delay field', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/delay/i);
-      fireEvent.change(input, { target: { value: 'abc' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Delay must be 0-30 seconds/i)).toBeInTheDocument();
-      });
-    });
-
-    it('should clear error when valid value is entered', async () => {
-      render(
-        <ChannelEditSheet
-          channel={mockChannel}
-          draft={mockDraft}
-          isOpen={true}
-          onClose={mockOnClose}
-          onSave={mockOnSave}
-          onFieldChange={mockOnFieldChange}
-          onClear={mockOnClear}
-        />,
-      );
-      const input = screen.getByLabelText(/frequency/i);
-      fireEvent.change(input, { target: { value: 'abc' } });
-      await waitFor(() => {
-        expect(screen.getByText(/Invalid frequency/i)).toBeInTheDocument();
-      });
-
-      fireEvent.change(input, { target: { value: '151.25' } });
-
-      await waitFor(() => {
-        expect(screen.queryByText(/Invalid frequency/i)).not.toBeInTheDocument();
-      });
+  describe('Error gating', () => {
+    it('Save is blocked while a field is invalid', async () => {
+      renderSheet();
+      const freq = screen.getByLabelText('Frequency');
+      await userEvent.clear(freq);
+      await userEvent.type(freq, '90.0');
+      const save = screen.getByRole('button', { name: /save draft/i });
+      expect(save).toBeDisabled();
+      expect(mockOnSave).not.toHaveBeenCalled();
     });
   });
 });
