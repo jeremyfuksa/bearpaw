@@ -10,6 +10,11 @@ export class ScannerWebSocket {
   private url: string;
   private shouldReconnect = true;
   private debug = false;
+  // Pending reconnect timer id (#144). Without storing it, disconnect()
+  // couldn't cancel an already-scheduled reconnect; the surviving timer
+  // called connect(), which re-armed shouldReconnect — a zombie socket
+  // reconnecting after an explicit disconnect.
+  private reconnectTimer: number | null = null;
 
   constructor(url: string) {
     this.url = url;
@@ -67,7 +72,10 @@ export class ScannerWebSocket {
     if (!this.shouldReconnect) return;
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), this.maxReconnectDelay);
     this.reconnectAttempts += 1;
-    window.setTimeout(() => this.connect(), delay);
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
   }
 
   on(event: string, callback: Listener): () => void {
@@ -85,6 +93,10 @@ export class ScannerWebSocket {
 
   disconnect(): void {
     this.shouldReconnect = false;
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (!this.ws) return;
 
     const ws = this.ws;
