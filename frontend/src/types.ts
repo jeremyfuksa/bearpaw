@@ -12,6 +12,14 @@ export interface LiveState {
   volume: number;
   battery?: number | null;
   stale?: boolean;
+  /** Tone discriminator from the live GLG frame during a hit; mirrors ChannelData. */
+  tone_squelch_kind?: 'none' | 'ctcss' | 'dcs' | 'search';
+  /** CTCSS frequency in Hz when tone_squelch_kind === 'ctcss'. */
+  tone_squelch?: number | null;
+  /** DCS wire code (128–231) when tone_squelch_kind === 'dcs'. */
+  tone_dcs_code?: number | null;
+  /** Backend-formatted "DCS NNN" label when tone_squelch_kind === 'dcs'. */
+  tone_dcs_label?: string | null;
 }
 
 export interface ChannelData {

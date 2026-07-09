@@ -15,7 +15,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useMenuEvents } from '../hooks/useMenuEvents';
 import { useShellStatusText } from '../hooks/useShellStatusText';
 import { openExternalUrl } from '../tauri-shell';
-import type { BanksUpdateMessage, ProgressMessage, StateUpdateMessage } from '../types';
+import type { BanksUpdateMessage, LiveState, ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ScanView } from './components/views/ScanView';
@@ -23,6 +23,26 @@ import { ActivityExportSheet } from './components/views/ActivityExportSheet';
 
 export type Tab = 'Scan' | 'Device' | 'Channels';
 export type ScannerMode = 'SCAN' | 'HOLD' | 'SEARCH' | 'CLOSE_CALL';
+
+/**
+ * Format the live tone for the Scan display's subText, or null if there is
+ * no tone to show. CTCSS prints the Hz value; DCS uses the backend-formatted
+ * label (the DCS wire code is not the human DCS number — the backend owns
+ * that mapping); Tone Search gets a fixed label. Called only while the
+ * squelch is open (see the subText memo).
+ */
+export function formatLiveTone(live: LiveState): string | null {
+  switch (live.tone_squelch_kind) {
+    case 'ctcss':
+      return live.tone_squelch != null ? `CTCSS ${live.tone_squelch.toFixed(1)}` : null;
+    case 'dcs':
+      return live.tone_dcs_label ?? null;
+    case 'search':
+      return 'Tone Search';
+    default:
+      return null;
+  }
+}
 
 export default function App() {
   useKeyboardShortcuts({
@@ -697,6 +717,10 @@ export default function App() {
     if (liveState.modulation) parts.push(liveState.modulation);
     if (liveState.channel !== undefined && liveState.channel !== null) {
       parts.push(`CH ${liveState.channel}`);
+    }
+    if (liveState.squelch_open) {
+      const tone = formatLiveTone(liveState);
+      if (tone) parts.push(tone);
     }
     return { mainText: main, subText: parts.join(' • ') };
   }, [deviceInfo, hasFreshLiveFrame, isInitialSyncing, liveState, syncProgressMessage]);

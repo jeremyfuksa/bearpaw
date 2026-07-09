@@ -26,10 +26,16 @@ Endpoint: `/ws`
     "frequency": 151.2500,
     "modulation": "FM",
     "squelch_open": true,
-    "rssi": 75
+    "rssi": 75,
+    "tone_squelch_kind": "ctcss",
+    "tone_squelch": 123.0,
+    "tone_dcs_code": null,
+    "tone_dcs_label": null
   }
 }
 ```
+
+**Note:** The `tone_squelch_kind`, `tone_squelch`, `tone_dcs_code`, and `tone_dcs_label` fields are only populated while `squelch_open === true` (during a hit); they are omitted or null otherwise.
 
 ### Event
 
