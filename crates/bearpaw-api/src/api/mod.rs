@@ -227,8 +227,7 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/preferences",
             get(handlers::preferences::get_preferences)
-                .put(handlers::preferences::put_preferences)
-                .post(handlers::preferences::reset_preferences),
+                .put(handlers::preferences::put_preferences),
         )
         .route(
             "/api/v1/preferences/reset",

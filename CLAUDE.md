@@ -63,7 +63,7 @@ npm run tauri:build      # bundle for release
 - `frequency`, `modulation`, `squelch_open`, `rssi`, `mode`, `channel`, `alpha_tag`, `volume`, `stale`.
 - Updated by the poll loop in [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs).
 
-**Channel memory** — all 500 channels read once during memory sync via `PRG` → `CIN,1` … `CIN,500` → `EPG`. Cached in `AppState.channels`. Persistence to SQLite in [`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs).
+**Channel memory** — all 500 channels read once during memory sync via `PRG` → `CIN,1` … `CIN,500` → `EPG`. Cached in `AppState.shadow` (`ShadowState.channels`). Channel memory is **not** persisted across restarts — SQLite holds only preferences and analytics; every backend start needs a fresh memory sync.
 
 **`DeviceInfo`** — static metadata: model name (from `MDL`), port, connection_status. Same module.
 
