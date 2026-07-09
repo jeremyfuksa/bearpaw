@@ -209,10 +209,26 @@ export function ChannelsTab() {
   }, [activeBank, channels]);
 
   useEffect(() => {
-    setBankOrders((prev) => ({
-      ...prev,
-      [activeBank]: prev[activeBank] ?? bankChannels,
-    }));
+    // Reconcile the cached order with reality instead of freezing at first
+    // sight (#146). The old `prev[activeBank] ?? bankChannels` seeding meant:
+    // mount this tab before channels load (deep link during the initial
+    // 30-45s sync) and the bank order froze at [] — "No channels match your
+    // filters" forever; channels added later (CSV import) were silently
+    // dropped. Keep the user's drag order for surviving indexes, drop stale
+    // ones, append newcomers in index order.
+    setBankOrders((prev) => {
+      const existing = prev[activeBank];
+      if (!existing) {
+        return { ...prev, [activeBank]: bankChannels };
+      }
+      const current = new Set(bankChannels);
+      const kept = existing.filter((idx) => current.has(idx));
+      const keptSet = new Set(kept);
+      const added = bankChannels.filter((idx) => !keptSet.has(idx));
+      const next = [...kept, ...added];
+      const unchanged = next.length === existing.length && next.every((v, i) => v === existing[i]);
+      return unchanged ? prev : { ...prev, [activeBank]: next };
+    });
   }, [activeBank, bankChannels]);
 
   const currentBankOrder = bankOrders[activeBank] ?? bankChannels;
@@ -353,29 +369,13 @@ export function ChannelsTab() {
     setEditingChannelIndex(null);
   }, []);
 
-  const updateDraftField = (
-    channelIndex: number,
-    field: keyof ChannelDraft,
-    value: string | boolean,
-  ) => {
-    const draft = memoryDrafts[channelIndex];
-    if (draft) {
-      setMemoryDraft(channelIndex, { ...draft, [field]: value });
-    }
-  };
-
+  // The edit sheet keeps its own local working copy (#146) — the store draft
+  // is only written here, on an explicit Save. Cancel discards by simply
+  // never calling this.
   const handleSaveDraft = useCallback(
     async (channelIndex: number, draft: ChannelDraft) => {
       setMemoryDraft(channelIndex, draft);
       toast.success(`Draft saved for CH ${channelIndex}`);
-    },
-    [setMemoryDraft],
-  );
-
-  const handleClearDraft = useCallback(
-    (channelIndex: number) => {
-      setMemoryDraft(channelIndex, buildEmptyDraft());
-      toast.success(`Cleared CH ${channelIndex}`);
     },
     [setMemoryDraft],
   );
@@ -513,6 +513,25 @@ export function ChannelsTab() {
     try {
       const refreshedChannels = await api.getChannels();
       setChannels(refreshedChannels);
+      // Reset reorder state from the refetch (#146). Keeping old->new
+      // mappings after an upload left moved channels permanently "pending",
+      // and a second Upload Changes re-wrote each channel's CURRENT content
+      // to its already-shifted slot — scrambling channel memory. Rebuild the
+      // drafts of every index that participated so they compare clean
+      // against the refetched truth; untouched pending drafts survive.
+      const byIndex = new Map(refreshedChannels.map((c) => [c.index, c]));
+      const participating = new Set<number>();
+      for (const change of draftChanges) {
+        participating.add(change.channelIndex);
+        participating.add(change.targetIndex ?? change.channelIndex);
+      }
+      for (const idx of participating) {
+        const refreshed = byIndex.get(idx);
+        if (refreshed) {
+          setMemoryDraft(idx, buildDraft(refreshed));
+        }
+      }
+      setBankOrders({});
     } catch (error) {
       console.warn('Failed to refresh channels after upload', error);
     }
@@ -837,8 +856,6 @@ export function ChannelsTab() {
             isOpen={editingChannelIndex !== null}
             onClose={handleCloseEditSheet}
             onSave={(draft) => handleSaveDraft(editingChannelIndex, draft)}
-            onFieldChange={(field, value) => updateDraftField(editingChannelIndex, field, value)}
-            onClear={() => handleClearDraft(editingChannelIndex)}
           />
         )}
       </div>
