@@ -439,7 +439,7 @@ export class ScannerAPIClient {
   }
 
   async resetPreferences(): Promise<Record<string, any>> {
-    return this.request<Record<string, any>>('/preferences', {
+    return this.request<Record<string, any>>('/preferences/reset', {
       method: 'POST',
     });
   }
