@@ -397,7 +397,15 @@ export class ScannerAPIClient {
     });
 
     if (!response.ok) {
-      const payload = await response.json();
+      // Non-JSON error bodies (an HTML 502 from a proxy, plain text) used to
+      // escape as a SyntaxError from response.json() instead of an APIError
+      // (#144). Parse defensively.
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
       const message =
         typeof payload === 'object' && payload && 'message' in payload
           ? String((payload as { message?: string }).message)

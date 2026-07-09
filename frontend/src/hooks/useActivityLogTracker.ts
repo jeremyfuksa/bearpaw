@@ -26,8 +26,17 @@ export function useActivityLogTracker(): void {
   const currentHitDataRef = useRef<ActivityLogEntry | null>(null);
 
   useEffect(() => {
+    // Local sequence gate (#144): this hook consumes state_update directly
+    // (not via the store), so reordered messages the store correctly drops
+    // would still drive the hit state machine here — producing spurious or
+    // truncated hit entries. Mirror the store's monotonic check.
+    let lastSequence = 0;
     const unsubscribeState = ws.on('state_update', (message) => {
       const payload = message as StateUpdateMessage;
+      if (typeof payload.sequence === 'number') {
+        if (payload.sequence <= lastSequence) return;
+        lastSequence = payload.sequence;
+      }
       const squelchOpen = payload.data.squelch_open;
       if (typeof squelchOpen !== 'boolean') return;
 

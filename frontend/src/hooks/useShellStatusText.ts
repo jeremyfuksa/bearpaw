@@ -51,6 +51,13 @@ export function useShellStatusText(): string | null {
       if (active) setShellStatus(status);
     })
       .then((unlisten) => {
+        if (!active) {
+          // Unmounted before the subscription resolved (#144) — the effect
+          // cleanup already ran with `cleanup` unset, so unlisten here or
+          // the Tauri listener leaks for the rest of the session.
+          unlisten();
+          return;
+        }
         cleanup = unlisten;
       })
       .catch(() => {
