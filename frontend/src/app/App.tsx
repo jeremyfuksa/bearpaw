@@ -288,12 +288,13 @@ export default function App() {
       unsubscribeEvent();
       unsubscribeDeviceInfo();
       unsubscribeProgress();
-      if (programModeEntryTimeoutRef.current) {
-        clearTimeout(programModeEntryTimeoutRef.current);
-      }
-      if (scanResumeTimerRef.current !== null) {
-        window.clearTimeout(scanResumeTimerRef.current);
-      }
+      // NOTE (#144): do NOT clear scanResumeTimerRef / programModeEntry
+      // timers here. This effect re-runs on currentTab/connected changes;
+      // clearing app-lifetime timers in its cleanup cancelled pending
+      // scan-resumes on every tab switch and could strand
+      // scanResumeInFlightRef=true (killing every later resume for the
+      // session). Those timers are cleaned up in the unmount-only effect
+      // below.
     };
     // REGRESSION GUARD: App.regression.test.tsx :: WS subscription is stable
     // across liveState updates.
@@ -401,7 +402,11 @@ export default function App() {
         ]);
         if (!active) return;
 
-        if (statusResult.status === 'fulfilled') {
+        if (statusResult.status === 'fulfilled' && useStore.getState().lastSequence === 0) {
+          // Mount-time REST snapshot carries no sequence number (#144): if a
+          // WS state_update already arrived, applying this older snapshot
+          // would overwrite newer state until the next poll tick. Only seed
+          // from REST while the sequence gate is still untouched.
           updateLiveState(statusResult.value);
         }
 
@@ -487,6 +492,28 @@ export default function App() {
     setChartAnimate(true);
     const timeout = window.setTimeout(() => setChartAnimate(false), 700);
     return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    // Unmount-only cleanup for app-lifetime timers (#144). These used to be
+    // cleared in the WS-subscribe effect's cleanup, which re-runs on
+    // currentTab/connected changes — cancelling pending scan-resumes on
+    // every tab switch and potentially stranding scanResumeInFlightRef=true
+    // (silently no-oping every later resume for the session).
+    return () => {
+      if (programModeEntryTimeoutRef.current) {
+        clearTimeout(programModeEntryTimeoutRef.current);
+      }
+      if (scanResumeTimerRef.current !== null) {
+        window.clearTimeout(scanResumeTimerRef.current);
+        scanResumeTimerRef.current = null;
+      }
+      scanResumeInFlightRef.current = false;
+      if (bankFlushTimerRef.current !== null) {
+        window.clearTimeout(bankFlushTimerRef.current);
+        bankFlushTimerRef.current = null;
+      }
+    };
   }, []);
 
   const handleCancelSync = useCallback(async () => {
@@ -655,7 +682,10 @@ export default function App() {
     if (!liveState) {
       return { mainText: '—', subText: 'No signal' };
     }
-    const main = liveState.alpha_tag || liveState.frequency?.toFixed(3) || '—';
+    // Frequency 0 means "empty/no channel" — render the placeholder, not
+    // "0.000" (#144). The subText already skips 0 via its truthiness check.
+    const main =
+      liveState.alpha_tag || (liveState.frequency ? liveState.frequency.toFixed(3) : '—');
     const parts = [];
     if (liveState.frequency) parts.push(liveState.frequency.toFixed(3));
     if (liveState.modulation) parts.push(liveState.modulation);
