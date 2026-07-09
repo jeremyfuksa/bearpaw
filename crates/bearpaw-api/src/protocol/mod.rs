@@ -215,11 +215,13 @@ fn matches_sts_tail_signature(parts: &[&str], i: usize) -> bool {
         .map(|s| s.trim())
         .and_then(|s| s.parse::<u8>().ok())
         .is_some_and(|n| n <= 5);
+    // BK_DIMMER may be EMPTY on some firmware (#143): the reference doc's own
+    // 1.04.02 example ends `...,1,,`. An empty field is accepted (parsed as 0
+    // downstream); a non-empty field must still be a 0-3 digit.
     let dimmer_ok = parts
         .get(i + 8)
         .map(|s| s.trim())
-        .and_then(|s| s.parse::<u8>().ok())
-        .is_some_and(|n| n <= 3);
+        .is_some_and(|s| s.is_empty() || s.parse::<u8>().ok().is_some_and(|n| n <= 3));
     sql_ok && mut_ok && sig_ok && dimmer_ok
 }
 
@@ -658,6 +660,19 @@ mod tests {
         assert!(!f.muted, "MUT=0 must read as muted=false (not flipped)");
         assert_eq!(f.sig_lvl, 5);
         assert_eq!(f.bk_dimmer, 3);
+    }
+
+    #[test]
+    fn sts_accepts_empty_bk_dimmer_variant() {
+        // #143: firmware 1.04.02's documented STS example ends `...,1,,` —
+        // BK_DIMMER is an empty field. The tail signature must still anchor
+        // (empty dimmer parses as 0) or every STS poll on that firmware is
+        // dropped and squelch detection falls back to GLG alone.
+        let variant = "STS,011000,              ,,GMRS CH 03      ,,CH075  462.6125,,            ,,                ,,123          ,,1,0,0,0,,,5,,";
+        let f = parse_sts_frame(variant).expect("empty BK_DIMMER must still anchor");
+        assert!(f.squelch_open);
+        assert_eq!(f.sig_lvl, 5);
+        assert_eq!(f.bk_dimmer, 0, "empty dimmer field defaults to 0");
     }
 
     #[test]

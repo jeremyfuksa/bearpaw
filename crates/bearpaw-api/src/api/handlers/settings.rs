@@ -4,16 +4,57 @@ use serde_json::{json, Value};
 
 use crate::protocol::defaults::CUSTOM_SEARCH_DEFAULTS;
 
+use crate::protocol::{classify_response, ScannerReply};
+
 use super::super::{
     command_sender, get_setting_section, parse_command_parts, read_settings_snapshot_from_scanner,
     send_raw_command, set_setting_section, ApiError, AppState, ProgramModeGuard,
 };
 
+/// Strictly extract the first numeric field of a settings reply (#143).
+///
+/// The old pattern — `parts.first().parse().unwrap_or(0)` — turned `NG`/`ERR`
+/// replies and garbage into a "real" value of 0, which the getter then cached
+/// via `set_setting_section`, permanently overwriting a good cached value
+/// after one flaky read. Returning an error instead makes the getter fall
+/// through to its cached/default section.
+pub(super) fn parse_setting_u8(response: &str, cmd: &str) -> Result<u8, ApiError> {
+    match classify_response(response) {
+        ScannerReply::Ng | ScannerReply::Err => {
+            return Err(ApiError::BadRequest(format!(
+                "{}_read_failed",
+                cmd.to_lowercase()
+            )));
+        }
+        _ => {}
+    }
+    parse_command_parts(response, cmd)
+        .first()
+        .and_then(|s| s.parse::<u8>().ok())
+        .ok_or_else(|| ApiError::BadRequest(format!("{}_read_failed", cmd.to_lowercase())))
+}
+
 pub(crate) async fn get_config(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     let snapshot = read_settings_snapshot_from_scanner(&state).await?;
-    *state.settings.write().unwrap() = snapshot.clone();
-    Ok(Json(snapshot))
+    // Merge only non-null sections over the cache (#143): the snapshot emits
+    // `null` for sections whose reply was NG/ERR/unparseable, and those must
+    // not clobber previously-good cached values.
+    let merged = {
+        let mut settings = state.settings.write().unwrap();
+        if !settings.is_object() {
+            *settings = json!({});
+        }
+        if let (Some(cache), Some(snap)) = (settings.as_object_mut(), snapshot.as_object()) {
+            for (key, value) in snap {
+                if !value.is_null() {
+                    cache.insert(key.clone(), value.clone());
+                }
+            }
+        }
+        settings.clone()
+    };
+    Ok(Json(merged))
 }
 
 pub(crate) async fn get_backlight(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
@@ -23,10 +64,20 @@ pub(crate) async fn get_backlight(State(state): State<AppState>) -> Result<Json<
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "BLT", false).await;
             let response = response?;
+            // NG/ERR must not cache "NG" as the backlight event (#143).
+            if matches!(
+                classify_response(&response),
+                ScannerReply::Ng | ScannerReply::Err
+            ) {
+                return Err(ApiError::BadRequest("blt_read_failed".to_string()));
+            }
             let parts = parse_command_parts(&response, "BLT");
-            Ok::<Value, ApiError>(
-                json!({ "event": parts.first().cloned().unwrap_or_else(|| "AO".to_string()) }),
-            )
+            let event = parts
+                .first()
+                .filter(|e| matches!(e.to_uppercase().as_str(), "AO" | "AF" | "KY" | "SQ" | "KS"))
+                .cloned()
+                .ok_or_else(|| ApiError::BadRequest("blt_read_failed".to_string()))?;
+            Ok::<Value, ApiError>(json!({ "event": event }))
         }
         .await;
         if let Ok(value) = result {
@@ -74,11 +125,7 @@ pub(crate) async fn get_battery(State(state): State<AppState>) -> Result<Json<Va
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "BSV", false).await;
             let response = response?;
-            let parts = parse_command_parts(&response, "BSV");
-            let value = parts
-                .first()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
+            let value = parse_setting_u8(&response, "BSV")?;
             Ok::<Value, ApiError>(json!({ "charge_time": value }))
         }
         .await;
@@ -127,11 +174,17 @@ pub(crate) async fn get_key_beep(State(state): State<AppState>) -> Result<Json<V
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "KBP", false).await;
             let response = response?;
+            if matches!(
+                classify_response(&response),
+                ScannerReply::Ng | ScannerReply::Err
+            ) {
+                return Err(ApiError::BadRequest("kbp_read_failed".to_string()));
+            }
             let parts = parse_command_parts(&response, "KBP");
             let level = parts
                 .first()
                 .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(0);
+                .ok_or_else(|| ApiError::BadRequest("kbp_read_failed".to_string()))?;
             let lock = parts.get(1).map(|s| s == "1").unwrap_or(false);
             Ok::<Value, ApiError>(json!({ "level": level, "lock": lock }))
         }
@@ -186,11 +239,7 @@ pub(crate) async fn get_priority(State(state): State<AppState>) -> Result<Json<V
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "PRI", false).await;
             let response = response?;
-            let parts = parse_command_parts(&response, "PRI");
-            let mode = parts
-                .first()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
+            let mode = parse_setting_u8(&response, "PRI")?;
             Ok::<Value, ApiError>(json!({ "mode": mode }))
         }
         .await;
@@ -740,11 +789,7 @@ pub(crate) async fn get_contrast(State(state): State<AppState>) -> Result<Json<V
             let _prg = ProgramModeGuard::enter(&state).await?;
             let response = send_raw_command(&state, "CNT", false).await;
             let response = response?;
-            let parts = parse_command_parts(&response, "CNT");
-            let level = parts
-                .first()
-                .and_then(|s| s.parse::<u8>().ok())
-                .unwrap_or(0);
+            let level = parse_setting_u8(&response, "CNT")?;
             Ok::<Value, ApiError>(json!({ "level": level }))
         }
         .await;
@@ -781,4 +826,23 @@ pub(crate) async fn set_contrast(
     }
     set_setting_section(&state, "contrast", body);
     Ok(Json(json!({ "status": "ok" })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_setting_u8;
+
+    #[test]
+    fn parse_setting_u8_accepts_valid_reply() {
+        assert_eq!(parse_setting_u8("BSV,14", "BSV").unwrap(), 14);
+    }
+
+    #[test]
+    fn parse_setting_u8_rejects_ng_err_and_garbage() {
+        // #143: these used to become 0 and get cached as real values.
+        assert!(parse_setting_u8("BSV,NG", "BSV").is_err());
+        assert!(parse_setting_u8("ERR", "BSV").is_err());
+        assert!(parse_setting_u8("BSV,", "BSV").is_err());
+        assert!(parse_setting_u8("garbage", "BSV").is_err());
+    }
 }

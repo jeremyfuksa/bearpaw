@@ -57,6 +57,11 @@ pub struct AppState {
     pub preferences: Arc<Mutex<Map<String, Value>>>,
     pub ws_tx: broadcast::Sender<String>,
     pub sequence: Arc<AtomicU64>,
+    /// Held across sequence take + ws_tx.send so two producers can't take
+    /// ascending sequence numbers and send them out of order (#143) — the
+    /// frontend's monotonic gate would silently drop the later-arriving
+    /// lower-sequence update.
+    pub sequence_send: Arc<Mutex<()>>,
     pub command_tx: Arc<Mutex<Option<std::sync::mpsc::Sender<ControlCommand>>>>,
     pub program_mode_forced_hold: Arc<AtomicBool>,
     pub program_mode_active: Arc<AtomicBool>,
@@ -554,6 +559,7 @@ pub fn default_state() -> AppState {
         preferences: Arc::new(Mutex::new(loaded_preferences)),
         ws_tx,
         sequence: Arc::new(AtomicU64::new(0)),
+        sequence_send: Arc::new(Mutex::new(())),
         command_tx: Arc::new(Mutex::new(None)),
         program_mode_forced_hold: Arc::new(AtomicBool::new(false)),
         program_mode_active: Arc::new(AtomicBool::new(false)),
@@ -1154,116 +1160,182 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
     };
 
     let _ = send_raw_command(state, "PRG", false).await?;
+    // Per-section strictness (#143): a section whose reply is NG/ERR or whose
+    // primary field doesn't parse becomes `null` instead of a fabricated
+    // zero/default. `get_config` merges only non-null sections over the
+    // cached settings, so one flaky read can no longer permanently overwrite
+    // a good cached value.
+    fn usable(response: &str) -> bool {
+        !matches!(
+            classify_response(response),
+            ScannerReply::Ng | ScannerReply::Err
+        )
+    }
     let result = async {
         let squelch = {
-            let parts = parse_command_parts(&send_raw_command(state, "SQL", false).await?, "SQL");
-            json!({ "level": parts.first().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0) })
+            let resp = send_raw_command(state, "SQL", false).await?;
+            let parts = parse_command_parts(&resp, "SQL");
+            match usable(&resp)
+                .then(|| parts.first().and_then(|s| s.parse::<u8>().ok()))
+                .flatten()
+            {
+                Some(level) => json!({ "level": level }),
+                None => Value::Null,
+            }
         };
         let backlight = {
-            let parts = parse_command_parts(&send_raw_command(state, "BLT", false).await?, "BLT");
-            json!({ "event": parts.first().cloned().unwrap_or_else(|| "AO".to_string()) })
+            let resp = send_raw_command(state, "BLT", false).await?;
+            let parts = parse_command_parts(&resp, "BLT");
+            match usable(&resp).then(|| parts.first().cloned()).flatten() {
+                Some(event)
+                    if matches!(
+                        event.to_uppercase().as_str(),
+                        "AO" | "AF" | "KY" | "SQ" | "KS"
+                    ) =>
+                {
+                    json!({ "event": event })
+                }
+                _ => Value::Null,
+            }
         };
         let battery = {
-            let parts = parse_command_parts(&send_raw_command(state, "BSV", false).await?, "BSV");
-            json!({ "charge_time": parts.first().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0) })
+            let resp = send_raw_command(state, "BSV", false).await?;
+            let parts = parse_command_parts(&resp, "BSV");
+            match usable(&resp)
+                .then(|| parts.first().and_then(|s| s.parse::<u8>().ok()))
+                .flatten()
+            {
+                Some(v) => json!({ "charge_time": v }),
+                None => Value::Null,
+            }
         };
         let key_beep = {
-            let parts = parse_command_parts(&send_raw_command(state, "KBP", false).await?, "KBP");
-            json!({
-                "level": parts.first().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0),
-                "lock": parts.get(1).map(|s| s == "1").unwrap_or(false)
-            })
+            let resp = send_raw_command(state, "KBP", false).await?;
+            let parts = parse_command_parts(&resp, "KBP");
+            match usable(&resp)
+                .then(|| parts.first().and_then(|s| s.parse::<i32>().ok()))
+                .flatten()
+            {
+                Some(level) => json!({
+                    "level": level,
+                    "lock": parts.get(1).map(|s| s == "1").unwrap_or(false)
+                }),
+                None => Value::Null,
+            }
         };
         let priority = {
-            let parts = parse_command_parts(&send_raw_command(state, "PRI", false).await?, "PRI");
-            json!({ "mode": parts.first().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0) })
+            let resp = send_raw_command(state, "PRI", false).await?;
+            let parts = parse_command_parts(&resp, "PRI");
+            match usable(&resp)
+                .then(|| parts.first().and_then(|s| s.parse::<u8>().ok()))
+                .flatten()
+            {
+                Some(mode) => json!({ "mode": mode }),
+                None => Value::Null,
+            }
         };
         let search = {
-            let parts = parse_command_parts(&send_raw_command(state, "SCO", false).await?, "SCO");
-            json!({
-                "delay": parts.first().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0),
-                "code_search": parts.get(1).map(|s| s == "1").unwrap_or(false)
-            })
+            let resp = send_raw_command(state, "SCO", false).await?;
+            let parts = parse_command_parts(&resp, "SCO");
+            match usable(&resp)
+                .then(|| parts.first().and_then(|s| s.parse::<i32>().ok()))
+                .flatten()
+            {
+                Some(delay) => json!({
+                    "delay": delay,
+                    "code_search": parts.get(1).map(|s| s == "1").unwrap_or(false)
+                }),
+                None => Value::Null,
+            }
         };
         let close_call = {
-            let parts = parse_command_parts(&send_raw_command(state, "CLC", false).await?, "CLC");
-            let band_raw = parts.get(3).cloned().unwrap_or_else(|| "00000".to_string());
-            json!({
-                "mode": parts.first().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0),
-                "alert_beep": parts.get(1).map(|s| s == "1").unwrap_or(false),
-                "alert_light": parts.get(2).map(|s| s == "1").unwrap_or(false),
-                "band": band_raw.chars().take(5).map(|c| c == '1').collect::<Vec<bool>>(),
-                "lockout": parts.get(4).map(|s| s == "1").unwrap_or(false)
-            })
-        };
-        let service_search = {
-            let parts = parse_command_parts(&send_raw_command(state, "SSG", false).await?, "SSG");
-            let flags = parts
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "1111111111".to_string());
-            let groups = if flags.eq_ignore_ascii_case("NG") {
-                vec![false; 10]
-            } else {
-                let mut g = flags
-                    .chars()
-                    .take(10)
-                    .map(|c| c == '0')
-                    .collect::<Vec<bool>>();
-                while g.len() < 10 {
-                    g.push(false);
+            let resp = send_raw_command(state, "CLC", false).await?;
+            let parts = parse_command_parts(&resp, "CLC");
+            match usable(&resp)
+                .then(|| parts.first().and_then(|s| s.parse::<u8>().ok()))
+                .flatten()
+            {
+                Some(mode) => {
+                    let band_raw = parts.get(3).cloned().unwrap_or_else(|| "00000".to_string());
+                    json!({
+                        "mode": mode,
+                        "alert_beep": parts.get(1).map(|s| s == "1").unwrap_or(false),
+                        "alert_light": parts.get(2).map(|s| s == "1").unwrap_or(false),
+                        "band": band_raw.chars().take(5).map(|c| c == '1').collect::<Vec<bool>>(),
+                        "lockout": parts.get(4).map(|s| s == "1").unwrap_or(false)
+                    })
                 }
-                g
-            };
-            json!({ "groups": groups })
+                None => Value::Null,
+            }
+        };
+        fn group_mask(resp: &str, cmd: &str) -> Value {
+            let parts = parse_command_parts(resp, cmd);
+            match parts.first() {
+                Some(flags)
+                    if flags.len() >= 10 && flags.chars().all(|c| c == '0' || c == '1') =>
+                {
+                    let groups = flags.chars().take(10).map(|c| c == '0').collect::<Vec<bool>>();
+                    json!({ "groups": groups })
+                }
+                _ => Value::Null,
+            }
+        }
+        let service_search = {
+            let resp = send_raw_command(state, "SSG", false).await?;
+            if usable(&resp) {
+                group_mask(&resp, "SSG")
+            } else {
+                Value::Null
+            }
         };
         let custom_search = {
-            let parts = parse_command_parts(&send_raw_command(state, "CSG", false).await?, "CSG");
-            let flags = parts
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "1111111111".to_string());
-            let groups = if flags.eq_ignore_ascii_case("NG") {
-                vec![false; 10]
+            let resp = send_raw_command(state, "CSG", false).await?;
+            if usable(&resp) {
+                group_mask(&resp, "CSG")
             } else {
-                let mut g = flags
-                    .chars()
-                    .take(10)
-                    .map(|c| c == '0')
-                    .collect::<Vec<bool>>();
-                while g.len() < 10 {
-                    g.push(false);
-                }
-                g
-            };
-            json!({ "groups": groups })
+                Value::Null
+            }
         };
         let mut custom_search_ranges = Vec::new();
         for idx in 1..=10 {
             let response = send_raw_command(state, &format!("CSP,{}", idx), false).await?;
+            if !usable(&response) {
+                continue;
+            }
             let mut parts = parse_command_parts(&response, "CSP");
             if parts.first().and_then(|s| s.parse::<u8>().ok()) == Some(idx) {
                 parts.remove(0);
             }
-            let lower = parts
-                .first()
-                .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(0.0)
-                / 10000.0;
-            let upper = parts
-                .get(1)
-                .and_then(|s| s.parse::<f64>().ok())
-                .unwrap_or(0.0)
-                / 10000.0;
-            custom_search_ranges.push(json!({ "index": idx, "lower": lower, "upper": upper }));
+            let (Some(lower), Some(upper)) = (
+                parts.first().and_then(|s| s.parse::<f64>().ok()),
+                parts.get(1).and_then(|s| s.parse::<f64>().ok()),
+            ) else {
+                continue;
+            };
+            custom_search_ranges.push(json!({
+                "index": idx,
+                "lower": lower / 10000.0,
+                "upper": upper / 10000.0
+            }));
         }
         let weather = {
-            let parts = parse_command_parts(&send_raw_command(state, "WXS", false).await?, "WXS");
-            json!({ "priority": parts.first().map(|s| s == "1").unwrap_or(false) })
+            let resp = send_raw_command(state, "WXS", false).await?;
+            let parts = parse_command_parts(&resp, "WXS");
+            match usable(&resp).then(|| parts.first().cloned()).flatten() {
+                Some(v) if v == "0" || v == "1" => json!({ "priority": v == "1" }),
+                _ => Value::Null,
+            }
         };
         let contrast = {
-            let parts = parse_command_parts(&send_raw_command(state, "CNT", false).await?, "CNT");
-            json!({ "level": parts.first().and_then(|s| s.parse::<u8>().ok()).unwrap_or(0) })
+            let resp = send_raw_command(state, "CNT", false).await?;
+            let parts = parse_command_parts(&resp, "CNT");
+            match usable(&resp)
+                .then(|| parts.first().and_then(|s| s.parse::<u8>().ok()))
+                .flatten()
+            {
+                Some(level) => json!({ "level": level }),
+                None => Value::Null,
+            }
         };
 
         Ok::<Value, ApiError>(json!({
