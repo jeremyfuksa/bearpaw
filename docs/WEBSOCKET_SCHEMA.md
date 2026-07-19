@@ -1,5 +1,7 @@
 # WebSocket Message Schema
 
+> **Stale — the code wins.** This doc lags `crates/bearpaw-api/src/api/ws.rs` and the broadcasts in `poll.rs`/`memory_sync.rs`: `device_info` and `banks_update` are missing below, and the client `subscribe`/`ping`/`pong` flows are no longer implemented. See issue #172.
+
 Endpoint: `/ws`
 
 ## Client → Server
