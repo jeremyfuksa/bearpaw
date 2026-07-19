@@ -60,7 +60,8 @@ npm run tauri:build      # bundle for release
 ### 1. Three state surfaces
 
 **`LiveState`** ([`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs)) — real-time scanner state polled 5×/sec.
-- `frequency`, `modulation`, `squelch_open`, `rssi`, `mode`, `channel`, `alpha_tag`, `volume`, `stale`.
+- `timestamp`, `frequency`, `modulation`, `squelch_open`, `rssi`, `mode`, `channel`, `alpha_tag`, `volume`, `battery`, `stale`.
+- Live tone fields, populated only during a hit (`None` while squelch is closed): `tone_squelch_kind`, `tone_squelch`, `tone_dcs_code`, `tone_dcs_label`.
 - Updated by the poll loop in [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs).
 
 **Channel memory** — all 500 channels read once during memory sync via `PRG` → `CIN,1` … `CIN,500` → `EPG`. Cached in `AppState.shadow` (`ShadowState.channels`). Channel memory is **not** persisted across restarts — SQLite holds only preferences and analytics; every backend start needs a fresh memory sync.
@@ -107,11 +108,14 @@ Every poll cycle the backend computes a diff and broadcasts only changed fields:
 }
 ```
 
-Message types ([`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md)):
+Message types (source of truth is what the code broadcasts — [`crates/bearpaw-api/src/api/ws.rs`](crates/bearpaw-api/src/api/ws.rs), [`poll.rs`](crates/bearpaw-api/src/api/poll.rs), [`memory_sync.rs`](crates/bearpaw-api/src/api/memory_sync.rs)):
 - `state_update` — partial LiveState changes (most common)
-- `event` — `scan_hit`, `state_stale`, etc.
+- `event` — `scan_hit`, `state_stale`
 - `progress` — long-running task updates (memory sync)
 - `device_info` — model/port/connection_status changes
+- `banks_update` — bank-enable mask changed server-side; the UI mirrors it instead of holding a stale local copy
+
+[`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) lags the code: it omits `device_info` and `banks_update`, and still documents client `subscribe`/`ping`/`pong` flows that `ws.rs` no longer implements. Where they disagree, the code wins.
 
 The frontend MUST check `message.sequence > lastSequence` ([`frontend/src/store/useStore.ts`](frontend/src/store/useStore.ts) `updateLiveState`). Out-of-order updates are dropped.
 
@@ -127,7 +131,9 @@ The connection-status enum (`'connected' | 'connecting' | 'disconnected'`) is de
 
 ## Wire protocol
 
-The BC125AT speaks an ASCII line protocol over USB CDC-ACM at 115200 8N1, `\r`-terminated. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the canonical wire shape and the audit history. Real wire captures live in [`docs/wire_captures/2026-05-21/`](docs/wire_captures/2026-05-21/).
+The BC125AT speaks an ASCII line protocol over USB CDC-ACM at 115200 8N1, `\r`-terminated. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the canonical wire shape and the audit history. Real wire captures live in [`docs/wire_captures/`](docs/wire_captures/) (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`).
+
+**Captures win.** When a reference doc — including the decompiled [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — disagrees with the wire captures from this hardware, the captures are authoritative. Don't "fix" working code to match a reference; document the disagreement instead (see `docs/wire_captures/2026-05-21/audit-reconciliation.md` for prior reconciliations).
 
 Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs)):
 
@@ -189,20 +195,23 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`crates/bearpaw-api/src/api/program_mode.rs`](crates/bearpaw-api/src/api/program_mode.rs) — PRG/EPG RAII guard
 - [`crates/bearpaw-api/src/api/memory_sync.rs`](crates/bearpaw-api/src/api/memory_sync.rs) — `CIN,1..500` walker
 - [`crates/bearpaw-api/src/api/ws.rs`](crates/bearpaw-api/src/api/ws.rs) — WebSocket broadcast
-- [`crates/bearpaw-api/src/api/handlers/`](crates/bearpaw-api/src/api/handlers/) — REST handlers (banks, channels, settings, commands, etc.)
+- [`crates/bearpaw-api/src/api/security.rs`](crates/bearpaw-api/src/api/security.rs) — CORS + Host-header hardening. The API is an unauthenticated loopback server, so any web page the user visits is the threat; this closes the cross-origin-fetch and DNS-rebinding paths.
+- [`crates/bearpaw-api/src/api/handlers/`](crates/bearpaw-api/src/api/handlers/) — REST handlers (analytics, banks, commands, exports, lockouts, memory, preferences, settings, status)
 - [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs) — STS/GLG/CIN/PWR parsers
 - [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs) — CTCSS/DCS code → Hz
+- [`crates/bearpaw-api/src/protocol/defaults.rs`](crates/bearpaw-api/src/protocol/defaults.rs) — factory-default custom-search ranges (read-only; no `CSP` write path)
+- [`crates/bearpaw-api/src/logging.rs`](crates/bearpaw-api/src/logging.rs) — tracing setup, file + error log appenders
 - [`crates/bearpaw-api/src/transport.rs`](crates/bearpaw-api/src/transport.rs), [`transport_usb.rs`](crates/bearpaw-api/src/transport_usb.rs)
 - [`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs) — `LiveState`, `ChannelData`, `DeviceInfo`
 - [`crates/bearpaw-api/src/config.rs`](crates/bearpaw-api/src/config.rs)
 
 ### Frontend
 - [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) — app shell, view routing, top-level state derivation
-- [`frontend/src/app/components/views/ScanView.tsx`](frontend/src/app/components/views/ScanView.tsx), [`DeviceTab.tsx`](frontend/src/app/components/views/DeviceTab.tsx), [`ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx)
+- [`frontend/src/app/components/views/ScanView.tsx`](frontend/src/app/components/views/ScanView.tsx), [`DeviceTab.tsx`](frontend/src/app/components/views/DeviceTab.tsx), [`ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx), [`ChannelEditSheet.tsx`](frontend/src/app/components/views/ChannelEditSheet.tsx), [`ActivityExportSheet.tsx`](frontend/src/app/components/views/ActivityExportSheet.tsx)
 - [`frontend/src/store/useStore.ts`](frontend/src/store/useStore.ts) — Zustand store
 - [`frontend/src/api/client.ts`](frontend/src/api/client.ts) — REST client
 - [`frontend/src/websocket/ScannerWebSocket.ts`](frontend/src/websocket/ScannerWebSocket.ts) — WS client with auto-reconnect
-- [`frontend/src/hooks/`](frontend/src/hooks/) — `useConnectionStatus`, `useActivityLogTracker`, `useDashboardAnalytics`, `useShellStatusText`, `useKeyboardShortcuts`
+- [`frontend/src/hooks/`](frontend/src/hooks/) — `useConnectionStatus`, `useActivityLogTracker`, `useActivityLogHydrate`, `useDashboardAnalytics`, `useShellStatusText`, `useKeyboardShortcuts`, `useMenuEvents`
 
 ## Documentation
 
@@ -210,10 +219,15 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`docs/PROTOCOL_AUDIT_PLAN.md`](docs/PROTOCOL_AUDIT_PLAN.md) — audit history (Phases 1–4 done; 5–7 partly in v1.1)
 - [`docs/API_SPEC.md`](docs/API_SPEC.md) — REST + WebSocket API contract
 - [`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) — WS message shapes
+- [`docs/openapi.json`](docs/openapi.json), [`docs/postman_environment.json`](docs/postman_environment.json) — machine-readable API spec + Postman env
 - [`docs/BACKEND_LOGGING.md`](docs/BACKEND_LOGGING.md), [`docs/DATA_LIFECYCLE.md`](docs/DATA_LIFECYCLE.md)
-- [`docs/wire_captures/2026-05-21/`](docs/wire_captures/2026-05-21/) — real BC125AT wire traffic + audit reconciliation
+- [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — decompiled Uniden reference. Second source only — where it disagrees with our wire captures, the captures win.
+- [`docs/wire_captures/`](docs/wire_captures/) — real BC125AT wire traffic + audit reconciliation (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`)
 - [`docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md`](docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md) — broader protocol research notes (second-source cross-check)
+- [`docs/IDEAS.md`](docs/IDEAS.md) — designated home for future-work ideas
+- [`docs/BUG_AUDIT_2026-07-02.md`](docs/BUG_AUDIT_2026-07-02.md) — bug-audit snapshot
 - [`docs/fixtures/kf0nui.bc125at_ss`](docs/fixtures/kf0nui.bc125at_ss) — sample Sentinel `.hpe` config dump
+- [`docs/superpowers/`](docs/superpowers/) — design specs (`specs/`) and implementation plans (`plans/`) for non-trivial features. Each gets a dated markdown file before implementation starts (e.g. `specs/2026-07-08-live-tone-display-design.md` + `plans/2026-07-08-live-tone-display.md` for the #171 tone work). Start there when picking up a planned feature.
 
 ## Common pitfalls
 
@@ -235,10 +249,21 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 ### macOS USB transport
 The BC125AT enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0017`) but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` never appears. Configure `usb_vid`/`usb_pid` in `config.yaml` to force the `nusb` direct-USB path. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the discrepancy with reference docs that claim CP210x VID/PID.
 
-## Testing
+## Testing and CI
 
-- **Backend:** `cargo test -p bearpaw-api`. Fixtures driven by captures in `docs/wire_captures/`.
-- **Frontend:** `npm test -- --run` (vitest), `npm run lint`, `npm run type-check`, `npm run format:check`. All four run on every PR via `.github/workflows/tests.yml`.
+- **Backend:** `cargo test -p bearpaw-api --lib`. Fixtures driven by captures in `docs/wire_captures/`.
+- **Frontend:** `npm test -- --run` (vitest), `npm run lint`, `npm run type-check`, `npm run format:check`. All four run on every PR via [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
+- **CI also runs `cargo check --workspace --all-targets`** in the backend job — a deliberate guard against silent drift in the Tauri crate (see the comment in `tests.yml` citing PR #80). Run it locally if your change touches anything the Tauri shell links against.
+- [`.github/workflows/build.yml`](.github/workflows/build.yml) is the release pipeline: tag-triggered (`v*`), multi-platform Tauri bundles (macOS aarch64/x86_64, Windows, Linux). It does not run on PRs.
+
+## Definition of done / PR discipline
+
+Every change lands via a PR to `main` — never push to `main` directly, even for one-line fixes.
+
+1. **Branch off `main`** with a semantic prefix: `phase/`, `feat/`, `fix/`, `cleanup/`, `chore/`, `docs/`.
+2. **Tiny, single-purpose PRs.** One concern per PR, independently revertible, reviewable in under 10 minutes. If it's growing past ~250 LOC, split it.
+3. **All CI checks green locally before push.** Backend: `cargo test -p bearpaw-api --lib`. Frontend, from `frontend/`: `npm test -- --run`, `npm run lint`, `npm run type-check`, `npm run format:check`. The Prettier check is the one that historically got skipped and failed CI (PR #44, #45) — don't skip it.
+4. **Never push to retry CI.** If a check fails, reproduce and fix locally first.
 
 ## Third-rail flows
 
