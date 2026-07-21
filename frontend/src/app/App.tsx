@@ -960,7 +960,6 @@ export default function App() {
         connectionStatus={connectionStatus}
         modelName={deviceInfo?.model || 'BC125AT'}
         shellStatusText={shellStatusText}
-        currentFrequency={liveState?.frequency ?? null}
         currentTab={currentTab}
         sessionStats={currentTab === 'Scan' ? sessionStats : null}
       />
