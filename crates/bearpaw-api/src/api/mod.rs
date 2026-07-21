@@ -1515,6 +1515,22 @@ fn needs_priority_clear(ch: &ChannelData) -> bool {
     ch.frequency.abs() >= 0.00005 && ch.priority
 }
 
+/// Strict persisted-check for `clear_channel_priority`. `readback_matches`
+/// carries a deliberate tolerance (PR #198) that treats a refused in-place
+/// priority downgrade (wrote 0, read back 1) as a match — correct for the
+/// plain CIN write path, where that refusal is expected and priority isn't
+/// the thing being verified. `clear_channel_priority`'s entire purpose is to
+/// force priority to 0 via DCH+rewrite, so that tolerance must not apply
+/// here: a stuck priority bit is exactly the failure this function exists to
+/// catch, and `readback_matches` alone would silently report it as success.
+fn priority_clear_persisted(
+    rewritten: &ChannelData,
+    readback: &ChannelData,
+    wrote_alpha: &str,
+) -> bool {
+    readback_matches(rewritten, readback, wrote_alpha) && !readback.priority
+}
+
 /// The fixed tail the scanner stamps on any channel with no frequency:
 /// delay=2, lockout=1, priority=0, no tone (`...,00000000,AUTO,0,2,1,0`). See
 /// `readback_matches` for the capture citations. Only the tail is checked: the
@@ -1650,7 +1666,7 @@ pub(crate) async fn clear_channel_priority(
         .chars()
         .take(16)
         .collect::<String>();
-    if !readback_matches(&rewritten, &readback, &wrote_alpha) {
+    if !priority_clear_persisted(&rewritten, &readback, &wrote_alpha) {
         warn!(
             index = index,
             wrote = %write_cmd,
@@ -1887,6 +1903,30 @@ mod tests {
 
         let empty = empty_channel_readback(); // freq 0 (helper below)
         assert!(!needs_priority_clear(&empty)); // empty slot => no-op
+    }
+
+    #[test]
+    fn priority_clear_persisted_rejects_stuck_priority_bit() {
+        // clear_channel_priority always writes priority=false; a readback of
+        // true means the DCH+rewrite failed to clear it. readback_matches's
+        // refused-downgrade tolerance must NOT paper over that here.
+        let mut rewritten = test_channel();
+        rewritten.priority = false;
+        let wrote_alpha = rewritten.alpha_tag.clone();
+
+        let mut readback = rewritten.clone();
+        readback.priority = true; // stuck bit
+        assert!(!priority_clear_persisted(&rewritten, &readback, &wrote_alpha));
+
+        // Sanity: a genuinely persisted clear (readback.priority == false,
+        // everything else matching) must still pass.
+        let mut readback_ok = rewritten.clone();
+        readback_ok.priority = false;
+        assert!(priority_clear_persisted(
+            &rewritten,
+            &readback_ok,
+            &wrote_alpha
+        ));
     }
 
     // REGRESSION GUARD (#195, #197): writing an empty channel (freq 0) is a
