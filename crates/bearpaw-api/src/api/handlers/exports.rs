@@ -235,7 +235,11 @@ pub(crate) async fn export_bc125at_ss_file(
             on_off(&cc_lockout)
         ));
 
-        let cc_band_flags = flags_to_bools(&cc_bands);
+        // CLC close-call bands use '1' = enabled (confirmed by wire probe:
+        // raw "01001" reads as [off,on,off,off,on] via the canonical
+        // get_close_call reader). NOT the '0' = enabled convention of the
+        // SCG/SSG/CSG masks, so don't use flags_to_bools here.
+        let cc_band_flags: Vec<bool> = cc_bands.chars().map(|c| c == '1').collect();
         lines.push(format!(
             "CloseCallBands\t{}\t{}\t{}\t{}\t{}",
             if cc_band_flags.first().copied().unwrap_or(false) {
@@ -546,6 +550,19 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn closecall_bands_use_one_equals_enabled() {
+        // Regression guard: the CLC close-call bands field uses '1' = enabled,
+        // NOT the '0' = enabled convention of the SCG/SSG/CSG masks. Confirmed
+        // by a wire probe on fw 1.06.06: raw "01001" reads as [off,on,off,off,on].
+        // The .ss export decodes this field with `c == '1'` (see cc_band_flags);
+        // using flags_to_bools here would invert CloseCallBands.
+        let decode = |s: &str| s.chars().map(|c| c == '1').collect::<Vec<bool>>();
+        assert_eq!(decode("01001"), vec![false, true, false, false, true]);
+        // flags_to_bools (the mask decoder) would give the inverted result:
+        assert_eq!(flags_to_bools("01001"), vec![true, false, true, true, false]);
     }
 
     #[test]
