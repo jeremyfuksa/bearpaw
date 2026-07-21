@@ -1,6 +1,12 @@
-use std::collections::HashMap;
+use axum::extract::{Multipart, State};
+use axum::response::Json;
+use serde_json::{json, Value};
 
-use crate::api::{send_raw_command, split_command_parts, AppState};
+use super::exports::import_progress;
+use super::super::{
+    command_sender, send_raw_command, split_command_parts, write_channel_no_readback, ApiError,
+    AppState, ProgramModeGuard,
+};
 use crate::protocol::{classify_response, ScannerReply};
 use crate::state::{ChannelData, ToneSquelchKind};
 
@@ -172,7 +178,6 @@ fn parse_ss_channel(f: &[&str]) -> Result<Option<ChannelData>, String> {
 /// no-ops on unproven writes (CSP/CLC). Caller holds the program-mode
 /// bracket. A full field-by-field verify is overkill for a first cut; write
 /// returned OK and the read-back's first field changed is enough.
-#[allow(dead_code)] // wired up by the import endpoint (Task 4)
 async fn write_setting_verified(
     state: &AppState,
     write_cmd: &str,
@@ -198,6 +203,150 @@ async fn write_setting_verified(
     } else {
         Err(format!("{} not persisted (got {})", write_cmd, got))
     }
+}
+
+/// Restore a full scanner config from an uploaded Sentinel `.bc125at_ss` file.
+///
+/// Under ONE program-mode bracket: writes every channel (fast CIN path, retry
+/// once — same as CSV import), then applies global settings write-verified
+/// (each rejection is non-fatal and recorded). Progress streams over the WS.
+pub(crate) async fn import_bc125at_ss(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<Json<Value>, ApiError> {
+    let _ = command_sender(&state)?;
+
+    let mut bytes: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("multipart_error: {}", e)))?
+    {
+        if field.name() == Some("file") {
+            bytes = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::BadRequest(format!("upload_error: {}", e)))?
+                    .to_vec(),
+            );
+            break;
+        }
+    }
+    let Some(bytes) = bytes else {
+        return Err(ApiError::BadRequest("file_required".to_string()));
+    };
+
+    let text = String::from_utf8_lossy(&bytes);
+    let cfg = parse_ss_config(&text);
+
+    let mut errors: Vec<Value> = cfg.errors.iter().map(|e| json!({ "error": e })).collect();
+    let mut imported = 0usize;
+    let mut settings_applied = 0usize;
+    let total = cfg.channels.len();
+
+    let _prg = ProgramModeGuard::enter(&state).await?;
+
+    // --- channels (fast path, retry once — mirrors CSV import) ---
+    for (n, ch) in cfg.channels.iter().enumerate() {
+        let mut r = write_channel_no_readback(&state, ch).await;
+        if r.is_err() {
+            r = write_channel_no_readback(&state, ch).await;
+        }
+        match r {
+            Ok(()) => {
+                imported += 1;
+                state
+                    .shadow
+                    .write()
+                    .unwrap()
+                    .channels
+                    .insert(ch.index, ch.clone());
+            }
+            Err(e) => errors.push(json!({ "index": ch.index, "error": format!("{:?}", e) })),
+        }
+        if total > 0 && (n + 1) % 10 == 0 {
+            let pct = ((n + 1) * 80 / total) as u8;
+            import_progress(&state, pct, &format!("Importing {}/{}", n + 1, total));
+        }
+    }
+
+    // --- settings (write-verified, non-fatal) ---
+    import_progress(&state, 85, "Applying settings…");
+    let s = &cfg.settings;
+    // each entry: (write_cmd, read_cmd, expected first field of read-back)
+    let mut jobs: Vec<(String, String, String)> = Vec::new();
+    if let Some(v) = &s.backlight {
+        jobs.push((format!("BLT,{}", v), "BLT".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.charge_time {
+        jobs.push((format!("BSV,{}", v), "BSV".to_string(), v.clone()));
+    }
+    if let (Some(b), Some(k)) = (&s.beep, &s.key_lock) {
+        jobs.push((format!("KBP,{},{}", b, k), "KBP".to_string(), b.clone()));
+    }
+    if let Some(v) = &s.contrast {
+        jobs.push((format!("CNT,{}", v), "CNT".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.volume {
+        jobs.push((format!("VOL,{}", v), "VOL".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.squelch {
+        jobs.push((format!("SQL,{}", v), "SQL".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.priority {
+        jobs.push((format!("PRI,{}", v), "PRI".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.wx_pri {
+        jobs.push((format!("WXS,{}", v), "WXS".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.service_flags {
+        jobs.push((format!("SSG,{}", v), "SSG".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.scan_flags {
+        jobs.push((format!("SCG,{}", v), "SCG".to_string(), v.clone()));
+    }
+    if let Some(v) = &s.custom_flags {
+        jobs.push((format!("CSG,{}", v), "CSG".to_string(), v.clone()));
+    }
+    if let (Some(d), Some(c)) = (&s.search_delay, &s.search_code) {
+        jobs.push((format!("SCO,{},{}", d, c), "SCO".to_string(), d.clone()));
+    }
+    for (idx, lo, hi) in &s.custom_ranges {
+        jobs.push((
+            format!("CSP,{},{},{}", idx, lo, hi),
+            // CSP read-back is per-index; verify the index echoes.
+            format!("CSP,{}", idx),
+            idx.to_string(),
+        ));
+    }
+    if let (Some(m), Some(b), Some(l), Some(bands), Some(lk)) = (
+        &s.cc_mode,
+        &s.cc_beep,
+        &s.cc_light,
+        &s.cc_bands,
+        &s.cc_lockout,
+    ) {
+        jobs.push((
+            format!("CLC,{},{},{},{},{}", m, b, l, bands, lk),
+            "CLC".to_string(),
+            m.clone(),
+        ));
+    }
+
+    for (write_cmd, read_cmd, expect) in jobs {
+        match write_setting_verified(&state, &write_cmd, &read_cmd, &expect).await {
+            Ok(()) => settings_applied += 1,
+            Err(e) => errors.push(json!({ "setting": write_cmd, "error": e })),
+        }
+    }
+
+    import_progress(&state, 100, "Import complete");
+    Ok(Json(json!({
+        "imported": imported,
+        "settings_applied": settings_applied,
+        "errors": errors,
+    })))
 }
 
 #[cfg(test)]

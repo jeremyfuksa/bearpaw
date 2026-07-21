@@ -230,6 +230,10 @@ pub fn router(state: AppState) -> Router {
             post(handlers::exports::import_csv),
         )
         .route(
+            "/api/v1/memory/import/bc125at_ss",
+            post(handlers::import_ss::import_bc125at_ss),
+        )
+        .route(
             "/api/v1/preferences",
             get(handlers::preferences::get_preferences)
                 .put(handlers::preferences::put_preferences),
@@ -1907,5 +1911,22 @@ mod tests {
             )
             .expect("query table");
         assert_eq!(table_exists, 1);
+    }
+
+    #[tokio::test]
+    async fn import_ss_route_is_registered() {
+        let app = router(default_state());
+        // A GET on a POST-only route returns 405, proving the path is mounted.
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/memory/import/bc125at_ss")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 }

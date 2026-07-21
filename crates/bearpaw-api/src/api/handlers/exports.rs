@@ -433,7 +433,7 @@ pub(crate) async fn import_csv(
 
 /// Broadcast import progress over the WebSocket, mirroring the memory-sync
 /// `progress` shape so the frontend's existing progress handler can display it.
-fn import_progress(state: &AppState, percent: u8, message: &str) {
+pub(crate) fn import_progress(state: &AppState, percent: u8, message: &str) {
     let msg = json!({
         "type": "progress",
         "task_id": "import-csv",
