@@ -215,4 +215,39 @@ describe('useStore', () => {
       expect(result.current.channels).toEqual([]);
     });
   });
+
+  describe('setImportProgress', () => {
+    it('patches importProgress and leaves sync untouched', () => {
+      const { result } = renderHook(() => useStore());
+      const syncBefore = result.current.sync;
+
+      act(() => {
+        result.current.setImportProgress({
+          active: true,
+          percent: 40,
+          message: 'Importing 200/500',
+        });
+      });
+
+      expect(result.current.importProgress).toEqual({
+        active: true,
+        percent: 40,
+        message: 'Importing 200/500',
+      });
+      // The isolation guarantee: import progress must never mutate sync state.
+      expect(result.current.sync).toBe(syncBefore);
+    });
+
+    it('merges partial patches', () => {
+      const { result } = renderHook(() => useStore());
+      act(() => result.current.setImportProgress({ active: true, percent: 0, message: 'start' }));
+      act(() => result.current.setImportProgress({ percent: 75 }));
+
+      expect(result.current.importProgress).toEqual({
+        active: true,
+        percent: 75,
+        message: 'start',
+      });
+    });
+  });
 });

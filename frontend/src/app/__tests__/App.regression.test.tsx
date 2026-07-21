@@ -186,4 +186,28 @@ describe('App.tsx regression guards', () => {
       );
     });
   });
+
+  describe('import progress is isolated from the sync WS handler', () => {
+    // Import progress (task_id "import-csv"/"import-ss") drives the separate
+    // importProgress overlay and must NEVER fall through to the
+    // regression-guarded memory-sync logic in the same 'progress' handler.
+    // The guard is an early `return` in the import branch — without it, import
+    // messages would call updateSync and corrupt sync state / the sync overlay.
+
+    it('the progress handler early-returns for import task_ids before any updateSync', () => {
+      const start = APP_SOURCE.indexOf("ws.on('progress'");
+      expect(start, 'progress handler must exist').toBeGreaterThan(-1);
+      // Within the handler, the import branch must appear BEFORE the first
+      // updateSync call, and must contain a `return`.
+      const handler = APP_SOURCE.slice(start, start + 1600);
+      const importIdx = handler.indexOf("task_id?.startsWith('import')");
+      const updateSyncIdx = handler.indexOf('updateSync(');
+      expect(importIdx, 'import branch must exist in the handler').toBeGreaterThan(-1);
+      expect(updateSyncIdx, 'updateSync must exist in the handler').toBeGreaterThan(-1);
+      expect(importIdx).toBeLessThan(updateSyncIdx);
+      // The import branch returns before the sync logic runs.
+      const importBranch = handler.slice(importIdx, updateSyncIdx);
+      expect(importBranch).toMatch(/return;/);
+    });
+  });
 });

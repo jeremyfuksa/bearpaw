@@ -27,12 +27,24 @@ export interface SyncState {
   percent: number;
 }
 
+/**
+ * Channel/config import progress, driven by the backend's `import-*` WS
+ * progress messages. Deliberately separate from SyncState so import progress
+ * can never bleed into the regression-guarded memory-sync overlay or handler.
+ */
+export interface ImportProgressState {
+  active: boolean;
+  percent: number;
+  message: string;
+}
+
 export interface AppStore {
   liveState: LiveState | null;
   deviceInfo: DeviceInfo | null;
   channels: ChannelData[];
   banks: boolean[];
   sync: SyncState;
+  importProgress: ImportProgressState;
   activityLog: ActivityLogEntry[];
   fullActivityLog: ActivityLogEntry[];
   preferences: Preferences;
@@ -46,6 +58,7 @@ export interface AppStore {
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
   setBanks: (banks: boolean[]) => void;
   updateSync: (patch: Partial<SyncState>) => void;
+  setImportProgress: (patch: Partial<ImportProgressState>) => void;
   addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
@@ -89,12 +102,19 @@ const defaultSync: SyncState = {
   percent: 0,
 };
 
+const defaultImportProgress: ImportProgressState = {
+  active: false,
+  percent: 0,
+  message: '',
+};
+
 export const useStore = create<AppStore>((set) => ({
   liveState: null,
   deviceInfo: null,
   channels: [],
   banks: defaultBanks,
   sync: defaultSync,
+  importProgress: defaultImportProgress,
   activityLog: [],
   fullActivityLog: [],
   preferences: defaultPreferences,
@@ -135,6 +155,8 @@ export const useStore = create<AppStore>((set) => ({
     })),
   setBanks: (banks) => set({ banks: banks.length === 10 ? banks : defaultBanks }),
   updateSync: (patch) => set((prev) => ({ sync: { ...prev.sync, ...patch } })),
+  setImportProgress: (patch) =>
+    set((prev) => ({ importProgress: { ...prev.importProgress, ...patch } })),
   addActivityLogEntry: (entry) =>
     set((prev) => ({
       activityLog: [entry, ...prev.activityLog].slice(0, 5),

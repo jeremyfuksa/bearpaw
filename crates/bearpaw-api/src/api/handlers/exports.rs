@@ -431,21 +431,23 @@ pub(crate) async fn import_csv(
             }
             if total > 0 && (n + 1) % 10 == 0 {
                 let percent = ((n + 1) * 99 / total) as u8;
-                import_progress(&state, percent, &format!("Importing {}/{}", n + 1, total));
+                import_progress(&state, "import-csv", percent, &format!("Importing {}/{}", n + 1, total));
             }
         }
     }
-    import_progress(&state, 100, "Import complete");
+    import_progress(&state, "import-csv", 100, "Import complete");
 
     Ok(Json(json!({ "imported": imported, "errors": errors })))
 }
 
 /// Broadcast import progress over the WebSocket, mirroring the memory-sync
-/// `progress` shape so the frontend's existing progress handler can display it.
-pub(crate) fn import_progress(state: &AppState, percent: u8, message: &str) {
+/// `progress` shape so the frontend's progress handler can display it. The
+/// `task_id` distinguishes CSV (`import-csv`) from .ss (`import-ss`); the UI
+/// treats any `import*` task_id the same.
+pub(crate) fn import_progress(state: &AppState, task_id: &str, percent: u8, message: &str) {
     let msg = json!({
         "type": "progress",
-        "task_id": "import-csv",
+        "task_id": task_id,
         "percent": percent,
         "message": message,
     });

@@ -272,12 +272,12 @@ pub(crate) async fn import_bc125at_ss(
         }
         if total > 0 && (n + 1) % 10 == 0 {
             let pct = ((n + 1) * 80 / total) as u8;
-            import_progress(&state, pct, &format!("Importing {}/{}", n + 1, total));
+            import_progress(&state, "import-ss", pct, &format!("Importing {}/{}", n + 1, total));
         }
     }
 
     // --- settings (write-verified, non-fatal) ---
-    import_progress(&state, 85, "Applying settings…");
+    import_progress(&state, "import-ss", 85, "Applying settings…");
     let s = &cfg.settings;
     // each entry: (write_cmd, read_cmd, expected first field of read-back)
     let mut jobs: Vec<(String, String, String)> = Vec::new();
@@ -346,7 +346,7 @@ pub(crate) async fn import_bc125at_ss(
         }
     }
 
-    import_progress(&state, 100, "Import complete");
+    import_progress(&state, "import-ss", 100, "Import complete");
     Ok(Json(json!({
         "imported": imported,
         "settings_applied": settings_applied,

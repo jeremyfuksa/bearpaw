@@ -21,8 +21,10 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     lastSequence: overrides.lastSequence ?? 0,
     memoryDrafts: overrides.memoryDrafts ?? {},
     memoryEditingIndex: overrides.memoryEditingIndex ?? null,
+    importProgress: overrides.importProgress ?? { active: false, percent: 0, message: '' },
 
     updateLiveState: vi.fn(),
+    setImportProgress: vi.fn(),
     setDeviceInfo: vi.fn(),
     setChannels: vi.fn(),
     addActivityLogEntry: vi.fn(),
