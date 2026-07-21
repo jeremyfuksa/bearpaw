@@ -1484,15 +1484,28 @@ pub(crate) async fn write_channel_no_readback(
 /// still tripped a false channel_not_persisted (#197). The complete rule: when
 /// we wrote freq 0, accept the read-back iff it IS the factory-empty signature —
 /// don't compare it against what we sent.
+///
+/// REGRESSION GUARD (#198): priority is bank-exclusive ("one priority channel
+/// per bank max"). On this firmware a CIN write can SET priority (false→true,
+/// displacing the bank's previous priority channel) but CANNOT CLEAR it
+/// (true→false is refused — the scanner keeps priority=1 and we'd otherwise
+/// report a false channel_not_persisted). Captured live: CH9 wrote priority=0,
+/// read back priority=1, isolated single write, reproducible (see
+/// docs/wire_captures/2026-05-21/audit-reconciliation.md, 2026-07-21 finding).
+/// So on a programmed channel, accept a read-back priority=1 when we wrote 0.
+/// Removing priority is a separate, unimplemented mechanism (radio-side / a
+/// dedicated command); the UI is being reworked to model one-per-bank.
 fn readback_matches(wrote: &ChannelData, readback: &ChannelData, wrote_alpha: &str) -> bool {
     if wrote.frequency.abs() < 0.00005 {
         return is_factory_empty(readback);
     }
+    let priority_ok = readback.priority == wrote.priority
+        || (!wrote.priority && readback.priority); // refused clear — see guard above
     (readback.frequency - wrote.frequency).abs() < 0.00005
         && readback.alpha_tag.trim() == wrote_alpha
         && readback.delay == wrote.delay
         && readback.lockout == wrote.lockout
-        && readback.priority == wrote.priority
+        && priority_ok
 }
 
 /// The fixed tail the scanner stamps on any channel with no frequency:
@@ -1811,6 +1824,42 @@ mod tests {
         let mut readback = factory_empty_readback();
         readback.delay = 5;
         assert!(!readback_matches(&wrote, &readback, "AUTO"));
+    }
+
+    // REGRESSION GUARD (#198): priority is bank-exclusive — a programmed
+    // channel accepts SET but refuses CLEAR via CIN. Wrote priority=0, scanner
+    // kept priority=1; that must NOT be a channel_not_persisted (live CH9 case).
+    #[test]
+    fn readback_accepts_refused_priority_clear_on_programmed_channel() {
+        let mut wrote = test_channel(); // freq 145.13
+        wrote.priority = false; // we tried to clear
+        let mut readback = test_channel();
+        readback.priority = true; // scanner refused, kept it on
+        assert!(readback_matches(&wrote, &readback, "Test Chan"));
+    }
+
+    #[test]
+    fn readback_rejects_unexpected_priority_set() {
+        // The tolerance is one-directional: we did NOT ask to clear (wrote
+        // priority=true) yet it read back false — a real failure, still caught.
+        let mut wrote = test_channel();
+        wrote.priority = true;
+        let mut readback = test_channel();
+        readback.priority = false;
+        assert!(!readback_matches(&wrote, &readback, "Test Chan"));
+    }
+
+    #[test]
+    fn readback_still_catches_other_mismatch_when_priority_clear_refused() {
+        // Even when a priority clear is legitimately refused, a genuine
+        // divergence in another field (delay) must still fail the verify.
+        let mut wrote = test_channel();
+        wrote.priority = false;
+        wrote.delay = 1;
+        let mut readback = test_channel();
+        readback.priority = true; // refused clear (tolerated)
+        readback.delay = 5; // real mismatch (must fail)
+        assert!(!readback_matches(&wrote, &readback, "Test Chan"));
     }
 
     // REGRESSION GUARD (#150): /health is documented and referenced by the
