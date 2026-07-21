@@ -3,12 +3,12 @@ use axum::response::{IntoResponse, Json};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use crate::protocol::tones::tone_code_label;
-use crate::state::ChannelData;
+use crate::protocol::tones::dcs_code_to_label;
+use crate::state::{ChannelData, ToneSquelchKind};
 
 use super::super::security::validate_wire_field;
 use super::super::{
-    command_sender, csv_escape, flags_to_bools, format_modulation, on_off, send_raw_command,
+    command_sender, csv_escape, flags_to_bools, on_off, send_raw_command,
     split_command_parts, write_channel_to_scanner, ApiError, AppState, ProgramModeGuard,
 };
 
@@ -105,42 +105,46 @@ pub(crate) async fn export_bc125at_ss_file(
             custom_ranges.push((idx, lower_hz, upper_hz));
         }
 
-        let mut channels = Vec::new();
-        for idx in 1..=500 {
-            let cin = split_command_parts(
-                &send_raw_command(&state, &format!("CIN,{}", idx), false).await?,
-            );
-            let mut parts = cin;
-            if parts
-                .first()
-                .and_then(|v| v.parse::<u16>().ok())
-                .map(|v| v == idx)
-                .unwrap_or(false)
-            {
-                parts.remove(0);
-            }
-            let name = parts.first().cloned().unwrap_or_default();
-            let frequency_hz = parts
-                .get(1)
-                .and_then(|v| v.parse::<i64>().ok())
-                .map(|v| v * 100)
-                .unwrap_or(0);
-            let modulation = format_modulation(parts.get(2).map(String::as_str).unwrap_or("Auto"));
-            let tone = tone_code_label(parts.get(3).map(String::as_str).unwrap_or("0"));
-            let delay = parts.get(4).cloned().unwrap_or_else(|| "2".to_string());
-            let lockout = on_off(parts.get(5).map(String::as_str).unwrap_or("0"));
-            let priority = on_off(parts.get(6).map(String::as_str).unwrap_or("0"));
-            channels.push((
-                idx,
-                name,
-                frequency_hz,
-                modulation,
-                tone,
-                lockout.to_string(),
-                delay,
-                priority.to_string(),
-            ));
-        }
+        // Channels come from the shadow cache (populated by memory sync), not
+        // a live CIN walk. Re-reading all 500 channels over the wire took
+        // ~150s (300ms x 500) and blew past client timeouts, so the export
+        // "did nothing". CSV export already reads the cache; this matches it.
+        // Both reflect the last memory sync. The tone column is rebuilt to the
+        // same label format the CIN walk produced (`tone_code_label`).
+        // (index, name, frequency_hz, modulation, tone, lockout, delay, priority)
+        type SsChannelRow = (u16, String, i64, String, String, String, String, String);
+        let channels: Vec<SsChannelRow> = {
+            let shadow = state.shadow.read().unwrap();
+            let mut cached: Vec<ChannelData> = shadow.channels.values().cloned().collect();
+            cached.sort_by_key(|c| c.index);
+            cached
+                .into_iter()
+                .map(|ch| {
+                    let tone = match ch.tone_squelch_kind {
+                        ToneSquelchKind::Ctcss => ch
+                            .tone_squelch
+                            .map(|hz| format!("{:.1}", hz))
+                            .unwrap_or_else(|| "Off".to_string()),
+                        ToneSquelchKind::Dcs => ch
+                            .tone_dcs_code
+                            .and_then(dcs_code_to_label)
+                            .unwrap_or_else(|| "Off".to_string()),
+                        ToneSquelchKind::Search => "Srch".to_string(),
+                        ToneSquelchKind::None => "Off".to_string(),
+                    };
+                    (
+                        ch.index,
+                        ch.alpha_tag,
+                        (ch.frequency * 1_000_000.0).round() as i64,
+                        ch.modulation,
+                        tone,
+                        on_off(if ch.lockout { "1" } else { "0" }).to_string(),
+                        ch.delay.to_string(),
+                        on_off(if ch.priority { "1" } else { "0" }).to_string(),
+                    )
+                })
+                .collect()
+        };
 
         const SERVICE_NAMES: [&str; 10] = [
             "Police",
