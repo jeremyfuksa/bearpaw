@@ -64,6 +64,7 @@ export interface AppStore {
   updatePreferences: (prefs: Partial<Preferences>) => void;
   setMemoryEditingIndex: (index: number | null) => void;
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
+  clearMemoryDrafts: () => void;
   addToFullActivityLog: (entry: ActivityLogEntry) => void;
   hydrateActivityLogs: (entries: ActivityLogEntry[]) => void;
 }
@@ -197,4 +198,5 @@ export const useStore = create<AppStore>((set) => ({
         [index]: draft,
       },
     })),
+  clearMemoryDrafts: () => set({ memoryDrafts: {} }),
 }));

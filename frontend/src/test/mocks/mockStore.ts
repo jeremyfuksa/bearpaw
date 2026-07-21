@@ -33,6 +33,7 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     updatePreferences: vi.fn(),
     setMemoryEditingIndex: vi.fn(),
     setMemoryDraft: vi.fn(),
+    clearMemoryDrafts: vi.fn(),
   };
 
   return mockStore;
