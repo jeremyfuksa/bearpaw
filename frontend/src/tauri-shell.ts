@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { ask, open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import { writeFile, readFile, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { ask, open as openFileDialog, save as saveFileDialog } from '@tauri-apps/plugin-dialog';
+import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 import { open as openInShell } from '@tauri-apps/plugin-shell';
 
 export interface ShellInfo {
@@ -85,10 +85,18 @@ export async function confirmDialog(message: string, title: string): Promise<boo
 export async function saveExport(
   filename: string,
   bytes: Uint8Array,
-): Promise<'downloads' | 'browser'> {
+): Promise<'saved' | 'browser' | 'cancelled'> {
   if (isTauriRuntime()) {
-    await writeFile(filename, bytes, { baseDir: BaseDirectory.Download });
-    return 'downloads';
+    // Use the native Save panel rather than writing to BaseDirectory.Download:
+    // the app is macOS-sandboxed, so $DOWNLOAD resolves inside the app's
+    // container (~/Library/Containers/.../Data/Downloads), not the user's real
+    // ~/Downloads — the write would succeed silently in the wrong place. A
+    // dialog-chosen path carries a sandbox grant, so the write lands where the
+    // user picked.
+    const path = await saveFileDialog({ defaultPath: filename });
+    if (path === null) return 'cancelled';
+    await writeFile(path, bytes);
+    return 'saved';
   }
   // `bytes` is always backed by a plain ArrayBuffer here (never SharedArrayBuffer),
   // but TS 5.7's generic Uint8Array can't prove it — narrow to BlobPart.
