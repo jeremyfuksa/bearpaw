@@ -812,9 +812,20 @@ fn process_poll_tick(
         if s.squelch_open != g.squelch_open {
             poll.squelch_disagreements += 1;
             if poll.squelch_disagreements.is_multiple_of(10) {
+                // DIAGNOSTIC (#202): dump the raw STS + GLG frames on
+                // disagreement to tell a misparse (find_sts_tail_start anchored
+                // on the wrong field) apart from benign scan-cycle timing skew
+                // (STS and GLG are separate round-trips ~ms apart). Remove once
+                // the cause is confirmed.
                 warn!(
-                    "STS.sql != GLG.sql {} times ({}): STS={}, GLG={} — investigate parser",
-                    poll.squelch_disagreements, source, s.squelch_open, g.squelch_open
+                    "STS.sql != GLG.sql {} times ({}): STS={}, GLG={} — investigate parser. raw_sts={:?} raw_glg={:?} sts_sig_lvl={}",
+                    poll.squelch_disagreements,
+                    source,
+                    s.squelch_open,
+                    g.squelch_open,
+                    sts_resp.map(|r| r.trim()),
+                    glg_resp.map(|r| r.trim()),
+                    s.sig_lvl,
                 );
             }
         }
