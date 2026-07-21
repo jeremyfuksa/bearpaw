@@ -896,24 +896,34 @@ export default function App() {
 
   return (
     <div className="scanner-app-shell">
+      {/* `expand` + `gap` make stacked toasts spread vertically instead of
+          piling. Colors come from sonner's own CSS variables (not `unstyled`)
+          so its stacking/expand layout stays intact — a darker `--normal-bg`
+          with per-type accent borders. */}
       <Toaster
         position="top-right"
         theme="dark"
-        toastOptions={{
-          unstyled: true,
-          classNames: {
-            toast:
-              'flex w-full items-center gap-2 rounded-lg border border-white/10 bg-scanner-bg-dark p-4 shadow-lg',
-            title: 'text-sm font-bold text-scanner-text-light',
-            description: 'text-xs text-scanner-text-secondary',
-            actionButton: 'rounded bg-scanner-bg-button-hover px-2 py-1 text-xs text-white',
-            cancelButton: 'bg-white/10 text-white text-xs px-2 py-1 rounded',
-            error: 'border-red-500/50',
-            success: 'border-green-500/50',
-            warning: 'border-yellow-500/50',
-            info: 'border-blue-500/50',
-          },
-        }}
+        expand
+        gap={12}
+        style={
+          {
+            '--normal-bg': '#0e1014',
+            '--normal-border': 'rgba(255,255,255,0.12)',
+            '--normal-text': 'var(--text-scanner-light)',
+            '--success-bg': '#0e1014',
+            '--success-border': 'rgba(34,197,94,0.5)',
+            '--success-text': 'var(--text-scanner-light)',
+            '--error-bg': '#0e1014',
+            '--error-border': 'rgba(239,68,68,0.5)',
+            '--error-text': 'var(--text-scanner-light)',
+            '--warning-bg': '#0e1014',
+            '--warning-border': 'rgba(234,179,8,0.5)',
+            '--warning-text': 'var(--text-scanner-light)',
+            '--info-bg': '#0e1014',
+            '--info-border': 'rgba(59,130,246,0.5)',
+            '--info-text': 'var(--text-scanner-light)',
+          } as React.CSSProperties
+        }
       />
 
       <TabBar currentTab={currentTab} onTabChange={setCurrentTab} />
