@@ -2,6 +2,7 @@ pub mod analytics;
 pub mod banks;
 pub mod commands;
 pub mod exports;
+pub(crate) mod import_ss;
 pub mod lockouts;
 pub mod memory;
 pub mod preferences;
