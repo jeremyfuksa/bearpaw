@@ -17,6 +17,7 @@ import {
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore, type Preferences } from '../../../store/useStore';
+import { confirmDialog } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
@@ -1426,12 +1427,12 @@ export function DeviceTab() {
                   <p className="text-sm text-white/50">Manage your workspace preferences</p>
                 </div>
                 <button
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        'Reset all preferences to default values? This cannot be undone.',
-                      )
-                    ) {
+                  onClick={async () => {
+                    const confirmed = await confirmDialog(
+                      'Reset all preferences to default values? This cannot be undone.',
+                      'Reset preferences',
+                    );
+                    if (confirmed) {
                       fetch(`${API_BASE}/preferences/reset`, { method: 'POST' })
                         .then((r) => r.json())
                         .then(() => {
