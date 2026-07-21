@@ -401,14 +401,6 @@ pub(crate) fn on_off(value: &str) -> &'static str {
     }
 }
 
-pub(crate) fn format_modulation(value: &str) -> String {
-    if value.eq_ignore_ascii_case("AUTO") || value.is_empty() {
-        "Auto".to_string()
-    } else {
-        value.to_uppercase()
-    }
-}
-
 pub(crate) fn csv_escape(value: &str) -> String {
     if value.contains(',') || value.contains('"') || value.contains('\n') {
         format!("\"{}\"", value.replace('"', "\"\""))
