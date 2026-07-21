@@ -4,6 +4,14 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "dialog:allow-ask",
+    "dialog:allow-open",
+    "fs:allow-write-file",
+    "fs:allow-read-file",
+    {
+      "identifier": "fs:scope",
+      "allow": ["$DOWNLOAD/*"]
+    },
     {
       "identifier": "shell:allow-open",
       "allow": [

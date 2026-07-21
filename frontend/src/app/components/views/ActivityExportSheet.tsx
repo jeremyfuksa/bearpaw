@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
+import { saveExport } from '../../../tauri-shell';
 
 interface ActivityExportSheetProps {
   isOpen: boolean;
@@ -142,13 +143,11 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
       });
 
       const csv = [header, ...rows].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = generateFilename();
-      link.click();
-      URL.revokeObjectURL(url);
+      const bytes = new TextEncoder().encode(csv);
+      const where = await saveExport(generateFilename(), bytes);
+      toast.success(
+        where === 'downloads' ? 'Activity log saved to Downloads' : 'Activity log exported',
+      );
       onClose();
     } catch (error) {
       console.error('Failed to export activity log', error);

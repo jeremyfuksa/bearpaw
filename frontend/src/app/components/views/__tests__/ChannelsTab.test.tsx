@@ -7,6 +7,7 @@ import { createTestChannel, createTestChannelDraft } from '../../../../test/fixt
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import { createMockStore } from '../../../../test/mocks/mockStore';
 import { useStore } from '../../../../store/useStore';
+import { saveExport, pickAndReadFile } from '../../../../tauri-shell';
 import type { ChannelData } from '../../../../types';
 
 vi.mock('sonner', () => ({
@@ -14,7 +15,14 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
+    loading: vi.fn(() => 'toast-id'),
   },
+}));
+
+vi.mock('../../../../tauri-shell', () => ({
+  saveExport: vi.fn().mockResolvedValue('browser'),
+  confirmDialog: vi.fn().mockResolvedValue(true),
+  pickAndReadFile: vi.fn(),
 }));
 
 vi.mock('../../../../api/useApi', () => ({
@@ -204,22 +212,22 @@ describe('ChannelsTab', () => {
   });
 
   describe('Import CSV', () => {
-    it('should create file input when import button clicked', async () => {
-      const createElementSpy = vi.spyOn(document, 'createElement');
+    const pickedCsv = () => ({
+      name: 'channels.csv',
+      bytes: new TextEncoder().encode('a,b'),
+    });
+
+    it('should prompt for a file when import button clicked', async () => {
+      vi.mocked(pickAndReadFile).mockResolvedValue(null); // user cancels
       render(<ChannelsTab />);
       const importButton = screen.getByRole('button', { name: /Import CSV/i });
       await userEvent.click(importButton);
 
-      expect(createElementSpy).toHaveBeenCalledWith('input');
-      createElementSpy.mockRestore();
+      expect(pickAndReadFile).toHaveBeenCalledWith(['csv']);
     });
 
     it('should show success toast on successful import', async () => {
-      const originalCreateElement = document.createElement.bind(document);
-      const input = originalCreateElement('input');
-      const createElementSpy = vi
-        .spyOn(document, 'createElement')
-        .mockImplementation((tag) => (tag === 'input' ? input : originalCreateElement(tag)));
+      vi.mocked(pickAndReadFile).mockResolvedValue(pickedCsv());
       const mockResponse = {
         ok: true,
         json: vi.fn().mockResolvedValue({ imported: 1, errors: [] }),
@@ -233,23 +241,13 @@ describe('ChannelsTab', () => {
       const importButton = screen.getByRole('button', { name: /Import CSV/i });
       await userEvent.click(importButton);
 
-      const file = new File(['a,b'], 'channels.csv', { type: 'text/csv' });
-      const event = { target: { files: [file] } } as unknown as Event;
-      await input.onchange?.(event);
-
       await waitFor(() => {
         expect(toast.success).toHaveBeenCalled();
       });
-
-      createElementSpy.mockRestore();
     });
 
     it('should show error toast on failed import', async () => {
-      const originalCreateElement = document.createElement.bind(document);
-      const input = originalCreateElement('input');
-      const createElementSpy = vi
-        .spyOn(document, 'createElement')
-        .mockImplementation((tag) => (tag === 'input' ? input : originalCreateElement(tag)));
+      vi.mocked(pickAndReadFile).mockResolvedValue(pickedCsv());
       global.fetch = vi.fn().mockResolvedValue({ ok: false } as Response);
       mockApiClient.getChannels = vi.fn().mockRejectedValue(new Error('Import failed'));
 
@@ -257,57 +255,30 @@ describe('ChannelsTab', () => {
       const importButton = screen.getByRole('button', { name: /Import CSV/i });
       await userEvent.click(importButton);
 
-      const file = new File(['a,b'], 'channels.csv', { type: 'text/csv' });
-      const event = { target: { files: [file] } } as unknown as Event;
-      await input.onchange?.(event);
-
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalled();
       });
-
-      createElementSpy.mockRestore();
     });
   });
 
   describe('Export CSV', () => {
-    it('should trigger download when export button clicked', async () => {
-      const mockBlob = new Blob(['test'], { type: 'text/csv' });
-      const originalCreateElement = document.createElement.bind(document);
+    it('should save the export when export button clicked', async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        blob: vi.fn().mockResolvedValue(mockBlob),
+        arrayBuffer: vi.fn().mockResolvedValue(new TextEncoder().encode('test').buffer),
       } as unknown as Response);
-      global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
-      global.URL.revokeObjectURL = vi.fn();
-      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
-        if (tag === 'a') {
-          const anchor = { href: '', download: '', click: vi.fn() };
-          return anchor as any;
-        }
-        return originalCreateElement(tag);
-      });
 
       render(<ChannelsTab />);
       const exportButton = screen.getByRole('button', { name: /Export CSV/i });
       await userEvent.click(exportButton);
 
       await waitFor(() => {
-        expect(toast.success).toHaveBeenCalledWith('Channels exported successfully');
+        expect(saveExport).toHaveBeenCalledWith('channels.csv', expect.any(Uint8Array));
       });
-
-      createElementSpy.mockRestore();
     });
 
     it('should show error toast on failed export', async () => {
-      const originalCreateElement = document.createElement.bind(document);
       global.fetch = vi.fn().mockResolvedValue({ ok: false } as Response);
-      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
-        if (tag === 'a') {
-          const anchor = { href: '', download: '', click: vi.fn() };
-          return anchor as any;
-        }
-        return originalCreateElement(tag);
-      });
 
       render(<ChannelsTab />);
       const exportButton = screen.getByRole('button', { name: /Export CSV/i });
@@ -316,8 +287,6 @@ describe('ChannelsTab', () => {
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith('Failed to export channels');
       });
-
-      createElementSpy.mockRestore();
     });
   });
 
