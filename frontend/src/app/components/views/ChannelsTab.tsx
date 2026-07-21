@@ -3,7 +3,12 @@ import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import { Search, Lock, Edit3, GripVertical, ChevronDown } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
+// TouchBackend, not HTML5Backend: the app ships in Tauri's WKWebView, where
+// react-dnd's HTML5 backend never fires dragover/drop — rows show the (+)
+// cursor but won't reorder (#195). TouchBackend drives DnD from pointer
+// events; enableMouseEvents makes it respond to a desktop mouse, and
+// delayMouseStart lets a plain click still open the edit sheet.
+import { TouchBackend } from 'react-dnd-touch-backend';
 
 import {
   DropdownMenu,
@@ -180,6 +185,7 @@ export function ChannelsTab() {
   const channels = useStore((state) => state.channels) ?? [];
   const memoryDrafts = useStore((state) => state.memoryDrafts);
   const setMemoryDraft = useStore((state) => state.setMemoryDraft);
+  const clearMemoryDrafts = useStore((state) => state.clearMemoryDrafts);
   const setChannels = useStore((state) => state.setChannels);
   const setImportProgress = useStore((state) => state.setImportProgress);
 
@@ -569,11 +575,15 @@ export function ChannelsTab() {
     const confirmed = await confirmDialog('Discard all pending channel edits?', 'Discard drafts');
     if (!confirmed) return;
 
-    for (const change of draftChanges) {
-      setMemoryDraft(change.channelIndex, buildDraft(change.channel));
-    }
+    // Pending state has two independent surfaces: field edits in memoryDrafts
+    // and drag-reorder in bankOrders. isPending fires on Boolean(draft) OR a
+    // shifted position, so discard must wipe BOTH. Rebuilding drafts from the
+    // channel (the old approach) left a non-null draft in place — Boolean(draft)
+    // stayed true and rows stayed lit (#195). Remove the drafts outright.
+    clearMemoryDrafts();
+    setBankOrders({});
     toast.success('Drafts discarded');
-  }, [draftChanges, isUploading, setMemoryDraft]);
+  }, [draftChanges, isUploading, clearMemoryDrafts, setBankOrders]);
 
   const handleExportCSV = async () => {
     try {
@@ -790,7 +800,10 @@ export function ChannelsTab() {
         </div>
 
         {/* Table */}
-        <DndProvider backend={HTML5Backend}>
+        <DndProvider
+          backend={TouchBackend}
+          options={{ enableMouseEvents: true, delayMouseStart: 100 }}
+        >
           <div
             className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
             ref={containerRef}
