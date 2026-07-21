@@ -5,7 +5,7 @@ use crate::state::ChannelData;
 #[derive(Default)]
 pub(crate) struct SsSettings {
     pub backlight: Option<String>,   // BLT: On->AO Off->AF Key->KY Squelch->SQ K+S->KS
-    pub beep: Option<String>,        // KBP field 1: Auto->99 Off->0 else digits
+    pub beep: Option<String>,        // KBP field 1: Auto->0 Off->99 else digits
     pub key_lock: Option<String>,    // KBP field 2: On->1 Off->0
     pub contrast: Option<String>,    // CNT
     pub volume: Option<String>,      // VOL
@@ -19,7 +19,7 @@ pub(crate) struct SsSettings {
     pub custom_ranges: Vec<(u8, i64, i64)>, // (index, lower_100hz, upper_100hz)
     pub search_delay: Option<String>,  // SCO field 1
     pub search_code: Option<String>,   // SCO field 2 (On->1 Off->0)
-    pub cc_mode: Option<String>,       // CloseCall field: Off->0 Priority->1 DND->2
+    pub cc_mode: Option<String>,       // CloseCall field: Off->0 Pri->1 DND->2
     pub cc_beep: Option<String>,
     pub cc_light: Option<String>,
     pub cc_lockout: Option<String>,
@@ -59,8 +59,8 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
                     "Squelch" => "SQ", "K+S" => "KS", _ => "AF",
                 }.to_string());
                 s.beep = Some(match f[2] {
-                    "Auto" => "99".to_string(),
-                    "Off" => "0".to_string(),
+                    "Auto" => "0".to_string(),
+                    "Off" => "99".to_string(),
                     other => other.to_string(),
                 });
                 s.key_lock = Some(on_off_to_flag(f[3]).to_string());
@@ -104,7 +104,7 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
             }
             Some("CloseCall") if f.len() >= 5 => {
                 s.cc_mode = Some(match f[1] {
-                    "Priority" => "1", "DND" => "2", _ => "0",
+                    "Pri" => "1", "DND" => "2", _ => "0",
                 }.to_string());
                 s.cc_beep = Some(on_off_to_flag(f[2]).to_string());
                 s.cc_light = Some(on_off_to_flag(f[3]).to_string());
@@ -180,5 +180,26 @@ mod tests {
         let mask = cfg.settings.service_flags.as_deref().unwrap();
         assert_eq!(&mask[0..1], "1");
         assert_eq!(&mask[2..3], "0");
+    }
+
+    #[test]
+    fn parses_beep_auto_to_wire_zero() {
+        // SAMPLE's Misc line has beep field "Auto"
+        let cfg = parse_ss_config(SAMPLE);
+        assert_eq!(cfg.settings.beep.as_deref(), Some("0"));
+    }
+
+    #[test]
+    fn parses_beep_off_to_wire_99() {
+        let text = "Misc\tK+S\tOff\tOff\t8\t10\t3\t16\tUSA\n";
+        let cfg = parse_ss_config(text);
+        assert_eq!(cfg.settings.beep.as_deref(), Some("99"));
+    }
+
+    #[test]
+    fn parses_closecall_pri_to_wire_one() {
+        let text = "CloseCall\tPri\tOn\tOff\tOff\n";
+        let cfg = parse_ss_config(text);
+        assert_eq!(cfg.settings.cc_mode.as_deref(), Some("1"));
     }
 }
