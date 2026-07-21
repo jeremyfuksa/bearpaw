@@ -230,6 +230,7 @@ describe('ChannelsTab', () => {
       const priorityChannels = [
         createTestChannel({ index: 2, bank: 1, alpha_tag: 'CH2', priority: true }),
         createTestChannel({ index: 9, bank: 1, alpha_tag: 'CH9', priority: false }),
+        createTestChannel({ index: 15, bank: 1, alpha_tag: 'CH15', priority: false }),
       ];
       mockApiClient.setChannelPriority = vi.fn().mockResolvedValue([
         { ...priorityChannels[0], priority: false },
@@ -246,7 +247,14 @@ describe('ChannelsTab', () => {
 
       await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
       await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, true));
-      expect(store.setChannels).toHaveBeenCalled();
+      expect(store.setChannels).toHaveBeenCalledTimes(1);
+      const merged = store.setChannels.mock.calls[0][0];
+      expect(merged).toHaveLength(priorityChannels.length);
+      expect(merged.find((c: ChannelData) => c.index === 2)).toMatchObject({ priority: false });
+      expect(merged.find((c: ChannelData) => c.index === 9)).toMatchObject({ priority: true });
+      // channel 15 was not in the endpoint's `changed` response — the merge
+      // must leave its original object reference untouched.
+      expect(merged.find((c: ChannelData) => c.index === 15)).toBe(priorityChannels[2]);
     });
 
     it('does not call setChannelPriority when the move-priority confirm is declined', async () => {
@@ -269,7 +277,10 @@ describe('ChannelsTab', () => {
     });
 
     it('toggling priority OFF confirms and calls setChannelPriority with false', async () => {
-      const priorityChannels = [createTestChannel({ index: 9, bank: 1, priority: true })];
+      const priorityChannels = [
+        createTestChannel({ index: 9, bank: 1, priority: true }),
+        createTestChannel({ index: 20, bank: 1, alpha_tag: 'CH20', priority: false }),
+      ];
       mockApiClient.setChannelPriority = vi
         .fn()
         .mockResolvedValue([{ ...priorityChannels[0], priority: false }]);
@@ -284,7 +295,13 @@ describe('ChannelsTab', () => {
 
       await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
       await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, false));
-      expect(store.setChannels).toHaveBeenCalled();
+      expect(store.setChannels).toHaveBeenCalledTimes(1);
+      const merged = store.setChannels.mock.calls[0][0];
+      expect(merged).toHaveLength(priorityChannels.length);
+      expect(merged.find((c: ChannelData) => c.index === 9)).toMatchObject({ priority: false });
+      // channel 20 was not in the endpoint's `changed` response — the merge
+      // must leave its original object reference untouched.
+      expect(merged.find((c: ChannelData) => c.index === 20)).toBe(priorityChannels[1]);
     });
 
     it('shows an error toast and leaves the store unchanged when setChannelPriority throws', async () => {
