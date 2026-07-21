@@ -2334,12 +2334,14 @@ mod tests {
     }
 
     #[test]
-    fn priority_swap_aborts_when_clear_fails() {
-        // Atomicity contract: the swap clears the OLD priority channel before
-        // setting the new one, so a failed clear (propagated via `?`) aborts
-        // before the new channel is ever written. plan_priority_swap must
-        // therefore identify the old-to-clear target; if it returned None when an
-        // old exists, the clear (and its abort-on-failure) would be skipped.
+    fn plan_priority_swap_orders_clear_before_set() {
+        // Half of the atomicity contract that IS unit-testable without a
+        // failure-injectable transport: the planner must identify the
+        // old-to-clear target so the swap clears it BEFORE setting the new one.
+        // The abort-on-failure itself is enforced in `set_channel_priority` by
+        // the `?` on `clear_channel_priority_locked(...).await?` and the
+        // REGRESSION GUARD comment there — a true abort-path test needs a mock
+        // transport that fails the DCH/clear round-trip (tracked as follow-up).
         use std::collections::HashMap;
         let mut ch = HashMap::new();
         let mut c2 = test_channel();
@@ -2347,7 +2349,11 @@ mod tests {
         c2.priority = true;
         ch.insert(2, c2);
         let (old, new) = plan_priority_swap(&ch, 9);
-        assert_eq!(old, Some(2), "old priority channel must be identified so a failed clear can abort the swap");
+        assert_eq!(
+            old,
+            Some(2),
+            "old priority channel must be identified so the swap clears it before setting the new one"
+        );
         assert_eq!(new, 9);
     }
 }
