@@ -89,7 +89,7 @@ function ChannelRow({
       ref={ref}
       onClick={onClick}
       className={cn(
-        'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_50px_90px_1fr_60px_60px_50px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors',
+        'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors',
         isEditing ? 'bg-brand-primary/20 border-brand-primary/30' : 'hover:bg-white/5',
         isPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
         isDragging && 'opacity-60',
@@ -796,7 +796,7 @@ export function ChannelsTab() {
             ref={containerRef}
           >
             {/* Header */}
-            <div className="grid grid-cols-[36px_50px_90px_1fr_60px_60px_50px_50px_50px_50px] gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0">
+            <div className="grid grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0">
               <div className="flex items-center justify-center">
                 <input
                   type="checkbox"
