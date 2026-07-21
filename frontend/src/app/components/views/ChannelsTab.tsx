@@ -8,6 +8,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
+import { confirmDialog, saveExport, pickAndReadFile } from '../../../tauri-shell';
 import type { ChannelData, ChannelDraft } from '../../../types';
 import { ChannelEditSheet } from './ChannelEditSheet';
 
@@ -179,6 +180,8 @@ export function ChannelsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isExportingSs, setIsExportingSs] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([]);
   const [bankOrders, setBankOrders] = useState<Record<number, number[]>>({});
 
@@ -394,9 +397,13 @@ export function ChannelsTab() {
     );
   }, []);
 
-  const handleClearSelected = useCallback(() => {
+  const handleClearSelected = useCallback(async () => {
     if (selectedChannelIds.length === 0) return;
-    if (!window.confirm(`Clear ${selectedChannelIds.length} selected channels?`)) return;
+    const confirmed = await confirmDialog(
+      `Clear ${selectedChannelIds.length} selected channels?`,
+      'Clear channels',
+    );
+    if (!confirmed) return;
     for (const channelIndex of selectedChannelIds) {
       setMemoryDraft(channelIndex, buildEmptyDraft());
     }
@@ -550,9 +557,10 @@ export function ChannelsTab() {
     }
   }, [api, draftChanges, isUploading, setChannels, setMemoryDraft]);
 
-  const handleDiscardDrafts = useCallback(() => {
+  const handleDiscardDrafts = useCallback(async () => {
     if (draftChanges.length === 0 || isUploading) return;
-    if (!window.confirm('Discard all pending channel edits?')) return;
+    const confirmed = await confirmDialog('Discard all pending channel edits?', 'Discard drafts');
+    if (!confirmed) return;
 
     for (const change of draftChanges) {
       setMemoryDraft(change.channelIndex, buildDraft(change.channel));
@@ -566,14 +574,11 @@ export function ChannelsTab() {
       if (!response.ok) {
         throw new Error('Failed to export CSV');
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'channels.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Channels exported successfully');
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const where = await saveExport('channels.csv', bytes);
+      toast.success(
+        where === 'downloads' ? 'Channels saved to Downloads' : 'Channels exported successfully',
+      );
     } catch (error) {
       console.error('Failed to export CSV', error);
       toast.error('Failed to export channels');
@@ -581,68 +586,79 @@ export function ChannelsTab() {
   };
 
   const handleExportBc125atSs = async () => {
+    if (isExportingSs) return;
+    // The .ss export reads live scanner settings (~5s), so show a loading
+    // toast that resolves in place — otherwise the UI looks idle until the
+    // success toast lands.
+    setIsExportingSs(true);
+    const toastId = toast.loading('Exporting BC125AT format…');
     try {
       const response = await fetch(`${API_BASE}/memory/export/bc125at_ss`);
       if (!response.ok) {
         throw new Error('Failed to export BC125AT format');
       }
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'scanner.ss';
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('BC125AT format exported successfully');
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const where = await saveExport('scanner.bc125at_ss', bytes);
+      toast.success(
+        where === 'downloads'
+          ? 'BC125AT format saved to Downloads'
+          : 'BC125AT format exported successfully',
+        { id: toastId },
+      );
     } catch (error) {
       console.error('Failed to export BC125AT format', error);
-      toast.error('Failed to export BC125AT format');
+      toast.error('Failed to export BC125AT format', { id: toastId });
+    } finally {
+      setIsExportingSs(false);
     }
   };
 
   const handleImportCSV = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+    if (isImporting) return;
+    // In Tauri a synthetic <input type=file> opens the picker but its change
+    // event never fires, so nothing imports. pickAndReadFile uses the native
+    // dialog + fs there, and the input element in a browser.
+    const picked = await pickAndReadFile(['csv']);
+    if (!picked) return;
 
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
+    setIsImporting(true);
+    const toastId = toast.loading('Importing channels…');
+    try {
+      const formData = new FormData();
+      formData.append('file', new File([picked.bytes as BlobPart], picked.name));
 
-        const response = await fetch(`${API_BASE}/memory/import/csv`, {
-          method: 'POST',
-          body: formData,
-        });
+      const response = await fetch(`${API_BASE}/memory/import/csv`, {
+        method: 'POST',
+        body: formData,
+      });
 
-        if (!response.ok) {
-          throw new Error('Failed to import CSV');
-        }
-
-        const result = await response.json();
-        const { imported, errors } = result;
-
-        if (errors.length > 0) {
-          toast.error(`Imported ${imported} channels with ${errors.length} errors`, {
-            description: `Failed: ${errors
-              .slice(0, 3)
-              .map((e) => (e.row as any).Index || 'unknown')
-              .join(', ')}${errors.length > 3 ? '...' : ''}`,
-          });
-        } else {
-          toast.success(`Imported ${imported} channels successfully`);
-        }
-
-        const updatedChannels = await api.getChannels();
-        setChannels(updatedChannels);
-      } catch (error) {
-        console.error('Failed to import CSV', error);
-        toast.error('Failed to import channels');
+      if (!response.ok) {
+        throw new Error('Failed to import CSV');
       }
-    };
-    input.click();
+
+      const result = await response.json();
+      const { imported, errors } = result;
+
+      if (errors.length > 0) {
+        toast.error(`Imported ${imported} channels with ${errors.length} errors`, {
+          id: toastId,
+          description: `Failed: ${errors
+            .slice(0, 3)
+            .map((e) => (e.row as any).Index || 'unknown')
+            .join(', ')}${errors.length > 3 ? '...' : ''}`,
+        });
+      } else {
+        toast.success(`Imported ${imported} channels successfully`, { id: toastId });
+      }
+
+      const updatedChannels = await api.getChannels();
+      setChannels(updatedChannels);
+    } catch (error) {
+      console.error('Failed to import CSV', error);
+      toast.error('Failed to import channels', { id: toastId });
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -705,9 +721,10 @@ export function ChannelsTab() {
             </button>
             <button
               onClick={handleImportCSV}
-              className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider"
+              disabled={isImporting}
+              className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Import CSV
+              {isImporting ? 'Importing…' : 'Import CSV'}
             </button>
             <button
               onClick={handleExportCSV}
@@ -717,9 +734,10 @@ export function ChannelsTab() {
             </button>
             <button
               onClick={handleExportBc125atSs}
-              className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider"
+              disabled={isExportingSs}
+              className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
-              BC125AT (.ss)
+              {isExportingSs ? 'Exporting…' : 'BC125AT (.ss)'}
             </button>
           </div>
         </div>
