@@ -145,9 +145,9 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
       const csv = [header, ...rows].join('\n');
       const bytes = new TextEncoder().encode(csv);
       const where = await saveExport(generateFilename(), bytes);
-      toast.success(
-        where === 'downloads' ? 'Activity log saved to Downloads' : 'Activity log exported',
-      );
+      if (where !== 'cancelled') {
+        toast.success(where === 'saved' ? 'Activity log saved' : 'Activity log exported');
+      }
       onClose();
     } catch (error) {
       console.error('Failed to export activity log', error);

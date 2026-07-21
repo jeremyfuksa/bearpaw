@@ -583,9 +583,8 @@ export function ChannelsTab() {
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
       const where = await saveExport('channels.csv', bytes);
-      toast.success(
-        where === 'downloads' ? 'Channels saved to Downloads' : 'Channels exported successfully',
-      );
+      if (where === 'cancelled') return;
+      toast.success(where === 'saved' ? 'Channels saved' : 'Channels exported successfully');
     } catch (error) {
       console.error('Failed to export CSV', error);
       toast.error('Failed to export channels');
@@ -606,10 +605,12 @@ export function ChannelsTab() {
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
       const where = await saveExport('scanner.bc125at_ss', bytes);
+      if (where === 'cancelled') {
+        toast.dismiss(toastId);
+        return;
+      }
       toast.success(
-        where === 'downloads'
-          ? 'BC125AT format saved to Downloads'
-          : 'BC125AT format exported successfully',
+        where === 'saved' ? 'BC125AT format saved' : 'BC125AT format exported successfully',
         { id: toastId },
       );
     } catch (error) {
