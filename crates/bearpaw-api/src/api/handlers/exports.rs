@@ -347,6 +347,11 @@ pub(crate) async fn import_csv(
     mut multipart: Multipart,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Reject if a memory sync is running — both hold the single-threaded wire
+    // for a long PRG bracket; racing them contends for the command channel.
+    if state.sync_task_id.lock().unwrap().is_some() {
+        return Err(ApiError::Conflict("sync_in_progress".to_string()));
+    }
     let mut csv_bytes: Option<Vec<u8>> = None;
     while let Some(field) = multipart
         .next_field()
