@@ -5,7 +5,7 @@
   --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-display: 'Hanken Grotesk', 'Manrope', sans-serif;
   --font-mono: 'DM Mono', 'JetBrains Mono', 'Fira Code', monospace;
-  --text-xs: 0.8125rem;
+  --text-xs: 0.875rem;
   --text-sm: 0.9375rem;
   --text-base: 1rem;
   --text-lg: 1.25rem;
@@ -128,7 +128,7 @@
   --font-sans: 'Manrope', sans-serif;
   --font-display: 'Hanken Grotesk', 'Manrope', sans-serif;
   --font-mono: 'DM Mono', 'JetBrains Mono', 'Fira Code', monospace;
-  --text-xs: 0.8125rem;
+  --text-xs: 0.875rem;
   --text-sm: 0.9375rem;
   --text-base: 1rem;
   --text-lg: 1.25rem;
