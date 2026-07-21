@@ -622,7 +622,10 @@ export function ChannelsTab() {
     if (!picked) return;
 
     setIsImporting(true);
-    const toastId = toast.loading('Importing channels…');
+    // Each channel is a separate wire write (~0.2s on this hardware), so a
+    // full file takes a minute or two. Set expectations so it doesn't read as
+    // frozen; the button also shows "Importing…" and is disabled meanwhile.
+    const toastId = toast.loading('Importing channels — this can take a minute or two…');
     try {
       const formData = new FormData();
       formData.append('file', new File([picked.bytes as BlobPart], picked.name));
