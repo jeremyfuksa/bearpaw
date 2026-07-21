@@ -1508,6 +1508,13 @@ fn readback_matches(wrote: &ChannelData, readback: &ChannelData, wrote_alpha: &s
         && priority_ok
 }
 
+/// A channel needs an actual DCH+rewrite clear only if it is programmed
+/// (freq != 0) and currently priority. Empty or already-non-priority
+/// channels are a no-op.
+fn needs_priority_clear(ch: &ChannelData) -> bool {
+    ch.frequency.abs() >= 0.00005 && ch.priority
+}
+
 /// The fixed tail the scanner stamps on any channel with no frequency:
 /// delay=2, lockout=1, priority=0, no tone (`...,00000000,AUTO,0,2,1,0`). See
 /// `readback_matches` for the capture citations. Only the tail is checked: the
@@ -1588,6 +1595,69 @@ pub(crate) async fn write_channel_to_scanner(
             "CIN write not persisted as sent"
         );
         return Err(ApiError::BadRequest("channel_not_persisted".to_string()));
+    }
+    Ok(readback)
+}
+
+/// Clear a channel's priority. The firmware refuses an in-place priority
+/// 1->0 CIN write, so the only mechanism is DCH (wipe to factory-empty)
+/// then rewrite the channel with priority=0 (verified: #203 probe).
+///
+/// DATA-LOSS SAFETY: DCH deletes the channel. We read the full channel
+/// FIRST, abort before DCH if the read fails, then rewrite from the saved
+/// copy and read-back-verify. All inside one ProgramModeGuard.
+pub(crate) async fn clear_channel_priority(
+    state: &AppState,
+    index: u16,
+) -> Result<ChannelData, ApiError> {
+    let _guard = ProgramModeGuard::enter(state).await?;
+
+    // 1. Read the full channel first. Never DCH an unread channel.
+    let current = read_channel_from_scanner(state, index).await?;
+
+    // 2. No-op if nothing to clear.
+    if !needs_priority_clear(&current) {
+        return Ok(current);
+    }
+
+    // 3. Build the rewrite payload (same fields, priority off) BEFORE deleting,
+    //    so a payload-build error can't strand us post-DCH.
+    let mut rewritten = current.clone();
+    rewritten.priority = false;
+    let payload = build_cin_write_payload(&rewritten)?;
+
+    // 4. DCH — wipe to factory-empty.
+    match classify_response(&send_raw_command(state, &format!("DCH,{index}"), false).await?) {
+        ScannerReply::Ok => {}
+        _ => return Err(ApiError::BadRequest("priority_clear_dch_failed".to_string())),
+    }
+
+    // 5. Rewrite with priority=0.
+    let write_cmd = format!("CIN,{index},{payload}");
+    match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
+        ScannerReply::Ok => {}
+        _ => return Err(ApiError::BadRequest("priority_clear_rewrite_failed".to_string())),
+    }
+
+    // 6. Read-back-verify the rewrite.
+    let read_response = send_raw_command(state, &format!("CIN,{index}"), false).await?;
+    let readback = parse_cin_response(index, &read_response)
+        .ok_or_else(|| ApiError::BadRequest("priority_clear_readback_failed".to_string()))?;
+    let wrote_alpha = rewritten
+        .alpha_tag
+        .replace(',', " ")
+        .trim()
+        .chars()
+        .take(16)
+        .collect::<String>();
+    if !readback_matches(&rewritten, &readback, &wrote_alpha) {
+        warn!(
+            index = index,
+            wrote = %write_cmd,
+            read_back = %read_response.trim(),
+            "priority clear rewrite not persisted as sent"
+        );
+        return Err(ApiError::BadRequest("priority_clear_not_persisted".to_string()));
     }
     Ok(readback)
 }
@@ -1797,6 +1867,26 @@ mod tests {
             tone_dcs_code: None,
             bank: 1,
         }
+    }
+
+    fn empty_channel_readback() -> ChannelData {
+        let mut c = test_channel();
+        c.frequency = 0.0;
+        c.priority = false;
+        c
+    }
+
+    #[test]
+    fn needs_priority_clear_only_when_programmed_and_priority() {
+        let mut ch = test_channel(); // freq 145.13
+        ch.priority = true;
+        assert!(needs_priority_clear(&ch)); // programmed + priority => clear needed
+
+        ch.priority = false;
+        assert!(!needs_priority_clear(&ch)); // not priority => no-op
+
+        let empty = empty_channel_readback(); // freq 0 (helper below)
+        assert!(!needs_priority_clear(&empty)); // empty slot => no-op
     }
 
     // REGRESSION GUARD (#195, #197): writing an empty channel (freq 0) is a
