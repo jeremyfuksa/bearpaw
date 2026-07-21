@@ -706,7 +706,7 @@ export function ChannelsTab() {
             key={bank}
             onClick={() => setActiveBank(bank)}
             className={cn(
-              'flex items-center justify-between px-3 py-2 text-xs font-medium rounded transition-all',
+              'flex items-center justify-between gap-2 px-3 py-2 text-xs font-medium rounded transition-all',
               activeBank === bank
                 ? 'bg-brand-primary/20 text-brand-primary shadow-brand-inset'
                 : 'text-white/60 hover:bg-white/5 hover:text-white',
@@ -714,7 +714,7 @@ export function ChannelsTab() {
           >
             <span>Bank {bank}</span>
             {activeBank === bank && (
-              <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-glow" />
+              <div className="w-1.5 h-1.5 shrink-0 rounded-full bg-brand-primary shadow-glow" />
             )}
           </button>
         ))}
