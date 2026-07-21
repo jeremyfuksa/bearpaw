@@ -92,6 +92,14 @@ export const createMockApiClient = () => {
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return mockApiResponses.channel;
     }),
+    setChannelPriority: vi.fn(async (index: number, priority: boolean) => {
+      const response = responses.get(`/memory/channels/${index}/priority`);
+      if (response?.error) {
+        throw new APIError(response.error.message, response.error.status, response.error);
+      }
+      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
+      return [{ ...mockApiResponses.channel, index, priority }];
+    }),
     startProgramMode: vi.fn(async () => {
       const response = responses.get('/memory/program-mode/start');
       if (response?.error) {

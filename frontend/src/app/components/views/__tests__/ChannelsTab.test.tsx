@@ -25,8 +25,17 @@ vi.mock('../../../../tauri-shell', () => ({
   pickAndReadFile: vi.fn(),
 }));
 
+// getAPI is a real singleton in production (see api/useApi.ts) — components
+// that call it more than once (e.g. ChannelsTab's handlePriorityChange calls
+// getAPI() fresh instead of reusing the module-level `api` const) rely on
+// getting back the SAME client every time. Mirror that here via a mutable
+// "current instance" so every getAPI() call in a test returns the same
+// mockApiClient that beforeEach configures — otherwise per-call mock
+// overrides (e.g. mockApiClient.setChannelPriority = ...) would silently not
+// apply to whichever instance the component actually used.
+let currentMockApiClient: ReturnType<typeof createMockApiClient>;
 vi.mock('../../../../api/useApi', () => ({
-  getAPI: vi.fn(() => createMockApiClient()),
+  getAPI: vi.fn(() => currentMockApiClient),
   API_BASE: 'http://localhost:8000/api/v1',
 }));
 
@@ -51,6 +60,7 @@ describe('ChannelsTab', () => {
     // "confirmed" default so tests that don't override it get a yes.
     vi.mocked(confirmDialog).mockResolvedValue(true);
     mockApiClient = createMockApiClient();
+    currentMockApiClient = mockApiClient;
     mockChannels = [
       createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Channel 1' }),
       createTestChannel({ index: 51, frequency: 155.5, bank: 2, alpha_tag: 'Channel 51' }),
@@ -212,6 +222,86 @@ describe('ChannelsTab', () => {
         await userEvent.click(channelRow);
         expect(await screen.findByText(/Edit Channel/i)).toBeInTheDocument();
       }
+    });
+  });
+
+  describe('Priority toggle (immediate action, Task 6)', () => {
+    it('toggling priority ON with an existing bank priority channel confirms and calls setChannelPriority', async () => {
+      const priorityChannels = [
+        createTestChannel({ index: 2, bank: 1, alpha_tag: 'CH2', priority: true }),
+        createTestChannel({ index: 9, bank: 1, alpha_tag: 'CH9', priority: false }),
+      ];
+      mockApiClient.setChannelPriority = vi.fn().mockResolvedValue([
+        { ...priorityChannels[0], priority: false },
+        { ...priorityChannels[1], priority: true },
+      ]);
+      const store = createMockStore({ channels: priorityChannels });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByText(/CH9/i));
+      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, true));
+      expect(store.setChannels).toHaveBeenCalled();
+    });
+
+    it('does not call setChannelPriority when the move-priority confirm is declined', async () => {
+      const priorityChannels = [
+        createTestChannel({ index: 2, bank: 1, alpha_tag: 'CH2', priority: true }),
+        createTestChannel({ index: 9, bank: 1, alpha_tag: 'CH9', priority: false }),
+      ];
+      mockApiClient.setChannelPriority = vi.fn();
+      vi.mocked(confirmDialog).mockResolvedValue(false);
+      setMockStore(createMockStore({ channels: priorityChannels }));
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByText(/CH9/i));
+      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      expect(mockApiClient.setChannelPriority).not.toHaveBeenCalled();
+    });
+
+    it('toggling priority OFF confirms and calls setChannelPriority with false', async () => {
+      const priorityChannels = [createTestChannel({ index: 9, bank: 1, priority: true })];
+      mockApiClient.setChannelPriority = vi
+        .fn()
+        .mockResolvedValue([{ ...priorityChannels[0], priority: false }]);
+      const store = createMockStore({ channels: priorityChannels });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByText(/Test Channel/i));
+      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, false));
+      expect(store.setChannels).toHaveBeenCalled();
+    });
+
+    it('shows an error toast and leaves the store unchanged when setChannelPriority throws', async () => {
+      const priorityChannels = [createTestChannel({ index: 9, bank: 1, priority: false })];
+      mockApiClient.setChannelPriority = vi.fn().mockRejectedValue(new Error('write failed'));
+      const store = createMockStore({ channels: priorityChannels });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByText(/Test Channel/i));
+      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+
+      await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, true));
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(store.setChannels).not.toHaveBeenCalled();
     });
   });
 
