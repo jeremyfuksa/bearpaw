@@ -1523,6 +1523,19 @@ fn is_factory_empty(ch: &ChannelData) -> bool {
         && ch.tone_squelch_kind == crate::state::ToneSquelchKind::None
 }
 
+/// The index of the bank's current priority channel, if any. A bank holds
+/// 0 or 1 priority channel (one-per-bank). `bank` is 1..=10.
+fn bank_priority_index(
+    channels: &std::collections::HashMap<u16, ChannelData>,
+    bank: u8,
+) -> Option<u16> {
+    channels
+        .values()
+        .filter(|c| c.priority && crate::protocol::index_to_bank(c.index) == bank)
+        .map(|c| c.index)
+        .min()
+}
+
 pub(crate) async fn write_channel_to_scanner(
     state: &AppState,
     channel: &ChannelData,
@@ -2076,5 +2089,22 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[test]
+    fn bank_priority_index_finds_the_one_priority_channel() {
+        use std::collections::HashMap;
+        let mut ch = HashMap::new();
+        // Bank 1 = indices 1..=50. CH2 is priority; CH9 is not.
+        let mut c2 = test_channel();
+        c2.index = 2;
+        c2.priority = true;
+        let mut c9 = test_channel();
+        c9.index = 9;
+        c9.priority = false;
+        ch.insert(2, c2);
+        ch.insert(9, c9);
+        assert_eq!(bank_priority_index(&ch, 1), Some(2));
+        assert_eq!(bank_priority_index(&ch, 2), None); // bank 2 empty
     }
 }
