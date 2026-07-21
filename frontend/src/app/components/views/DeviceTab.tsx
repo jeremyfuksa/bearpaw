@@ -41,9 +41,14 @@ interface SearchRange {
 
 // Frontend uses camelCase preference keys; the backend persists snake_case
 // (see default_preferences() in api/mod.rs). Map every key that differs so
-// saved values round-trip through App.tsx's snake_case load path.
-const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
+// saved values round-trip through App.tsx's snake_case load path. A missing
+// entry silently falls back to the camelCase key via `?? key`, saving under a
+// key nobody reads back — the setting then looks non-persistent (#autoConnect).
+export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   hitMinDuration: 'hit_min_duration',
+  autoConnect: 'auto_connect',
+  checkUpdates: 'check_updates',
+  dataRetentionDays: 'data_retention_days',
 };
 
 export function DeviceTab() {

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { DeviceTab } from '../DeviceTab';
+import { DeviceTab, PREFERENCE_KEY_MAP } from '../DeviceTab';
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import {
   createTestChannel,
@@ -287,5 +287,21 @@ describe('DeviceTab', () => {
       expect(screen.getByRole('button', { name: /Website/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Github/i })).toBeInTheDocument();
     });
+  });
+});
+
+describe('PREFERENCE_KEY_MAP', () => {
+  // Regression guard: preferences set via handlePreferenceChange must map to the
+  // snake_case key the backend persists and App.tsx reads back. A missing entry
+  // silently saves under the camelCase key (via `?? key`) and the setting looks
+  // non-persistent — the auto-connect bug. These keys differ camel↔snake and
+  // are set from the Preferences UI, so each MUST be in the map.
+  it.each([
+    ['autoConnect', 'auto_connect'],
+    ['checkUpdates', 'check_updates'],
+    ['dataRetentionDays', 'data_retention_days'],
+    ['hitMinDuration', 'hit_min_duration'],
+  ])('maps %s to %s', (camel, snake) => {
+    expect(PREFERENCE_KEY_MAP[camel as keyof typeof PREFERENCE_KEY_MAP]).toBe(snake);
   });
 });
