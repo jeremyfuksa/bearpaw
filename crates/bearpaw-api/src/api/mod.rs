@@ -1466,6 +1466,29 @@ pub(crate) async fn write_channel_no_readback(
     }
 }
 
+/// Read-back-verify comparison: does the channel we read back match what we
+/// wrote? `wrote_alpha` is the sanitised alpha (comma-stripped, 16-char cap,
+/// trimmed) that actually went to the wire.
+///
+/// REGRESSION GUARD (#195): an empty channel (freq 0) is ALWAYS lockout=1 on
+/// this hardware — the scanner forces it and ignores a written lockout=0. The
+/// factory-empty signature is `,00000000,AUTO,0,2,1,0`, confirmed across
+/// captures (docs/wire_captures/2026-05-21/raw.txt CIN,3; 2026-07-08/
+/// cin-write-order-probe.txt CIN,500 + DCH restore; and the write-side field
+/// order note in SCANNER_PROTOCOL_REFERENCE.md). Once drag-reorder started
+/// writing empty slots, sending lockout=0 for one read back as lockout=1 and
+/// tripped a false `channel_not_persisted`. When we wrote freq 0, accept the
+/// forced lockout=1.
+fn readback_matches(wrote: &ChannelData, readback: &ChannelData, wrote_alpha: &str) -> bool {
+    let wrote_empty = wrote.frequency.abs() < 0.00005;
+    let lockout_ok = readback.lockout == wrote.lockout || (wrote_empty && readback.lockout);
+    (readback.frequency - wrote.frequency).abs() < 0.00005
+        && readback.alpha_tag.trim() == wrote_alpha
+        && readback.delay == wrote.delay
+        && lockout_ok
+        && readback.priority == wrote.priority
+}
+
 pub(crate) async fn write_channel_to_scanner(
     state: &AppState,
     channel: &ChannelData,
@@ -1509,11 +1532,7 @@ pub(crate) async fn write_channel_to_scanner(
         .chars()
         .take(16)
         .collect::<String>();
-    let persisted = (readback.frequency - channel.frequency).abs() < 0.00005
-        && readback.alpha_tag.trim() == wrote_alpha
-        && readback.delay == channel.delay
-        && readback.lockout == channel.lockout
-        && readback.priority == channel.priority;
+    let persisted = readback_matches(channel, &readback, &wrote_alpha);
     if !persisted {
         warn!(
             index = channel.index,
@@ -1712,6 +1731,59 @@ mod tests {
         ch.delay = -10;
         let payload = build_cin_write_payload(&ch).unwrap();
         assert_eq!(payload, "Test Chan,01451300,FM,0,-10,0,1");
+    }
+
+    fn empty_channel() -> ChannelData {
+        // Factory-empty state: `,00000000,AUTO,0,2,1,0` — freq 0, lockout on.
+        ChannelData {
+            index: 7,
+            frequency: 0.0,
+            modulation: "AUTO".to_string(),
+            alpha_tag: String::new(),
+            delay: 2,
+            lockout: true,
+            priority: false,
+            tone_squelch: None,
+            tone_squelch_kind: crate::state::ToneSquelchKind::None,
+            tone_dcs_code: None,
+            bank: 1,
+        }
+    }
+
+    // REGRESSION GUARD (#195): the scanner forces lockout=1 on any empty
+    // channel (freq 0) — confirmed across captures. We tried to "unlock" an
+    // empty slot pulled into a drag-reorder; the write persisted correctly as
+    // lockout=1, but the verify rejected it as channel_not_persisted. When we
+    // wrote freq 0, a read-back lockout=1 must be accepted regardless of the
+    // lockout we sent.
+    #[test]
+    fn readback_accepts_forced_lockout_on_empty_channel() {
+        // We wrote an empty channel asking for lockout=0; scanner forced 1.
+        let mut wrote = empty_channel();
+        wrote.lockout = false;
+        let readback = empty_channel(); // lockout: true
+        assert!(readback_matches(&wrote, &readback, ""));
+    }
+
+    #[test]
+    fn readback_rejects_forced_lockout_on_programmed_channel() {
+        // A programmed channel (freq != 0) must NOT get the empty-channel pass:
+        // if we wrote lockout=0 and it read back 1, that's a real mismatch.
+        let mut readback = test_channel();
+        readback.lockout = true;
+        let mut wrote = test_channel();
+        wrote.lockout = false;
+        assert!(!readback_matches(&wrote, &readback, "Test Chan"));
+    }
+
+    #[test]
+    fn readback_still_catches_real_field_mismatch() {
+        // Empty-channel tolerance is lockout-only; a delay divergence on an
+        // empty channel is still a genuine failure.
+        let wrote = empty_channel();
+        let mut readback = empty_channel();
+        readback.delay = 5;
+        assert!(!readback_matches(&wrote, &readback, ""));
     }
 
     // REGRESSION GUARD (#150): /health is documented and referenced by the
