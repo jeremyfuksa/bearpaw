@@ -68,6 +68,7 @@
     "react-day-picker": "8.10.2",
     "react-dnd": "16.0.1",
     "react-dnd-html5-backend": "16.0.1",
+    "react-dnd-touch-backend": "^16.0.1",
     "react-hook-form": "7.76.0",
     "react-popper": "2.3.0",
     "react-resizable-panels": "2.1.9",
