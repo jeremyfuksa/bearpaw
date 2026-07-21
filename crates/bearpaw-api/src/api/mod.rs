@@ -1559,6 +1559,18 @@ fn bank_priority_index(
         .min()
 }
 
+/// Decide the swap: which channel (if any) must be cleared, and which is set.
+/// Returns (old_to_clear, new_to_set). old is Some only when a DIFFERENT
+/// channel in the same bank currently holds priority.
+fn plan_priority_swap(
+    channels: &std::collections::HashMap<u16, ChannelData>,
+    index: u16,
+) -> (Option<u16>, u16) {
+    let bank = crate::protocol::index_to_bank(index);
+    let old = bank_priority_index(channels, bank).filter(|&old| old != index);
+    (old, index)
+}
+
 pub(crate) async fn write_channel_to_scanner(
     state: &AppState,
     channel: &ChannelData,
@@ -1676,6 +1688,62 @@ pub(crate) async fn clear_channel_priority(
         return Err(ApiError::BadRequest("priority_clear_not_persisted".to_string()));
     }
     Ok(readback)
+}
+
+/// Set `index` as its bank's priority channel, enforcing one-per-bank.
+/// Clears the bank's current priority channel first (if a different one
+/// exists), then sets `index`. Atomic: if the clear fails, `index` is NOT
+/// set. Returns every channel changed (cleared-old first, then the new one).
+pub(crate) async fn set_channel_priority(
+    state: &AppState,
+    index: u16,
+) -> Result<Vec<ChannelData>, ApiError> {
+    let (old_to_clear, new_to_set) = {
+        let shadow = state.shadow.read().unwrap();
+        plan_priority_swap(&shadow.channels, index)
+    };
+
+    let mut changed = Vec::new();
+
+    // REGRESSION GUARD (priority swap atomicity): clear the OLD priority
+    // channel before setting the new one, and propagate the clear's error
+    // with `?` so a failed clear ABORTS the swap. Setting first (or ignoring
+    // the clear error) can leave a bank with two priority channels, or delete
+    // a channel via DCH and never restore it. See the priority spec.
+    if let Some(old) = old_to_clear {
+        let cleared = clear_channel_priority(state, old).await?;
+        state.shadow.write().unwrap().channels.insert(old, cleared.clone());
+        changed.push(cleared);
+    }
+
+    // Set the new priority channel with a plain CIN write (SET works in place).
+    let _guard = ProgramModeGuard::enter(state).await?;
+    let current = read_channel_from_scanner(state, new_to_set).await?;
+    if current.frequency.abs() < 0.00005 {
+        return Err(ApiError::BadRequest("priority_set_empty_channel".to_string()));
+    }
+    let mut wrote = current.clone();
+    wrote.priority = true;
+    let payload = build_cin_write_payload(&wrote)?;
+    let write_cmd = format!("CIN,{new_to_set},{payload}");
+    match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
+        ScannerReply::Ok => {}
+        _ => return Err(ApiError::BadRequest("priority_set_failed".to_string())),
+    }
+    let read_response = send_raw_command(state, &format!("CIN,{new_to_set}"), false).await?;
+    let readback = parse_cin_response(new_to_set, &read_response)
+        .ok_or_else(|| ApiError::BadRequest("priority_set_readback_failed".to_string()))?;
+    if !readback.priority {
+        return Err(ApiError::BadRequest("priority_set_not_persisted".to_string()));
+    }
+    state
+        .shadow
+        .write()
+        .unwrap()
+        .channels
+        .insert(new_to_set, readback.clone());
+    changed.push(readback);
+    Ok(changed)
 }
 
 pub(crate) async fn set_channel_lockout_on_scanner(
@@ -2236,5 +2304,22 @@ mod tests {
         ch.insert(9, c9);
         assert_eq!(bank_priority_index(&ch, 1), Some(2));
         assert_eq!(bank_priority_index(&ch, 2), None); // bank 2 empty
+    }
+
+    #[test]
+    fn plan_priority_swap_identifies_old_and_new() {
+        use std::collections::HashMap;
+        let mut ch = HashMap::new();
+        let mut c2 = test_channel();
+        c2.index = 2;
+        c2.priority = true; // current bank-1 priority
+        ch.insert(2, c2);
+        // Setting CH9 (also bank 1) must clear CH2 and set CH9.
+        assert_eq!(plan_priority_swap(&ch, 9), (Some(2), 9));
+        // Setting the channel that is ALREADY priority: no clear needed.
+        assert_eq!(plan_priority_swap(&ch, 2), (None, 2));
+        // Bank with no current priority: nothing to clear.
+        let empty = HashMap::new();
+        assert_eq!(plan_priority_swap(&empty, 9), (None, 9));
     }
 }
