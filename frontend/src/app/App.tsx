@@ -19,6 +19,7 @@ import type { BanksUpdateMessage, LiveState, ProgressMessage, StateUpdateMessage
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ScanView } from './components/views/ScanView';
+import { TabBar } from './components/TabBar';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
 
 export type Tab = 'Scan' | 'Device' | 'Channels';
@@ -914,6 +915,8 @@ export default function App() {
           },
         }}
       />
+
+      <TabBar currentTab={currentTab} onTabChange={setCurrentTab} />
 
       <div className="relative flex-1 overflow-hidden p-6">
         <AnimatePresence mode="wait">
