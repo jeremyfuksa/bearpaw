@@ -222,18 +222,30 @@ fw 1.06.06, captured live via the running backend's `PUT /memory/channels/<n>`:
   `channel_not_persisted` (the write persisted; the *scanner* forced priority
   back to 1). Live log: `wrote=CIN,9,...,1,0 read_back=CIN,9,...,1,1`.
 
-Interpretation: the firmware never lets a bank drop to zero priority channels
-through a per-channel CIN write. Priority is **moved** between channels (setting
-one implicitly displaces the bank's previous priority channel), not **removed**
-via `priority=0`. The decompile hints at a separate `PriorityScantList.cs`
-(`BC125AT_PROTOCOL.md` §"file inventory"), so a dedicated clear mechanism may
-exist but is unverified on this hardware.
+**RESOLVED 2026-07-21 — clear = delete-then-recreate.** The
+`priority_clear_probe` example (`cargo run -p bearpaw-api --example
+priority_clear_probe`, run with the backend stopped) settled the mechanism on
+fw 1.06.06. On a scratch channel (500) set to priority=1:
 
-Consequence for the app: a per-channel priority *toggle* is a lie — it can turn
-on but not off. Surfaced first when drag-reorder (#195) let users edit priority.
-Backend `write_channel_to_scanner` read-back-verify must not crash on a refused
-priority downgrade; UI models priority as one-selectable-per-bank. Tracked in
-the priority-UX redesign (superpowers spec `docs/superpowers/specs/`).
+- **In-place downgrade REFUSED.** `CIN,500,...,0` (priority slot 0) read back
+  priority=1 — the firmware guards the `1→0` *transition* on an existing channel.
+- **Delete-then-recreate WORKS.** `DCH,500` (wipe to factory-empty) followed by
+  `CIN,500,...,0` read back **priority=0**. Creating a channel fresh with
+  priority off is allowed; only the in-place downgrade is blocked.
+
+So the clear sequence is: `DCH,<n>` then rewrite the channel's full payload with
+`priority=0`. This also explains banks that hold zero priority channels (banks
+2/3 on this unit): those channels were written fresh with priority off, never
+downgraded. Earlier speculation about a `PriorityScantList` command was wrong —
+no dedicated command is needed. A per-channel priority *toggle-off* is not a
+lie after all; it just has to route through DCH+rewrite, not a plain CIN.
+
+Model for the app: a bank has **zero or one** priority channel. SET = plain CIN
+(`priority=1`, works). CLEAR = DCH + rewrite (`priority=0`). Backend
+`write_channel_to_scanner` read-back-verify must still tolerate a *plain*
+priority-downgrade write not sticking (it uses the plain path). Surfaced first
+when drag-reorder (#195) let users edit priority. Tracked in the priority-UX
+redesign (superpowers spec `docs/superpowers/specs/`).
 
 ### Conflict 3 — `DO` direct tune (added 2026-07-08)
 
