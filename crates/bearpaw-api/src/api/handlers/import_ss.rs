@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::api::{send_raw_command, split_command_parts, AppState};
+use crate::protocol::{classify_response, ScannerReply};
 use crate::state::{ChannelData, ToneSquelchKind};
 
 #[derive(Default)]
@@ -165,9 +167,51 @@ fn parse_ss_channel(f: &[&str]) -> Result<Option<ChannelData>, String> {
     }))
 }
 
+/// Sends `write_cmd`, checks the reply is OK, then reads back `read_cmd` and
+/// confirms the first field matches `expect_first_field`. Catches silent
+/// no-ops on unproven writes (CSP/CLC). Caller holds the program-mode
+/// bracket. A full field-by-field verify is overkill for a first cut; write
+/// returned OK and the read-back's first field changed is enough.
+#[allow(dead_code)] // wired up by the import endpoint (Task 4)
+async fn write_setting_verified(
+    state: &AppState,
+    write_cmd: &str,
+    read_cmd: &str,
+    expect_first_field: &str,
+) -> Result<(), String> {
+    let write_resp = send_raw_command(state, write_cmd, false)
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+    match classify_response(&write_resp) {
+        ScannerReply::Ok => {}
+        other => return Err(format!("{} rejected: {:?}", write_cmd, other)),
+    }
+    let read_resp = send_raw_command(state, read_cmd, false)
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+    let got = split_command_parts(&read_resp)
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+    if got == expect_first_field {
+        Ok(())
+    } else {
+        Err(format!("{} not persisted (got {})", write_cmd, got))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setting_ok_reply_classified() {
+        // Guards the OK/NG/ERR classification the verify relies on.
+        use crate::protocol::{classify_response, ScannerReply};
+        assert!(matches!(classify_response("BLT,OK"), ScannerReply::Ok));
+        assert!(matches!(classify_response("BLT,NG"), ScannerReply::Ng));
+        assert!(matches!(classify_response("BLT,ERR"), ScannerReply::Err));
+    }
 
     const SAMPLE: &str = "Misc\tK+S\tAuto\tOff\t8\t10\t3\t16\tUSA\nPriority\tOn\nWxPri\tOff\nService\t1\tPolice\tOff\nService\t3\tHAM Radio\tOn\nConventional\t1\tBank 1\tOn\nConventional\t4\tBank 4\tOff\nCloseCall\tOff\tOff\tOff\tOff\nCloseCallBands\tOff\tOn\tOff\tOff\tOn\nGeneralSearch\t2\tOff\nCustom\t1\tSearch Bnak1\t25000000\t27995000\tOn\n";
 
