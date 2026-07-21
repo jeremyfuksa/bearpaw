@@ -6,6 +6,8 @@ config.yaml
 config.yml
 config.toml
 logs/
+# Playwright MCP session dumps (console/page captures) — throwaway debug output
+.playwright-mcp/
 docs/manual.pdf
 docs/op-spec.pdf
 crates/bearpaw-api/scanner.db
