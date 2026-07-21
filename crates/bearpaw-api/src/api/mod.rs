@@ -567,7 +567,6 @@ pub(crate) fn default_preferences() -> Map<String, Value> {
     m.insert("reduced_motion".to_string(), Value::Bool(false));
     m.insert("hit_min_duration".to_string(), Value::from(2));
     m.insert("start_dashboard_mode".to_string(), Value::Bool(true));
-    m.insert("auto_connect".to_string(), Value::Bool(false));
     m.insert("check_updates".to_string(), Value::Bool(true));
     m.insert("recording_buffer_size".to_string(), Value::from(30));
     m.insert("data_retention_days".to_string(), Value::from(30));
