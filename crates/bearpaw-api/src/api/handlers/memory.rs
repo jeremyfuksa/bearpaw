@@ -131,6 +131,12 @@ pub(crate) async fn put_memory_channel_priority(
     Path(index): Path<u16>,
     Json(body): Json<PriorityBody>,
 ) -> Result<Json<PriorityResponse>, ApiError> {
+    // REGRESSION GUARD: range-check BEFORE command_sender. `get_memory_channel`
+    // set this precedent (#143) — a bad index is a 400 contract violation and
+    // must not depend on scanner state. If command_sender ran first, an
+    // out-of-range request with no scanner attached would return 503 instead of
+    // 400 (and the priority_endpoint_rejects_out_of_range_index test would fail
+    // against default_state()). Do not reorder these two checks.
     if !(1..=500).contains(&index) {
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
