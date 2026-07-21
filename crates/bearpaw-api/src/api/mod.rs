@@ -1470,23 +1470,44 @@ pub(crate) async fn write_channel_no_readback(
 /// wrote? `wrote_alpha` is the sanitised alpha (comma-stripped, 16-char cap,
 /// trimmed) that actually went to the wire.
 ///
-/// REGRESSION GUARD (#195): an empty channel (freq 0) is ALWAYS lockout=1 on
-/// this hardware — the scanner forces it and ignores a written lockout=0. The
-/// factory-empty signature is `,00000000,AUTO,0,2,1,0`, confirmed across
-/// captures (docs/wire_captures/2026-05-21/raw.txt CIN,3; 2026-07-08/
-/// cin-write-order-probe.txt CIN,500 + DCH restore; and the write-side field
-/// order note in SCANNER_PROTOCOL_REFERENCE.md). Once drag-reorder started
-/// writing empty slots, sending lockout=0 for one read back as lockout=1 and
-/// tripped a false `channel_not_persisted`. When we wrote freq 0, accept the
-/// forced lockout=1.
+/// REGRESSION GUARD (#195, #197): writing an empty channel (freq 0) is a no-op
+/// on this hardware — the scanner DISCARDS every programmed field for a slot
+/// with no frequency and re-stamps the fixed factory-empty signature
+/// `,00000000,AUTO,0,2,1,0` (mod=AUTO, tone=0, delay=2, lockout=1, priority=0).
+/// Verified across every empty-channel capture we have: CIN,3 and CIN,10
+/// (docs/wire_captures/2026-05-21/raw.txt + live log), CIN,500 and the DCH
+/// factory-restore (docs/wire_captures/2026-07-08/cin-write-order-probe.txt).
+///
+/// This surfaced once drag-reorder (#195) started pulling empty slots into the
+/// upload write-set. #196 first tolerated only the forced lockout=1; the scanner
+/// also forces delay=2 (and any other field), so a reorder that touched delay
+/// still tripped a false channel_not_persisted (#197). The complete rule: when
+/// we wrote freq 0, accept the read-back iff it IS the factory-empty signature —
+/// don't compare it against what we sent.
 fn readback_matches(wrote: &ChannelData, readback: &ChannelData, wrote_alpha: &str) -> bool {
-    let wrote_empty = wrote.frequency.abs() < 0.00005;
-    let lockout_ok = readback.lockout == wrote.lockout || (wrote_empty && readback.lockout);
+    if wrote.frequency.abs() < 0.00005 {
+        return is_factory_empty(readback);
+    }
     (readback.frequency - wrote.frequency).abs() < 0.00005
         && readback.alpha_tag.trim() == wrote_alpha
         && readback.delay == wrote.delay
-        && lockout_ok
+        && readback.lockout == wrote.lockout
         && readback.priority == wrote.priority
+}
+
+/// The fixed tail the scanner stamps on any channel with no frequency:
+/// delay=2, lockout=1, priority=0, no tone (`...,00000000,AUTO,0,2,1,0`). See
+/// `readback_matches` for the capture citations. Only the tail is checked: the
+/// alpha and modulation slots of an empty channel read back as "AUTO" on this
+/// firmware (parse_cin_response fills alpha_tag="AUTO", modulation="AUTO"), but
+/// those aren't part of the forced-empty invariant — what matters is that the
+/// scanner ignored the delay/lockout/priority we sent and forced these values.
+fn is_factory_empty(ch: &ChannelData) -> bool {
+    ch.frequency.abs() < 0.00005
+        && ch.delay == 2
+        && ch.lockout
+        && !ch.priority
+        && ch.tone_squelch_kind == crate::state::ToneSquelchKind::None
 }
 
 pub(crate) async fn write_channel_to_scanner(
@@ -1733,13 +1754,15 @@ mod tests {
         assert_eq!(payload, "Test Chan,01451300,FM,0,-10,0,1");
     }
 
-    fn empty_channel() -> ChannelData {
-        // Factory-empty state: `,00000000,AUTO,0,2,1,0` — freq 0, lockout on.
+    /// What the scanner reads back for any empty slot: the factory-empty
+    /// signature `AUTO,00000000,AUTO,0,2,1,0` as parse_cin_response produces it
+    /// (alpha_tag="AUTO", delay=2, lockout=1, priority=0, no tone).
+    fn factory_empty_readback() -> ChannelData {
         ChannelData {
-            index: 7,
+            index: 10,
             frequency: 0.0,
             modulation: "AUTO".to_string(),
-            alpha_tag: String::new(),
+            alpha_tag: "AUTO".to_string(),
             delay: 2,
             lockout: true,
             priority: false,
@@ -1750,19 +1773,22 @@ mod tests {
         }
     }
 
-    // REGRESSION GUARD (#195): the scanner forces lockout=1 on any empty
-    // channel (freq 0) — confirmed across captures. We tried to "unlock" an
-    // empty slot pulled into a drag-reorder; the write persisted correctly as
-    // lockout=1, but the verify rejected it as channel_not_persisted. When we
-    // wrote freq 0, a read-back lockout=1 must be accepted regardless of the
-    // lockout we sent.
+    // REGRESSION GUARD (#195, #197): writing an empty channel (freq 0) is a
+    // no-op — the scanner discards every programmed field and re-stamps the
+    // factory-empty signature `,00000000,AUTO,0,2,1,0`. When we wrote freq 0,
+    // the verify must accept the read-back iff it IS that signature, NOT compare
+    // it against what we sent. #196 tolerated only lockout; the scanner also
+    // forces delay=2, so a reorder touching delay still tripped a false
+    // channel_not_persisted (this is the exact CIN,10 live-log case).
     #[test]
-    fn readback_accepts_forced_lockout_on_empty_channel() {
-        // We wrote an empty channel asking for lockout=0; scanner forced 1.
-        let mut wrote = empty_channel();
+    fn readback_accepts_factory_empty_ignoring_sent_delay_and_lockout() {
+        // Live repro: wrote CIN,10,...,0,0,0 (delay 0, lockout 0, prio 0),
+        // scanner forced ...,2,1,0. Both delay AND lockout diverge.
+        let mut wrote = factory_empty_readback();
+        wrote.delay = 0;
         wrote.lockout = false;
-        let readback = empty_channel(); // lockout: true
-        assert!(readback_matches(&wrote, &readback, ""));
+        let readback = factory_empty_readback(); // delay=2, lockout=1
+        assert!(readback_matches(&wrote, &readback, "AUTO"));
     }
 
     #[test]
@@ -1777,13 +1803,14 @@ mod tests {
     }
 
     #[test]
-    fn readback_still_catches_real_field_mismatch() {
-        // Empty-channel tolerance is lockout-only; a delay divergence on an
-        // empty channel is still a genuine failure.
-        let wrote = empty_channel();
-        let mut readback = empty_channel();
+    fn readback_rejects_empty_write_that_did_not_go_factory_empty() {
+        // Freq 0 but the read-back is NOT the factory signature (delay 5) —
+        // something genuinely wrong; do not silently pass it.
+        let mut wrote = factory_empty_readback();
+        wrote.delay = 0;
+        let mut readback = factory_empty_readback();
         readback.delay = 5;
-        assert!(!readback_matches(&wrote, &readback, ""));
+        assert!(!readback_matches(&wrote, &readback, "AUTO"));
     }
 
     // REGRESSION GUARD (#150): /health is documented and referenced by the
