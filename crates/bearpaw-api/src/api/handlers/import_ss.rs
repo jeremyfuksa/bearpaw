@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::state::ChannelData;
+use crate::state::{ChannelData, ToneSquelchKind};
 
 #[derive(Default)]
 pub(crate) struct SsSettings {
@@ -133,8 +133,36 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
     SsConfig { settings: s, channels, errors }
 }
 
-fn parse_ss_channel(_fields: &[&str]) -> Result<Option<ChannelData>, String> {
-    Ok(None)
+fn parse_ss_channel(f: &[&str]) -> Result<Option<ChannelData>, String> {
+    let on = |v: &str| v.eq_ignore_ascii_case("On");
+    let index: u16 = f[1].parse().map_err(|_| "bad C-Freq index".to_string())?;
+    if !(1..=500).contains(&index) {
+        return Err(format!("C-Freq index out of range: {}", index));
+    }
+    let freq_hz: i64 = f[3].parse().map_err(|_| "bad C-Freq frequency".to_string())?;
+    if freq_hz == 0 {
+        return Ok(None); // empty slot
+    }
+    let frequency = freq_hz as f64 / 1_000_000.0;
+    let delay: i8 = f[7].parse().map_err(|_| "bad C-Freq delay".to_string())?;
+    Ok(Some(ChannelData {
+        index,
+        frequency,
+        modulation: f[4].to_uppercase(),
+        alpha_tag: f[2].to_string(),
+        delay,
+        lockout: on(f[6]),
+        priority: on(f[8]),
+        // Tone parsing from the display label is deferred: import writes tone
+        // as "0" (off) in the CIN payload for now. Tone round-trip is tracked
+        // separately — the export label ("100.0"/"DCS 023"/"Srch") would need
+        // reverse decoding to a code. Channels still import with correct
+        // freq/name/mod/delay/lockout/priority.
+        tone_squelch: None,
+        tone_squelch_kind: ToneSquelchKind::None,
+        tone_dcs_code: None,
+        bank: 1,
+    }))
 }
 
 #[cfg(test)]
@@ -201,5 +229,33 @@ mod tests {
         let text = "CloseCall\tPri\tOn\tOff\tOff\n";
         let cfg = parse_ss_config(text);
         assert_eq!(cfg.settings.cc_mode.as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn parses_cfreq_channel() {
+        let line = "C-Freq\t1\tArarat UHF\t145130000\tAUTO\tOff\tOff\t2\tOff";
+        let f: Vec<&str> = line.split('\t').collect();
+        let ch = parse_ss_channel(&f).unwrap().expect("some");
+        assert_eq!(ch.index, 1);
+        assert!((ch.frequency - 145.13).abs() < 0.00005);
+        assert_eq!(ch.alpha_tag, "Ararat UHF");
+        assert_eq!(ch.delay, 2);
+        assert!(!ch.lockout);
+    }
+
+    #[test]
+    fn cfreq_zero_freq_is_empty_slot() {
+        let line = "C-Freq\t6\tAUTO\t0\tAUTO\tOff\tOff\t2\tOff";
+        let f: Vec<&str> = line.split('\t').collect();
+        assert!(parse_ss_channel(&f).unwrap().is_none());
+    }
+
+    #[test]
+    fn cfreq_lockout_priority_on() {
+        let line = "C-Freq\t3\tRepeater\t146940000\tFM\tOff\tOn\t2\tOn";
+        let f: Vec<&str> = line.split('\t').collect();
+        let ch = parse_ss_channel(&f).unwrap().expect("some");
+        assert!(ch.lockout);
+        assert!(ch.priority);
     }
 }
