@@ -208,6 +208,33 @@ After v1.0.0 shipped, a fresh decompile of the official Uniden Sentinel app (`BC
 - **Verdict:** captures win on the *read* side. The write-side order is genuinely unknown for our firmware because Bearpaw doesn't currently write CIN. **Implementing CIN writes requires a write→read-back verification step on this hardware first**, before assuming the reference's claim or assuming the read order applies symmetrically.
 - **RESOLVED 2026-07-08:** the write→read-back probe ran on this hardware (fw 1.06.06) — transcript in `docs/wire_captures/2026-07-08/cin-write-order-probe.txt`, reproducible via `cargo run -p bearpaw-api --example cin_write_probe`. **Write order equals read order** (`name, freq, mod, ctcss, delay, lockout, priority`): a payload with delay-slot=1 / lockout-slot=0 (both legal in either slot) read back as delay=1, lockout=0. The reference's swap claim is wrong for this firmware. Bonus confirmations: an **empty write field means "unchanged"** (empty name left the prior name in place; clear with 16 spaces), tone code 76 round-trips intact, and `DCH,<n>` restores factory-empty state (`,00000000,AUTO,0,2,1,0`).
 
+### Finding — CIN priority is set-only; clear-to-zero is refused (added 2026-07-21)
+
+Priority is a **bank-exclusive** flag ("one priority channel per bank max",
+`SCANNER_PROTOCOL_REFERENCE.md` §"one priority channel per bank"). Behaviour on
+fw 1.06.06, captured live via the running backend's `PUT /memory/channels/<n>`:
+
+- **SET `priority: false → true` WORKS.** CH2 (145.13, "Ararat UHF") wrote
+  `priority=1` and read back `priority: true`. The write returns 200.
+- **CLEAR `priority: true → false` is REFUSED.** CH9 (145.43, "Goose Shit")
+  wrote `priority=0` and read back `priority=1` every time — an isolated single
+  write, a combined lockout+priority clear, all rejected with a false
+  `channel_not_persisted` (the write persisted; the *scanner* forced priority
+  back to 1). Live log: `wrote=CIN,9,...,1,0 read_back=CIN,9,...,1,1`.
+
+Interpretation: the firmware never lets a bank drop to zero priority channels
+through a per-channel CIN write. Priority is **moved** between channels (setting
+one implicitly displaces the bank's previous priority channel), not **removed**
+via `priority=0`. The decompile hints at a separate `PriorityScantList.cs`
+(`BC125AT_PROTOCOL.md` §"file inventory"), so a dedicated clear mechanism may
+exist but is unverified on this hardware.
+
+Consequence for the app: a per-channel priority *toggle* is a lie — it can turn
+on but not off. Surfaced first when drag-reorder (#195) let users edit priority.
+Backend `write_channel_to_scanner` read-back-verify must not crash on a refused
+priority downgrade; UI models priority as one-selectable-per-bank. Tracked in
+the priority-UX redesign (superpowers spec `docs/superpowers/specs/`).
+
 ### Conflict 3 — `DO` direct tune (added 2026-07-08)
 
 - **Our own docs said:** `DO,<freq>,<mod>` direct-tunes the scanner (SCANNER_PROTOCOL_REFERENCE command table; API_SPEC documented `POST /frequency` on top of it). The decompiled reference has no `DO` section at all.
