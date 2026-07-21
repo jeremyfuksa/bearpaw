@@ -198,6 +198,10 @@ pub fn router(state: AppState) -> Router {
             get(handlers::memory::get_memory_channel).put(handlers::memory::put_memory_channel),
         )
         .route(
+            "/api/v1/memory/channels/:index/priority",
+            post(handlers::memory::put_memory_channel_priority),
+        )
+        .route(
             "/api/v1/memory/sync",
             post(handlers::memory::post_memory_sync),
         )
@@ -2168,6 +2172,23 @@ mod tests {
             let body = json_body(response).await;
             assert_eq!(body["error"], "channel_out_of_range");
         }
+    }
+
+    #[tokio::test]
+    async fn priority_endpoint_rejects_out_of_range_index() {
+        let app = router(default_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/channels/999/priority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"priority":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     // REGRESSION GUARD (#143): post_lockout must range-check the channel index.

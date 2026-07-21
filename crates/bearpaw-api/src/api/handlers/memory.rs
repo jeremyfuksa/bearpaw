@@ -116,6 +116,33 @@ pub(crate) async fn put_memory_channel(
     Ok(Json(updated))
 }
 
+#[derive(Deserialize)]
+pub(crate) struct PriorityBody {
+    priority: bool,
+}
+
+#[derive(Serialize)]
+pub(crate) struct PriorityResponse {
+    changed: Vec<ChannelData>,
+}
+
+pub(crate) async fn put_memory_channel_priority(
+    State(state): State<AppState>,
+    Path(index): Path<u16>,
+    Json(body): Json<PriorityBody>,
+) -> Result<Json<PriorityResponse>, ApiError> {
+    if !(1..=500).contains(&index) {
+        return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
+    }
+    let _ = command_sender(&state)?;
+    let changed = if body.priority {
+        super::super::set_channel_priority(&state, index).await?
+    } else {
+        vec![super::super::clear_channel_priority(&state, index).await?]
+    };
+    Ok(Json(PriorityResponse { changed }))
+}
+
 #[derive(Serialize)]
 pub(crate) struct MemorySyncResponse {
     status: String,
