@@ -759,7 +759,7 @@ export function ChannelsTab() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={handleExportCSV}>CSV</DropdownMenuItem>
-                <DropdownMenuItem onSelect={handleExportBc125atSs}>BC125AT (.ss)</DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleExportBc125atSs}>BC125AT</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
