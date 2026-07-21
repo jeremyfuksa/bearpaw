@@ -613,43 +613,53 @@ export function ChannelsTab() {
     }
   };
 
-  const handleImportCSV = async () => {
+  const handleImport = async () => {
     if (isImporting) return;
-    // In Tauri a synthetic <input type=file> opens the picker but its change
-    // event never fires, so nothing imports. pickAndReadFile uses the native
-    // dialog + fs there, and the input element in a browser.
-    const picked = await pickAndReadFile(['csv']);
+    // Accept both formats. In Tauri a synthetic <input type=file> opens the
+    // picker but its change event never fires, so pickAndReadFile uses the
+    // native dialog + fs there, and the input element in a browser.
+    const picked = await pickAndReadFile(['csv', 'bc125at_ss']);
     if (!picked) return;
+
+    // A .ss file restores the WHOLE config (channels + all settings), so it's
+    // more destructive than a CSV channel import — confirm first.
+    const isSs = picked.name.toLowerCase().endsWith('.bc125at_ss');
+    if (isSs) {
+      const ok = await confirmDialog(
+        'Restore full config from this file? This overwrites all channels and settings.',
+        'Restore config',
+      );
+      if (!ok) return;
+    }
 
     setIsImporting(true);
     // Each channel is a separate wire write (~0.2s on this hardware), so a
     // full file takes a minute or two. Set expectations so it doesn't read as
     // frozen; the button also shows "Importing…" and is disabled meanwhile.
-    const toastId = toast.loading('Importing channels — this can take a minute or two…');
+    const toastId = toast.loading(
+      isSs
+        ? 'Restoring config — this can take a minute or two…'
+        : 'Importing channels — this can take a minute or two…',
+    );
     try {
+      const endpoint = isSs
+        ? `${API_BASE}/memory/import/bc125at_ss`
+        : `${API_BASE}/memory/import/csv`;
       const formData = new FormData();
       formData.append('file', new File([picked.bytes as BlobPart], picked.name));
 
-      const response = await fetch(`${API_BASE}/memory/import/csv`, {
-        method: 'POST',
-        body: formData,
-      });
-
+      const response = await fetch(endpoint, { method: 'POST', body: formData });
       if (!response.ok) {
-        throw new Error('Failed to import CSV');
+        throw new Error('Failed to import');
       }
 
       const result = await response.json();
       const { imported, errors } = result;
 
-      if (errors.length > 0) {
-        toast.error(`Imported ${imported} channels with ${errors.length} errors`, {
-          id: toastId,
-          description: `Failed: ${errors
-            .slice(0, 3)
-            .map((e) => (e.row as any).Index || 'unknown')
-            .join(', ')}${errors.length > 3 ? '...' : ''}`,
-        });
+      if (errors && errors.length > 0) {
+        toast.error(`Imported ${imported} — ${errors.length} item(s) failed`, { id: toastId });
+      } else if (isSs) {
+        toast.success(`Config restored (${imported} channels)`, { id: toastId });
       } else {
         toast.success(`Imported ${imported} channels successfully`, { id: toastId });
       }
@@ -657,8 +667,8 @@ export function ChannelsTab() {
       const updatedChannels = await api.getChannels();
       setChannels(updatedChannels);
     } catch (error) {
-      console.error('Failed to import CSV', error);
-      toast.error('Failed to import channels', { id: toastId });
+      console.error('Failed to import', error);
+      toast.error('Failed to import', { id: toastId });
     } finally {
       setIsImporting(false);
     }
@@ -723,11 +733,11 @@ export function ChannelsTab() {
               Clear Selected
             </button>
             <button
-              onClick={handleImportCSV}
+              onClick={handleImport}
               disabled={isImporting}
               className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {isImporting ? 'Importing…' : 'Import CSV'}
+              {isImporting ? 'Importing…' : 'Import'}
             </button>
             <button
               onClick={handleExportCSV}

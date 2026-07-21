@@ -7,7 +7,7 @@ import { createTestChannel, createTestChannelDraft } from '../../../../test/fixt
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import { createMockStore } from '../../../../test/mocks/mockStore';
 import { useStore } from '../../../../store/useStore';
-import { saveExport, pickAndReadFile } from '../../../../tauri-shell';
+import { saveExport, pickAndReadFile, confirmDialog } from '../../../../tauri-shell';
 import type { ChannelData } from '../../../../types';
 
 vi.mock('sonner', () => ({
@@ -46,6 +46,10 @@ describe('ChannelsTab', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks wipes the `.mockResolvedValue(true)` set in the vi.mock
+    // factory, leaving confirmDialog returning undefined. Re-establish the
+    // "confirmed" default so tests that don't override it get a yes.
+    vi.mocked(confirmDialog).mockResolvedValue(true);
     mockApiClient = createMockApiClient();
     mockChannels = [
       createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Channel 1' }),
@@ -211,39 +215,78 @@ describe('ChannelsTab', () => {
     });
   });
 
-  describe('Import CSV', () => {
+  describe('Import', () => {
     const pickedCsv = () => ({
       name: 'channels.csv',
       bytes: new TextEncoder().encode('a,b'),
     });
-
-    it('should prompt for a file when import button clicked', async () => {
-      vi.mocked(pickAndReadFile).mockResolvedValue(null); // user cancels
-      render(<ChannelsTab />);
-      const importButton = screen.getByRole('button', { name: /Import CSV/i });
-      await userEvent.click(importButton);
-
-      expect(pickAndReadFile).toHaveBeenCalledWith(['csv']);
+    const pickedSs = () => ({
+      name: 'scanner.bc125at_ss',
+      bytes: new TextEncoder().encode('Misc\tK+S'),
     });
 
-    it('should show success toast on successful import', async () => {
+    it('should prompt for a csv or ss file when import button clicked', async () => {
+      vi.mocked(pickAndReadFile).mockResolvedValue(null); // user cancels
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
+
+      expect(pickAndReadFile).toHaveBeenCalledWith(['csv', 'bc125at_ss']);
+    });
+
+    it('should dispatch a .csv file to the csv import endpoint', async () => {
       vi.mocked(pickAndReadFile).mockResolvedValue(pickedCsv());
-      const mockResponse = {
+      const fetchSpy = vi.fn().mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue({ imported: 1, errors: [] }),
-      };
-      global.fetch = vi.fn().mockResolvedValue(mockResponse as unknown as Response);
-      mockApiClient.getChannels = vi
-        .fn()
-        .mockResolvedValue([...mockChannels, createTestChannel({ index: 2 })]);
+      });
+      global.fetch = fetchSpy as unknown as typeof fetch;
+      mockApiClient.getChannels = vi.fn().mockResolvedValue(mockChannels);
 
       render(<ChannelsTab />);
-      const importButton = screen.getByRole('button', { name: /Import CSV/i });
-      await userEvent.click(importButton);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
 
       await waitFor(() => {
-        expect(toast.success).toHaveBeenCalled();
+        expect(fetchSpy).toHaveBeenCalledWith(
+          expect.stringContaining('/memory/import/csv'),
+          expect.objectContaining({ method: 'POST' }),
+        );
       });
+      expect(toast.success).toHaveBeenCalled();
+    });
+
+    it('should dispatch a .bc125at_ss file to the ss import endpoint after confirm', async () => {
+      vi.mocked(pickAndReadFile).mockResolvedValue(pickedSs());
+      vi.mocked(confirmDialog).mockResolvedValue(true);
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ imported: 0, settings_applied: 1, errors: [] }),
+      });
+      global.fetch = fetchSpy as unknown as typeof fetch;
+      mockApiClient.getChannels = vi.fn().mockResolvedValue(mockChannels);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
+
+      await waitFor(() => {
+        expect(confirmDialog).toHaveBeenCalled();
+        expect(fetchSpy).toHaveBeenCalledWith(
+          expect.stringContaining('/memory/import/bc125at_ss'),
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
+    });
+
+    it('should not import a .ss file when the confirm is declined', async () => {
+      vi.mocked(pickAndReadFile).mockResolvedValue(pickedSs());
+      vi.mocked(confirmDialog).mockResolvedValue(false);
+      const fetchSpy = vi.fn();
+      global.fetch = fetchSpy as unknown as typeof fetch;
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
+
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('should show error toast on failed import', async () => {
@@ -252,8 +295,7 @@ describe('ChannelsTab', () => {
       mockApiClient.getChannels = vi.fn().mockRejectedValue(new Error('Import failed'));
 
       render(<ChannelsTab />);
-      const importButton = screen.getByRole('button', { name: /Import CSV/i });
-      await userEvent.click(importButton);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalled();
