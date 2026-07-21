@@ -1444,6 +1444,25 @@ pub(crate) fn build_cin_write_payload(channel: &ChannelData) -> Result<String, A
     ))
 }
 
+/// Write one channel without the per-channel read-back verify, for bulk
+/// import. The caller MUST already hold a `ProgramModeGuard` — this sends only
+/// `CIN,<idx>,...` and checks the reply, matching Uniden Sentinel's bulk-write
+/// path (one wire command per channel). Correctness is recovered by a single
+/// full read-back after the whole import, not per channel — 500 inline
+/// read-backs are what made import take ~8 minutes instead of ~30 seconds.
+pub(crate) async fn write_channel_no_readback(
+    state: &AppState,
+    channel: &ChannelData,
+) -> Result<(), ApiError> {
+    let payload = build_cin_write_payload(channel)?;
+    let write_cmd = format!("CIN,{},{}", channel.index, payload);
+    match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
+        ScannerReply::Ok => Ok(()),
+        ScannerReply::Ng => Err(ApiError::BadRequest("channel_write_wrong_mode".to_string())),
+        _ => Err(ApiError::BadRequest("channel_write_rejected".to_string())),
+    }
+}
+
 pub(crate) async fn write_channel_to_scanner(
     state: &AppState,
     channel: &ChannelData,

@@ -8,8 +8,8 @@ use crate::state::{ChannelData, ToneSquelchKind};
 
 use super::super::security::validate_wire_field;
 use super::super::{
-    command_sender, csv_escape, flags_to_bools, on_off, send_raw_command,
-    split_command_parts, write_channel_to_scanner, ApiError, AppState, ProgramModeGuard,
+    command_sender, csv_escape, flags_to_bools, on_off, send_raw_command, split_command_parts,
+    write_channel_no_readback, ApiError, AppState, ProgramModeGuard,
 };
 
 pub(crate) async fn export_bc125at_ss_file(
@@ -370,34 +370,84 @@ pub(crate) async fn import_csv(
         .has_headers(true)
         .from_reader(bytes.as_slice());
 
+    // Parse every row up front. Rows that fail to parse are recorded as errors
+    // now; only the valid payloads reach the wire. Knowing the total lets us
+    // stream a meaningful "N/total" progress percent.
+    let mut writes: Vec<(HashMap<String, String>, ChannelData)> = Vec::new();
     for result in rdr.deserialize::<HashMap<String, String>>() {
         match result {
             Ok(row) => match parse_import_csv_row(&row) {
-                Ok(payload) => {
-                    if let Err(err) = write_channel_to_scanner(&state, &payload).await {
-                        errors.push(json!({ "row": row, "error": format!("{:?}", err) }));
-                        continue;
-                    }
+                Ok(Some(payload)) => writes.push((row, payload)),
+                Ok(None) => {} // empty slot (frequency 0) — skip, not an error
+                Err(err) => errors.push(json!({ "row": row, "error": err })),
+            },
+            Err(err) => errors.push(json!({ "row": {}, "error": err.to_string() })),
+        }
+    }
+
+    // Hold ONE program-mode bracket for the whole import and write each
+    // channel with a single CIN command, trusting the scanner's CIN,OK reply
+    // (which is a real acknowledgement — a rejected write returns NG/ERR and
+    // is caught as an error). This matches Uniden Sentinel's bulk-write path.
+    //
+    // The previous code opened its own PRG/EPG per channel AND read every
+    // write back inline (4 wire commands each), so a 500-row file took ~8
+    // minutes and looked frozen. This is 1 command/channel. On this hardware
+    // (~210ms/wire-command, per docs/wire_captures) a full ~355-channel file
+    // lands in ~75-80s; the wire latency is the floor, not the command count.
+    // Progress is streamed over the WS.
+    let total = writes.len();
+    {
+        let _prg = ProgramModeGuard::enter(&state).await?;
+        for (n, (row, payload)) in writes.into_iter().enumerate() {
+            // Retry a failed write once. A single dropped CIN,OK (transient
+            // wire hiccup under load) would otherwise permanently fail one
+            // channel; the protocol's timeout policy is "retry once, then
+            // fail". Only genuine rejections (NG/ERR twice) become errors.
+            let mut result = write_channel_no_readback(&state, &payload).await;
+            if result.is_err() {
+                result = write_channel_no_readback(&state, &payload).await;
+            }
+            match result {
+                Ok(()) => {
+                    imported += 1;
                     state
                         .shadow
                         .write()
                         .unwrap()
                         .channels
                         .insert(payload.index, payload);
-                    imported += 1;
                 }
-                Err(err) => {
-                    errors.push(json!({ "row": row, "error": err }));
-                }
-            },
-            Err(err) => errors.push(json!({ "row": {}, "error": err.to_string() })),
+                Err(err) => errors.push(json!({ "row": row, "error": format!("{:?}", err) })),
+            }
+            if total > 0 && (n + 1) % 10 == 0 {
+                let percent = ((n + 1) * 99 / total) as u8;
+                import_progress(&state, percent, &format!("Importing {}/{}", n + 1, total));
+            }
         }
     }
+    import_progress(&state, 100, "Import complete");
 
     Ok(Json(json!({ "imported": imported, "errors": errors })))
 }
 
-fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, String> {
+/// Broadcast import progress over the WebSocket, mirroring the memory-sync
+/// `progress` shape so the frontend's existing progress handler can display it.
+fn import_progress(state: &AppState, percent: u8, message: &str) {
+    let msg = json!({
+        "type": "progress",
+        "task_id": "import-csv",
+        "percent": percent,
+        "message": message,
+    });
+    let _ = state.ws_tx.send(msg.to_string());
+}
+
+/// Parse one CSV row. `Ok(None)` means an empty channel slot (frequency 0) —
+/// the CSV export writes every one of the 500 slots including empties, so a
+/// re-import must treat freq-0 as "skip", not an error. `Ok(Some(_))` is a
+/// channel to write; `Err` is a genuinely malformed row.
+fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<Option<ChannelData>, String> {
     let parse_bool = |v: &str| -> bool { v.trim().eq_ignore_ascii_case("true") };
 
     let index: u16 = row
@@ -414,6 +464,10 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         .ok_or_else(|| "Missing Frequency".to_string())?
         .parse()
         .map_err(|_| "Invalid frequency".to_string())?;
+    // Frequency 0 is how the export represents an empty slot — skip it.
+    if frequency == 0.0 {
+        return Ok(None);
+    }
     if !(25.0..=1300.0).contains(&frequency) {
         return Err(format!("Invalid frequency: {}", frequency));
     }
@@ -468,7 +522,7 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         return Err("Modulation contains invalid characters".to_string());
     }
 
-    Ok(ChannelData {
+    Ok(Some(ChannelData {
         index,
         frequency,
         modulation,
@@ -480,5 +534,57 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<ChannelData, St
         tone_squelch_kind,
         tone_dcs_code: None,
         bank,
-    })
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn parse_valid_row_returns_channel() {
+        let r = row(&[
+            ("Index", "5"),
+            ("Frequency", "145.13"),
+            ("Modulation", "AUTO"),
+            ("Alpha Tag", "Test"),
+            ("Delay", "2"),
+            ("Lockout", "false"),
+            ("Priority", "false"),
+            ("Bank", "1"),
+        ]);
+        let ch = parse_import_csv_row(&r).unwrap().expect("should be Some");
+        assert_eq!(ch.index, 5);
+        assert!((ch.frequency - 145.13).abs() < 0.00005);
+        assert_eq!(ch.alpha_tag, "Test");
+    }
+
+    #[test]
+    fn parse_empty_slot_is_skipped_not_error() {
+        // Frequency 0 is how the export marks an empty slot — must be Ok(None),
+        // NOT an error. Regression guard for the "hundreds of import errors"
+        // bug where re-importing an exported file failed on every empty channel.
+        let r = row(&[("Index", "6"), ("Frequency", "0")]);
+        assert!(parse_import_csv_row(&r).unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_out_of_band_frequency_is_error() {
+        // A non-zero frequency outside 25–1300 MHz is genuinely malformed.
+        let r = row(&[("Index", "6"), ("Frequency", "9999")]);
+        assert!(parse_import_csv_row(&r).is_err());
+    }
+
+    #[test]
+    fn parse_bad_index_is_error() {
+        let r = row(&[("Index", "501"), ("Frequency", "145.13")]);
+        assert!(parse_import_csv_row(&r).is_err());
+    }
 }
