@@ -6,7 +6,6 @@ export interface Preferences {
   displayMode: 'frequency' | 'alpha';
   reducedMotion: boolean;
   hitMinDuration: number;
-  autoConnect: boolean;
   checkUpdates: boolean;
   dataRetentionDays: number;
   audioOutputDevice: string;
@@ -61,7 +60,6 @@ const defaultPreferences: Preferences = {
   displayMode: 'frequency',
   reducedMotion: false,
   hitMinDuration: 2,
-  autoConnect: false,
   checkUpdates: true,
   dataRetentionDays: 30,
   audioOutputDevice: 'default',

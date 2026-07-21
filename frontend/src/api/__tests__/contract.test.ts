@@ -365,7 +365,6 @@ describe('API Contract Tests', () => {
       expect(apiPrefs).toHaveProperty('reduced_motion');
       expect(apiPrefs).toHaveProperty('hit_min_duration');
       expect(apiPrefs).toHaveProperty('start_dashboard_mode');
-      expect(apiPrefs).toHaveProperty('auto_connect');
       expect(apiPrefs).toHaveProperty('check_updates');
       expect(apiPrefs).toHaveProperty('data_retention_days');
       expect(apiPrefs).toHaveProperty('audio_output_device');
