@@ -43,10 +43,9 @@ interface SearchRange {
 // (see default_preferences() in api/mod.rs). Map every key that differs so
 // saved values round-trip through App.tsx's snake_case load path. A missing
 // entry silently falls back to the camelCase key via `?? key`, saving under a
-// key nobody reads back — the setting then looks non-persistent (#autoConnect).
+// key nobody reads back — the setting then looks non-persistent.
 export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   hitMinDuration: 'hit_min_duration',
-  autoConnect: 'auto_connect',
   checkUpdates: 'check_updates',
   dataRetentionDays: 'data_retention_days',
 };
@@ -1459,21 +1458,6 @@ export function DeviceTab() {
                   <Settings className="w-4 h-4 text-white/50" /> General
                 </h3>
                 <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">
-                        Auto-Connect on Startup
-                      </label>
-                      <p className="text-xs text-white/40">
-                        Automatically connect to the last used device
-                      </p>
-                    </div>
-                    <Switch
-                      checked={preferences.autoConnect}
-                      onCheckedChange={(checked) => handlePreferenceChange('autoConnect', checked)}
-                    />
-                  </div>
-
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <label className="text-sm font-medium text-white">Hit Minimum Duration</label>
