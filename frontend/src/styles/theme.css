@@ -489,3 +489,19 @@
     background-color: var(--color-heatmap-5);
   }
 }
+
+@keyframes sync-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sync-spinner__spin {
+  animation: sync-spinner-rotate 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-spinner__spin {
+    animation: none;
+  }
+}

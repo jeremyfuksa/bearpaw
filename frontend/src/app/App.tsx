@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
-import { BearpawProgress } from './components/BearpawProgress';
+import { SyncSpinner } from './components/SyncSpinner';
 import { cn } from '../lib/utils';
 import { StatusBar } from './components/ScannerUI';
 import { getAPI, API_BASE } from '../api/useApi';
@@ -977,7 +977,7 @@ export default function App() {
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
           >
             <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-white/10 bg-scanner-bg-dark p-6 shadow-lg">
-              <BearpawProgress percent={sync.percent} size={96} />
+              <SyncSpinner percent={sync.percent} size={56} />
               <div className="flex flex-col items-center gap-1">
                 <span className="text-sm font-medium text-white">Syncing Scanner Memory</span>
                 <span className="font-mono text-xs text-scanner-text-secondary">
