@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { SyncSpinner } from './components/SyncSpinner';
+import { ImportProgressOverlay } from './components/ImportProgressOverlay';
 import { cn } from '../lib/utils';
 import { StatusBar } from './components/ScannerUI';
 import { getAPI, API_BASE } from '../api/useApi';
@@ -79,6 +80,8 @@ export default function App() {
   const setBanks = useStore((state) => state.setBanks);
   const sync = useStore((state) => state.sync);
   const updateSync = useStore((state) => state.updateSync);
+  const importProgress = useStore((state) => state.importProgress);
+  const setImportProgress = useStore((state) => state.setImportProgress);
   const isMemorySyncing = sync.inProgress;
   const syncProgressMessage = sync.message;
 
@@ -217,6 +220,22 @@ export default function App() {
 
     const unsubscribeProgress = ws.on('progress', (message) => {
       const payload = message as ProgressMessage;
+
+      // Import progress (task_id "import-csv"/"import-ss") drives the SEPARATE
+      // importProgress overlay state and must NEVER fall through to the
+      // regression-guarded memory-sync logic below. The overlay's `active`
+      // flag is set/cleared by handleImport (start/finally); here we only feed
+      // it live percent + message. The early return is load-bearing.
+      if (payload.task_id?.startsWith('import')) {
+        const patch: { percent?: number; message?: string } = {};
+        if (typeof payload.percent === 'number' && Number.isFinite(payload.percent)) {
+          patch.percent = Math.max(0, Math.min(100, payload.percent));
+        }
+        if (payload.message) patch.message = payload.message;
+        setImportProgress(patch);
+        return;
+      }
+
       // ONLY trust the explicit completion text. The backend sends
       // `progress(100, "Exiting program mode...")` BEFORE finish() clears
       // sync_task_id, then `progress(100, "Sync complete")` after.
@@ -341,6 +360,7 @@ export default function App() {
     setDeviceInfo,
     updateLiveState,
     updateSync,
+    setImportProgress,
     ws,
   ]);
 
@@ -1009,6 +1029,12 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ImportProgressOverlay
+        active={importProgress.active}
+        percent={importProgress.percent}
+        message={importProgress.message}
+      />
     </div>
   );
 }

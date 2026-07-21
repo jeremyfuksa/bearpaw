@@ -311,8 +311,8 @@ describe('ChannelsTab', () => {
       } as unknown as Response);
 
       render(<ChannelsTab />);
-      const exportButton = screen.getByRole('button', { name: /Export CSV/i });
-      await userEvent.click(exportButton);
+      await userEvent.click(screen.getByRole('button', { name: /Export/i }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: /^CSV$/i }));
 
       await waitFor(() => {
         expect(saveExport).toHaveBeenCalledWith('channels.csv', expect.any(Uint8Array));
@@ -323,8 +323,8 @@ describe('ChannelsTab', () => {
       global.fetch = vi.fn().mockResolvedValue({ ok: false } as Response);
 
       render(<ChannelsTab />);
-      const exportButton = screen.getByRole('button', { name: /Export CSV/i });
-      await userEvent.click(exportButton);
+      await userEvent.click(screen.getByRole('button', { name: /Export/i }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: /^CSV$/i }));
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith('Failed to export channels');

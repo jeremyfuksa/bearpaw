@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { Search, Lock, Edit3, GripVertical } from 'lucide-react';
+import { Search, Lock, Edit3, GripVertical, ChevronDown } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
@@ -175,6 +181,7 @@ export function ChannelsTab() {
   const memoryDrafts = useStore((state) => state.memoryDrafts);
   const setMemoryDraft = useStore((state) => state.setMemoryDraft);
   const setChannels = useStore((state) => state.setChannels);
+  const setImportProgress = useStore((state) => state.setImportProgress);
 
   const [activeBank, setActiveBank] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
@@ -633,14 +640,15 @@ export function ChannelsTab() {
     }
 
     setIsImporting(true);
-    // Each channel is a separate wire write (~0.2s on this hardware), so a
-    // full file takes a minute or two. Set expectations so it doesn't read as
-    // frozen; the button also shows "Importing…" and is disabled meanwhile.
-    const toastId = toast.loading(
-      isSs
-        ? 'Restoring config — this can take a minute or two…'
-        : 'Importing channels — this can take a minute or two…',
-    );
+    // A full import is ~80s of wire writes. Show the blocking progress overlay
+    // (driven live by the backend's import-* WS messages) rather than a static
+    // toast. The overlay's `active` flag is owned here; percent/message come
+    // over the WS. Cleared in `finally`.
+    setImportProgress({
+      active: true,
+      percent: 0,
+      message: isSs ? 'Restoring config…' : 'Importing channels…',
+    });
     try {
       const endpoint = isSs
         ? `${API_BASE}/memory/import/bc125at_ss`
@@ -657,20 +665,21 @@ export function ChannelsTab() {
       const { imported, errors } = result;
 
       if (errors && errors.length > 0) {
-        toast.error(`Imported ${imported} — ${errors.length} item(s) failed`, { id: toastId });
+        toast.error(`Imported ${imported} — ${errors.length} item(s) failed`);
       } else if (isSs) {
-        toast.success(`Config restored (${imported} channels)`, { id: toastId });
+        toast.success(`Config restored (${imported} channels)`);
       } else {
-        toast.success(`Imported ${imported} channels successfully`, { id: toastId });
+        toast.success(`Imported ${imported} channels successfully`);
       }
 
       const updatedChannels = await api.getChannels();
       setChannels(updatedChannels);
     } catch (error) {
       console.error('Failed to import', error);
-      toast.error('Failed to import', { id: toastId });
+      toast.error('Failed to import');
     } finally {
       setIsImporting(false);
+      setImportProgress({ active: false, percent: 0, message: '' });
     }
   };
 
@@ -739,19 +748,19 @@ export function ChannelsTab() {
             >
               {isImporting ? 'Importing…' : 'Import'}
             </button>
-            <button
-              onClick={handleExportCSV}
-              className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider"
-            >
-              Export CSV
-            </button>
-            <button
-              onClick={handleExportBc125atSs}
-              disabled={isExportingSs}
-              className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {isExportingSs ? 'Exporting…' : 'BC125AT (.ss)'}
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={isExportingSs}
+                className="scanner-button-primary flex items-center gap-1.5 px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isExportingSs ? 'Exporting…' : 'Export'}
+                <ChevronDown className="size-3.5" aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={handleExportCSV}>CSV</DropdownMenuItem>
+                <DropdownMenuItem onSelect={handleExportBc125atSs}>BC125AT (.ss)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
