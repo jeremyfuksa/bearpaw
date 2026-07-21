@@ -19,7 +19,6 @@ interface StatusBarProps {
   connectionStatus: 'connected' | 'connecting' | 'disconnected';
   modelName?: string;
   shellStatusText?: string | null;
-  currentFrequency?: number | null;
   currentTab: string;
   sessionStats?: StatusBarSessionStats | null;
 }
@@ -48,15 +47,10 @@ export function StatusBar({
   connectionStatus,
   modelName = 'BC125AT',
   shellStatusText,
-  currentFrequency,
   currentTab,
   sessionStats,
 }: StatusBarProps) {
   const { statusColor, statusText } = getStatusDisplay(connectionStatus, modelName);
-  const freqText =
-    typeof currentFrequency === 'number' && currentFrequency > 0
-      ? `${currentFrequency.toFixed(3)} MHz`
-      : null;
 
   return (
     <div
@@ -95,9 +89,6 @@ export function StatusBar({
               </span>
             </span>
           </div>
-        ) : null}
-        {freqText ? (
-          <p className="font-mono font-medium scanner-text-light text-xs text-nowrap">{freqText}</p>
         ) : null}
         {shellStatusText ? (
           <p className="font-sans text-[length:var(--size-shell-status-text)] font-normal text-nowrap text-white/40">
