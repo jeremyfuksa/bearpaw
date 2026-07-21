@@ -1639,7 +1639,16 @@ pub(crate) async fn clear_channel_priority(
     index: u16,
 ) -> Result<ChannelData, ApiError> {
     let _guard = ProgramModeGuard::enter(state).await?;
+    clear_channel_priority_locked(state, index).await
+}
 
+/// Body of `clear_channel_priority`, assuming the caller already holds a
+/// `ProgramModeGuard`. Does NOT enter one itself — used by `set_channel_priority`
+/// so the clear-old + set-new swap runs inside a single bracket instead of two.
+async fn clear_channel_priority_locked(
+    state: &AppState,
+    index: u16,
+) -> Result<ChannelData, ApiError> {
     // 1. Read the full channel first. Never DCH an unread channel.
     let current = read_channel_from_scanner(state, index).await?;
 
@@ -1703,21 +1712,22 @@ pub(crate) async fn set_channel_priority(
         plan_priority_swap(&shadow.channels, index)
     };
 
+    let _guard = ProgramModeGuard::enter(state).await?; // ONE bracket for the whole swap
     let mut changed = Vec::new();
 
-    // REGRESSION GUARD (priority swap atomicity): clear the OLD priority
-    // channel before setting the new one, and propagate the clear's error
-    // with `?` so a failed clear ABORTS the swap. Setting first (or ignoring
-    // the clear error) can leave a bank with two priority channels, or delete
-    // a channel via DCH and never restore it. See the priority spec.
+    // REGRESSION GUARD (priority swap atomicity): clear the OLD priority channel
+    // BEFORE setting the new one, inside a SINGLE program-mode bracket, and
+    // propagate the clear's error with `?` so a failed clear ABORTS the swap.
+    // Setting first, ignoring the clear error, or dropping/re-entering the guard
+    // between clear and set can leave a bank with two priority channels, a
+    // DCH-deleted channel, or an interleaved command mid-swap. See the priority spec.
     if let Some(old) = old_to_clear {
-        let cleared = clear_channel_priority(state, old).await?;
+        let cleared = clear_channel_priority_locked(state, old).await?; // locked: no inner guard
         state.shadow.write().unwrap().channels.insert(old, cleared.clone());
         changed.push(cleared);
     }
 
     // Set the new priority channel with a plain CIN write (SET works in place).
-    let _guard = ProgramModeGuard::enter(state).await?;
     let current = read_channel_from_scanner(state, new_to_set).await?;
     if current.frequency.abs() < 0.00005 {
         return Err(ApiError::BadRequest("priority_set_empty_channel".to_string()));
@@ -2321,5 +2331,23 @@ mod tests {
         // Bank with no current priority: nothing to clear.
         let empty = HashMap::new();
         assert_eq!(plan_priority_swap(&empty, 9), (None, 9));
+    }
+
+    #[test]
+    fn priority_swap_aborts_when_clear_fails() {
+        // Atomicity contract: the swap clears the OLD priority channel before
+        // setting the new one, so a failed clear (propagated via `?`) aborts
+        // before the new channel is ever written. plan_priority_swap must
+        // therefore identify the old-to-clear target; if it returned None when an
+        // old exists, the clear (and its abort-on-failure) would be skipped.
+        use std::collections::HashMap;
+        let mut ch = HashMap::new();
+        let mut c2 = test_channel();
+        c2.index = 2;
+        c2.priority = true;
+        ch.insert(2, c2);
+        let (old, new) = plan_priority_swap(&ch, 9);
+        assert_eq!(old, Some(2), "old priority channel must be identified so a failed clear can abort the swap");
+        assert_eq!(new, 9);
     }
 }
