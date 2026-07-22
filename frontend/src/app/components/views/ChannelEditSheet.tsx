@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { cn } from '../../../lib/utils';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -150,180 +149,208 @@ export function ChannelEditSheet({
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50"
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      {/* Radix Dialog supplies role="dialog", aria-modal, focus trap + restore,
+          and Escape-to-close (a11y C1–C4). The neutralizing utilities
+          (max-w-none / gap-0 / p-0 + re-asserted centering) override
+          DialogContent's own grid/padding/sm:max-w-lg so the scanner-modal
+          sizing wins — twMerge can't dedupe against the opaque custom class. */}
+      <DialogContent className="scanner-modal w-[var(--layout-modal-channel-width)] max-w-none translate-x-[-50%] translate-y-[-50%] gap-0 rounded-t-xl border-white/10 p-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <DialogTitle className="text-lg font-bold text-white">
+            Edit Channel {channel.index}
+          </DialogTitle>
+        </div>
+
+        <form className="flex-1 overflow-y-auto p-6 space-y-4" onSubmit={(e) => e.preventDefault()}>
+          <div className="space-y-2">
+            <label htmlFor="channel-edit-frequency" className="text-xs font-medium text-white/70">
+              Frequency (MHz)
+            </label>
+            <input
+              id="channel-edit-frequency"
+              type="text"
+              inputMode="decimal"
+              aria-label="Frequency"
+              aria-invalid={errors.frequency ? true : undefined}
+              aria-describedby={errors.frequency ? 'channel-edit-frequency-error' : undefined}
+              value={localDraft.frequency}
+              onChange={(e) => handleFieldChange('frequency', e.target.value)}
+              className={cn(
+                'scanner-input w-full px-3 py-2 text-sm',
+                errors.frequency ? 'border-red-500' : 'border-white/10 focus:border-brand-primary',
+              )}
+            />
+            {errors.frequency && (
+              <p id="channel-edit-frequency-error" role="alert" className="text-xs text-red-400">
+                {errors.frequency}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="channel-edit-alpha-tag" className="text-xs font-medium text-white/70">
+              Alpha Tag
+            </label>
+            <input
+              id="channel-edit-alpha-tag"
+              type="text"
+              aria-label="Alpha Tag"
+              value={localDraft.alpha_tag}
+              onChange={(e) => handleFieldChange('alpha_tag', e.target.value)}
+              maxLength={16}
+              className="scanner-input w-full px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="channel-edit-modulation" className="text-xs font-medium text-white/70">
+              Modulation
+            </label>
+            <Select
+              value={localDraft.modulation}
+              onValueChange={(value) => handleFieldChange('modulation', value)}
+            >
+              {/* Radix Select is a non-native control: htmlFor gives the label a
+                  click target, but aria-label is the authoritative name. */}
+              <SelectTrigger
+                id="channel-edit-modulation"
+                aria-label="Modulation"
+                className="scanner-input h-10 w-full text-sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="scanner-select-content">
+                {['AUTO', 'FM', 'AM', 'NFM'].map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="channel-edit-tone" className="text-xs font-medium text-white/70">
+              Tone Squelch (CTCSS Hz)
+            </label>
+            <input
+              id="channel-edit-tone"
+              type="text"
+              inputMode="decimal"
+              aria-label="Tone Squelch"
+              aria-invalid={errors.tone_squelch ? true : undefined}
+              aria-describedby={errors.tone_squelch ? 'channel-edit-tone-error' : undefined}
+              value={localDraft.tone_squelch}
+              onChange={(e) => handleFieldChange('tone_squelch', e.target.value)}
+              placeholder="—"
+              className={cn(
+                'scanner-input w-full px-3 py-2 text-sm',
+                errors.tone_squelch
+                  ? 'border-red-500'
+                  : 'border-white/10 focus:border-brand-primary',
+              )}
+            />
+            {errors.tone_squelch && (
+              <p id="channel-edit-tone-error" role="alert" className="text-xs text-red-400">
+                {errors.tone_squelch}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="channel-edit-delay" className="text-xs font-medium text-white/70">
+              Delay (seconds)
+            </label>
+            <Select
+              value={localDraft.delay}
+              onValueChange={(value) => handleFieldChange('delay', value)}
+            >
+              <SelectTrigger
+                id="channel-edit-delay"
+                aria-label="Delay"
+                className="scanner-input h-10 w-full text-sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="scanner-select-content">
+                {DELAY_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.delay && (
+              <p role="alert" className="text-xs text-red-400">
+                {errors.delay}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="channel-edit-lockout"
+                  aria-label="Lockout"
+                  checked={localDraft.lockout}
+                  onCheckedChange={(checked) => handleFieldChange('lockout', checked)}
+                  className="data-[state=checked]:bg-brand-primary"
+                />
+                <label htmlFor="channel-edit-lockout" className="text-xs font-medium text-white/70">
+                  Lockout
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="channel-edit-priority"
+                  aria-label="Priority"
+                  checked={priorityChecked}
+                  onCheckedChange={onPriorityChange}
+                  className="data-[state=checked]:bg-brand-primary"
+                />
+                <label
+                  htmlFor="channel-edit-priority"
+                  className="text-xs font-medium text-white/70"
+                >
+                  Priority
+                </label>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-white/10 shrink-0">
+          <button
+            type="button"
             onClick={onClose}
-          />
-          <motion.div
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: '0%', opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
-            transition={{
-              type: 'spring',
-              damping: 25,
-              stiffness: 300,
-            }}
-            className="scanner-modal w-[var(--layout-modal-channel-width)] rounded-t-xl"
+            className="scanner-button-muted flex-1 py-2.5 text-xs font-bold uppercase tracking-wider"
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h3 className="text-lg font-bold text-white">Edit Channel {channel.index}</h3>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="text-white/50 hover:text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-white/70">Frequency (MHz)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  aria-label="Frequency"
-                  value={localDraft.frequency}
-                  onChange={(e) => handleFieldChange('frequency', e.target.value)}
-                  className={cn(
-                    'scanner-input w-full px-3 py-2 text-sm',
-                    errors.frequency
-                      ? 'border-red-500'
-                      : 'border-white/10 focus:border-brand-primary',
-                  )}
-                />
-                {errors.frequency && <p className="text-xs text-red-400">{errors.frequency}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-white/70">Alpha Tag</label>
-                <input
-                  type="text"
-                  aria-label="Alpha Tag"
-                  value={localDraft.alpha_tag}
-                  onChange={(e) => handleFieldChange('alpha_tag', e.target.value)}
-                  maxLength={16}
-                  className="scanner-input w-full px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-white/70">Modulation</label>
-                <Select
-                  value={localDraft.modulation}
-                  onValueChange={(value) => handleFieldChange('modulation', value)}
-                >
-                  <SelectTrigger
-                    aria-label="Modulation"
-                    className="scanner-input h-10 w-full text-sm"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="scanner-select-content">
-                    {['AUTO', 'FM', 'AM', 'NFM'].map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-white/70">Tone Squelch (CTCSS Hz)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  aria-label="Tone Squelch"
-                  value={localDraft.tone_squelch}
-                  onChange={(e) => handleFieldChange('tone_squelch', e.target.value)}
-                  placeholder="—"
-                  className={cn(
-                    'scanner-input w-full px-3 py-2 text-sm',
-                    errors.tone_squelch
-                      ? 'border-red-500'
-                      : 'border-white/10 focus:border-brand-primary',
-                  )}
-                />
-                {errors.tone_squelch && (
-                  <p className="text-xs text-red-400">{errors.tone_squelch}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-white/70">Delay (seconds)</label>
-                <Select
-                  value={localDraft.delay}
-                  onValueChange={(value) => handleFieldChange('delay', value)}
-                >
-                  <SelectTrigger aria-label="Delay" className="scanner-input h-10 w-full text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="scanner-select-content">
-                    {DELAY_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.delay && <p className="text-xs text-red-400">{errors.delay}</p>}
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      aria-label="Lockout"
-                      checked={localDraft.lockout}
-                      onCheckedChange={(checked) => handleFieldChange('lockout', checked)}
-                      className="data-[state=checked]:bg-brand-primary"
-                    />
-                    <label className="text-xs font-medium text-white/70">Lockout</label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      aria-label="Priority"
-                      checked={priorityChecked}
-                      onCheckedChange={onPriorityChange}
-                      className="data-[state=checked]:bg-brand-primary"
-                    />
-                    <label className="text-xs font-medium text-white/70">Priority</label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 px-6 py-4 border-t border-white/10 shrink-0">
-              <button
-                onClick={onClose}
-                className="scanner-button-muted flex-1 py-2.5 text-xs font-bold uppercase tracking-wider"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleClear}
-                className="flex-1 rounded border border-white/10 bg-white/10 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-white/20"
-              >
-                Clear
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={isSaving || Object.keys(errors).length > 0}
-                className="scanner-button-primary flex-1 py-2.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSaving ? 'Saving...' : 'Save Draft'}
-              </button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            className="flex-1 rounded border border-white/10 bg-white/10 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-white/20"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving || Object.keys(errors).length > 0}
+            className="scanner-button-primary flex-1 py-2.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? 'Saving...' : 'Save Draft'}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
