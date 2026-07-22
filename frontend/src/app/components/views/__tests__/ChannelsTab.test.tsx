@@ -560,5 +560,45 @@ describe('ChannelsTab', () => {
       // Lockout icon off — no red lock.
       expect(row!.querySelector('svg.text-red-400')).toBeNull();
     });
+
+    // REGRESSION GUARD: isPending must reflect REAL pending changes
+    // (draftChanges), not merely that a draft object exists. The sheet's Save
+    // writes a draft even when only an immediate-action field (priority) was
+    // toggled or nothing changed — a no-op draft. Such a draft must NOT style
+    // the row modified. (isPending used to be `Boolean(draft)`, which lit the
+    // row for any draft, so priority-toggle + Save left it stuck styled.)
+    it('does not style a row modified for a no-op draft (batched fields unchanged)', () => {
+      const channel = createTestChannel({
+        index: 1,
+        frequency: 151.25,
+        alpha_tag: 'Test Channel',
+        modulation: 'FM',
+        delay: 2,
+        priority: false,
+      });
+      const store = createMockStore({
+        channels: [channel],
+        memoryDrafts: {
+          // Draft equal to the channel on every batched field. priority=true
+          // here mirrors an immediate toggle, but priority never counts as a
+          // draft diff (it has its own endpoint), so this draft is a no-op.
+          1: createTestChannelDraft({
+            frequency: '151.2500',
+            alpha_tag: 'Test Channel',
+            modulation: 'FM',
+            tone_squelch: '',
+            delay: '2',
+            priority: true,
+          }),
+        },
+      });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      const row = screen.getByText(/151\.2500/i).closest('div')?.parentElement;
+      expect(row).not.toBeNull();
+      expect(row!).not.toHaveClass('bg-brand-primary/10');
+      expect(row!).not.toHaveClass('border-l-2');
+    });
   });
 });
