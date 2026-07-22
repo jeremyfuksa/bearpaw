@@ -17,7 +17,7 @@ import appIcon from '@/assets/app-icon.png';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore, type Preferences } from '../../../store/useStore';
-import { confirmDialog, openExternalUrl } from '../../../tauri-shell';
+import { openExternalUrl } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
@@ -1369,31 +1369,9 @@ export function DeviceTab() {
 
             {/* Main Settings Area (Right) */}
             <div className="flex-1 space-y-6 overflow-y-auto pr-2">
-              <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-white">Application Settings</h2>
-                  <p className="text-base text-white/50">Manage your workspace preferences</p>
-                </div>
-                <button
-                  onClick={async () => {
-                    const confirmed = await confirmDialog(
-                      'Reset all preferences to default values? This cannot be undone.',
-                      'Reset preferences',
-                    );
-                    if (confirmed) {
-                      fetch(`${API_BASE}/preferences/reset`, { method: 'POST' })
-                        .then((r) => r.json())
-                        .then(() => {
-                          toast.success('Preferences reset to defaults');
-                          window.location.reload();
-                        })
-                        .catch(() => toast.error('Failed to reset preferences'));
-                    }
-                  }}
-                  className="text-sm text-brand-primary hover:text-brand-light font-medium transition-colors"
-                >
-                  Reset to Defaults
-                </button>
+              <div className="border-b border-white/5 pb-4">
+                <h2 className="text-2xl font-bold text-white">Application Settings</h2>
+                <p className="text-base text-white/50">Manage your workspace preferences</p>
               </div>
 
               {/* General Settings */}
