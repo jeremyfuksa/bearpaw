@@ -146,8 +146,13 @@ function ScannerControls({
             L/O ▾
           </button>
         </PopoverTrigger>
+        {/* Styled to read as a chip cut from the amber display pane: solid
+            amber surface, dark-slate rgba(28,31,38) ink and hover wash — the
+            same vocabulary as CONTROL_BUTTON_CLASSES — rather than the app's
+            dark scanner-select-content menu, which floats foreign on amber.
+            Portals outside the container-type:size pane, so no cqmin units. */}
         <PopoverContent
-          className="scanner-select-content w-40 p-1"
+          className="w-40 rounded-scanner-xs border border-[rgba(28,31,38,0.6)] bg-[#e48813] p-1 shadow-lg"
           side="bottom"
           align="center"
           role="menu"
@@ -155,7 +160,7 @@ function ScannerControls({
           <button
             type="button"
             role="menuitem"
-            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm text-scanner-text-light transition-colors hover:bg-white/10"
+            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)]"
             onClick={() => {
               onLockout('temporary');
               setIsLockoutOpen(false);
@@ -163,10 +168,11 @@ function ScannerControls({
           >
             Temporary
           </button>
+          <div className="mx-2 my-1 border-t border-[rgba(28,31,38,0.35)]" />
           <button
             type="button"
             role="menuitem"
-            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm font-semibold text-scanner-text-light transition-colors hover:bg-white/10"
+            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm font-semibold text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)]"
             onClick={() => {
               onLockout('permanent');
               setIsLockoutOpen(false);
