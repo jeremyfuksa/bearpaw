@@ -24,7 +24,7 @@
     "@emotion/styled": "11.14.1",
     "@jeremyfuksa/campfire": "2.0.0",
     "@mui/icons-material": "7.3.11",
-    "@mui/material": "7.3.11",
+    "@mui/material": "9.2.0",
     "@popperjs/core": "2.11.8",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
