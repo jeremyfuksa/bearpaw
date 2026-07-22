@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Usb } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -120,6 +120,8 @@ function ScannerControls({
   onHoldToggle,
   onLockout,
 }: ScannerControlsProps) {
+  const [isLockoutOpen, setIsLockoutOpen] = useState(false);
+
   return (
     <div className="flex shrink-0 items-center gap-[clamp(4px,2cqmin,28px)]">
       <Popover>
@@ -138,20 +140,42 @@ function ScannerControls({
           />
         </PopoverContent>
       </Popover>
-      <button
-        type="button"
-        className={CONTROL_BUTTON_CLASSES}
-        aria-label="Lockout — click for temporary, double-click for permanent"
-        onClick={(e) => {
-          if (e.detail === 2) {
-            onLockout('permanent');
-          } else {
-            onLockout('temporary');
-          }
-        }}
-      >
-        L/O
-      </button>
+      <Popover open={isLockoutOpen} onOpenChange={setIsLockoutOpen}>
+        <PopoverTrigger asChild>
+          <button type="button" className={CONTROL_BUTTON_CLASSES} aria-label="Lockout">
+            L/O ▾
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="scanner-select-content w-40 p-1"
+          side="bottom"
+          align="center"
+          role="menu"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm text-scanner-text-light transition-colors hover:bg-white/10"
+            onClick={() => {
+              onLockout('temporary');
+              setIsLockoutOpen(false);
+            }}
+          >
+            Temporary
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm font-semibold text-scanner-text-light transition-colors hover:bg-white/10"
+            onClick={() => {
+              onLockout('permanent');
+              setIsLockoutOpen(false);
+            }}
+          >
+            Permanent
+          </button>
+        </PopoverContent>
+      </Popover>
       <button
         type="button"
         className={cn(
