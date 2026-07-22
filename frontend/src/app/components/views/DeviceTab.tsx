@@ -681,7 +681,7 @@ export function DeviceTab() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full gap-6">
       {/* Side Nav */}
       <div className="scanner-surface h-full w-[var(--layout-sidebar-device-width)] p-2">
-        {['Locked Channels', 'Device Config', 'Close Call', 'Service Search', 'Custom Search'].map(
+        {['Device Config', 'Close Call', 'Service Search', 'Custom Search', 'Locked Channels'].map(
           (cat) => (
             <button
               key={cat}
