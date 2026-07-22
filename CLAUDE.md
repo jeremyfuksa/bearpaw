@@ -115,7 +115,7 @@ Message types (source of truth is what the code broadcasts — [`crates/bearpaw-
 - `device_info` — model/port/connection_status changes
 - `banks_update` — bank-enable mask changed server-side; the UI mirrors it instead of holding a stale local copy
 
-[`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) lags the code: it omits `device_info` and `banks_update`, and still documents client `subscribe`/`ping`/`pong` flows that `ws.rs` no longer implements. Where they disagree, the code wins.
+[`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) documents the five broadcast types (`state_update`, `event`, `progress`, `device_info`, `banks_update`); the connection is server-push only (no client `subscribe`/`ping`/`pong`). Where doc and code disagree, the code wins.
 
 The frontend MUST check `message.sequence > lastSequence` ([`frontend/src/store/useStore.ts`](frontend/src/store/useStore.ts) `updateLiveState`). Out-of-order updates are dropped.
 
@@ -196,7 +196,7 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`crates/bearpaw-api/src/api/memory_sync.rs`](crates/bearpaw-api/src/api/memory_sync.rs) — `CIN,1..500` walker
 - [`crates/bearpaw-api/src/api/ws.rs`](crates/bearpaw-api/src/api/ws.rs) — WebSocket broadcast
 - [`crates/bearpaw-api/src/api/security.rs`](crates/bearpaw-api/src/api/security.rs) — CORS + Host-header hardening. The API is an unauthenticated loopback server, so any web page the user visits is the threat; this closes the cross-origin-fetch and DNS-rebinding paths.
-- [`crates/bearpaw-api/src/api/handlers/`](crates/bearpaw-api/src/api/handlers/) — REST handlers (analytics, banks, commands, exports, lockouts, memory, preferences, settings, status)
+- [`crates/bearpaw-api/src/api/handlers/`](crates/bearpaw-api/src/api/handlers/) — REST handlers (analytics, banks, commands, exports, import_ss, lockouts, memory, preferences, settings, status)
 - [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs) — STS/GLG/CIN/PWR parsers
 - [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs) — CTCSS/DCS code → Hz
 - [`crates/bearpaw-api/src/protocol/defaults.rs`](crates/bearpaw-api/src/protocol/defaults.rs) — factory-default custom-search ranges (read-only; no `CSP` write path)
@@ -218,11 +218,9 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) — canonical wire-protocol reference
 - [`docs/API_SPEC.md`](docs/API_SPEC.md) — REST + WebSocket API contract
 - [`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) — WS message shapes
-- [`docs/openapi.json`](docs/openapi.json), [`docs/postman_environment.json`](docs/postman_environment.json) — machine-readable API spec + Postman env
 - [`docs/BACKEND_LOGGING.md`](docs/BACKEND_LOGGING.md), [`docs/DATA_LIFECYCLE.md`](docs/DATA_LIFECYCLE.md)
 - [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — decompiled Uniden reference. Second source only — where it disagrees with our wire captures, the captures win.
 - [`docs/wire_captures/`](docs/wire_captures/) — real BC125AT wire traffic + audit reconciliation (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`)
-- [`docs/IDEAS.md`](docs/IDEAS.md) — designated home for future-work ideas
 - [`docs/guide/`](docs/guide/) — end-user guide (getting started, scan, channels, device, glossary, troubleshooting)
 
 ## Common pitfalls

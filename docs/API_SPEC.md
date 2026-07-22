@@ -1,6 +1,6 @@
 # Bearpaw API Specification
 
-**Version:** 1.0.0
+**Version:** 1.0.0-beta.1 (the backend echoes its crate version at `GET /health`)
 **Protocol:** HTTP REST + WebSocket
 **Format:** JSON
 **Base URL:** `http://localhost:8000/api/v1`
@@ -87,6 +87,8 @@ Scanner memory channel information.
   "lockout": false,
   "priority": true,
   "tone_squelch": 123.0,
+  "tone_squelch_kind": "ctcss",
+  "tone_dcs_code": null,
   "bank": 1
 }
 ```
@@ -95,12 +97,14 @@ Scanner memory channel information.
 |-------|------|-------------|--------------|
 | `index` | number | Channel number | 1-500 |
 | `frequency` | number | Frequency (MHz) | 25.0000 - 512.0000 |
-| `modulation` | string | Modulation mode | "FM", "AM", "NFM" |
+| `modulation` | string | Modulation mode | "FM", "AM", "NFM", "AUTO" |
 | `alpha_tag` | string | Channel name | 0-16 characters |
-| `delay` | number | Scan delay (seconds) | 0-30 |
+| `delay` | number | Scan delay (seconds); negative values are pre-delays | -10, -5, 0, 1, 2, 3, 4, 5 |
 | `lockout` | boolean | Locked out from scan | true, false |
 | `priority` | boolean | Priority channel | true, false |
-| `tone_squelch` | number or null | CTCSS tone (Hz) | 67.0 - 254.1 or null |
+| `tone_squelch` | number or null | CTCSS tone (Hz), present when `tone_squelch_kind` is `ctcss` | 67.0 - 254.1 or null |
+| `tone_squelch_kind` | string | Tone discriminator | "none", "ctcss", "dcs", "search" |
+| `tone_dcs_code` | number or null | DCS code, present when `tone_squelch_kind` is `dcs` | 0-231 or null |
 | `bank` | number | Bank assignment | 1-10 |
 
 ### 2.3 DeviceInfo
@@ -114,18 +118,22 @@ Scanner hardware and connection information.
   "serial_number": "ABC123456",
   "connection_status": "connected",
   "port": "/dev/ttyACM0",
-  "uptime": 3600.5
+  "diagnostic_code": null,
+  "diagnostic_message": null
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model` | string | Scanner model name |
+| `model` | string or null | Scanner model name |
 | `firmware` | string or null | Firmware version |
 | `serial_number` | string or null | Hardware serial number |
 | `connection_status` | string | "connected", "disconnected", "connecting" |
-| `port` | string | Serial port path |
-| `uptime` | number | Seconds since scanner connected |
+| `port` | string or null | Serial or USB port path |
+| `diagnostic_code` | string or null | Machine-readable disconnect reason, when disconnected |
+| `diagnostic_message` | string or null | Human-readable disconnect detail, when disconnected |
+
+Optional fields `vid`, `pid`, and `description` may also appear (USB transport metadata) and are omitted when unset.
 
 ### 2.4 Error Response
 
@@ -180,7 +188,7 @@ about scanner connectivity (use `/status` / `/device/info` for that).
 ```json
 {
   "status": "ok",
-  "version": "1.1.1",
+  "version": "1.0.0-beta.1",
   "timestamp": 1704412800.123
 }
 ```
@@ -234,10 +242,11 @@ Get scanner hardware and connection details.
   "firmware": "1.00.05",
   "serial_number": "ABC123456",
   "connection_status": "connected",
-  "port": "/dev/ttyACM0",
-  "uptime": 3600.5
+  "port": "/dev/ttyACM0"
 }
 ```
+
+Returns the `DeviceInfo` object from §2.3.
 
 **Errors:**
 - `503 Service Unavailable` if scanner disconnected
@@ -256,10 +265,12 @@ Enter hold mode (stop scanning, monitor current frequency).
 
 ```json
 {
-  "status": "ok",
-  "mode": "HOLD"
+  "status": "ok"
 }
 ```
+
+The commanded mode is not echoed here — it arrives on the next WebSocket
+`state_update` (`mode` field).
 
 **Errors:**
 - `503 Service Unavailable` if scanner disconnected
@@ -277,10 +288,12 @@ Enter scan mode (resume scanning).
 
 ```json
 {
-  "status": "ok",
-  "mode": "SCAN"
+  "status": "ok"
 }
 ```
+
+The commanded mode is not echoed here — it arrives on the next WebSocket
+`state_update` (`mode` field).
 
 **Errors:**
 - `503 Service Unavailable` if scanner disconnected
@@ -288,7 +301,6 @@ Enter scan mode (resume scanning).
 
 ---
 
----
 #### POST /commands/key
 
 Simulate keypress on scanner.
@@ -320,13 +332,13 @@ protocol — the allowlist in `handlers/commands.rs`):
 
 ```json
 {
-  "status": "ok",
-  "key": "^"
+  "status": "ok"
 }
 ```
 
 **Errors:**
-- `400 Bad Request` if key code invalid
+- `400 Bad Request` if key code invalid (`invalid_key`), rejected by the scanner
+  (`key_syntax_error`), or sent in the wrong mode (`key_wrong_mode`)
 - `503 Service Unavailable` if scanner disconnected
 
 ---
@@ -552,8 +564,8 @@ Download full scanner memory in Uniden `.bc125at_ss` format.
 - Runs in program mode; do not use while a sync is in progress.
 
 **Errors:**
-- `400 Bad Request` if scanner model is not BC125AT
-- `409 Conflict` if a memory sync is in progress
+- `400 Bad Request` (`unsupported_model`) if the model is not a BC125AT/UBC125-family scanner
+- `409 Conflict` (`sync_in_progress`) if a memory sync is in progress
 - `503 Service Unavailable` if scanner disconnected
 
 ---
@@ -633,13 +645,43 @@ Import channels from CSV file.
 
 **Validation:**
 - Frequency must be 25-512 MHz
-- Delay must be 0-30 seconds
+- Delay must be one of `-10, -5, 0, 1, 2, 3, 4, 5`
 - Bank must be 1-10
 - Lockout/Priority must be "true" or "false"
 
 **Errors:**
 - `400 Bad Request` if CSV format invalid
+- `409 Conflict` (`sync_in_progress`) if a memory sync is running (#191)
 - `503 Service Unavailable` if backend error
+
+---
+
+#### POST /memory/import/bc125at_ss
+
+Import channels and settings from a Uniden `.bc125at_ss` file — the counterpart
+to `GET /memory/export/bc125at_ss`. Dispatch is by file, not endpoint: the
+frontend's single Import control routes `.csv` here or to `/import/csv` by
+extension (#187).
+
+**Request:** `multipart/form-data` with file field
+
+**Response:** `200 OK`
+
+```json
+{
+  "imported": 500,
+  "errors": []
+}
+```
+
+**Behavior:**
+- Parses the `.bc125at_ss` payload and writes valid channels to the scanner.
+- Runs in program mode; returns the count imported and any per-row errors.
+
+**Errors:**
+- `400 Bad Request` if the file is malformed
+- `409 Conflict` (`sync_in_progress`) if a memory sync is running (#191)
+- `503 Service Unavailable` if scanner disconnected
 
 ---
 
@@ -830,6 +872,7 @@ request/response shapes.
 | POST | `/api/v1/lockouts/clear`, `/lockouts/channels/clear`, `/lockouts/temporary/clear` | Clear the respective lockout sets. |
 | POST | `/api/v1/memory/program-mode/start`, `/memory/program-mode/end` | Open / close a manual program-mode session across requests. |
 | POST | `/api/v1/memory/import/csv` | Import channels from CSV. |
+| POST | `/api/v1/memory/import/bc125at_ss` | Import channels + settings from a Uniden `.bc125at_ss` file. |
 | GET | `/api/v1/analytics/busiest-channels` | Busiest channels; `limit` (default 10), `hours` scopes the window (default: all history). |
 | GET | `/api/v1/analytics/session-stats` | Hit count / avg RSSI / active seconds / unique channels for the current backend session. |
 | GET | `/api/v1/analytics/hourly-heatmap` | 7×24 hit bins; `days` (default 7), `tz_offset_minutes` (minutes east of UTC, e.g. -300 for CDT) for local-time bucketing — default is UTC. |
@@ -878,16 +921,18 @@ ws.onclose = () => {
 };
 ```
 
-**Heartbeat:**
-- Server sends ping frame every 30 seconds
-- Client must respond with pong within 10 seconds
-- Server closes connection if no pong received
+**Push-only:** The connection is server-push. The backend does not read message
+content from clients — there is no `subscribe` handshake and no application-level
+`ping`/`pong` heartbeat. A client connects and receives the stream.
 
 ---
 
 ### 4.2 Message Types
 
-All messages are JSON objects with a `type` field for discrimination.
+All messages are JSON objects with a `type` field for discrimination. The server
+broadcasts five types: `state_update`, `event`, `progress`, `device_info`, and
+`banks_update`. [`WEBSOCKET_SCHEMA.md`](WEBSOCKET_SCHEMA.md) is the detailed
+source for every shape; the summaries below cover the common ones.
 
 #### 4.2.1 State Update
 
@@ -932,7 +977,8 @@ Pushed when scanner events occur.
   "data": {
     "frequency": 151.2500,
     "channel": 25,
-    "alpha_tag": "Police Dispatch"
+    "alpha_tag": "Police Dispatch",
+    "rssi": 75
   }
 }
 ```
@@ -941,10 +987,8 @@ Pushed when scanner events occur.
 
 | Event | Description | Data Fields |
 |-------|-------------|-------------|
-| `scan_hit` | Scanner stopped on active frequency | `frequency`, `channel`, `alpha_tag` |
-| `scan_start` | Scan mode activated | None |
-| `hold` | Hold mode activated | `frequency` |
-| `mode_change` | Receiver mode changed | `mode` |
+| `scan_hit` | Squelch opened on an active frequency | `frequency`, `channel`, `alpha_tag`, `rssi` |
+| `state_stale` | Backend stopped receiving fresh polls (scanner quiet/disconnected) | none |
 
 ---
 
@@ -957,8 +1001,6 @@ Pushed during long-running operations (memory sync).
   "type": "progress",
   "task_id": "sync-abc123",
   "percent": 45,
-  "current": 225,
-  "total": 500,
   "message": "Syncing channel 225/500"
 }
 ```
@@ -968,65 +1010,51 @@ Pushed during long-running operations (memory sync).
 | `type` | string | Always "progress" |
 | `task_id` | string | Task identifier from POST request |
 | `percent` | number | Completion percentage (0-100) |
-| `current` | number | Current item number |
-| `total` | number | Total items |
 | `message` | string | Human-readable progress message |
 
----
-
-#### 4.2.4 Error
-
-Pushed when scanner errors occur.
-
-```json
-{
-  "type": "error",
-  "timestamp": 1704412800.789,
-  "error": "scanner_disconnected",
-  "message": "Scanner USB connection lost",
-  "severity": "critical"
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | Always "error" |
-| `timestamp` | number | Unix timestamp |
-| `error` | string | Machine-readable error code |
-| `message` | string | Human-readable message |
-| `severity` | string | "critical", "warning", "info" |
-
-**Severity Levels:**
-- `critical`: Scanner disconnected, service stopping
-- `warning`: Transient error, automatic recovery attempted
-- `info`: Informational message, no action required
+Completion is signaled by a final `progress` with `percent: 100` (e.g. "Sync
+complete"), not a separate message type. The item count lives in `message`;
+there are no `current`/`total` fields on the wire.
 
 ---
 
-#### 4.2.5 Complete
+#### 4.2.4 Device Info
 
-Pushed when long-running operation completes.
+Full `DeviceInfo` snapshot, pushed when model / port / connection status
+changes. There is no separate `error` message type — disconnects surface here
+(`connection_status` plus `diagnostic_code`/`diagnostic_message`) and via a
+`state_stale` event.
 
 ```json
 {
-  "type": "complete",
-  "task_id": "sync-abc123",
-  "status": "success",
-  "duration": 58.3,
-  "result": {
-    "channels_synced": 500,
-    "errors": 0
+  "type": "device_info",
+  "data": {
+    "model": "BC125AT",
+    "firmware": "1.00.05",
+    "connection_status": "connected",
+    "port": "/dev/ttyACM0"
   }
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | Always "complete" |
-| `task_id` | string | Task identifier |
-| `status` | string | "success" or "error" |
-| `duration` | number | Seconds elapsed |
-| `result` | object | Task-specific result data |
+`data` is the `DeviceInfo` object from §2.3.
+
+---
+
+#### 4.2.5 Banks Update
+
+The bank-enable mask changed server-side; the UI mirrors it. `banks` is a
+10-element boolean array (index 0 = bank 1).
+
+```json
+{
+  "type": "banks_update",
+  "timestamp": 1704412800.123,
+  "data": {
+    "banks": [true, true, false, true, true, true, true, true, true, true]
+  }
+}
+```
 
 ---
 
@@ -1120,7 +1148,7 @@ X-Sunset: 2025-01-01T00:00:00Z
 
 ## 8. Examples
 
-### 8.1 Full Workflow: Scan → Hit → Hold → Tune
+### 8.1 Full Workflow: Scan → Hit → Hold
 
 **1. Client connects to WebSocket**
 
@@ -1206,42 +1234,10 @@ Content-Type: application/json
 }
 ```
 
-**7. User enters new frequency**
-
-```http
-POST /frequency HTTP/1.1
-Content-Type: application/json
-
-{
-  "frequency": 162.5500,
-  "modulation": "NFM"
-}
-```
-
-**Response:**
-
-```json
-{
-  "status": "ok",
-  "frequency": 162.5500,
-  "modulation": "NFM"
-}
-```
-
-**8. State update confirms tune (WebSocket push)**
-
-```json
-{
-  "type": "state_update",
-  "timestamp": 1704412803.0,
-  "sequence": 12348,
-  "data": {
-    "frequency": 162.5500,
-    "modulation": "NFM",
-    "mode": "DIRECT"
-  }
-}
-```
+> There is no REST direct-tune endpoint — `POST /frequency` was removed (#149,
+> see §3.5). To move around from HOLD, drive the scanner's own keypad with
+> `POST /commands/key` (e.g. `^` / `V` to step channels), and read the resulting
+> frequency back from the next `state_update`.
 
 ---
 
@@ -1314,63 +1310,15 @@ GET /memory/channels HTTP/1.1
 
 ## 9. Testing & Validation
 
-### 9.1 OpenAPI Specification
+### 9.1 Machine-readable spec
 
-Full OpenAPI 3.0 spec generated from backend (FastAPI auto-generation).
-
-**Location:** `/openapi.json`
-
-**Tools:**
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-### 9.2 Contract Testing
-
-Use OpenAPI spec to generate:
-- Mock server for frontend development
-- Client SDKs (TypeScript, Python, etc.)
-- Integration tests
-
-**Recommended Tools:**
-- Prism (mock server)
-- openapi-typescript (TypeScript types)
-- Postman collections
+The Rust/Axum backend does not auto-generate an OpenAPI document, and it serves
+no Swagger UI or ReDoc. This file (`docs/API_SPEC.md`) is the hand-maintained
+contract — when it disagrees with the router in
+`crates/bearpaw-api/src/api/mod.rs` or the handlers, the code wins.
 
 ---
 
 ## 10. Changelog
 
-### Version 1.1.0 (Current)
-
-- CSV export/import endpoints (`/memory/export/csv`, `/memory/import/csv`)
-- Activity log endpoint (`/analytics/activity-log`) with filtering and pagination
-- Preferences API (`/preferences`, `/preferences/{key}`) with reset support
-- Recording support (Tauri desktop app only)
-
-### Version 1.0.0 (Initial Release)
-
-- REST API for control and queries
-- WebSocket API for real-time telemetry
-- LiveState and ChannelData models
-- Memory sync with progress tracking
-- Health check endpoint
-- Error response standardization
-
----
-
-## 11. Future API Additions (Roadmap)
-
-### Version 1.2.0 (Planned)
-
-- Authentication (API keys, JWT)
-- Rate limiting
-- Bulk channel updates (POST /memory/channels)
-- Audio stream endpoint (GET /audio/stream)
-- WebSocket subscriptions (client filters message types)
-
-### Version 2.0.0 (Future)
-
-- Multi-scanner support (scanner ID in path)
-- User accounts and preferences
-- Webhooks for events
-- GraphQL API (optional alternative to REST)
+Release notes are maintained in the root [`CHANGELOG.md`](../CHANGELOG.md).
