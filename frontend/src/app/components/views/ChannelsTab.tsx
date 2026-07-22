@@ -92,17 +92,34 @@ function ChannelRow({
   return (
     <div
       ref={ref}
+      role="row"
+      aria-rowindex={rowIndex + 2}
+      aria-selected={isSelected}
+      tabIndex={0}
+      aria-label={`Edit channel ${displayIndex}, ${displayAlpha === '—' ? 'unnamed' : displayAlpha}, ${displayFrequency} MHz`}
       onClick={onClick}
+      // REGRESSION GUARD (a11y C1): Enter/Space on the row opens the edit sheet
+      // (the row's primary action). The target===currentTarget guard means a
+      // Space press on the inner checkbox still toggles the checkbox rather than
+      // opening the sheet. Guarded by ChannelsTab.test.tsx.
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
       className={cn(
-        'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors',
+        'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         isEditing ? 'bg-brand-primary/20 border-brand-primary/30' : 'hover:bg-white/5',
         isPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
         isDragging && 'opacity-60',
       )}
     >
-      <div className="flex items-center justify-center">
+      <div role="cell" className="flex items-center justify-center">
         <input
           type="checkbox"
+          aria-label={`Select channel ${displayIndex}`}
           checked={isSelected}
           onChange={(event) => {
             event.stopPropagation();
@@ -112,34 +129,49 @@ function ChannelRow({
           className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
         />
       </div>
-      <div className="flex items-center justify-center text-white/40">
-        <GripVertical size={12} className={cn(disableDrag && 'opacity-30')} />
+      <div role="cell" className="flex items-center justify-center text-white/40">
+        <GripVertical size={12} aria-hidden className={cn(disableDrag && 'opacity-30')} />
       </div>
-      <div className="font-mono text-white/30 text-xs pl-1">{displayIndex}</div>
+      <div role="cell" className="font-mono text-white/30 text-xs pl-1">
+        {displayIndex}
+      </div>
 
-      <div className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center">
+      <div
+        role="cell"
+        className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center"
+      >
         {displayFrequency}
       </div>
-      <div className="font-medium text-white/80 truncate pl-1">{displayAlpha}</div>
-      <div className="flex justify-center">
+      <div role="cell" className="font-medium text-white/80 truncate pl-1">
+        {displayAlpha}
+      </div>
+      <div role="cell" className="flex justify-center">
         <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
           {displayModulation}
         </span>
       </div>
-      <div className="text-white/30 text-xs text-center">{displayTone}</div>
-      <div className="text-white/30 text-xs text-center">{displayDelay}s</div>
-      <div className="flex justify-center">
+      <div role="cell" className="text-white/30 text-xs text-center">
+        {displayTone}
+      </div>
+      <div role="cell" className="text-white/30 text-xs text-center">
+        {displayDelay}s
+      </div>
+      <div role="cell" className="flex justify-center">
         {displayLockout ? (
-          <Lock size={10} className="text-red-400" />
+          <Lock size={10} aria-label="Locked out" className="text-red-400" />
         ) : (
-          <div className="w-1 h-1 rounded-full bg-white/5" />
+          <div className="w-1 h-1 rounded-full bg-white/5" aria-hidden />
         )}
       </div>
-      <div className="flex justify-center">
+      <div role="cell" className="flex justify-center">
         {displayPriority ? (
-          <div className="h-1.5 w-1.5 rounded-full bg-orange-500 bg-brand-primary shadow-glow" />
+          <div
+            aria-label="Priority channel"
+            role="img"
+            className="h-1.5 w-1.5 rounded-full bg-orange-500 bg-brand-primary shadow-glow"
+          />
         ) : (
-          <div className="w-1 h-1 rounded-full bg-white/5" />
+          <div className="w-1 h-1 rounded-full bg-white/5" aria-hidden />
         )}
       </div>
     </div>
@@ -793,7 +825,8 @@ export function ChannelsTab() {
             <div className="relative max-w-[var(--layout-search-max-width)] flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 w-3.5 h-3.5" />
               <input
-                type="text"
+                type="search"
+                aria-label="Search channels by frequency or tag"
                 placeholder="Search frequency or tag..."
                 className="scanner-input w-full border-white/5 py-1.5 pl-8 pr-4 text-xs placeholder:text-white/20 focus:border-brand-primary/50"
                 value={searchTerm}
@@ -834,7 +867,7 @@ export function ChannelsTab() {
         </div>
 
         <div className="flex items-center justify-between bg-black/10 p-3 rounded-lg border border-white/5 shrink-0">
-          <div className="text-xs text-white/60">
+          <div role="status" aria-live="polite" className="text-xs text-white/60">
             {draftChanges.length > 0
               ? `Edits are saved as drafts. ${draftChanges.length} pending.`
               : 'Edits are saved as drafts. No pending changes.'}
@@ -863,14 +896,20 @@ export function ChannelsTab() {
           options={{ enableMouseEvents: true, delayMouseStart: 100 }}
         >
           <div
+            role="table"
+            aria-label="Bank channels"
             className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
             ref={containerRef}
           >
             {/* Header */}
-            <div className="grid grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0">
-              <div className="flex items-center justify-center">
+            <div
+              role="row"
+              className="grid grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
+            >
+              <div role="columnheader" className="flex items-center justify-center">
                 <input
                   type="checkbox"
+                  aria-label="Select all visible channels"
                   checked={
                     orderedFilteredChannels.length > 0 &&
                     orderedFilteredChannels.every((channel) =>
@@ -881,10 +920,11 @@ export function ChannelsTab() {
                   className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
                 />
               </div>
-              <div />
+              <div role="columnheader" aria-label="Reorder" />
               {['CH', 'FREQ', 'TAG', 'MODE', 'TONE', 'DLY', 'L/O', 'PRIO'].map((h) => (
                 <div
                   key={h}
+                  role="columnheader"
                   className="text-xs font-bold text-white/30 uppercase tracking-wider select-none text-center first:text-left"
                 >
                   {h}
@@ -894,13 +934,19 @@ export function ChannelsTab() {
 
             {/* Rows */}
             <div
+              role="rowgroup"
+              aria-hidden={editingChannelIndex !== null}
               className={cn(
                 'overflow-y-auto flex-1 p-0',
                 editingChannelIndex !== null && 'opacity-50 pointer-events-none',
               )}
             >
               {orderedFilteredChannels.length === 0 ? (
-                <div className="flex h-[var(--layout-empty-state-height)] items-center justify-center text-xs text-white/50">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex h-[var(--layout-empty-state-height)] items-center justify-center text-xs text-white/50"
+                >
                   No channels match your filters
                 </div>
               ) : (

@@ -601,4 +601,59 @@ describe('ChannelsTab', () => {
       expect(row!).not.toHaveClass('border-l-2');
     });
   });
+
+  describe('Accessibility', () => {
+    // a11y C1: the row's primary action (open edit sheet) is keyboard-operable.
+    it('opens the edit sheet when Enter is pressed on a row', async () => {
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /edit channel 1/i });
+      row.focus();
+      await userEvent.keyboard('{Enter}');
+      expect(screen.getByText(/Edit Channel/i)).toBeInTheDocument();
+    });
+
+    it('opens the edit sheet when Space is pressed on a row', async () => {
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /edit channel 1/i });
+      row.focus();
+      await userEvent.keyboard(' ');
+      expect(screen.getByText(/Edit Channel/i)).toBeInTheDocument();
+    });
+
+    // Guard: Space on the checkbox toggles it, and must NOT open the sheet
+    // (the target===currentTarget guard in the row's onKeyDown).
+    it('Space on the row checkbox does not open the edit sheet', async () => {
+      render(<ChannelsTab />);
+      const checkbox = screen.getByRole('checkbox', { name: /select channel 1/i });
+      checkbox.focus();
+      await userEvent.keyboard(' ');
+      expect(screen.queryByText(/Edit Channel/i)).not.toBeInTheDocument();
+    });
+
+    // a11y S1: the search input has an accessible name (type=search → searchbox).
+    it('names the search input', () => {
+      render(<ChannelsTab />);
+      expect(screen.getByRole('searchbox', { name: /search channels/i })).toBeInTheDocument();
+    });
+
+    // a11y S3: the empty state is announced (there are two status regions on
+    // the page — the pending-count and the empty state — so scope to the one
+    // carrying the empty-state text).
+    it('announces the empty state as a status region', async () => {
+      render(<ChannelsTab />);
+      const searchInput = screen.getByPlaceholderText(/search frequency or tag/i);
+      await userEvent.type(searchInput, 'nonexistent-xyz');
+      const emptyState = screen
+        .getAllByRole('status')
+        .find((el) => /no channels match/i.test(el.textContent ?? ''));
+      expect(emptyState).toBeDefined();
+    });
+
+    // a11y C2: the list is a table with column headers.
+    it('exposes the channel list as a table with column headers', () => {
+      render(<ChannelsTab />);
+      expect(screen.getByRole('table', { name: /bank channels/i })).toBeInTheDocument();
+      expect(screen.getAllByRole('columnheader')).toHaveLength(10);
+    });
+  });
 });
