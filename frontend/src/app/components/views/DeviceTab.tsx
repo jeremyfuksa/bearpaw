@@ -660,7 +660,7 @@ export function DeviceTab() {
               key={cat}
               onClick={() => setSelectedCategory(cat as DeviceCategory)}
               className={cn(
-                'text-left px-3 py-2 rounded text-xs font-medium transition-colors',
+                'text-left px-3 py-2 rounded text-sm font-medium transition-colors',
                 selectedCategory === cat
                   ? 'bg-brand-hover/20 text-brand-hover'
                   : 'text-white/60 hover:bg-white/5 hover:text-white',
@@ -676,7 +676,7 @@ export function DeviceTab() {
         <button
           onClick={() => setSelectedCategory('Preferences')}
           className={cn(
-            'text-left px-3 py-2 rounded text-xs font-medium transition-colors mt-auto border-t border-white/10 pt-3',
+            'text-left px-3 py-2 rounded text-sm font-medium transition-colors mt-auto border-t border-white/10 pt-3',
             selectedCategory === 'Preferences'
               ? 'bg-brand-hover/20 text-brand-hover'
               : 'text-white/60 hover:bg-white/5 hover:text-white',
@@ -692,7 +692,7 @@ export function DeviceTab() {
           <h2 className="text-lg font-bold mb-6 border-b border-white/10 pb-2 flex items-center justify-between">
             <span>{selectedCategory}</span>
             {selectedCategory === 'Custom Search' && (
-              <span className="text-xs font-normal text-white/50">
+              <span className="text-sm font-normal text-white/50">
                 {activeRangeCount} of 10 active
               </span>
             )}
@@ -709,21 +709,21 @@ export function DeviceTab() {
                     <Lock className="w-4 h-4" />
                   </span>
                   <div>
-                    <div className="text-sm font-bold text-white">Locked Channels</div>
-                    <div className="text-xs text-white/50">
+                    <div className="text-base font-bold text-white">Locked Channels</div>
+                    <div className="text-sm text-white/50">
                       {lockedChannelIds.length} locked • {filteredLockedChannels.length} shown
                     </div>
                   </div>
                 </div>
                 {lockedFetchedAt && (
-                  <div className="text-xs text-white/40">
+                  <div className="text-sm text-white/40">
                     Synced {new Date(lockedFetchedAt).toLocaleTimeString()}
                   </div>
                 )}
               </div>
 
               <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap gap-2 text-xs">
+                <div className="flex flex-wrap gap-2 text-sm">
                   <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
                     Total: {lockedChannelIds.length}
                   </span>
@@ -743,13 +743,13 @@ export function DeviceTab() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search frequency or tag"
-                    className="w-56 bg-black/30 border border-white/10 rounded px-3 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-brand-primary"
+                    className="w-56 bg-black/30 border border-white/10 rounded px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-brand-primary"
                   />
                   <Select
                     value={bankFilter === 'all' ? 'all' : String(bankFilter)}
                     onValueChange={(val) => setBankFilter(val === 'all' ? 'all' : Number(val))}
                   >
-                    <SelectTrigger className="scanner-input h-8 w-[var(--size-select-compact)] text-xs">
+                    <SelectTrigger className="scanner-input h-8 w-[var(--size-select-compact)] text-sm">
                       <SelectValue placeholder="All Banks" />
                     </SelectTrigger>
                     <SelectContent className="scanner-select-content">
@@ -764,14 +764,14 @@ export function DeviceTab() {
                   <div className="flex gap-2 ml-auto">
                     <button
                       onClick={() => toggleAllSelected(!allSelected)}
-                      className="px-3 py-2 text-xs font-medium text-white/70 bg-white/10 hover:bg-white/20 rounded border border-white/10 transition-colors"
+                      className="px-3 py-2 text-sm font-medium text-white/70 bg-white/10 hover:bg-white/20 rounded border border-white/10 transition-colors"
                     >
                       {allSelected ? 'Deselect' : 'Select Page'}
                     </button>
                     <button
                       onClick={() => handleUnlockSelected()}
                       disabled={selectedChannels.length === 0 || isClearing}
-                      className="px-3 py-2 text-xs font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/40 transition-colors disabled:opacity-50"
+                      className="px-3 py-2 text-sm font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/40 transition-colors disabled:opacity-50"
                     >
                       Unlock Selected ({selectedChannels.length || 0})
                     </button>
@@ -781,7 +781,7 @@ export function DeviceTab() {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-white/5 bg-black/10 overflow-hidden">
-              <div className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-xs font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2">
+              <div className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-sm font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2">
                 <div>Select</div>
                 <div className="text-center">CH</div>
                 <div>Freq (MHz)</div>
@@ -797,7 +797,7 @@ export function DeviceTab() {
                     <div
                       key={channel.index}
                       className={cn(
-                        'grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-sm',
+                        'grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-base',
                         isSelected ? 'bg-brand-primary/10' : 'hover:bg-white/5',
                       )}
                     >
@@ -809,20 +809,20 @@ export function DeviceTab() {
                           className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
                         />
                       </div>
-                      <div className="text-center text-xs text-white/70 font-mono">
+                      <div className="text-center text-sm text-white/70 font-mono">
                         CH {channel.index}
                       </div>
-                      <div className="text-xs font-mono text-white">
+                      <div className="text-sm font-mono text-white">
                         {channel.frequency.toFixed(4)}
                       </div>
-                      <div className="text-xs text-white/80 truncate">
+                      <div className="text-sm text-white/80 truncate">
                         {channel.alpha_tag || 'Untitled'}
                       </div>
-                      <div className="text-center text-xs text-white/60">{channel.bank}</div>
+                      <div className="text-center text-sm text-white/60">{channel.bank}</div>
                       <div className="flex justify-center">
                         <button
                           onClick={() => handleUnlockSelected([channel.index])}
-                          className="px-2 py-1 text-xs font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/50 transition-colors"
+                          className="px-2 py-1 text-sm font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/50 transition-colors"
                         >
                           Unlock
                         </button>
@@ -832,7 +832,7 @@ export function DeviceTab() {
                 })}
 
                 {filteredLockedChannels.length === 0 && (
-                  <div className="py-16 text-center text-white/40 text-sm">
+                  <div className="py-16 text-center text-white/40 text-base">
                     {lockedChannelIds.length === 0 ? 'No locked channels' : 'No matches'}
                   </div>
                 )}
@@ -855,7 +855,7 @@ export function DeviceTab() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-medium text-white/70">
+                  <div className="flex justify-between text-sm font-medium text-white/70">
                     <span>Volume</span>
                     <span className="text-white">{volume}</span>
                   </div>
@@ -863,7 +863,7 @@ export function DeviceTab() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex justify-between text-xs font-medium text-white/70">
+                  <div className="flex justify-between text-sm font-medium text-white/70">
                     <span>Squelch</span>
                     <span className="text-white">{squelch}</span>
                   </div>
@@ -871,7 +871,7 @@ export function DeviceTab() {
                 </div>
 
                 <div className="space-y-3 pt-2 border-t border-white/5">
-                  <div className="flex justify-between text-xs font-medium text-white/70">
+                  <div className="flex justify-between text-sm font-medium text-white/70">
                     <span>Battery Saver</span>
                     <span className="text-white">{`${batterySaver}h`}</span>
                   </div>
@@ -896,11 +896,11 @@ export function DeviceTab() {
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-white/70">Backlight</span>
+                    <span className="text-sm font-medium text-white/70">Backlight</span>
                     <Select value={backlight} onValueChange={handleBacklightChange}>
                       <SelectTrigger
                         aria-label="Backlight"
-                        className="scanner-input h-7 w-[var(--size-select-medium)] text-xs"
+                        className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
                       >
                         <SelectValue />
                       </SelectTrigger>
@@ -915,7 +915,7 @@ export function DeviceTab() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-white/70">Contrast</span>
+                    <span className="text-sm font-medium text-white/70">Contrast</span>
                     <Slider
                       value={[contrast]}
                       min={1}
@@ -929,7 +929,7 @@ export function DeviceTab() {
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
                     <label
                       htmlFor="key-beep"
-                      className="text-xs font-medium text-white/70 cursor-pointer"
+                      className="text-sm font-medium text-white/70 cursor-pointer"
                     >
                       Key Beep
                     </label>
@@ -955,11 +955,11 @@ export function DeviceTab() {
 
               <div className="grid grid-cols-2 gap-6">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-white/70">Priority Mode</span>
+                  <span className="text-sm font-medium text-white/70">Priority Mode</span>
                   <Select value={priorityMode} onValueChange={handlePriorityModeChange}>
                     <SelectTrigger
                       aria-label="Priority Mode"
-                      className="scanner-input h-7 w-[var(--size-select-medium)] text-xs"
+                      className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
                     >
                       <SelectValue />
                     </SelectTrigger>
@@ -980,7 +980,7 @@ export function DeviceTab() {
                   />
                   <label
                     htmlFor="weather-alert"
-                    className="text-xs font-medium text-white/70 cursor-pointer"
+                    className="text-sm font-medium text-white/70 cursor-pointer"
                   >
                     Weather Alert Priority
                   </label>
@@ -990,8 +990,8 @@ export function DeviceTab() {
 
             {/* Device Info */}
             <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-3">
-              <h3 className="font-bold text-white text-sm mb-4">Device Information</h3>
-              <div className="grid grid-cols-2 gap-4 text-xs">
+              <h3 className="font-bold text-white text-base mb-4">Device Information</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex justify-between">
                   <span className="text-white/50">Model</span>
                   <span className="text-white">{deviceInfo?.model ?? 'BC125AT'}</span>
@@ -1010,13 +1010,13 @@ export function DeviceTab() {
                 </div>
               </div>
               {deviceInfo?.diagnostic_message && (
-                <div className="mt-4 rounded-md border border-amber-400/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+                <div className="mt-4 rounded-md border border-amber-400/20 bg-amber-500/10 p-3 text-sm text-amber-100">
                   <p className="font-semibold text-amber-200">Connection Diagnostic</p>
                   <p className="mt-1 leading-relaxed">{deviceInfo.diagnostic_message}</p>
                 </div>
               )}
               {showUsbTroubleshooting && (
-                <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-3 text-xs text-white/80">
+                <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-3 text-sm text-white/80">
                   <p className="font-semibold text-white">USB Troubleshooting</p>
                   <ol className="mt-2 list-decimal space-y-1 pl-4">
                     <li>Reconnect the scanner with a known data-capable USB cable.</li>
@@ -1038,13 +1038,13 @@ export function DeviceTab() {
 
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-xs font-medium text-white/70">Mode</span>
-                    <span className="text-xs text-white/40">Operation mode</span>
+                    <span className="text-sm font-medium text-white/70">Mode</span>
+                    <span className="text-sm text-white/40">Operation mode</span>
                   </div>
                   <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
                     <SelectTrigger
                       aria-label="Mode"
-                      className="h-8 w-[var(--size-select-wide)] border-white/10 bg-white/5 text-xs"
+                      className="h-8 w-[var(--size-select-wide)] border-white/10 bg-white/5 text-sm"
                     >
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
@@ -1067,7 +1067,7 @@ export function DeviceTab() {
                   <label
                     htmlFor="cc-lockout"
                     className={cn(
-                      'text-xs font-medium cursor-pointer',
+                      'text-sm font-medium cursor-pointer',
                       closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                     )}
                   >
@@ -1092,7 +1092,7 @@ export function DeviceTab() {
                   <label
                     htmlFor="cc-beep"
                     className={cn(
-                      'text-xs font-medium cursor-pointer',
+                      'text-sm font-medium cursor-pointer',
                       closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                     )}
                   >
@@ -1113,7 +1113,7 @@ export function DeviceTab() {
                   <label
                     htmlFor="cc-light"
                     className={cn(
-                      'text-xs font-medium cursor-pointer',
+                      'text-sm font-medium cursor-pointer',
                       closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                     )}
                   >
@@ -1131,7 +1131,7 @@ export function DeviceTab() {
                     <label
                       htmlFor={`band-${band}`}
                       className={cn(
-                        'text-xs font-medium cursor-pointer',
+                        'text-sm font-medium cursor-pointer',
                         closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                       )}
                     >
@@ -1155,7 +1155,7 @@ export function DeviceTab() {
         {selectedCategory === 'Service Search' && (
           <div className="max-w-3xl">
             <div className="bg-white/5 rounded-lg border border-white/10 p-8">
-              <p className="text-sm text-white/60 mb-6">
+              <p className="text-base text-white/60 mb-6">
                 Service Search runs on the scanner itself. Enable the service banks you want to use,
                 then start Service Search directly on the device.
               </p>
@@ -1175,7 +1175,7 @@ export function DeviceTab() {
                   <div key={service} className="flex items-center justify-between group">
                     <label
                       htmlFor={`service-${service}`}
-                      className="text-sm font-medium text-white/70 group-hover:text-white transition-colors cursor-pointer"
+                      className="text-base font-medium text-white/70 group-hover:text-white transition-colors cursor-pointer"
                     >
                       {service}
                     </label>
@@ -1190,10 +1190,10 @@ export function DeviceTab() {
               </div>
 
               <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
-                <h3 className="text-sm font-bold text-white">Search Settings</h3>
+                <h3 className="text-base font-bold text-white">Search Settings</h3>
 
                 <div className="flex items-center justify-between">
-                  <label htmlFor="code-search" className="text-sm font-medium text-white/70">
+                  <label htmlFor="code-search" className="text-base font-medium text-white/70">
                     Code Search
                   </label>
                   <Switch
@@ -1205,7 +1205,7 @@ export function DeviceTab() {
                 </div>
 
                 <div>
-                  <div className="flex justify-between text-xs font-medium text-white/70 mb-2">
+                  <div className="flex justify-between text-sm font-medium text-white/70 mb-2">
                     <label htmlFor="search-delay">Search Delay</label>
                     <span className="text-white">{searchDelay}s</span>
                   </div>
@@ -1227,13 +1227,13 @@ export function DeviceTab() {
         {/* Custom Search */}
         {selectedCategory === 'Custom Search' && (
           <div className="flex flex-col max-w-5xl mx-auto overflow-hidden gap-4">
-            <p className="text-sm text-white/60">
+            <p className="text-base text-white/60">
               Custom Search runs on the scanner itself. Configure these ranges here, then start
               Custom Search directly on the device.
             </p>
             <div className="flex-1 h-full bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner">
               {/* Table Header */}
-              <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-xs font-bold text-white/30 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
+              <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-sm font-bold text-white/30 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
                 <div className="text-center">Active</div>
                 <div>Range</div>
                 <div>Label</div>
@@ -1262,7 +1262,7 @@ export function DeviceTab() {
                       />
                     </div>
 
-                    <div className="text-xs font-mono font-bold text-white/30 group-hover:text-white/50 pl-1">
+                    <div className="text-sm font-mono font-bold text-white/30 group-hover:text-white/50 pl-1">
                       R-{range.id}
                     </div>
 
@@ -1271,7 +1271,7 @@ export function DeviceTab() {
                         value={range.label}
                         onChange={(e) => updateRange(range.id, 'label', e.target.value)}
                         className={cn(
-                          'w-full bg-transparent border-none outline-none text-xs font-medium tracking-wide transition-colors placeholder:text-white/10',
+                          'w-full bg-transparent border-none outline-none text-sm font-medium tracking-wide transition-colors placeholder:text-white/10',
                           range.enabled ? 'text-white/80' : 'text-white/30',
                         )}
                         placeholder="Label..."
@@ -1284,7 +1284,7 @@ export function DeviceTab() {
                         value={range.start}
                         onChange={(e) => updateRange(range.id, 'start', e.target.value)}
                         className={cn(
-                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0',
+                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-sm font-mono font-bold text-center outline-none transition-all py-0',
                           range.enabled
                             ? 'text-brand-primary group-hover:text-brand-light'
                             : 'text-white/30 group-hover:border-white/10',
@@ -1298,7 +1298,7 @@ export function DeviceTab() {
                         value={range.end}
                         onChange={(e) => updateRange(range.id, 'end', e.target.value)}
                         className={cn(
-                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-xs font-mono font-bold text-center outline-none transition-all py-0',
+                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-sm font-mono font-bold text-center outline-none transition-all py-0',
                           range.enabled
                             ? 'text-brand-primary group-hover:text-brand-light'
                             : 'text-white/30 group-hover:border-white/10',
@@ -1320,21 +1320,21 @@ export function DeviceTab() {
               <div className="space-y-3">
                 <div className="bg-white/5 rounded-lg border border-white/5 p-4 space-y-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-8 h-8 rounded bg-brand-primary flex items-center justify-center text-black font-bold text-xs shadow-lg shadow-brand-primary/20">
+                    <div className="w-8 h-8 rounded bg-brand-primary flex items-center justify-center text-black font-bold text-sm shadow-lg shadow-brand-primary/20">
                       BP
                     </div>
                     <div>
-                      <h3 className="font-bold text-white text-sm">Bearpaw</h3>
-                      <div className="text-xs text-white/40">v{__APP_VERSION__}</div>
+                      <h3 className="font-bold text-white text-base">Bearpaw</h3>
+                      <div className="text-sm text-white/40">v{__APP_VERSION__}</div>
                     </div>
                   </div>
-                  <p className="text-xs text-white/60 leading-relaxed">
+                  <p className="text-sm text-white/60 leading-relaxed">
                     Community-developed control software for Uniden scanners.
                   </p>
                   <div className="flex gap-2 pt-2">
                     <button
                       onClick={() => openExternalUrl('https://github.com/jeremyfuksa/bearpaw')}
-                      className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
+                      className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
                     >
                       <Code size={10} /> Github
                     </button>
@@ -1349,14 +1349,14 @@ export function DeviceTab() {
                     <div className="p-1.5 bg-brand-primary/20 rounded-full">
                       <Coffee className="h-3.5 w-3.5 text-brand-primary" />
                     </div>
-                    <h3 className="text-xs font-bold text-white">Support Dev</h3>
+                    <h3 className="text-sm font-bold text-white">Support Dev</h3>
                   </div>
-                  <p className="text-xs text-white/60 leading-relaxed">
+                  <p className="text-sm text-white/60 leading-relaxed">
                     Enjoying the app? A little support helps keep updates coming!
                   </p>
                   <button
                     onClick={() => openExternalUrl('https://buymeacoffee.com/jeremyfuksa')}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-sm font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
                   >
                     <Heart className="w-3 h-3 fill-white/20" />
                     Buy me a coffee
@@ -1370,7 +1370,7 @@ export function DeviceTab() {
               <div className="flex items-center justify-between border-b border-white/5 pb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Application Settings</h2>
-                  <p className="text-sm text-white/50">Manage your workspace preferences</p>
+                  <p className="text-base text-white/50">Manage your workspace preferences</p>
                 </div>
                 <button
                   onClick={async () => {
@@ -1388,7 +1388,7 @@ export function DeviceTab() {
                         .catch(() => toast.error('Failed to reset preferences'));
                     }
                   }}
-                  className="text-xs text-brand-primary hover:text-brand-light font-medium transition-colors"
+                  className="text-sm text-brand-primary hover:text-brand-light font-medium transition-colors"
                 >
                   Reset to Defaults
                 </button>
@@ -1396,14 +1396,16 @@ export function DeviceTab() {
 
               {/* General Settings */}
               <section className="space-y-4">
-                <h3 className="text-sm font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
+                <h3 className="text-base font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
                   <Settings className="w-4 h-4 text-white/50" /> General
                 </h3>
                 <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">Hit Minimum Duration</label>
-                      <p className="text-xs text-white/40">
+                      <label className="text-base font-medium text-white">
+                        Hit Minimum Duration
+                      </label>
+                      <p className="text-sm text-white/40">
                         Minimum seconds a transmission must last to be logged as a hit
                       </p>
                     </div>
@@ -1418,7 +1420,7 @@ export function DeviceTab() {
                         step={0.5}
                         className="w-[var(--size-select-wide)]"
                       />
-                      <span className="text-xs text-white/70 w-12 text-right font-mono">
+                      <span className="text-sm text-white/70 w-12 text-right font-mono">
                         {preferences.hitMinDuration}s
                       </span>
                     </div>
@@ -1428,14 +1430,14 @@ export function DeviceTab() {
 
               {/* Data Settings */}
               <section className="space-y-4">
-                <h3 className="text-sm font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
+                <h3 className="text-base font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
                   <FileText className="w-4 h-4 text-white/50" /> Data & Storage
                 </h3>
                 <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">Data Retention</label>
-                      <p className="text-xs text-white/40">Auto-delete older logs</p>
+                      <label className="text-base font-medium text-white">Data Retention</label>
+                      <p className="text-sm text-white/40">Auto-delete older logs</p>
                     </div>
                     <Select
                       value={String(preferences.dataRetentionDays)}
@@ -1443,7 +1445,7 @@ export function DeviceTab() {
                         handlePreferenceChange('dataRetentionDays', parseInt(value))
                       }
                     >
-                      <SelectTrigger className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-xs text-white">
+                      <SelectTrigger className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-sm text-white">
                         <SelectValue placeholder="Select retention" />
                       </SelectTrigger>
                       <SelectContent className="bg-gray-900 border-white/10 text-white">
