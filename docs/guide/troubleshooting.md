@@ -78,31 +78,19 @@ down this list.
 
 5. **Quit and relaunch Bearpaw.**
 
-6. **On the scanner, check the USB mode.** The BC125AT needs to be set to allow PC
-   or serial control. In a mass-storage or charge-only mode, the app can't talk to
-   it.
-
 If none of that works, the Device tab's
 [Device Information](device.md#device-information) card shows a diagnostic message
 that can point at the specific problem. For USB-detection issues on macOS, a short
 troubleshooting checklist appears there automatically.
 
 > You don't normally need a config file. Bearpaw auto-detects the scanner on all
-> platforms, including macOS. A config file is only for advanced cases, like
+> platforms. A config file is only for advanced cases, like
 > forcing a specific serial port when auto-detect keeps picking the wrong device.
 > If you need one, see [the config note below](#advanced-forcing-a-specific-port).
 
 ---
 
 ## Other common issues
-
-### The channel list is empty, or names are missing
-
-Channels show as bare frequencies with no names, or the list looks empty right
-after launch, when the **memory sync** hasn't finished. Channel names (alpha tags)
-appear once the 30-to-45-second sync completes. Wait for the "Syncing Scanner
-Memory" panel to disappear. If it never appeared, run **Scanner → Sync Memory**
-(Ctrl/⌘ + Y).
 
 ### My channel edits didn't save to the scanner
 
@@ -115,18 +103,16 @@ Priority switch is the exception; it applies immediately.)
 
 ### I set a permanent lockout by accident
 
-The **L/O** button on the Scan tab sets a _temporary_ lockout on a single click
-and a _permanent_ one on a double-click, so it's easy to trigger by habit. To
-clear a permanent lockout, either double-click **L/O** again while on that
-channel, or clear it from the [Locked Channels](device.md#locked-channels) list on
-the Device tab.
+The **L/O** button on the Scan tab opens a menu with **Temporary** and
+**Permanent** choices. To clear a permanent lockout, pick **Permanent** again
+while on that channel, or clear it from the
+[Locked Channels](device.md#locked-channels) list on the Device tab.
 
 ### The app warns it's from an "unidentified developer"
 
 The beta builds aren't code-signed yet, so your operating system flags them on
 first launch. See the [install instructions](../../README.md#download-and-install)
-for how to open it anyway: on macOS it's right-click then Open; on Windows it's
-More info then Run anyway.
+for how to open it anyway.
 
 ### A setting on the Device tab didn't take
 

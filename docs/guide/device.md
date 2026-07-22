@@ -1,19 +1,12 @@
 # The Device Tab
 
-The Device tab is where you adjust the scanner itself (volume, squelch, Close
-Call, searches, lockouts) and, in a separate section, where you set a couple of
+The Device tab is where you adjust the scanner hardware and where you set a couple of
 preferences for the app.
-
-Five of the six sidebar sections control the physical scanner. The sixth,
-Preferences, controls only the app.
 
 > Changes to scanner settings apply immediately. There's no Save button. When you
 > move a slider or flip a switch in the first five sections, the app enters the
 > scanner's programming mode to write the change, and live scanning pauses while
 > that write happens. A failed write shows a red error message.
->
-> Preferences is different. Those settings live in the app on your computer and
-> never touch the scanner.
 
 The sections:
 
@@ -36,7 +29,7 @@ The scanner's everyday settings, in four cards.
 - **Squelch**: 0 to 15. The gate that mutes background hiss until a signal is
   strong enough to break through. Too high and you'll miss weak signals; too low
   and you'll hear constant static. (See [squelch](glossary.md#squelch).)
-- **Battery Saver**: 1 to 14 hours. The rechargeable-battery charge time the
+- **Battery Saver**: 1 to 16 hours. The rechargeable-battery charge time the
   scanner is set for.
 
 ### Display & System
@@ -97,8 +90,7 @@ With a mode active, you can also set:
 The BC125AT has built-in, factory-set frequency ranges for common radio services.
 Service Search sweeps those ranges without you programming any channels.
 
-You configure the services here, then press the search button on the radio itself
-to run the search.
+> You configure the services here, then press the search button on the radio itself to run the search.
 
 Ten on/off switches, one per service: **Police, Fire/Emergency, Ham, Marine,
 Railroad, Civil Air, Military Air, CB, FRS/GMRS/MURS, Racing.**
@@ -129,16 +121,15 @@ Each of the ten rows has:
 - **Lower (MHz)** and **Upper (MHz)**, the start and end of the range. These are
   written to the scanner.
 
-To set one up: flip a row's **Active** switch on, type a **Lower** and **Upper**
-frequency, name it if you like, then start Custom Search on the radio.
+> To set one up: flip a row's **Active** switch on, type a **Lower** and **Upper**
+> frequency, name it if you like, then start Custom Search on the radio.
 
 ---
 
 ## Locked Channels
 
 A [locked-out](glossary.md#lockout) channel is one you've told the scanner to
-**skip** while scanning, usually because it's noise, a data signal, or traffic
-you don't want. It stays in memory; the scanner just passes over it. This page
+**skip** while scanning. This page
 lists every currently locked-out channel and lets you unlock them.
 
 The list is read from the scanner when you open this section, with a timestamp
