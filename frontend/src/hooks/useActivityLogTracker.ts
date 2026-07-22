@@ -87,9 +87,28 @@ export function useActivityLogTracker(): void {
       };
     });
 
+    // Reset the local gate on every (re)connect (#261): a restarted backend
+    // reseeds its WS sequence to 0, and this closure's stale high-water mark
+    // would otherwise drop every subsequent state_update — silently freezing
+    // hit tracking (Recent Hits / Busiest Channels / heatmap) while the rest
+    // of the UI stays live. The effect's deps (ws, addToFullActivityLog) are
+    // stable across reconnects, so it never re-runs to clear `lastSequence` on
+    // its own. Mirrors the store-gate reset in useWebSocket.tsx (#136).
+    const unsubscribeConnection = ws.on('connection', (data) => {
+      if (!('status' in data) || data.status !== 'connected') return;
+      lastSequence = 0;
+      // Also drop any half-open hit captured before the reconnect: a
+      // squelch-open with no matching close would otherwise emit a bogus entry
+      // with a pre-restart start timestamp against the fresh stream.
+      lastHitOpenRef.current = false;
+      squelchOpenStartTimeRef.current = null;
+      currentHitDataRef.current = null;
+    });
+
     return () => {
       unsubscribeState();
       unsubscribeEvent();
+      unsubscribeConnection();
     };
   }, [addToFullActivityLog, ws]);
 }
