@@ -50,18 +50,7 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   dataRetentionDays: 'data_retention_days',
 };
 
-interface DeviceTabProps {
-  /**
-   * Resume scanning after a program-mode write parks the scanner in HOLD.
-   * Owned by App.tsx (it holds the scan-resume machinery); DeviceTab calls it
-   * after an unlock write, since the PRG/EPG bracket leaves the scanner held
-   * at ch1 on this firmware. Optional so the component still renders in tests
-   * and anywhere a resume isn't wired.
-   */
-  onScanResume?: (reason: string) => void;
-}
-
-export function DeviceTab({ onScanResume }: DeviceTabProps = {}) {
+export function DeviceTab() {
   const api = getAPI();
   const connectionStatus = useConnectionStatus();
   const deviceInfo = useStore((state) => state.deviceInfo);
@@ -329,11 +318,6 @@ export function DeviceTab({ onScanResume }: DeviceTabProps = {}) {
         toast.info('Select channels to unlock');
         return;
       }
-      // The unlock write runs inside a PRG/EPG bracket, which leaves the
-      // scanner held at ch1 on this firmware. Capture the pre-unlock mode so
-      // we only kick it back into scan if the user was scanning — a deliberate
-      // HOLD is left alone. Matches App's lockout-trigger / bank-toggle resume.
-      const wasScanning = (liveState?.mode ?? '').toUpperCase() !== 'HOLD';
       setIsClearing(true);
       try {
         const result = await api.clearChannelLockouts(targets);
@@ -347,9 +331,6 @@ export function DeviceTab({ onScanResume }: DeviceTabProps = {}) {
         setLockedChannelIds((prev) => prev.filter((id) => !clearedSet.has(id)));
         setSelectedChannels((prev) => prev.filter((id) => !clearedSet.has(id)));
         toast.success(`${clearedIds.length} channel${clearedIds.length === 1 ? '' : 's'} unlocked`);
-        if (wasScanning) {
-          onScanResume?.('channel unlock');
-        }
       } catch (error) {
         console.error('Failed to unlock channels', error);
         toast.error('Unable to unlock channels');
@@ -357,7 +338,7 @@ export function DeviceTab({ onScanResume }: DeviceTabProps = {}) {
         setIsClearing(false);
       }
     },
-    [api, liveState?.mode, onScanResume, selectedChannels, setChannels],
+    [api, selectedChannels, setChannels],
   );
 
   // Setting handlers
