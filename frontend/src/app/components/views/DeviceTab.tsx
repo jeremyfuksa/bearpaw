@@ -11,13 +11,12 @@ import {
   Coffee,
   Heart,
   Code,
-  ExternalLink,
 } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore, type Preferences } from '../../../store/useStore';
-import { confirmDialog } from '../../../tauri-shell';
+import { confirmDialog, openExternalUrl } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
@@ -1334,25 +1333,7 @@ export function DeviceTab() {
                   </p>
                   <div className="flex gap-2 pt-2">
                     <button
-                      onClick={() =>
-                        window.open(
-                          'https://bearpaw-scanner.github.io',
-                          '_blank',
-                          'noopener,noreferrer',
-                        )
-                      }
-                      className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
-                    >
-                      <ExternalLink size={10} /> Website
-                    </button>
-                    <button
-                      onClick={() =>
-                        window.open(
-                          'https://github.com/bearpaw-scanner',
-                          '_blank',
-                          'noopener,noreferrer',
-                        )
-                      }
+                      onClick={() => openExternalUrl('https://github.com/jeremyfuksa/bearpaw')}
                       className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-xs text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
                     >
                       <Code size={10} /> Github
@@ -1371,20 +1352,14 @@ export function DeviceTab() {
                     <h3 className="text-xs font-bold text-white">Support Dev</h3>
                   </div>
                   <p className="text-xs text-white/60 leading-relaxed">
-                    Enjoying the app? A $10 donation helps keep updates coming!
+                    Enjoying the app? A little support helps keep updates coming!
                   </p>
                   <button
-                    onClick={() =>
-                      window.open(
-                        'https://github.com/sponsors/bearpaw-scanner',
-                        '_blank',
-                        'noopener,noreferrer',
-                      )
-                    }
+                    onClick={() => openExternalUrl('https://buymeacoffee.com/jeremyfuksa')}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
                   >
                     <Heart className="w-3 h-3 fill-white/20" />
-                    Donate $10
+                    Buy me a coffee
                   </button>
                 </div>
               </div>
