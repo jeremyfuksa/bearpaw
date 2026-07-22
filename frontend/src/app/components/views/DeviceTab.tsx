@@ -718,7 +718,7 @@ export function DeviceTab() {
                   </div>
                 </div>
                 {lockedFetchedAt && (
-                  <div className="text-sm text-white/40">
+                  <div className="text-sm text-white/60">
                     Synced {new Date(lockedFetchedAt).toLocaleTimeString()}
                   </div>
                 )}
@@ -745,7 +745,7 @@ export function DeviceTab() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search frequency or tag"
-                    className="w-56 bg-black/30 border border-white/10 rounded px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-brand-primary"
+                    className="w-56 bg-black/30 border border-white/40 rounded px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-brand-primary"
                   />
                   <Select
                     value={bankFilter === 'all' ? 'all' : String(bankFilter)}
@@ -789,7 +789,7 @@ export function DeviceTab() {
             >
               <div
                 role="row"
-                className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-sm font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2"
+                className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-sm font-bold uppercase tracking-wider text-white/60 bg-white/5 border-b border-white/10 px-3 py-2"
               >
                 <div role="columnheader">Select</div>
                 <div role="columnheader" className="text-center">
@@ -852,7 +852,7 @@ export function DeviceTab() {
                 })}
 
                 {filteredLockedChannels.length === 0 && (
-                  <div className="py-16 text-center text-white/40 text-base">
+                  <div className="py-16 text-center text-white/60 text-base">
                     {lockedChannelIds.length === 0 ? 'No locked channels' : 'No matches'}
                   </div>
                 )}
@@ -1073,7 +1073,7 @@ export function DeviceTab() {
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-sm font-medium text-white/70">Mode</span>
-                    <span className="text-sm text-white/40">Operation mode</span>
+                    <span className="text-sm text-white/60">Operation mode</span>
                   </div>
                   <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
                     <SelectTrigger
@@ -1269,7 +1269,7 @@ export function DeviceTab() {
             </p>
             <div className="flex-1 h-full bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner">
               {/* Table Header */}
-              <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-sm font-bold text-white/30 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
+              <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-sm font-bold text-white/60 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
                 <div className="text-center">Active</div>
                 <div>Range</div>
                 <div>Label</div>
@@ -1298,7 +1298,7 @@ export function DeviceTab() {
                       />
                     </div>
 
-                    <div className="text-sm font-mono font-bold text-white/30 group-hover:text-white/50 pl-1">
+                    <div className="text-sm font-mono font-bold text-white/60 group-hover:text-white/80 pl-1">
                       R-{range.id}
                     </div>
 
@@ -1366,7 +1366,7 @@ export function DeviceTab() {
                     />
                     <div>
                       <h3 className="font-bold text-white text-base">Bearpaw</h3>
-                      <div className="text-sm text-white/40">v{__APP_VERSION__}</div>
+                      <div className="text-sm text-white/60">v{__APP_VERSION__}</div>
                     </div>
                   </div>
                   <p className="text-sm text-white/60 leading-relaxed">
@@ -1424,7 +1424,7 @@ export function DeviceTab() {
                       <label className="text-base font-medium text-white">
                         Hit Minimum Duration
                       </label>
-                      <p className="text-sm text-white/40">
+                      <p className="text-sm text-white/60">
                         Minimum seconds a transmission must last to be logged as a hit
                       </p>
                     </div>
@@ -1457,7 +1457,7 @@ export function DeviceTab() {
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <label className="text-base font-medium text-white">Data Retention</label>
-                      <p className="text-sm text-white/40">Auto-delete older logs</p>
+                      <p className="text-sm text-white/60">Auto-delete older logs</p>
                     </div>
                     <Select
                       value={String(preferences.dataRetentionDays)}

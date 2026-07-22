@@ -410,7 +410,11 @@
   }
 
   .scanner-input {
-    @apply rounded border border-white/10 bg-black/40 text-white outline-none transition-colors focus:border-brand-primary;
+    /* border-white/40 (~3.8:1 on the bg-black/40 fill) meets WCAG 1.4.11
+       non-text contrast — the input edge is the control's only affordance, so
+       it must be perceivable. Was border-white/10 (~1.3:1, effectively
+       invisible). */
+    @apply rounded border border-white/40 bg-black/40 text-white outline-none transition-colors focus:border-brand-primary;
   }
 
   .scanner-button-muted {
