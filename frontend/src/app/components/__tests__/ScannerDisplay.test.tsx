@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { ScannerDisplay } from '../ScannerUI';
@@ -77,18 +77,30 @@ describe('ScannerDisplay', () => {
   });
 
   describe('user interactions', () => {
-    it('calls onLockout with temporary on single click', async () => {
+    it('opens the lockout dropdown and calls onLockout with temporary', async () => {
       const onLockout = vi.fn();
       render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);
       await userEvent.click(screen.getByRole('button', { name: /lockout/i }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Temporary' }));
       expect(onLockout).toHaveBeenCalledWith('temporary');
     });
 
-    it('calls onLockout with permanent on double click', async () => {
+    it('opens the lockout dropdown and calls onLockout with permanent', async () => {
       const onLockout = vi.fn();
       render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);
-      await userEvent.dblClick(screen.getByRole('button', { name: /lockout/i }));
+      await userEvent.click(screen.getByRole('button', { name: /lockout/i }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Permanent' }));
       expect(onLockout).toHaveBeenCalledWith('permanent');
+    });
+
+    it('closes the lockout dropdown after a selection', async () => {
+      render(<ScannerDisplay {...defaultProps} />);
+      await userEvent.click(screen.getByRole('button', { name: /lockout/i }));
+      expect(screen.getByRole('menuitem', { name: 'Temporary' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Temporary' }));
+      await waitFor(() =>
+        expect(screen.queryByRole('menuitem', { name: 'Temporary' })).not.toBeInTheDocument(),
+      );
     });
 
     it('calls onHoldToggle when HOLD button is clicked', async () => {
