@@ -11,7 +11,9 @@ logs/
 docs/manual.pdf
 docs/op-spec.pdf
 # Personal scanner config dump (real callsign + programmed channels); keep local, don't publish
-docs/fixtures/kf0nui.bc125at_ss
+docs/fixtures/
+# Internal planning/spec docs (dev-only working notes); keep local, don't publish
+docs/superpowers/
 crates/bearpaw-api/scanner.db
 crates/bearpaw-api/scanner.db-wal
 crates/bearpaw-api/scanner.db-shm
