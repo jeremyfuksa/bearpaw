@@ -257,6 +257,42 @@ describe('DeviceTab', () => {
         expect(mockApiClient.setCustomSearchRange).toHaveBeenLastCalledWith(1, 141, 149);
       });
     });
+
+    // Regression guard (#264): the range MHz inputs are controlled, so
+    // updateRange must always write the raw typed string to state — otherwise
+    // clearing the field (or typing a leading '.') parses to NaN, the state
+    // write is skipped, and React snaps the input back to its old value,
+    // visibly swallowing the keystroke.
+    it('lets you clear a range input without snapping back', async () => {
+      mockApiClient.setCustomSearchRange = vi.fn().mockResolvedValue(undefined);
+
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
+
+      const startInput = screen.getByDisplayValue('140.0000');
+      fireEvent.change(startInput, { target: { value: '' } });
+
+      await waitFor(() => {
+        expect(startInput).toHaveValue('');
+      });
+      // An empty bound must NOT reach the wire — the parse guard still holds.
+      expect(mockApiClient.setCustomSearchRange).not.toHaveBeenCalled();
+    });
+
+    it('lets you type a leading decimal into a range input', async () => {
+      mockApiClient.setCustomSearchRange = vi.fn().mockResolvedValue(undefined);
+
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
+
+      const startInput = screen.getByDisplayValue('140.0000');
+      fireEvent.change(startInput, { target: { value: '.' } });
+
+      await waitFor(() => {
+        expect(startInput).toHaveValue('.');
+      });
+      expect(mockApiClient.setCustomSearchRange).not.toHaveBeenCalled();
+    });
   });
 
   describe('Preferences category', () => {
