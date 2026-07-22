@@ -630,22 +630,27 @@ export default function App() {
 
   const connectionStatus = useConnectionStatus();
 
+  // REGRESSION GUARD: App.regression.test.tsx :: "leaving the Device page
+  // resumes scan". A write on the Device page (unlock, bank/priority edit) runs
+  // inside a PRG/EPG bracket that parks the scanner in HOLD at ch1. We
+  // deliberately leave it parked while the user stays on Device, then resume
+  // scanning when they navigate away to Scan or Channels. Two ways to break
+  // this: (1) drop the `leavingDevice` resume, or (2) wire TabBar's onTabChange
+  // straight to setCurrentTab instead of this handler — then tab-bar clicks
+  // (the primary navigation) skip the resume entirely and the scanner stays
+  // stuck at ch1. Both are guarded.
   const handleTabChange = useCallback(
     (tab: string) => {
       const newTab = tab as Tab;
-      if (newTab === 'Scan') {
-        if (isInProgramMode) {
-          requestScanResume('exit program mode', { toastOnError: true });
-        }
-        setCurrentTab(newTab);
-        return;
+      const leavingDevice = currentTab === 'Device' && newTab !== 'Device';
+      if (leavingDevice) {
+        requestScanResume('leaving device page', { delayMs: 1000 });
+      } else if (newTab === 'Scan' && isInProgramMode) {
+        requestScanResume('exit program mode', { toastOnError: true });
       }
-
-      if (newTab === 'Device' || newTab === 'Channels') {
-        setCurrentTab(newTab);
-      }
+      setCurrentTab(newTab);
     },
-    [isInProgramMode, requestScanResume],
+    [currentTab, isInProgramMode, requestScanResume],
   );
 
   const menuHandlers = useMemo(
@@ -945,7 +950,7 @@ export default function App() {
         }
       />
 
-      <TabBar currentTab={currentTab} onTabChange={setCurrentTab} />
+      <TabBar currentTab={currentTab} onTabChange={handleTabChange} />
 
       <div className="relative flex-1 overflow-hidden p-6">
         <AnimatePresence mode="wait">
@@ -970,9 +975,7 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'Device' && (
-            <DeviceTab onScanResume={(reason) => requestScanResume(reason, { delayMs: 1000 })} />
-          )}
+          {currentTab === 'Device' && <DeviceTab />}
           {currentTab === 'Channels' && <ChannelsTab />}
         </AnimatePresence>
       </div>
