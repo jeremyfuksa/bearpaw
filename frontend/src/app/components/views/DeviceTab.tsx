@@ -654,7 +654,7 @@ export function DeviceTab() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full gap-6">
       {/* Side Nav */}
-      <div className="scanner-surface h-full w-[var(--layout-sidebar-device-width)] p-2">
+      <div className="scanner-surface flex h-full w-[var(--layout-sidebar-device-width)] flex-col p-2">
         {['Device Config', 'Close Call', 'Service Search', 'Custom Search', 'Locked Channels'].map(
           (cat) => (
             <button
@@ -671,7 +671,6 @@ export function DeviceTab() {
             </button>
           ),
         )}
-        <div className="mt-2 border-t border-white/10" />
 
         {/* Preferences at bottom */}
         <button
