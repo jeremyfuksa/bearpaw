@@ -660,6 +660,7 @@ export function DeviceTab() {
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat as DeviceCategory)}
+              aria-current={selectedCategory === cat ? 'page' : undefined}
               className={cn(
                 'text-left px-3 py-2 rounded text-sm font-medium transition-colors',
                 selectedCategory === cat
@@ -675,6 +676,7 @@ export function DeviceTab() {
         {/* Preferences at bottom */}
         <button
           onClick={() => setSelectedCategory('Preferences')}
+          aria-current={selectedCategory === 'Preferences' ? 'page' : undefined}
           className={cn(
             'text-left px-3 py-2 rounded text-sm font-medium transition-colors mt-auto border-t border-white/10 pt-3',
             selectedCategory === 'Preferences'
@@ -780,48 +782,66 @@ export function DeviceTab() {
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-white/5 bg-black/10 overflow-hidden">
-              <div className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-sm font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2">
-                <div>Select</div>
-                <div className="text-center">CH</div>
-                <div>Freq (MHz)</div>
-                <div>Tag</div>
-                <div className="text-center">Bank</div>
-                <div className="text-center">Action</div>
+            <div
+              role="table"
+              aria-label="Locked channels"
+              className="flex min-h-0 flex-1 flex-col rounded-lg border border-white/5 bg-black/10 overflow-hidden"
+            >
+              <div
+                role="row"
+                className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-sm font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2"
+              >
+                <div role="columnheader">Select</div>
+                <div role="columnheader" className="text-center">
+                  CH
+                </div>
+                <div role="columnheader">Freq (MHz)</div>
+                <div role="columnheader">Tag</div>
+                <div role="columnheader" className="text-center">
+                  Bank
+                </div>
+                <div role="columnheader" className="text-center">
+                  Action
+                </div>
               </div>
 
-              <div className="flex-1 divide-y divide-white/5 overflow-y-auto">
+              <div role="rowgroup" className="flex-1 divide-y divide-white/5 overflow-y-auto">
                 {filteredLockedChannels.map((channel) => {
                   const isSelected = selectedChannels.includes(channel.index);
                   return (
                     <div
                       key={channel.index}
+                      role="row"
                       className={cn(
                         'grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-base',
                         isSelected ? 'bg-brand-primary/10' : 'hover:bg-white/5',
                       )}
                     >
-                      <div className="flex justify-center">
+                      <div role="cell" className="flex justify-center">
                         <input
                           type="checkbox"
+                          aria-label={`Select channel ${channel.index}`}
                           checked={isSelected}
                           onChange={() => toggleSelection(channel.index)}
                           className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
                         />
                       </div>
-                      <div className="text-center text-sm text-white/70 font-mono">
+                      <div role="cell" className="text-center text-sm text-white/70 font-mono">
                         CH {channel.index}
                       </div>
-                      <div className="text-sm font-mono text-white">
+                      <div role="cell" className="text-sm font-mono text-white">
                         {channel.frequency.toFixed(4)}
                       </div>
-                      <div className="text-sm text-white/80 truncate">
+                      <div role="cell" className="text-sm text-white/80 truncate">
                         {channel.alpha_tag || 'Untitled'}
                       </div>
-                      <div className="text-center text-sm text-white/60">{channel.bank}</div>
-                      <div className="flex justify-center">
+                      <div role="cell" className="text-center text-sm text-white/60">
+                        {channel.bank}
+                      </div>
+                      <div role="cell" className="flex justify-center">
                         <button
                           onClick={() => handleUnlockSelected([channel.index])}
+                          aria-label={`Unlock channel ${channel.index}`}
                           className="px-2 py-1 text-sm font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/50 transition-colors"
                         >
                           Unlock
@@ -859,7 +879,13 @@ export function DeviceTab() {
                     <span>Volume</span>
                     <span className="text-white">{volume}</span>
                   </div>
-                  <Slider value={[volume]} max={15} step={1} onValueChange={handleVolumeChange} />
+                  <Slider
+                    aria-label="Volume"
+                    value={[volume]}
+                    max={15}
+                    step={1}
+                    onValueChange={handleVolumeChange}
+                  />
                 </div>
 
                 <div className="space-y-3">
@@ -867,7 +893,13 @@ export function DeviceTab() {
                     <span>Squelch</span>
                     <span className="text-white">{squelch}</span>
                   </div>
-                  <Slider value={[squelch]} max={15} step={1} onValueChange={handleSquelchChange} />
+                  <Slider
+                    aria-label="Squelch"
+                    value={[squelch]}
+                    max={15}
+                    step={1}
+                    onValueChange={handleSquelchChange}
+                  />
                 </div>
 
                 <div className="space-y-3 pt-2 border-t border-white/5">
@@ -876,6 +908,7 @@ export function DeviceTab() {
                     <span className="text-white">{`${batterySaver}h`}</span>
                   </div>
                   <Slider
+                    aria-label="Battery Saver"
                     value={[batterySaver]}
                     min={1}
                     max={16}
@@ -917,6 +950,7 @@ export function DeviceTab() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-white/70">Contrast</span>
                     <Slider
+                      aria-label="Contrast"
                       value={[contrast]}
                       min={1}
                       max={15}
@@ -1206,11 +1240,13 @@ export function DeviceTab() {
 
                 <div>
                   <div className="flex justify-between text-sm font-medium text-white/70 mb-2">
-                    <label htmlFor="search-delay">Search Delay</label>
+                    {/* Radix puts an id on the slider Root, not the role=slider
+                        thumb, so htmlFor can't target it — name via aria-label. */}
+                    <span>Search Delay</span>
                     <span className="text-white">{searchDelay}s</span>
                   </div>
                   <Slider
-                    id="search-delay"
+                    aria-label="Search Delay"
                     min={0}
                     max={5}
                     step={1}
@@ -1268,6 +1304,7 @@ export function DeviceTab() {
 
                     <div className="relative">
                       <input
+                        aria-label={`Range ${range.id} label`}
                         value={range.label}
                         onChange={(e) => updateRange(range.id, 'label', e.target.value)}
                         className={cn(
@@ -1281,6 +1318,7 @@ export function DeviceTab() {
                     <div className="relative">
                       <input
                         type="text"
+                        aria-label={`Range ${range.id} lower MHz`}
                         value={range.start}
                         onChange={(e) => updateRange(range.id, 'start', e.target.value)}
                         className={cn(
@@ -1295,6 +1333,7 @@ export function DeviceTab() {
                     <div className="relative">
                       <input
                         type="text"
+                        aria-label={`Range ${range.id} upper MHz`}
                         value={range.end}
                         onChange={(e) => updateRange(range.id, 'end', e.target.value)}
                         className={cn(
@@ -1391,6 +1430,7 @@ export function DeviceTab() {
                     </div>
                     <div className="flex items-center gap-3">
                       <Slider
+                        aria-label="Hit Minimum Duration"
                         value={[preferences.hitMinDuration]}
                         onValueChange={(values) =>
                           handlePreferenceChange('hitMinDuration', values[0])
