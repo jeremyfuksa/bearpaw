@@ -844,10 +844,10 @@ export function DeviceTab() {
 
         {/* Device Config */}
         {selectedCategory === 'Device Config' && (
-          <div className="space-y-6 max-w-4xl">
+          <div className="space-y-4 max-w-4xl">
             <div className="grid grid-cols-2 gap-6">
               {/* Audio Control */}
-              <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-4">
+              <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="rounded bg-brand-primary/20 p-1.5 text-brand-primary">
                     <Radio size={16} />
@@ -887,7 +887,7 @@ export function DeviceTab() {
               </div>
 
               {/* Display Settings */}
-              <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-4">
+              <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
                     <Maximize2 size={16} />
@@ -946,7 +946,7 @@ export function DeviceTab() {
             </div>
 
             {/* Scanning Logic */}
-            <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-4">
+            <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-green-500/20 rounded text-green-400">
                   <Signal size={16} />
@@ -1155,12 +1155,12 @@ export function DeviceTab() {
         {/* Service Search */}
         {selectedCategory === 'Service Search' && (
           <div className="max-w-3xl">
-            <div className="bg-white/5 rounded-lg border border-white/10 p-8">
-              <p className="text-base text-white/60 mb-6">
+            <div className="bg-white/5 rounded-lg border border-white/10 p-6">
+              <p className="text-base text-white/60 mb-4">
                 Service Search runs on the scanner itself. Enable the service banks you want to use,
                 then start Service Search directly on the device.
               </p>
-              <div className="grid grid-cols-2 gap-x-16 gap-y-6">
+              <div className="grid grid-cols-2 gap-x-16 gap-y-4">
                 {[
                   'Police',
                   'Fire/Emergency',
