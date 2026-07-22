@@ -36,9 +36,9 @@ a Kerchunk one.
 
 ## Priority-channel follow-ups (from the 2026-07-21 one-per-bank rework)
 
-The priority-channel feature (spec + plan in `docs/superpowers/`, the
-`POST /memory/channels/{index}/priority` endpoint, DCH+rewrite clear, atomic
-one-per-bank swap) shipped with three deliberately-deferred items. None affect
+The priority-channel feature (the `POST /memory/channels/{index}/priority`
+endpoint, DCH+rewrite clear, atomic one-per-bank swap) shipped with three
+deliberately-deferred items. None affect
 correctness of the shipped code; all were triaged as follow-up by the final
 whole-branch review.
 

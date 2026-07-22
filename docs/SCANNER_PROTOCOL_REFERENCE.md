@@ -5,7 +5,6 @@
 **Authoritative sources:**
 - Uniden, *BC125AT PC Protocol v1.01* (programming command set, serial settings)
 - Uniden, *BCT15X v1.03 Protocol* (operational commands `STS`/`GLG`/`KEY`/`PWR`; BearTracker commands)
-- `docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md` (consolidated research)
 
 > This document is the **wire-protocol** spec. For Bearpaw's REST/WebSocket API see [API_SPEC.md](API_SPEC.md) and [WEBSOCKET_SCHEMA.md](WEBSOCKET_SCHEMA.md). For the UI hit-workflow see [UI_WORKFLOW.md](UI_WORKFLOW.md).
 
@@ -683,7 +682,7 @@ These are the eight gaps identified by the 2026-05-19 protocol audit. Each has b
 9. **`parse_cin_response` clamps negative `delay` to 0** at [`protocol/mod.rs:294`](../crates/bearpaw-api/src/protocol/mod.rs#L294), discarding the legitimate `-10` and `-5` pre-delay values. Scheduled as v1.1 PR-5 (Phase 9e).
 10. **No distinction between `OK` / `ERR` / `NG` / timeout response codes.** Current code checks substring "OK" only; both `ERR` (syntax error, never retry) and `NG` (wrong mode, surface to user) are handled identically. Scheduled as v1.1 PR-4 (Phase 9d).
 
-See [`PROTOCOL_AUDIT_PLAN.md`](PROTOCOL_AUDIT_PLAN.md) for the Phase 1–4 history. The v1.1 continuation plan covers the remaining items via Phase 9 PRs.
+The remaining items above are tracked as v1.1 Phase 9 PRs.
 
 ---
 
@@ -701,7 +700,6 @@ See [`PROTOCOL_AUDIT_PLAN.md`](PROTOCOL_AUDIT_PLAN.md) for the Phase 1–4 histo
 
 - [API_SPEC.md](API_SPEC.md) — REST API surface
 - [WEBSOCKET_SCHEMA.md](WEBSOCKET_SCHEMA.md) — live-update message shapes
-- [PROTOCOL_AUDIT_PLAN.md](PROTOCOL_AUDIT_PLAN.md) — audit history (Phases 1–4 done; 5–7 partly in v1.1)
 - [BACKEND_LOGGING.md](BACKEND_LOGGING.md) — logging conventions
 - [DATA_LIFECYCLE.md](DATA_LIFECYCLE.md) — persistence + retention
 - [wire_captures/2026-05-21/](wire_captures/2026-05-21/) — real BC125AT wire traffic + audit reconciliation

@@ -937,8 +937,8 @@ For a new app, **do not adopt this file format**. JSON or TOML with explicit
 unit-bearing types is far better. Sentinel `.hpe` compatibility is only
 worthwhile if importing existing user configurations.
 
-A sample `.hpe` is committed at `docs/fixtures/kf0nui.bc125at_ss` for
-reference.
+Export one from your own scanner via Uniden Sentinel (or Bearpaw's
+`GET /api/v1/memory/export/bc125at_ss`) to see the format.
 
 ---
 

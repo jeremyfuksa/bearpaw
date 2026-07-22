@@ -37,7 +37,7 @@ use crate::protocol::{classify_response, ScannerReply};
 /// scanner's mode transition to settle. Without this, the next command
 /// — especially a memory-sync `CIN,1` — can race the mode transition
 /// and come back `NG`. Empirically 50–100 ms is enough; we use 100 to
-/// have headroom. See `docs/PROTOCOL_AUDIT_PLAN.md` Phase 5 §5.4.
+/// have headroom.
 const MODE_TRANSITION_SETTLE: Duration = Duration::from_millis(100);
 
 /// RAII guard. Entering scope sends `PRG` and asserts the
