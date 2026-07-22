@@ -12,6 +12,12 @@ interface ChannelEditSheetProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (draft: ChannelDraft) => Promise<void>;
+  /** Current channel priority — owned by the parent, not the local draft.
+   * Priority is an immediate action (fires the priority endpoint on toggle),
+   * not a batched field, so the switch reflects live state rather than
+   * `localDraft`. */
+  priorityChecked: boolean;
+  onPriorityChange: (next: boolean) => void | Promise<void>;
 }
 
 /** Valid CIN delay values (docs/BC125AT_PROTOCOL.md §5.3). Negatives are
@@ -68,6 +74,8 @@ export function ChannelEditSheet({
   isOpen,
   onClose,
   onSave,
+  priorityChecked,
+  onPriorityChange,
 }: ChannelEditSheetProps) {
   // Local working copy (#146): edits live here until Save commits them via
   // onSave. Cancel/Close simply discards — previously every keystroke wrote
@@ -282,8 +290,8 @@ export function ChannelEditSheet({
                   <div className="flex items-center gap-2">
                     <Switch
                       aria-label="Priority"
-                      checked={localDraft.priority}
-                      onCheckedChange={(checked) => handleFieldChange('priority', checked)}
+                      checked={priorityChecked}
+                      onCheckedChange={onPriorityChange}
                       className="data-[state=checked]:bg-brand-primary"
                     />
                     <label className="text-xs font-medium text-white/70">Priority</label>

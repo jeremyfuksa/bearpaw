@@ -321,7 +321,12 @@ export function ChannelsTab() {
           tone_squelch_kind: toneKind,
           tone_dcs_code: toneKind === 'dcs' ? (channel.tone_dcs_code ?? null) : null,
           lockout: draft?.lockout ?? channel.lockout,
-          priority: draft?.priority ?? channel.priority,
+          // Priority no longer rides the plain-CIN upload path (Task 6): it
+          // has its own immediate endpoint (setChannelPriority) because a
+          // plain CIN write can't clear priority and would trigger false
+          // channel_write_mismatch warnings. Always mirror the channel's
+          // live value here so priority never counts as a draft diff.
+          priority: channel.priority,
         };
 
         const lockoutChanged = normalized.lockout !== channel.lockout;
@@ -394,6 +399,41 @@ export function ChannelsTab() {
       toast.success(`Draft saved for CH ${channelIndex}`);
     },
     [setMemoryDraft],
+  );
+
+  // Priority is an immediate action (Task 6), not a batched draft field: the
+  // scanner only allows one priority channel per bank, so toggling it fires
+  // the priority endpoint right away rather than waiting for Upload Changes.
+  const handlePriorityChange = useCallback(
+    async (channelIndex: number, next: boolean) => {
+      const bank = deriveBankFromIndex(channelIndex);
+      if (next) {
+        const existing = channels.find(
+          (c) => c.priority && deriveBankFromIndex(c.index) === bank && c.index !== channelIndex,
+        );
+        if (existing) {
+          const ok = await confirmDialog(
+            `CH${existing.index} "${existing.alpha_tag || 'unnamed'}" is the priority channel for Bank ${bank}. Move priority to CH${channelIndex}?`,
+            'Move priority',
+          );
+          if (!ok) return;
+        }
+      } else {
+        const ok = await confirmDialog(
+          `Clear priority on CH${channelIndex}? The channel is rewritten in place.`,
+          'Clear priority',
+        );
+        if (!ok) return;
+      }
+      try {
+        const changed = await getAPI().setChannelPriority(channelIndex, next);
+        const byIndex = new Map(changed.map((c) => [c.index, c]));
+        setChannels(channels.map((c) => byIndex.get(c.index) ?? c));
+      } catch {
+        toast.error(`Failed to ${next ? 'set' : 'clear'} priority on CH${channelIndex}`);
+      }
+    },
+    [channels, setChannels],
   );
 
   const handleToggleSelectAll = useCallback(() => {
@@ -910,6 +950,8 @@ export function ChannelsTab() {
             isOpen={editingChannelIndex !== null}
             onClose={handleCloseEditSheet}
             onSave={(draft) => handleSaveDraft(editingChannelIndex, draft)}
+            priorityChecked={editingChannel.priority}
+            onPriorityChange={(next) => handlePriorityChange(editingChannelIndex, next)}
           />
         )}
       </div>

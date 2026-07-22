@@ -151,6 +151,16 @@ describe('ScannerAPIClient', () => {
       expect(result).toEqual(mockApiResponses.channel);
     });
 
+    it('setChannelPriority posts priority and returns changed channels', async () => {
+      const changed = [
+        { index: 2, priority: false },
+        { index: 9, priority: true },
+      ];
+      mockFetch({ changed });
+      const result = await client.setChannelPriority(9, true);
+      expect(result).toEqual(changed);
+    });
+
     it('should throw APIError on invalid channel index', async () => {
       mockFetchError(404, 'Channel not found');
       await expect(client.getChannel(600)).rejects.toThrow('Channel not found');
