@@ -6,6 +6,7 @@ import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
 import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
+import type { ActivityLogEntry } from '../../../types';
 import { ScannerDisplay } from '../ScannerUI';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import type { ScannerMode } from '../../App';
@@ -39,6 +40,64 @@ function normalizeSignal(value?: number) {
   if (value === undefined || value === null) return 0;
   if (value <= 5) return Math.round(value);
   return Math.min(5, Math.round(value / 20));
+}
+
+/** One row in the Recent Hits list. A `count > 1` means consecutive
+ *  same-channel hits were rolled up; `tag` already carries the `(N)` suffix. */
+export interface RolledHit {
+  id: string;
+  frequency: string;
+  tag: string;
+  strength: number;
+  time: number;
+  count: number;
+}
+
+/** Channel number is the grouping identity; frequency is the fallback for
+ *  channel-less freq-only hits. The `freq:` prefix keeps a channel number from
+ *  ever colliding with a frequency value. */
+function hitGroupKey(entry: ActivityLogEntry): string {
+  return entry.channel != null ? `ch:${entry.channel}` : `freq:${entry.frequency}`;
+}
+
+/**
+ * Collapse each maximal run of *consecutive* same-channel hits into a single
+ * row. Input is newest-first (as `fullActivityLog` is kept), so the first entry
+ * of each run is the most recent — its time/frequency/tag represent the group.
+ * A different channel breaks the run: `A, A, B, A` yields three rows, not two.
+ *
+ * Signal strength is the rounded average of the group's normalized strengths;
+ * the `(N)` count suffix is only appended when the group has more than one hit.
+ */
+export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
+  const groups: RolledHit[] = [];
+  let currentKey: string | null = null;
+  let strengthSum = 0;
+
+  for (const entry of entries) {
+    const key = hitGroupKey(entry);
+    if (key !== currentKey) {
+      // Start a new group. `entry` is the most recent hit in it.
+      currentKey = key;
+      strengthSum = normalizeSignal(entry.rssi);
+      groups.push({
+        id: entry.id,
+        frequency: entry.frequency.toFixed(3),
+        tag: entry.alpha_tag || '—',
+        strength: strengthSum,
+        time: entry.timestamp,
+        count: 1,
+      });
+      continue;
+    }
+    // Extend the current (last-pushed) group.
+    const group = groups[groups.length - 1];
+    group.count += 1;
+    strengthSum += normalizeSignal(entry.rssi);
+    group.strength = Math.round(strengthSum / group.count);
+  }
+
+  return groups.map((g) => (g.count > 1 ? { ...g, tag: `${g.tag} (${g.count})` } : g));
 }
 
 function HitSignalBars({ strength }: { strength: number }) {
@@ -100,20 +159,16 @@ export function ScanView({
   onOpenActivityExport,
 }: ScanViewProps) {
   const liveState = useStore((state) => state.liveState);
-  const activityLog = useStore((state) => state.activityLog);
   const fullActivityLog = useStore((state) => state.fullActivityLog);
   const banks = useStore((state) => state.banks);
 
+  // Roll up consecutive same-channel hits into one row (e.g. "WOF Rides (6)"),
+  // then show the five most recent groups. Sourced from `fullActivityLog`
+  // rather than the store's 5-entry `activityLog` so a group's count can
+  // exceed five.
   const recentHits = useMemo(
-    () =>
-      activityLog.map((entry) => ({
-        id: entry.id,
-        frequency: entry.frequency.toFixed(3),
-        tag: entry.alpha_tag || '—',
-        strength: normalizeSignal(entry.rssi),
-        time: entry.timestamp,
-      })),
-    [activityLog],
+    () => rollUpHits(fullActivityLog).slice(0, HIT_SLOT_COUNT),
+    [fullActivityLog],
   );
 
   const isScanningRightNow =
