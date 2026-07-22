@@ -4,16 +4,6 @@ Complete reverse-engineered protocol reference for the Uniden BC125AT handheld
 scanner (also covers the closely-related UBC125XLT, UBC126AT, and Albrecht
 AE125H, which all share firmware and protocol).
 
-Derived from:
-
-- Uniden's official **BC125AT Sentinel Software v1.03.00** (2015) — decompiled
-  from `BC125AT_SS.exe` (227 KB .NET 4.0 WinForms, internal namespace
-  `Uniden.Scaner.SS`, built from `C:\projects\RC\SCN\PC_SOFT\UB370Z_TOOL\`).
-- **Scan125 Control Program v3.9.10** by Nick Bailey (2013–2025) — decompiled
-  from `Scan125.exe` (746 KB VB.NET on .NET 3.5).
-
-The two implementations agree on every detail of the protocol below.
-
 > **Conflicts with this hardware:** the reference's USB VID/PID and CIN
 > write-side field order disagree with our captures. See
 > [`docs/SCANNER_PROTOCOL_REFERENCE.md`](SCANNER_PROTOCOL_REFERENCE.md) §1 and
