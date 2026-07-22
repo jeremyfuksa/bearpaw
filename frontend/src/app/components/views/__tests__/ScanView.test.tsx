@@ -162,7 +162,6 @@ describe('ScanView Recent Hits rendering', () => {
     useStore.setState({
       liveState: createTestLiveState({ mode: 'SCAN', squelch_open: false }),
       banks: Array(10).fill(true),
-      activityLog: [],
       fullActivityLog: [],
     });
   });

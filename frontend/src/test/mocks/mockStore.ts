@@ -7,7 +7,6 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     liveState: overrides.liveState ?? createTestLiveState(),
     deviceInfo: overrides.deviceInfo ?? createTestDeviceInfo(),
     channels: overrides.channels ?? [],
-    activityLog: overrides.activityLog ?? [],
     fullActivityLog: overrides.fullActivityLog ?? [],
     preferences: overrides.preferences ?? {
       theme: 'night',
@@ -26,7 +25,6 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     setImportProgress: vi.fn(),
     setDeviceInfo: vi.fn(),
     setChannels: vi.fn(),
-    addActivityLogEntry: vi.fn(),
     addToFullActivityLog: vi.fn(),
     clearActivityLog: vi.fn(),
     updatePreferences: vi.fn(),

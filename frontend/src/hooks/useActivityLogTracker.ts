@@ -18,7 +18,6 @@ import type { ActivityLogEntry, EventMessage, StateUpdateMessage } from '../type
  */
 export function useActivityLogTracker(): void {
   const { ws } = useWebSocket();
-  const addActivityLogEntry = useStore((state) => state.addActivityLogEntry);
   const addToFullActivityLog = useStore((state) => state.addToFullActivityLog);
 
   const lastHitOpenRef = useRef(false);
@@ -62,7 +61,6 @@ export function useActivityLogTracker(): void {
             duration,
             ended_at: payload.timestamp,
           };
-          addActivityLogEntry(entry);
           addToFullActivityLog(entry);
         }
         squelchOpenStartTimeRef.current = null;
@@ -93,5 +91,5 @@ export function useActivityLogTracker(): void {
       unsubscribeState();
       unsubscribeEvent();
     };
-  }, [addActivityLogEntry, addToFullActivityLog, ws]);
+  }, [addToFullActivityLog, ws]);
 }
