@@ -271,7 +271,6 @@ describe('PREFERENCE_KEY_MAP', () => {
   // non-persistent — the auto-connect bug. These keys differ camel↔snake and
   // are set from the Preferences UI, so each MUST be in the map.
   it.each([
-    ['checkUpdates', 'check_updates'],
     ['dataRetentionDays', 'data_retention_days'],
     ['hitMinDuration', 'hit_min_duration'],
   ])('maps %s to %s', (camel, snake) => {

@@ -180,7 +180,6 @@ export default function App() {
             displayMode: prefs.displayMode || 'frequency',
             reducedMotion: prefs.reduced_motion || false,
             hitMinDuration: prefs.hit_min_duration || 2,
-            checkUpdates: prefs.check_updates ?? true,
             dataRetentionDays: prefs.data_retention_days || 30,
             audioOutputDevice: prefs.audio_output_device || 'default',
           };

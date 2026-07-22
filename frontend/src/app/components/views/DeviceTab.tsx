@@ -46,7 +46,6 @@ interface SearchRange {
 // key nobody reads back — the setting then looks non-persistent.
 export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   hitMinDuration: 'hit_min_duration',
-  checkUpdates: 'check_updates',
   dataRetentionDays: 'data_retention_days',
 };
 
@@ -1448,19 +1447,6 @@ export function DeviceTab() {
                         {preferences.hitMinDuration}s
                       </span>
                     </div>
-                  </div>
-                  <div className="h-px bg-white/5" />
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label className="text-sm font-medium text-white">Check for Updates</label>
-                      <p className="text-xs text-white/40">
-                        Notify when a new firmware version is available
-                      </p>
-                    </div>
-                    <Switch
-                      checked={preferences.checkUpdates}
-                      onCheckedChange={(checked) => handlePreferenceChange('checkUpdates', checked)}
-                    />
                   </div>
                 </div>
               </section>
