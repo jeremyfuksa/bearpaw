@@ -165,7 +165,20 @@ describe('useKeyboardShortcuts', () => {
     document.body.removeChild(input);
   });
 
-  it('opens the shortcuts overlay on a bare "?"', () => {
+  // a11y S3 (WCAG 2.1.4): the help shortcut is modifier-gated (Cmd/Ctrl+/),
+  // not a bare single character that could fire on an accidental keypress.
+  it('opens the shortcuts overlay on Ctrl+/', () => {
+    renderHook(() => useKeyboardShortcuts(mockHandlers));
+
+    const event = new KeyboardEvent('keydown', { key: '/', ctrlKey: true });
+    act(() => {
+      document.dispatchEvent(event);
+    });
+
+    expect(mockHandlers.openShortcuts).toHaveBeenCalled();
+  });
+
+  it('does not open the shortcuts overlay on a bare "?"', () => {
     renderHook(() => useKeyboardShortcuts(mockHandlers));
 
     const event = new KeyboardEvent('keydown', { key: '?' });
@@ -173,6 +186,6 @@ describe('useKeyboardShortcuts', () => {
       document.dispatchEvent(event);
     });
 
-    expect(mockHandlers.openShortcuts).toHaveBeenCalled();
+    expect(mockHandlers.openShortcuts).not.toHaveBeenCalled();
   });
 });

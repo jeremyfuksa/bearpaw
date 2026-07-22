@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { SyncSpinner } from './components/SyncSpinner';
 import { ImportProgressOverlay } from './components/ImportProgressOverlay';
@@ -56,7 +56,7 @@ export default function App() {
     },
     openShortcuts: () => {
       toast.info(
-        'Keyboard Shortcuts:\nCtrl+S: Scan | Ctrl+H: Hold\nCtrl+L: Activity Log | Ctrl+M: Memory\nCtrl+C: Copy Freq | Ctrl+↑/↓: Navigate\nEsc: Close overlays | ?: Show shortcuts',
+        'Keyboard Shortcuts:\nCtrl+S: Scan | Ctrl+H: Hold\nCtrl+L: Activity Log | Ctrl+M: Memory\nCtrl+C: Copy Freq | Ctrl+↑/↓: Navigate\nEsc: Close overlays | Ctrl+/: Show shortcuts',
         {
           duration: 5000,
         },
@@ -114,6 +114,9 @@ export default function App() {
   const programModeEntryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scanResumeInFlightRef = useRef(false);
   const scanResumeTimerRef = useRef<number | null>(null);
+  // Focus management for the blocking sync overlay (a11y S2).
+  const cancelSyncButtonRef = useRef<HTMLButtonElement | null>(null);
+  const overlayReturnFocusRef = useRef<HTMLElement | null>(null);
   // Bank-toggle debounce. Each click updates `bankDesiredRef` to the latest
   // desired mask and resets a 300ms timer; the flush only fires after the
   // user stops clicking. Without this, rapid toggling hits the scanner with
@@ -918,141 +921,186 @@ export default function App() {
     [api],
   );
 
+  // Focus management + trap for the blocking sync overlay (a11y S2). Standalone
+  // effect keyed on isMemorySyncing — it touches none of the four
+  // regression-guarded sync flows (WS deps, overlay gate, handleCancelSync,
+  // reconnect probe). On open: remember the previously-focused element and move
+  // focus to Cancel. While open: the overlay has one focusable control, so Tab
+  // is trapped by re-focusing it. On close: restore focus.
+  useEffect(() => {
+    if (!isMemorySyncing) return;
+    overlayReturnFocusRef.current = document.activeElement as HTMLElement | null;
+    cancelSyncButtonRef.current?.focus();
+
+    const handleTrapKey = (event: KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        cancelSyncButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleTrapKey);
+    return () => {
+      document.removeEventListener('keydown', handleTrapKey);
+      overlayReturnFocusRef.current?.focus();
+    };
+  }, [isMemorySyncing]);
+
   return (
-    <div className="scanner-app-shell">
-      {/* `expand` + `gap` make stacked toasts spread vertically instead of
+    // MotionConfig honors the user's reduced-motion preference — the OS setting
+    // via 'user', or force-off when the in-app toggle is set (a11y S4). The
+    // reducedMotion pref was previously loaded but never consumed.
+    <MotionConfig reducedMotion={preferences.reducedMotion ? 'always' : 'user'}>
+      <div className="scanner-app-shell">
+        <h1 className="sr-only">Bearpaw</h1>
+        {/* `expand` + `gap` make stacked toasts spread vertically instead of
           piling. Colors come from sonner's own CSS variables (not `unstyled`)
           so its stacking/expand layout stays intact — a darker `--normal-bg`
           with per-type accent borders. */}
-      <Toaster
-        position="top-right"
-        theme="dark"
-        expand
-        gap={12}
-        style={
-          {
-            '--normal-bg': '#0e1014',
-            '--normal-border': 'rgba(255,255,255,0.12)',
-            '--normal-text': 'var(--text-scanner-light)',
-            '--success-bg': '#0e1014',
-            '--success-border': 'rgba(34,197,94,0.5)',
-            '--success-text': 'var(--text-scanner-light)',
-            '--error-bg': '#0e1014',
-            '--error-border': 'rgba(239,68,68,0.5)',
-            '--error-text': 'var(--text-scanner-light)',
-            '--warning-bg': '#0e1014',
-            '--warning-border': 'rgba(234,179,8,0.5)',
-            '--warning-text': 'var(--text-scanner-light)',
-            '--info-bg': '#0e1014',
-            '--info-border': 'rgba(59,130,246,0.5)',
-            '--info-text': 'var(--text-scanner-light)',
-          } as React.CSSProperties
-        }
-      />
+        <Toaster
+          position="top-right"
+          theme="dark"
+          expand
+          gap={12}
+          style={
+            {
+              '--normal-bg': '#0e1014',
+              '--normal-border': 'rgba(255,255,255,0.12)',
+              '--normal-text': 'var(--text-scanner-light)',
+              '--success-bg': '#0e1014',
+              '--success-border': 'rgba(34,197,94,0.5)',
+              '--success-text': 'var(--text-scanner-light)',
+              '--error-bg': '#0e1014',
+              '--error-border': 'rgba(239,68,68,0.5)',
+              '--error-text': 'var(--text-scanner-light)',
+              '--warning-bg': '#0e1014',
+              '--warning-border': 'rgba(234,179,8,0.5)',
+              '--warning-text': 'var(--text-scanner-light)',
+              '--info-bg': '#0e1014',
+              '--info-border': 'rgba(59,130,246,0.5)',
+              '--info-text': 'var(--text-scanner-light)',
+            } as React.CSSProperties
+          }
+        />
 
-      <TabBar currentTab={currentTab} onTabChange={handleTabChange} />
+        <nav aria-label="Views">
+          <TabBar currentTab={currentTab} onTabChange={handleTabChange} />
+        </nav>
 
-      <div className="relative flex-1 overflow-hidden p-6">
-        <AnimatePresence mode="wait">
-          {currentTab === 'Scan' && (
-            <ScanView
-              mainText={mainText}
-              subText={subText}
-              scannerMode={getScannerMode()}
-              connectionStatus={connectionStatus}
-              isHolding={getScannerMode() === 'HOLD'}
-              isInitialSyncing={isInitialSyncing}
-              chartAnimate={chartAnimate}
-              dashboardLoading={dashboardLoading}
-              busiestChannels={busiestChannels}
-              hourlyHeatmap={hourlyHeatmap}
-              heatmapStats={heatmapStats}
-              onHoldToggle={handleToggle}
-              onLockout={handleLockout}
-              onVolumeChange={handleVolumeChange}
-              onBankToggle={handleBankToggle}
-              onOpenActivityExport={() => setIsExportSheetOpen(true)}
-            />
-          )}
+        <main
+          id="view-panel"
+          role="tabpanel"
+          aria-labelledby={`tab-${currentTab.toLowerCase()}`}
+          tabIndex={0}
+          className="relative flex-1 overflow-hidden p-6"
+        >
+          <h2 className="sr-only">{currentTab}</h2>
+          <AnimatePresence mode="wait">
+            {currentTab === 'Scan' && (
+              <ScanView
+                mainText={mainText}
+                subText={subText}
+                scannerMode={getScannerMode()}
+                connectionStatus={connectionStatus}
+                isHolding={getScannerMode() === 'HOLD'}
+                isInitialSyncing={isInitialSyncing}
+                chartAnimate={chartAnimate}
+                dashboardLoading={dashboardLoading}
+                busiestChannels={busiestChannels}
+                hourlyHeatmap={hourlyHeatmap}
+                heatmapStats={heatmapStats}
+                onHoldToggle={handleToggle}
+                onLockout={handleLockout}
+                onVolumeChange={handleVolumeChange}
+                onBankToggle={handleBankToggle}
+                onOpenActivityExport={() => setIsExportSheetOpen(true)}
+              />
+            )}
 
-          {currentTab === 'Device' && <DeviceTab />}
-          {currentTab === 'Channels' && <ChannelsTab />}
-        </AnimatePresence>
-      </div>
+            {currentTab === 'Device' && <DeviceTab />}
+            {currentTab === 'Channels' && <ChannelsTab />}
+          </AnimatePresence>
+        </main>
 
-      <StatusBar
-        connectionStatus={connectionStatus}
-        modelName={deviceInfo?.model || 'BC125AT'}
-        shellStatusText={shellStatusText}
-        currentTab={currentTab}
-        sessionStats={currentTab === 'Scan' ? sessionStats : null}
-      />
+        <StatusBar
+          connectionStatus={connectionStatus}
+          modelName={deviceInfo?.model || 'BC125AT'}
+          shellStatusText={shellStatusText}
+          currentTab={currentTab}
+          sessionStats={currentTab === 'Scan' ? sessionStats : null}
+        />
 
-      {/* Announces scan-hit / scanning / connection transitions to screen
+        {/* Announces scan-hit / scanning / connection transitions to screen
           readers. Mounted here (outside the AnimatePresence tab switch) so its
           edge-tracking refs survive tab changes. Pass RAW liveState.mode, not
           getScannerMode() — the announcer gates on `mode === 'SCAN'`. */}
-      <ScanAnnouncer
-        squelchOpen={liveState?.squelch_open ?? false}
-        mode={liveState?.mode ?? ''}
-        frequency={liveState?.frequency}
-        alphaTag={liveState?.alpha_tag}
-        connectionStatus={connectionStatus}
-        isSyncing={isMemorySyncing}
-      />
+        <ScanAnnouncer
+          squelchOpen={liveState?.squelch_open ?? false}
+          mode={liveState?.mode ?? ''}
+          frequency={liveState?.frequency}
+          alphaTag={liveState?.alpha_tag}
+          connectionStatus={connectionStatus}
+          isSyncing={isMemorySyncing}
+        />
 
-      <ActivityExportSheet
-        isOpen={isExportSheetOpen}
-        onClose={() => setIsExportSheetOpen(false)}
-        hasActivity={fullActivityLog.length > 0}
-      />
+        <ActivityExportSheet
+          isOpen={isExportSheetOpen}
+          onClose={() => setIsExportSheetOpen(false)}
+          hasActivity={fullActivityLog.length > 0}
+        />
 
-      {/* REGRESSION GUARD: App.regression.test.tsx :: memory-sync overlay
+        {/* REGRESSION GUARD: App.regression.test.tsx :: memory-sync overlay
           covers subsequent syncs, not just initial. Gate on `isMemorySyncing`
           (any in-progress sync) rather than `isInitialSyncing` (first-time
           only) so that a user-triggered File → Sync Memory after the initial
           sync still blocks the UI for the duration of the PRG bracket — the
           original intent of #102. */}
-      <AnimatePresence>
-        {isMemorySyncing && (
-          <motion.div
-            key="memory-sync-overlay"
-            role="status"
-            aria-live="polite"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          >
-            <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-white/10 bg-scanner-bg-dark p-6 shadow-lg">
-              <SyncSpinner percent={sync.percent} size={56} />
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-sm font-medium text-white">Syncing Scanner Memory</span>
-                <span className="font-mono text-xs text-scanner-text-secondary">
-                  {Math.round(sync.percent)}%
-                </span>
+        <AnimatePresence>
+          {isMemorySyncing && (
+            <motion.div
+              key="memory-sync-overlay"
+              role="dialog"
+              aria-modal={true}
+              aria-labelledby="sync-overlay-title"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            >
+              <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-white/10 bg-scanner-bg-dark p-6 shadow-lg">
+                <SyncSpinner percent={sync.percent} size={56} />
+                <div className="flex flex-col items-center gap-1">
+                  <span id="sync-overlay-title" className="text-sm font-medium text-white">
+                    Syncing Scanner Memory
+                  </span>
+                  <span className="font-mono text-xs text-scanner-text-secondary">
+                    {Math.round(sync.percent)}%
+                  </span>
+                </div>
+                {/* Progress text is the polite live region so screen readers hear
+                  updates without the whole dialog re-announcing. */}
+                <p aria-live="polite" className="text-center text-xs text-scanner-text-secondary">
+                  {syncProgressMessage || 'Loading channels from device...'}
+                </p>
+                <button
+                  type="button"
+                  ref={cancelSyncButtonRef}
+                  onClick={handleCancelSync}
+                  className="rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-scanner-text-light transition-colors hover:bg-white/20"
+                >
+                  Cancel Sync
+                </button>
               </div>
-              <p className="text-center text-xs text-scanner-text-secondary">
-                {syncProgressMessage || 'Loading channels from device...'}
-              </p>
-              <button
-                type="button"
-                onClick={handleCancelSync}
-                className="rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-scanner-text-light transition-colors hover:bg-white/20"
-              >
-                Cancel Sync
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      <ImportProgressOverlay
-        active={importProgress.active}
-        percent={importProgress.percent}
-        message={importProgress.message}
-      />
-    </div>
+        <ImportProgressOverlay
+          active={importProgress.active}
+          percent={importProgress.percent}
+          message={importProgress.message}
+        />
+      </div>
+    </MotionConfig>
   );
 }

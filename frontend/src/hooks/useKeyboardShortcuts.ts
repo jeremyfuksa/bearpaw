@@ -51,18 +51,16 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         return;
       }
 
-      // The help shortcut is a bare "?" (Shift+/ on most layouts) with no
-      // Ctrl/Cmd — handle it before the modifier gate so it stays reachable.
-      if (event.key === '?') {
-        event.preventDefault();
-        current.openShortcuts();
-        return;
-      }
-
       const modifierPressed = event.ctrlKey || event.metaKey;
       if (!modifierPressed) return;
 
       switch (event.key.toLowerCase()) {
+        // Help shortcut is Cmd/Ctrl+/ — a modifier-gated key, matching every
+        // other shortcut here (WCAG 2.1.4: no bare single-character shortcut).
+        case '/':
+          event.preventDefault();
+          current.openShortcuts();
+          break;
         case 's':
           event.preventDefault();
           api.sendScan().catch((err) => reportCommandError('scan', err));
