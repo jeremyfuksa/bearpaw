@@ -378,12 +378,16 @@ export function ChannelsTab() {
       const channel = channels.find((ch) => ch.index === channelIndex);
       if (!channel) return;
 
+      // Don't seed a store draft here. The sheet keeps its own local working
+      // copy (#146) and falls back to buildDraft when no store draft exists,
+      // so opening never needs to write one. Seeding an identical-copy draft
+      // lit the row's isPending (`Boolean(draft)`) "modified" style on open,
+      // and Cancel — which only clears editingChannelIndex — never removed it,
+      // leaving a cancelled row styled modified. The store draft is written
+      // only on an explicit Save (handleSaveDraft).
       setEditingChannelIndex(channelIndex);
-      if (!memoryDrafts[channelIndex]) {
-        setMemoryDraft(channelIndex, buildDraft(channel));
-      }
     },
-    [channels, memoryDrafts, setMemoryDraft],
+    [channels],
   );
 
   const handleCloseEditSheet = useCallback(() => {

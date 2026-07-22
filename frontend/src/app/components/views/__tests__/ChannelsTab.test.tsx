@@ -223,6 +223,22 @@ describe('ChannelsTab', () => {
         expect(await screen.findByText(/Edit Channel/i)).toBeInTheDocument();
       }
     });
+
+    // REGRESSION GUARD: opening the edit sheet must NOT seed a store draft.
+    // The sheet keeps its own local working copy (#146), so a store draft
+    // should only be written on an explicit Save. Seeding on open lit the row
+    // with the "modified" (isPending) style and — because Cancel never removed
+    // the seed — left the row styled modified after cancelling an edit.
+    it('opening the edit sheet does not write a store draft', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByText(/Channel 1/i));
+      expect(await screen.findByText(/Edit Channel/i)).toBeInTheDocument();
+
+      expect(store.setMemoryDraft).not.toHaveBeenCalled();
+    });
   });
 
   describe('Priority toggle (immediate action, Task 6)', () => {
