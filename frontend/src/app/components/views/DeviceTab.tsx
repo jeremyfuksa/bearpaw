@@ -62,6 +62,7 @@ export function DeviceTab() {
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>('Device Config');
+  const [firmware, setFirmware] = useState<string | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<number[]>([]);
   const [isClearing, setIsClearing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -201,6 +202,12 @@ export function DeviceTab() {
         const settings = await api.getAllSettings();
 
         if (!active) return;
+
+        // Firmware comes from the settings snapshot (VER), not DeviceInfo —
+        // the backend never populates DeviceInfo.firmware.
+        if (settings.firmware) {
+          setFirmware(settings.firmware);
+        }
 
         // Populate device config settings
         if (settings.squelch) {
@@ -1040,7 +1047,7 @@ export function DeviceTab() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/50">Firmware</span>
-                  <span className="text-white">{deviceInfo?.firmware ?? '—'}</span>
+                  <span className="text-white">{firmware ?? '—'}</span>
                 </div>
               </div>
               {deviceInfo?.diagnostic_message && (
@@ -1419,7 +1426,7 @@ export function DeviceTab() {
                   <Settings aria-hidden className="w-4 h-4 text-white/50" /> General
                 </h3>
                 <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-6">
                     <div className="space-y-0.5">
                       <label className="text-base font-medium text-white">
                         Hit Minimum Duration
@@ -1428,7 +1435,7 @@ export function DeviceTab() {
                         Minimum seconds a transmission must last to be logged as a hit
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-3">
                       <Slider
                         aria-label="Hit Minimum Duration"
                         value={[preferences.hitMinDuration]}
