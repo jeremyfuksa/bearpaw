@@ -258,8 +258,8 @@ describe('DeviceTab', () => {
     it('should render external links', async () => {
       renderDeviceTab();
       await selectCategory(/Preferences/i);
-      expect(screen.getByRole('button', { name: /Website/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Github/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Buy me a coffee/i })).toBeInTheDocument();
     });
   });
 });
