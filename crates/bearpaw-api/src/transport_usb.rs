@@ -161,8 +161,7 @@ impl UsbTransport {
                 Err(e) => return Err(UsbTransportError::Usb(e)),
             }
         }
-        let s = sanitize_usb_ascii(&out);
-        Ok(s.trim().trim_end_matches('\r').to_string())
+        Ok(finalize_read_line(&out))
     }
 
     fn read_multiline(&self, session: &mut UsbSession) -> Result<String, UsbTransportError> {
@@ -202,6 +201,22 @@ fn sanitize_usb_ascii(bytes: &[u8]) -> String {
     out
 }
 
+/// Turn a raw single-line read into the response string, discarding anything
+/// at or after the first `\r` terminator.
+///
+/// REGRESSION GUARD (#260): `read_line_with_timeout` breaks as soon as the
+/// buffer *contains* a `\r`, but a single bulk read can return the terminator
+/// plus following bytes (coalesced writes, or a straggler from a desynced
+/// exchange). Without truncating here, that trailing garbage — `\r` and all —
+/// leaked into the returned "line" and corrupted tail-anchored parsers
+/// (`parse_cin_response`, `classify_response`). This matches the serial
+/// transport, which reads byte-by-byte and stops at the first `\r`. See
+/// `finalize_read_line_truncates_at_first_cr`.
+fn finalize_read_line(out: &[u8]) -> String {
+    let end = out.iter().position(|&b| b == b'\r').unwrap_or(out.len());
+    sanitize_usb_ascii(&out[..end]).trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,5 +236,28 @@ mod tests {
         assert!(!UsbTransportError::Usb(rusb::Error::Timeout).is_device_gone());
         assert!(!UsbTransportError::Usb(rusb::Error::Busy).is_device_gone());
         assert!(!UsbTransportError::Usb(rusb::Error::Interrupted).is_device_gone());
+    }
+
+    #[test]
+    fn finalize_read_line_strips_a_trailing_terminator() {
+        // The normal case: exactly one \r-terminated line.
+        assert_eq!(
+            finalize_read_line(b"CIN,1,Ararat,01451300,AUTO,0,2,0,0\r"),
+            "CIN,1,Ararat,01451300,AUTO,0,2,0,0"
+        );
+        assert_eq!(finalize_read_line(b"ERR\r"), "ERR");
+        assert_eq!(finalize_read_line(b""), "");
+    }
+
+    #[test]
+    fn finalize_read_line_truncates_at_first_cr() {
+        // REGRESSION GUARD (#260): a coalesced bulk read that returns the
+        // terminator plus a straggler line must not leak the embedded \r and
+        // trailing bytes into the returned response.
+        assert_eq!(
+            finalize_read_line(b"CIN,1,Ararat,01451300,AUTO,0,2,0,0\rCIN,2,X"),
+            "CIN,1,Ararat,01451300,AUTO,0,2,0,0"
+        );
+        assert_eq!(finalize_read_line(b"KEY,H,P,OK\rSTS,..."), "KEY,H,P,OK");
     }
 }
