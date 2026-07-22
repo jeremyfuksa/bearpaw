@@ -74,6 +74,13 @@ describe('ActivityExportSheet', () => {
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
     });
 
+    // a11y C1/C2 regression guard: real modal dialog with an accessible name,
+    // not a hand-rolled motion.div overlay.
+    it('is a modal dialog named by its title', () => {
+      render(<ActivityExportSheet {...mockProps} />);
+      expect(screen.getByRole('dialog', { name: /export activity log/i })).toBeInTheDocument();
+    });
+
     it('should render timeframe buttons', () => {
       render(<ActivityExportSheet {...mockProps} />);
       expect(screen.getByRole('button', { name: /today/i })).toBeInTheDocument();

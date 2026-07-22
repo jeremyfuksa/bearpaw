@@ -65,6 +65,14 @@ describe('ChannelEditSheet', () => {
       renderSheet();
       expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
     });
+
+    // a11y C1/C2 regression guard: the sheet is a real modal dialog with an
+    // accessible name, not a hand-rolled motion.div overlay. A revert to the
+    // old markup drops role="dialog"/aria-modal and fails this.
+    it('is a modal dialog named by its title', () => {
+      renderSheet();
+      expect(screen.getByRole('dialog', { name: /edit channel 1/i })).toBeInTheDocument();
+    });
   });
 
   describe('Local draft (Cancel discards edits)', () => {
@@ -256,6 +264,20 @@ describe('ChannelEditSheet', () => {
       const save = screen.getByRole('button', { name: /save draft/i });
       expect(save).toBeDisabled();
       expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    // a11y S2 regression guard: a validation error is programmatically linked
+    // to its field (aria-invalid + aria-describedby) and announced (role=alert),
+    // not just shown as red text.
+    it('links a frequency error to the field and announces it', async () => {
+      renderSheet();
+      const freq = screen.getByLabelText('Frequency');
+      await userEvent.clear(freq);
+      await userEvent.type(freq, '90.0');
+      expect(freq).toHaveAttribute('aria-invalid', 'true');
+      const error = screen.getByRole('alert');
+      expect(error).toHaveTextContent(/covered band/i);
+      expect(freq).toHaveAttribute('aria-describedby', error.id);
     });
   });
 });
