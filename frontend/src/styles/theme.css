@@ -321,6 +321,7 @@
   --color-heatmap-4: var(--heatmap-level-4);
   --color-heatmap-5: var(--heatmap-level-5);
   --radius-xs: var(--radius-xs);
+  --radius-scanner-xs: var(--radius-xs);
   --radius-scanner-sm: var(--radius-sm);
   --radius-scanner-md: var(--radius-md);
   --radius-scanner-display: var(--radius-display);
