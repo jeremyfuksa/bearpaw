@@ -36,7 +36,7 @@ The scanner's everyday settings, in four cards.
 - **Squelch**: 0 to 15. The gate that mutes background hiss until a signal is
   strong enough to break through. Too high and you'll miss weak signals; too low
   and you'll hear constant static. (See [squelch](glossary.md#squelch).)
-- **Battery Saver**: 1 to 16 hours. The rechargeable-battery charge time the
+- **Battery Saver**: 1 to 14 hours. The rechargeable-battery charge time the
   scanner is set for.
 
 ### Display & System
@@ -86,9 +86,9 @@ With a mode active, you can also set:
   finds, so it doesn't keep re-triggering on the same one.
 - **Alert Beep**: beep when a close call is detected.
 - **Alert Light**: flash the scanner's backlight when one is detected.
-- **Enabled Bands**: five switches (**VHF Low, Air, VHF High 1, VHF High 2,
-  UHF**) choosing which radio bands Close Call watches. Turning off bands you
-  don't care about makes it faster and reduces false hits.
+- **Enabled Bands**: five switches (**VHF Low, Air, VHF High, UHF, 800 MHz**)
+  choosing which radio bands Close Call watches. Turning off bands you don't care
+  about makes it faster and reduces false hits.
 
 ---
 

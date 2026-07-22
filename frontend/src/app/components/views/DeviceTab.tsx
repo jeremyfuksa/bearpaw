@@ -1160,7 +1160,7 @@ export function DeviceTab() {
             <section className="space-y-4">
               <h3 className="text-lg font-bold text-white">Enabled Bands</h3>
               <div className="bg-white/5 rounded-lg p-4 space-y-4 border border-white/10">
-                {['VHF Low', 'Air', 'VHF High 1', 'VHF High 2', 'UHF'].map((band, index) => (
+                {['VHF Low', 'Air', 'VHF High', 'UHF', '800 MHz'].map((band, index) => (
                   <div key={band} className="flex items-center justify-between">
                     <label
                       htmlFor={`band-${band}`}

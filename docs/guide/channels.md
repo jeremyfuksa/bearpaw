@@ -114,21 +114,57 @@ Across the top of the tab:
   turned off while a search is active.
 - **Clear Selected**: blanks all the checkbox-selected channels. Like edits, this
   creates drafts; it doesn't wipe them from the radio until you upload.
-- **Import**: load channels from a file. Bearpaw reads two kinds.
-  - A **CSV** file is a plain spreadsheet of channels (opens in Excel or
-    Numbers).
-  - A **`.bc125at_ss`** file is a full backup (the same format the official
-    Sentinel software uses), containing _all_ your channels _and_ settings.
-    Importing one overwrites everything, so the app warns you first.
-- **Export**: save your channels to a file, in either format.
-  - **CSV**: just the channel list.
-  - **BC125AT**: the full backup (channels and settings), read live from the
-    radio.
+- **Import** / **Export**: move channels between the scanner and a file. Both
+  work in two formats, CSV and native Uniden. See
+  [Import and export](#import-and-export) below.
 - **Drag to reorder**: grab a row's handle (⠿) and drag it up or down to change
   the channel order within the bank. Reordering is a draft, and uploads with
   everything else.
 
 > Reordering is mouse-only. There's no keyboard path to it yet.
+
+## Import and export
+
+Your channels don't have to live only in the radio. Bearpaw reads and writes them
+to files, in two formats, so you can back them up, edit them at your desk, or hand
+them off to other software.
+
+### The two formats
+
+**CSV** is a plain spreadsheet: one row per channel, with columns for frequency,
+tag, mode, tone, delay, and lockout. Open it in Excel, Numbers, or Google Sheets,
+make bulk edits by copy-and-paste or find-and-replace, and load it back in. It's
+the channel list on its own, nothing else.
+
+**Native Uniden** (a `.bc125at_ss` file) is the same format the official Sentinel
+software reads and writes. It's a full snapshot: all 500 channels _and_ the
+scanner's settings. Because it speaks Sentinel's own language, you can move a
+channel set between Bearpaw and Uniden's software in either direction, or keep one
+as a complete backup of the radio. Bearpaw builds this file by reading the live
+settings off the scanner, so exporting it takes a few seconds longer than CSV.
+
+### Exporting
+
+**Export** saves your channels to a file. Pick **CSV** for just the channel list,
+or **BC125AT** for the full backup. The app writes `channels.csv` or
+`scanner.bc125at_ss` and lets you choose where it goes.
+
+### Importing
+
+**Import** loads channels from a file, and reads either format automatically. A
+CSV brings in just the channels. A `.bc125at_ss` file brings in everything it
+holds and **overwrites all channels and settings** on the radio, so the app asks
+you to confirm before it does.
+
+> Import writes straight to the scanner. Unlike a hand edit, it isn't held as a
+> draft: the file's channels are written to the radio as the import runs, with a
+> progress bar covering the screen while it works (a full native-file restore is
+> around 80 seconds of writes). When it finishes, Bearpaw re-reads the channels so
+> the list matches what's now in the radio.
+
+Separately, the [Scan tab](scan.md#exporting-your-activity-data) exports your
+_activity log_ (what the scanner has heard over time) to CSV. That's hit data for
+analysis, a different thing from these channel files.
 
 ## Refreshing from the scanner (memory sync)
 
