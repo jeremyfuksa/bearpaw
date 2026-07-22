@@ -210,4 +210,29 @@ describe('App.tsx regression guards', () => {
       expect(importBranch).toMatch(/return;/);
     });
   });
+
+  describe('leaving the Device page resumes scan', () => {
+    // A Device-page write (unlock, bank/priority edit) parks the scanner in
+    // HOLD at ch1 via its PRG/EPG bracket. We resume scanning when the user
+    // navigates away from Device — not immediately after the write. Two ways to
+    // regress: drop the leavingDevice resume in handleTabChange, or wire the
+    // TabBar's onTabChange straight to setCurrentTab (bypassing the handler, so
+    // tab-bar clicks never resume). Both are guarded here.
+
+    it('handleTabChange resumes scan when leaving Device', () => {
+      const start = APP_SOURCE.indexOf('const handleTabChange = useCallback');
+      expect(start, 'handleTabChange must exist').toBeGreaterThan(-1);
+      const body = stripComments(APP_SOURCE.slice(start, APP_SOURCE.indexOf('}, [', start)));
+      // Must detect the Device -> non-Device transition and request a resume.
+      expect(body).toMatch(/currentTab === 'Device'/);
+      expect(body).toMatch(/requestScanResume\(/);
+    });
+
+    it('TabBar navigation routes through handleTabChange, not setCurrentTab', () => {
+      // The tab bar is the primary navigation; if it calls setCurrentTab
+      // directly the resume never fires on a tab-bar click.
+      expect(APP_SOURCE).toMatch(/<TabBar[^>]*onTabChange=\{handleTabChange\}/);
+      expect(APP_SOURCE).not.toMatch(/<TabBar[^>]*onTabChange=\{setCurrentTab\}/);
+    });
+  });
 });

@@ -36,8 +36,7 @@ describe('DeviceTab', () => {
     });
   });
 
-  const renderDeviceTab = (props?: { onScanResume?: (reason: string) => void }) =>
-    render(<DeviceTab {...props} />);
+  const renderDeviceTab = () => render(<DeviceTab />);
 
   const selectCategory = async (label: RegExp | string) => {
     await userEvent.click(screen.getByRole('button', { name: label }));
@@ -143,51 +142,6 @@ describe('DeviceTab', () => {
       await waitFor(() => {
         expect(mockApiClient.clearChannelLockouts).toHaveBeenCalledWith([1]);
       });
-    });
-
-    const setupUnlockable = () => {
-      useStore.setState({ channels: [createTestChannel({ index: 1 })] });
-      mockApiClient.getLockouts = vi.fn().mockResolvedValue({
-        channels: [1],
-        frequencies: [],
-        temporary_channels: [],
-      });
-      mockApiClient.clearChannelLockouts = vi.fn().mockResolvedValue({
-        cleared: [1],
-        failed: [],
-      });
-    };
-
-    const unlockChannelOne = async () => {
-      await selectCategory(/Locked Channels/i);
-      await screen.findByText(/CH 1/i);
-      await userEvent.click(screen.getByRole('checkbox'));
-      const unlockButton = screen.getByRole('button', { name: /Unlock Selected/i });
-      await waitFor(() => expect(unlockButton).toBeEnabled());
-      await userEvent.click(unlockButton);
-      await waitFor(() => expect(mockApiClient.clearChannelLockouts).toHaveBeenCalled());
-    };
-
-    it('resumes scan after unlock when the scanner was scanning', async () => {
-      setupUnlockable();
-      useStore.setState({ liveState: createTestLiveState({ mode: 'SCAN' }) });
-      const onScanResume = vi.fn();
-
-      renderDeviceTab({ onScanResume });
-      await unlockChannelOne();
-
-      await waitFor(() => expect(onScanResume).toHaveBeenCalledWith('channel unlock'));
-    });
-
-    it('does not resume scan after unlock when the scanner was held', async () => {
-      setupUnlockable();
-      useStore.setState({ liveState: createTestLiveState({ mode: 'HOLD' }) });
-      const onScanResume = vi.fn();
-
-      renderDeviceTab({ onScanResume });
-      await unlockChannelOne();
-
-      expect(onScanResume).not.toHaveBeenCalled();
     });
   });
 
