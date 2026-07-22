@@ -32,7 +32,7 @@ pub(crate) async fn get_lockouts(
         shadow
             .channels
             .values()
-            .filter(|c| c.lockout)
+            .filter(|c| c.is_active_lockout())
             .map(|c| c.index)
             .collect()
     };
@@ -168,7 +168,7 @@ pub(crate) async fn clear_channel_lockouts(
             shadow
                 .channels
                 .values()
-                .filter(|c| c.lockout)
+                .filter(|c| c.is_active_lockout())
                 .map(|c| c.index)
                 .collect()
         }

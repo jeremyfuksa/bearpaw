@@ -247,6 +247,33 @@ priority-downgrade write not sticking (it uses the plain path). Surfaced first
 when drag-reorder (#195) let users edit priority. Tracked in the priority-UX
 redesign (superpowers spec `docs/superpowers/specs/`).
 
+### Finding — empty slots carry a factory lockout=1 bit (added 2026-07-21)
+
+Distinct from the priority finding above: this one is a *false* refusal, not a
+real firmware guard. Field report: `POST /lockouts/channels/clear` logged
+`lockout write not persisted as sent index=469 wanted=false read_back=true`.
+
+Probed on fw 1.06.06 (`cargo run -p bearpaw-api --example
+lockout_realchannel_probe -- 469`, backend stopped):
+
+- **Channel 469 is EMPTY** — reads back `CIN,469,,00000000,AUTO,0,2,1,0`: no
+  name, frequency `00000000`, no channel programmed. The `lockout=1` in field 7
+  is the factory default for an unprogrammed slot (the scratch channel 500 shows
+  the identical `,00000000,AUTO,0,2,1,0`).
+- **The clear write no-ops.** `CIN,469,...,0,0` returns `CIN,OK` but the
+  read-back stays `lockout=1` — the scanner won't modify a slot that holds no
+  channel. This is NOT the priority-style transition guard: a plain lockout
+  `1→0` write on a *real* channel clears fine (`lockout_keybeep_probe`, same fw).
+- **Root cause is on our side, not the firmware's.** `parse_cin_response`
+  faithfully reads the raw `lockout=1` bit (correct — regression guard
+  `cin_lockout_with_zero_freq` depends on it), but two consumers
+  (`get_lockouts`, `clear_channel_lockouts`) filtered on `c.lockout` alone,
+  sweeping every empty slot into the "locked channels" list. The count inflated
+  and the clear sweep spun on writes that can never stick.
+- **Fix:** `ChannelData::is_active_lockout()` = `lockout && frequency > 0.0`,
+  used at both filter sites. Matches the frontend's existing `frequency === 0`
+  empty-slot convention. The parser is untouched.
+
 ### Conflict 3 — `DO` direct tune (added 2026-07-08)
 
 - **Our own docs said:** `DO,<freq>,<mod>` direct-tunes the scanner (SCANNER_PROTOCOL_REFERENCE command table; API_SPEC documented `POST /frequency` on top of it). The decompiled reference has no `DO` section at all.
