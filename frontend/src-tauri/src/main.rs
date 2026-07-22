@@ -236,6 +236,12 @@ fn backend_status(state: tauri::State<'_, ShellState>) -> BackendStatus {
     capture_backend_status(&state.backend)
 }
 
+#[tauri::command]
+fn reveal_logs_command(app: tauri::AppHandle) {
+    // Reuse the same reveal used by the Help → Show Log Files menu item.
+    reveal_logs(&app);
+}
+
 /// Build the native macOS menu bar. The first submenu (the "app" menu) is
 /// populated by Tauri with the standard `Bearpaw › About / Hide / Quit`
 /// entries. Then our three custom submenus: View, Scanner, Help.
@@ -529,7 +535,7 @@ fn main() {
                 eprintln!("failed to emit menu event {}: {}", id, err);
             }
         })
-        .invoke_handler(tauri::generate_handler![shell_info, backend_status])
+        .invoke_handler(tauri::generate_handler![shell_info, backend_status, reveal_logs_command])
         .build(tauri::generate_context!())
         .expect("error while building bearpaw application")
         .run(move |_app, event| {
