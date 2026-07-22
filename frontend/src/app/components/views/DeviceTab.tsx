@@ -13,6 +13,7 @@ import {
   Code,
 } from 'lucide-react';
 
+import appIcon from '@/assets/app-icon.png';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore, type Preferences } from '../../../store/useStore';
@@ -1320,9 +1321,11 @@ export function DeviceTab() {
               <div className="space-y-3">
                 <div className="bg-white/5 rounded-lg border border-white/5 p-4 space-y-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="w-8 h-8 rounded bg-brand-primary flex items-center justify-center text-black font-bold text-sm shadow-lg shadow-brand-primary/20">
-                      BP
-                    </div>
+                    <img
+                      src={appIcon}
+                      alt="Bearpaw"
+                      className="w-8 h-8 rounded object-cover shadow-lg shadow-brand-primary/20"
+                    />
                     <div>
                       <h3 className="font-bold text-white text-base">Bearpaw</h3>
                       <div className="text-sm text-white/40">v{__APP_VERSION__}</div>
