@@ -528,5 +528,37 @@ describe('ChannelsTab', () => {
       expect(row!).toHaveClass('bg-brand-primary/10');
       expect(row!).toHaveClass('border-l-2');
     });
+
+    // REGRESSION GUARD: priority and lockout are immediate actions (#206) whose
+    // live truth is always channel.priority / channel.lockout, never the draft.
+    // The row LED/lock icon must read the channel, not a stale draft snapshot.
+    // Before this fix the row read `draft?.priority ?? channel.priority`, so a
+    // draft frozen with priority=true (e.g. seeded at open time) kept the LED
+    // lit after an immediate clear zeroed channel.priority.
+    it('priority LED and lockout icon read the live channel, not a stale draft', () => {
+      const channel = createTestChannel({
+        index: 1,
+        frequency: 151.25,
+        priority: false,
+        lockout: false,
+      });
+      const store = createMockStore({
+        channels: [channel],
+        memoryDrafts: {
+          // Stale snapshot: priority/lockout still true from before the
+          // immediate clear updated the channel to false.
+          1: createTestChannelDraft({ priority: true, lockout: true }),
+        },
+      });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      const row = screen.getByText(/151\.2500/i).closest('div')?.parentElement;
+      expect(row).not.toBeNull();
+      // Priority LED off — no orange dot.
+      expect(row!.querySelector('.bg-orange-500')).toBeNull();
+      // Lockout icon off — no red lock.
+      expect(row!.querySelector('svg.text-red-400')).toBeNull();
+    });
   });
 });
