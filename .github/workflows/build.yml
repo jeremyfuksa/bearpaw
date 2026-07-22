@@ -125,10 +125,52 @@ jobs:
         with:
           path: release-artifacts
 
+      # Pre-release tags (v*-beta.*, v*-rc.*, v*-alpha.*) publish as GitHub
+      # pre-releases so testers see them flagged and they don't displace a
+      # stable "latest". A bare vX.Y.Z tag publishes as a normal release.
+      - name: Flag pre-release tags
+        id: prerelease
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: release-artifacts/**/*
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.prerelease.outputs.value }}
+          # These builds are UNSIGNED — prepend per-OS instructions for getting
+          # past Gatekeeper/SmartScreen above the auto-generated changelog.
+          body: |
+            ## Installing this build
+
+            Bearpaw is a control interface for the Uniden BC125AT scanner. These
+            builds are **not yet code-signed**, so your OS will warn you the
+            first time you open the app. That's expected — here's how to run it:
+
+            **macOS** (`.dmg`): open the dmg and drag Bearpaw to Applications. On
+            first launch, right-click the app → **Open** → **Open** (a plain
+            double-click will say it "can't be opened"). If it still refuses,
+            open Terminal and run:
+            ```
+            xattr -cr /Applications/Bearpaw.app
+            ```
+
+            **Windows** (`.msi` / `.exe`): if SmartScreen shows "Windows
+            protected your PC", click **More info** → **Run anyway**.
+
+            **Linux** (`.AppImage`): `chmod +x` it and run; or install the `.deb`.
+
+            Plug in your BC125AT over USB and launch — the app auto-detects the
+            scanner, so no config file is required to get started. (A
+            `config.yaml` beside the app is only needed to override the port or
+            tweak advanced settings.)
+
+            Found a bug? Please open an issue with your OS and what you were doing.
+
+            ---
