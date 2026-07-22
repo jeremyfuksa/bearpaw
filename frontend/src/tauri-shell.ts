@@ -44,7 +44,9 @@ export async function getBackendStatus(): Promise<BackendStatus | null> {
 
 export async function revealLogs(): Promise<void> {
   if (!isTauriRuntime()) return;
-  await invoke('reveal_logs_command');
+  await invoke('reveal_logs_command').catch((error) => {
+    console.warn('Failed to reveal logs via shell', error);
+  });
 }
 
 /**
