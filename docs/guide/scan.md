@@ -104,7 +104,7 @@ can export the raw data to CSV.
 
 ## Recent Hits
 
-To the right of the display, **Recent Hits** lists the last five active
+To the right of the display, **Recent Hits** lists the five most recent active
 frequencies, newest at the top. Each row shows:
 
 - **How long ago** it happened ("just now", "2 minutes ago"), which updates as
@@ -112,6 +112,13 @@ frequencies, newest at the top. Each row shows:
 - **The frequency.**
 - **The tag** (the channel's name), or a dash if it has none.
 - **A mini signal-strength meter** for that hit.
+
+> **Repeated hits are grouped.** When the same channel hits several times in a
+> row, they collapse into a single row with a count — `WOF Rides (6)` means that
+> channel was active six times back-to-back. The time shown is the most recent
+> of those hits, and the signal meter is their average. A hit from a different
+> channel starts a new row, so an alternating pattern still shows each channel
+> separately.
 
 > A transmission has to last at least a minimum length of time (2 seconds by
 > default) to show up here. Brief static bursts and key-ups are ignored. You can
