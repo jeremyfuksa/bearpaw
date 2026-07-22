@@ -107,7 +107,7 @@ is set separately on the [Device tab](device.md#scanning-logic).
 ### RSSI
 
 Received Signal Strength Indicator: how strong the received signal is. Bearpaw
-shows it as a five-bar meter, like the signal bars on a phone.
+shows it as a five-bar meter next to the frequency during a hit.
 
 ### Squelch
 

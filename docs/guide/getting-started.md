@@ -1,10 +1,9 @@
 # Getting Started
 
-Plug in the scanner, launch Bearpaw, and this walks you from there to watching
-live radio traffic on screen. Do the steps in order the first time.
-
-If a radio term trips you up, the **[Glossary](glossary.md)** defines every one
-of them.
+Plug in the scanner, launch Bearpaw, and you're watching live traffic on screen.
+This walks the path from cable to first hit. It assumes you know your way around
+a BC125AT; if a Bearpaw-specific term is new, the **[Glossary](glossary.md)** has
+it.
 
 ---
 
@@ -20,11 +19,10 @@ of them.
 ## Step 1: Plug in and launch
 
 Connect the scanner to your computer with the USB cable, turn the scanner on, and
-open Bearpaw. There's nothing to configure. Bearpaw looks for the scanner the
-moment it starts.
+open Bearpaw. It finds the scanner on its own, with no port to pick or config
+file to write.
 
-The small colored dot in the bottom-left corner shows where the connection
-stands:
+The colored dot in the bottom-left corner shows where the connection stands:
 
 - 🟡 **Yellow, "Connecting…"**: Bearpaw is reaching for the scanner, which is
   normal for a few seconds at launch.
@@ -48,12 +46,12 @@ runs, and blocks the UI until it's done.
 ## Step 3: Watch it scan
 
 The big amber panel in the middle of the **Scan tab** is your scanner's display,
-blown up to full size. When the scanner is scanning, it reads **"Scanning…"**
-with "Searching for signal…" below it. The scanner is cycling through your
-channels five to ten times a second, listening for activity.
+scaled up to fill the window. While the scanner is scanning it reads
+**"Scanning…"** with "Searching for signal…" below it, cycling through your
+enabled channels and listening on each.
 
-Tune your handheld to one of the scanner's channels and key up if you want to
-force a result. Otherwise, wait for traffic.
+Key up a handheld on one of the scanner's channels to force a result, or wait for
+live traffic.
 
 ## Step 4: Your first hit
 
@@ -64,7 +62,7 @@ When the scanner lands on an active frequency, that's a **hit**.
 2. **The detail line fills in** underneath: the frequency, the modulation (FM,
    AM, or NFM), the channel number, and, if the transmission carries one, the
    CTCSS tone.
-3. **The signal-strength bars** on the right light up, like the bars on a phone.
+3. **The signal-strength bars** on the right fill to match the RSSI.
 4. When the transmission ends, the scanner resumes and the display goes back to
    "Scanning…".
 
@@ -75,13 +73,16 @@ When the scanner lands on an active frequency, that's a **hit**.
 
 ## Step 5: Look at what you've caught
 
-Two places record what the scanner hears:
+Bearpaw records every hit and turns the record into a read on your local
+activity:
 
 - The **Recent Hits** list, to the right of the big display, shows the last few
   active frequencies with how long ago each one happened.
 - The **dashboards** below, a "Busiest Channels" bar chart and an "Activity
-  Heatmap," build up a picture of _when_ and _where_ your scanner is most active
-  over time.
+  Heatmap," show _which_ channels carry traffic and _when_, over time.
+- You can **export the whole log to CSV** and analyze it yourself.
+
+More on all of it in [The Scan Tab](scan.md#activity-tracking).
 
 ## Where to go next
 

@@ -12,6 +12,11 @@ bar** runs along the very bottom of the window.
 
 This is your scanner's screen, enlarged.
 
+The display scales to whatever size you give it. Maximize the window and the
+frequency, tag, and signal bars grow to fill it. Put Bearpaw on a spare monitor
+in the shack and you can read what your scanner is doing from the workbench, the
+couch, or the other end of the room, without squinting at the radio's own screen.
+
 ### While scanning
 
 When the scanner is cycling through channels looking for activity, the display
@@ -108,6 +113,13 @@ these buttons turn each bank on or off _for scanning_:
 
 ---
 
+## Activity tracking
+
+While it's running, Bearpaw keeps a record of every signal your scanner stops on,
+and turns that record into a picture of what's active around you: which channels
+carry the most traffic, and when. Three surfaces on the Scan tab show it, and you
+can export the raw data to CSV.
+
 ## Recent Hits
 
 To the right of the display, **Recent Hits** lists the last five active
@@ -132,10 +144,13 @@ slots stay blank until traffic fills them. Before anything's been heard, it read
 
 ## The dashboards
 
+Below the display, two charts turn the log into a picture of your local activity.
+
 ### Busiest Channels
 
 A bar chart of your **most active channels of all time**, tallest bar first,
-labeled by channel name.
+labeled by channel name. This is what tells you which frequencies actually carry
+traffic in your area, as opposed to which ones you happened to program.
 
 ### Activity Heatmap
 
@@ -172,12 +187,23 @@ Then the name of the tab you're on.
 
 ---
 
-## Exporting the activity log
+## Exporting your activity data
 
-Bearpaw logs what it hears, and you can save that log to a file. Click the small
-**export icon** in the Recent Hits header, or press **Ctrl/⌘ + L**. It's greyed
-out until there's something to export. The export dialog lets you choose a time
-range and download the log.
+The dashboards summarize; the export hands you the raw numbers. Click the small
+**export icon** in the Recent Hits header, or press **Ctrl/⌘ + Shift + L**. (It's
+greyed out until there's something to export.) The dialog lets you pick a date
+range and download the matching hits as a **CSV file**.
+
+Each row is one hit, with its timestamp, frequency, channel, tag, and how long
+the signal lasted. Open it in a spreadsheet and you can do what the dashboards
+don't: chart activity by month, cross-reference a frequency against a band plan,
+count how often a specific channel keys up, or feed it into whatever analysis you
+like.
+
+> This is your _activity log_, the record of what the scanner has heard. It's a
+> different export from the channel files on the
+> [Channels tab](channels.md#import-and-export), which save the channels
+> themselves.
 
 ---
 

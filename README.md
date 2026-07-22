@@ -2,17 +2,25 @@
 
 # Bearpaw
 
+[![Latest release](https://img.shields.io/github/v/release/jeremyfuksa/bearpaw?include_prereleases&sort=semver&label=release&color=e6a817)](https://github.com/jeremyfuksa/bearpaw/releases)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-2b2f38)](#download-and-install)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)](https://tauri.app)
+[![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-ffdd00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/jeremyfuksa)
+
 **A desktop control interface for the Uniden BC125AT scanner.**
 
 Bearpaw puts your BC125AT on your computer screen. See what the scanner sees:
-the live frequency, the alpha tag, the signal strength, in a big, readable
-display. Edit all 500 channels without the radio's keypad. Watch which
-frequencies are busiest, and keep a searchable log of everything the scanner
-hears.
+the live frequency, the alpha tag, the signal strength, in a display big enough
+to read across the room. Edit all 500 channels without the radio's keypad, and
+move them in and out of the radio as plain CSV or native Uniden files.
 
-It talks to the scanner the same way the official Sentinel software does, over
-the USB cable. The difference is that it runs live, while you're listening, on
-macOS, Windows, and Linux.
+It does one thing the radio and the official software never did: it watches the
+band. While it runs, Bearpaw logs every hit and turns the record into a read on
+the radio world around you, which channels are busy and when, and hands you the
+raw data as CSV whenever you want it.
+
+It talks to the scanner the same way Uniden's Sentinel software does, over the
+USB cable, and runs live while you're listening, on macOS, Windows, and Linux.
 
 > **This is a beta.** It works, and it's been tested against real hardware, but
 > you may hit rough edges. Found one?
