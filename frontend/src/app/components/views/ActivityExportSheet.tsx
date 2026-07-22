@@ -202,7 +202,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                       : 'scanner-button-muted border',
                   )}
                 >
-                  <Calendar size={16} />
+                  <Calendar size={16} aria-hidden />
                   {getTimeframeLabel(timeframe)}
                 </button>
               ))}
