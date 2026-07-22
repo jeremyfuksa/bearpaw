@@ -161,7 +161,7 @@ pub fn router(state: AppState) -> Router {
             get(handlers::settings::get_custom_search).post(handlers::settings::set_custom_search),
         )
         .route(
-            "/api/v1/settings/custom-search/ranges/:index",
+            "/api/v1/settings/custom-search/ranges/{index}",
             get(handlers::settings::get_custom_range).post(handlers::settings::set_custom_range),
         )
         .route(
@@ -194,11 +194,11 @@ pub fn router(state: AppState) -> Router {
             get(handlers::memory::get_memory_channels),
         )
         .route(
-            "/api/v1/memory/channels/:index",
+            "/api/v1/memory/channels/{index}",
             get(handlers::memory::get_memory_channel).put(handlers::memory::put_memory_channel),
         )
         .route(
-            "/api/v1/memory/channels/:index/priority",
+            "/api/v1/memory/channels/{index}/priority",
             post(handlers::memory::put_memory_channel_priority),
         )
         .route(
@@ -247,7 +247,7 @@ pub fn router(state: AppState) -> Router {
             post(handlers::preferences::reset_preferences),
         )
         .route(
-            "/api/v1/preferences/:key",
+            "/api/v1/preferences/{key}",
             get(handlers::preferences::get_preference).put(handlers::preferences::put_preference),
         )
         .route(

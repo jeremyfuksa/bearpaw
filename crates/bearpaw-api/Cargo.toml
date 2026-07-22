@@ -14,7 +14,7 @@ name = "bearpaw"
 path = "src/main.rs"
 
 [dependencies]
-axum = { version = "0.7", features = ["json", "ws", "multipart"] }
+axum = { version = "0.8", features = ["json", "ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
