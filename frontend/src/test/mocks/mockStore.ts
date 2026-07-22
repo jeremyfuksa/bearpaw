@@ -14,7 +14,6 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
       displayMode: 'frequency',
       reducedMotion: false,
       hitMinDuration: 2,
-      checkUpdates: true,
       dataRetentionDays: 30,
       audioOutputDevice: 'default',
     },
