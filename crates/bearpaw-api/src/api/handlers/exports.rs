@@ -479,7 +479,11 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<Option<ChannelD
     if frequency == 0.0 {
         return Ok(None);
     }
-    if !(25.0..=1300.0).contains(&frequency) {
+    // Enforce the canonical 25–512 MHz bound (FREQ_MIN/FREQ_MAX) that the
+    // single-channel edit path already applies (#263). Import previously used
+    // a wider 25–1300 range, letting a CSV write channels the receiver can't
+    // tune — inconsistent with every other channel-write path.
+    if super::super::control::validate_frequency(frequency).is_err() {
         return Err(format!("Invalid frequency: {}", frequency));
     }
 
@@ -601,9 +605,26 @@ mod tests {
 
     #[test]
     fn parse_out_of_band_frequency_is_error() {
-        // A non-zero frequency outside 25–1300 MHz is genuinely malformed.
+        // A non-zero frequency outside 25–512 MHz is genuinely malformed.
         let r = row(&[("Index", "6"), ("Frequency", "9999")]);
         assert!(parse_import_csv_row(&r).is_err());
+    }
+
+    #[test]
+    fn parse_frequency_above_512_is_error() {
+        // Regression guard (#263): import must enforce the same 25–512 MHz
+        // bound (FREQ_MAX) as the single-channel edit path. A value like
+        // 900 MHz — inside the old, wrong 25–1300 import bound but outside the
+        // scanner's tunable range — must be rejected, not silently programmed.
+        let r = row(&[("Index", "6"), ("Frequency", "900")]);
+        assert!(parse_import_csv_row(&r).is_err());
+    }
+
+    #[test]
+    fn parse_frequency_at_512_is_accepted() {
+        // The upper bound is inclusive (FREQ_MAX = 512.0).
+        let r = row(&[("Index", "7"), ("Frequency", "512")]);
+        assert!(parse_import_csv_row(&r).unwrap().is_some());
     }
 
     #[test]
