@@ -117,7 +117,11 @@ function ChartTooltipContent({
     indicator?: 'line' | 'dot' | 'dashed';
     nameKey?: string;
     labelKey?: string;
-  }) {
+  } & Partial<
+    // recharts 3 no longer exposes these render-time fields on the Tooltip
+    // props type (they're read from chart context); add them back explicitly.
+    Pick<RechartsPrimitive.TooltipContentProps, 'active' | 'payload' | 'label'>
+  >) {
   const { config } = useChart();
 
   const tooltipLabel = React.useMemo(() => {
@@ -168,7 +172,9 @@ function ChartTooltipContent({
 
           return (
             <div
-              key={item.dataKey}
+              // recharts 3 allows a function dataKey; use the stringified key
+              // (computed above) which React accepts as a valid key.
+              key={key}
               className={cn(
                 '[&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5',
                 indicator === 'dot' && 'items-center',
@@ -238,11 +244,14 @@ function ChartLegendContent({
   payload,
   verticalAlign = 'bottom',
   nameKey,
-}: React.ComponentProps<'div'> &
-  Pick<RechartsPrimitive.LegendProps, 'payload' | 'verticalAlign'> & {
-    hideIcon?: boolean;
-    nameKey?: string;
-  }) {
+}: React.ComponentProps<'div'> & {
+  // recharts 3 dropped `payload`/`verticalAlign` from the pickable Legend
+  // props type; declare them explicitly against the exported payload type.
+  payload?: RechartsPrimitive.LegendPayload[];
+  verticalAlign?: 'top' | 'middle' | 'bottom';
+  hideIcon?: boolean;
+  nameKey?: string;
+}) {
   const { config } = useChart();
 
   if (!payload?.length) {
