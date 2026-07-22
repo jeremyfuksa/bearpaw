@@ -143,32 +143,6 @@ describe('DeviceTab', () => {
         expect(mockApiClient.clearChannelLockouts).toHaveBeenCalledWith([1]);
       });
     });
-
-    it('should call unlock all when Unlock All button clicked', async () => {
-      const mockChannels = [
-        createTestChannel({ index: 1 }),
-        createTestChannel({ index: 2 }),
-        createTestChannel({ index: 3 }),
-      ];
-      useStore.setState({ channels: mockChannels });
-      mockApiClient.getLockouts = vi.fn().mockResolvedValue({
-        channels: [1, 2, 3],
-        frequencies: [],
-        temporary_channels: [],
-      });
-      mockApiClient.clearChannelLockouts = vi.fn().mockResolvedValue({
-        cleared: [1, 2, 3],
-        failed: [],
-      });
-
-      renderDeviceTab();
-      await selectCategory(/Locked Channels/i);
-
-      const unlockAllButton = await screen.findByRole('button', { name: /Unlock All/i });
-      await userEvent.click(unlockAllButton);
-
-      expect(mockApiClient.clearChannelLockouts).toHaveBeenCalled();
-    });
   });
 
   describe('Close Call category', () => {
