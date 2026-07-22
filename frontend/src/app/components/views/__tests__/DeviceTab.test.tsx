@@ -60,6 +60,17 @@ describe('DeviceTab', () => {
       expect(mockApiClient.setVolume).toHaveBeenCalled();
     });
 
+    // a11y S4 regression guard: sliders are named via aria-label, which the
+    // Slider wrapper must forward to the role="slider" thumb (Radix puts a
+    // root-level aria-label on the wrong element). Querying by name fails if
+    // the wrapper regresses.
+    it('names its sliders (aria-label reaches the thumb)', () => {
+      renderDeviceTab();
+      expect(screen.getByRole('slider', { name: /volume/i })).toBeInTheDocument();
+      expect(screen.getByRole('slider', { name: /squelch/i })).toBeInTheDocument();
+      expect(screen.getByRole('slider', { name: /battery saver/i })).toBeInTheDocument();
+    });
+
     it('should call setBacklight when option selected', async () => {
       mockApiClient.setBacklight = vi.fn().mockResolvedValue(undefined);
 
