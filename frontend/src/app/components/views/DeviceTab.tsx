@@ -341,31 +341,6 @@ export function DeviceTab() {
     [api, selectedChannels, setChannels],
   );
 
-  const handleUnlockAll = useCallback(async () => {
-    if (lockedChannelIds.length === 0) {
-      toast.info('No locked channels');
-      return;
-    }
-    setIsClearing(true);
-    try {
-      const result = await api.clearChannelLockouts();
-      const clearedSet = new Set(result.cleared);
-      setChannels((prev) =>
-        prev.map((channel) =>
-          clearedSet.has(channel.index) ? { ...channel, lockout: false } : channel,
-        ),
-      );
-      setLockedChannelIds((prev) => prev.filter((id) => !clearedSet.has(id)));
-      setSelectedChannels([]);
-      toast.success(`${result.cleared.length} channels unlocked`);
-    } catch (error) {
-      console.error('Failed to unlock channels', error);
-      toast.error('Unable to unlock channels');
-    } finally {
-      setIsClearing(false);
-    }
-  }, [api, lockedChannelIds.length, setChannels]);
-
   // Setting handlers
   const handleVolumeChange = useCallback(
     async (value: number[]) => {
@@ -801,13 +776,6 @@ export function DeviceTab() {
                       className="px-3 py-2 text-xs font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/40 transition-colors disabled:opacity-50"
                     >
                       Unlock Selected ({selectedChannels.length || 0})
-                    </button>
-                    <button
-                      onClick={handleUnlockAll}
-                      disabled={lockedChannelIds.length === 0 || isClearing}
-                      className="px-3 py-2 text-xs font-bold text-black bg-white/20 hover:bg-white/30 rounded border border-white/20 transition-colors disabled:opacity-50"
-                    >
-                      Unlock All
                     </button>
                   </div>
                 </div>
