@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, path::PathBuf};
 
 use serde::Serialize;
+use tauri::image::Image;
 use tauri::menu::{
     AboutMetadataBuilder, Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -255,6 +256,7 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
             "Desktop control interface for the Uniden BC125AT scanner.",
         ))
         .copyright(Some("© 2026 Jeremy Fuksa"))
+        .icon(Image::from_bytes(include_bytes!("../icons/icon.png")).ok())
         .build();
 
     // Apple menu — the standard macOS app submenu. About/Hide/Quit live
