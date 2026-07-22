@@ -132,7 +132,7 @@ function ChannelRow({
       <div role="cell" className="flex items-center justify-center text-white/40">
         <GripVertical size={12} aria-hidden className={cn(disableDrag && 'opacity-30')} />
       </div>
-      <div role="cell" className="font-mono text-white/30 text-xs pl-1">
+      <div role="cell" className="font-mono text-white/60 text-xs pl-1">
         {displayIndex}
       </div>
 
@@ -146,14 +146,14 @@ function ChannelRow({
         {displayAlpha}
       </div>
       <div role="cell" className="flex justify-center">
-        <span className="text-white/40 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
+        <span className="text-white/60 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
           {displayModulation}
         </span>
       </div>
-      <div role="cell" className="text-white/30 text-xs text-center">
+      <div role="cell" className="text-white/60 text-xs text-center">
         {displayTone}
       </div>
-      <div role="cell" className="text-white/30 text-xs text-center">
+      <div role="cell" className="text-white/60 text-xs text-center">
         {displayDelay}s
       </div>
       <div role="cell" className="flex justify-center">
@@ -788,7 +788,7 @@ export function ChannelsTab() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full gap-6">
       {/* Side Nav: Banks */}
       <div className="scanner-surface h-full w-[var(--layout-sidebar-channels-width)] shrink-0 overflow-y-auto p-2">
-        <h3 className="sticky top-0 z-10 bg-scanner-bg-dark/90 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/40 backdrop-blur-sm">
+        <h3 className="sticky top-0 z-10 bg-scanner-bg-dark/90 px-3 py-2 text-xs font-bold uppercase tracking-wider text-white/60 backdrop-blur-sm">
           Bank Select
         </h3>
         {bankTabs.map((bank) => (
@@ -928,7 +928,7 @@ export function ChannelsTab() {
                 <div
                   key={h}
                   role="columnheader"
-                  className="text-xs font-bold text-white/30 uppercase tracking-wider select-none text-center first:text-left"
+                  className="text-xs font-bold text-white/60 uppercase tracking-wider select-none text-center first:text-left"
                 >
                   {h}
                 </div>

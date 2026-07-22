@@ -65,24 +65,24 @@ export function StatusBar({
           </svg>
         </div>
         <p className="font-sans font-normal scanner-text-light text-xs text-nowrap">{statusText}</p>
-        <p className="font-sans font-normal text-white/40 text-xs text-nowrap pl-2">{currentTab}</p>
+        <p className="font-sans font-normal text-white/60 text-xs text-nowrap pl-2">{currentTab}</p>
       </div>
       <div className="flex gap-4 items-center justify-end">
         {sessionStats ? (
           <div className="flex gap-3 items-center text-nowrap">
-            <span className="font-sans text-xs text-white/40">
+            <span className="font-sans text-xs text-white/60">
               Hits{' '}
               <span className="font-mono font-medium text-white/80">
                 {sessionStats.total_hits ?? 0}
               </span>
             </span>
-            <span className="font-sans text-xs text-white/40">
+            <span className="font-sans text-xs text-white/60">
               Active{' '}
               <span className="font-mono font-medium text-white/80">
                 {formatActiveDuration(sessionStats.active_time_seconds)}
               </span>
             </span>
-            <span className="font-sans text-xs text-white/40">
+            <span className="font-sans text-xs text-white/60">
               Channels{' '}
               <span className="font-mono font-medium text-white/80">
                 {sessionStats.unique_channels ?? 0}
@@ -91,7 +91,7 @@ export function StatusBar({
           </div>
         ) : null}
         {shellStatusText ? (
-          <p className="font-sans text-[length:var(--size-shell-status-text)] font-normal text-nowrap text-white/40">
+          <p className="font-sans text-[length:var(--size-shell-status-text)] font-normal text-nowrap text-white/60">
             {shellStatusText}
           </p>
         ) : null}
