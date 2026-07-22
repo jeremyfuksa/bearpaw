@@ -68,11 +68,7 @@ export interface DeviceInfo {
 }
 
 export type WSMessage =
-  | StateUpdateMessage
-  | EventMessage
-  | ProgressMessage
-  | ErrorMessage
-  | BanksUpdateMessage;
+  StateUpdateMessage | EventMessage | ProgressMessage | ErrorMessage | BanksUpdateMessage;
 
 export interface BanksUpdateMessage {
   type: 'banks_update';
