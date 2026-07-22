@@ -5,6 +5,7 @@ import { SyncSpinner } from './components/SyncSpinner';
 import { ImportProgressOverlay } from './components/ImportProgressOverlay';
 import { cn } from '../lib/utils';
 import { StatusBar } from './components/ScannerUI';
+import { ScanAnnouncer } from './components/ScanAnnouncer';
 import { getAPI, API_BASE } from '../api/useApi';
 import { useStore, type Preferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
@@ -985,6 +986,19 @@ export default function App() {
         shellStatusText={shellStatusText}
         currentTab={currentTab}
         sessionStats={currentTab === 'Scan' ? sessionStats : null}
+      />
+
+      {/* Announces scan-hit / scanning / connection transitions to screen
+          readers. Mounted here (outside the AnimatePresence tab switch) so its
+          edge-tracking refs survive tab changes. Pass RAW liveState.mode, not
+          getScannerMode() — the announcer gates on `mode === 'SCAN'`. */}
+      <ScanAnnouncer
+        squelchOpen={liveState?.squelch_open ?? false}
+        mode={liveState?.mode ?? ''}
+        frequency={liveState?.frequency}
+        alphaTag={liveState?.alpha_tag}
+        connectionStatus={connectionStatus}
+        isSyncing={isMemorySyncing}
       />
 
       <ActivityExportSheet
