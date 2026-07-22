@@ -1,0 +1,52 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly full scan (Mondays 07:11 UTC) so newly-disclosed query patterns
+    # catch existing code even when nothing is being pushed.
+    - cron: "11 7 * * 1"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Required to upload the results to the code-scanning dashboard.
+      security-events: write
+      # Needed by the action to read the repo.
+      contents: read
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            # Covers the frontend/ React + Vite SPA.
+          - language: rust
+            # Covers both workspace crates (crates/bearpaw-api and
+            # frontend/src-tauri). build-mode: none scans the source without
+            # compiling, so this needs none of the libudev/webkit/Tauri system
+            # deps that tests.yml installs — the analysis never invokes cargo.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # Both languages support scanning without a build (Rust build-mode
+          # none went GA in CodeQL 2.23.3). No autobuild/manual step needed.
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
