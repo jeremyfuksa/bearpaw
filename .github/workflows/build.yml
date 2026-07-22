@@ -30,13 +30,16 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # NOTE: Apple/Windows code-signing identities are deliberately NOT exported
+    # at the job level. Tauri's bundler runs `codesign` during `tauri build`
+    # whenever APPLE_SIGNING_IDENTITY is *present* in the env — even as an empty
+    # string from an unset secret — and then fails with no usable identity.
+    # These builds ship UNSIGNED (see the create-release notes), so the signing
+    # vars live only on the explicit Sign steps below, which self-skip when the
+    # secret is absent. Add the secrets and those steps light up automatically.
     env:
       TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
       TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      WIN_CERTIFICATE_THUMBPRINT: ${{ secrets.WIN_CERTIFICATE_THUMBPRINT }}
-      WIN_CERTIFICATE_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -81,6 +84,9 @@ jobs:
 
       - name: Sign macOS app
         if: matrix.os == 'macos-latest' && env.APPLE_SIGNING_IDENTITY != ''
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           xcrun codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" \
             target/${{ matrix.target }}/release/bundle/macos/Bearpaw.app
@@ -88,6 +94,9 @@ jobs:
       - name: Sign Windows installer
         if: matrix.os == 'windows-latest' && env.WIN_CERTIFICATE_THUMBPRINT != ''
         shell: pwsh
+        env:
+          WIN_CERTIFICATE_THUMBPRINT: ${{ secrets.WIN_CERTIFICATE_THUMBPRINT }}
+          WIN_CERTIFICATE_PASSWORD: ${{ secrets.WIN_CERTIFICATE_PASSWORD }}
         run: |
           $msi = Get-ChildItem -Path "target/${{ matrix.target }}/release/bundle/msi" -Filter *.msi | Select-Object -First 1
           if ($msi) {
