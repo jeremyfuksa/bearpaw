@@ -1315,7 +1315,7 @@ export function DeviceTab() {
 
         {/* Preferences */}
         {selectedCategory === 'Preferences' && (
-          <div className="flex max-h-[var(--layout-detail-max-height)] gap-6 overflow-hidden">
+          <div className="flex h-[calc(100%-4rem)] gap-6 overflow-hidden">
             {/* Info Sidebar (Left) */}
             <div className="w-[var(--layout-detail-sidebar-width)] shrink-0 space-y-4 overflow-y-auto border-r border-white/5 pb-4 pr-4">
               <div className="space-y-3">
@@ -1369,7 +1369,7 @@ export function DeviceTab() {
             </div>
 
             {/* Main Settings Area (Right) */}
-            <div className="max-h-[var(--layout-detail-max-height)] flex-1 space-y-6 overflow-y-auto pr-2">
+            <div className="flex-1 space-y-6 overflow-y-auto pr-2">
               <div className="flex items-center justify-between border-b border-white/5 pb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Application Settings</h2>
