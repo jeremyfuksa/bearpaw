@@ -623,13 +623,10 @@ export function DeviceTab() {
 
   const updateRange = useCallback(
     async (id: number, field: 'start' | 'end' | 'label', value: string) => {
-      if (field === 'start' || field === 'end') {
-        const num = parseFloat(value);
-        if (isNaN(num) || num < 0) {
-          return;
-        }
-      }
-
+      // Always write the raw typed string to state so these controlled inputs
+      // reflect what was typed (#264). Gating the state write on a successful
+      // parse swallowed keystrokes like clearing the field or a leading '.';
+      // the parse guard below is what keeps a non-numeric value off the wire.
       const newRanges = searchRanges.map((r) => (r.id === id ? { ...r, [field]: value } : r));
       setSearchRanges(newRanges);
 
