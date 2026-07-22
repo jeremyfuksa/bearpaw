@@ -708,7 +708,7 @@ export function DeviceTab() {
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
                   <span className="p-2 rounded bg-red-500/10 text-red-500 border border-red-500/20">
-                    <Lock className="w-4 h-4" />
+                    <Lock aria-hidden className="w-4 h-4" />
                   </span>
                   <div>
                     <div className="text-base font-bold text-white">Locked Channels</div>
@@ -869,7 +869,7 @@ export function DeviceTab() {
               <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="rounded bg-brand-primary/20 p-1.5 text-brand-primary">
-                    <Radio size={16} />
+                    <Radio size={16} aria-hidden />
                   </div>
                   <h3 className="font-bold text-white">Audio & Power</h3>
                 </div>
@@ -922,7 +922,7 @@ export function DeviceTab() {
               <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
-                    <Maximize2 size={16} />
+                    <Maximize2 size={16} aria-hidden />
                   </div>
                   <h3 className="font-bold text-white">Display & System</h3>
                 </div>
@@ -982,7 +982,7 @@ export function DeviceTab() {
             <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 bg-green-500/20 rounded text-green-400">
-                  <Signal size={16} />
+                  <Signal size={16} aria-hidden />
                 </div>
                 <h3 className="font-bold text-white">Scanning Logic</h3>
               </div>
@@ -1377,7 +1377,7 @@ export function DeviceTab() {
                       onClick={() => openExternalUrl('https://github.com/jeremyfuksa/bearpaw')}
                       className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
                     >
-                      <Code size={10} /> Github
+                      <Code size={10} aria-hidden /> Github
                     </button>
                   </div>
                 </div>
@@ -1388,7 +1388,7 @@ export function DeviceTab() {
                 <div className="relative p-4 space-y-3 border border-orange-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-brand-primary/20 rounded-full">
-                      <Coffee className="h-3.5 w-3.5 text-brand-primary" />
+                      <Coffee aria-hidden className="h-3.5 w-3.5 text-brand-primary" />
                     </div>
                     <h3 className="text-sm font-bold text-white">Support Dev</h3>
                   </div>
@@ -1399,7 +1399,7 @@ export function DeviceTab() {
                     onClick={() => openExternalUrl('https://buymeacoffee.com/jeremyfuksa')}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-sm font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
                   >
-                    <Heart className="w-3 h-3 fill-white/20" />
+                    <Heart aria-hidden className="w-3 h-3 fill-white/20" />
                     Buy me a coffee
                   </button>
                 </div>
@@ -1416,7 +1416,7 @@ export function DeviceTab() {
               {/* General Settings */}
               <section className="space-y-4">
                 <h3 className="text-base font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
-                  <Settings className="w-4 h-4 text-white/50" /> General
+                  <Settings aria-hidden className="w-4 h-4 text-white/50" /> General
                 </h3>
                 <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
                   <div className="flex items-center justify-between">
@@ -1451,7 +1451,7 @@ export function DeviceTab() {
               {/* Data Settings */}
               <section className="space-y-4">
                 <h3 className="text-base font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
-                  <FileText className="w-4 h-4 text-white/50" /> Data & Storage
+                  <FileText aria-hidden className="w-4 h-4 text-white/50" /> Data & Storage
                 </h3>
                 <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
                   <div className="flex items-center justify-between">
