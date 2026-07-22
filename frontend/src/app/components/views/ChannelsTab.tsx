@@ -823,7 +823,10 @@ export function ChannelsTab() {
             </h2>
             <div className="h-4 w-px bg-white/10 shrink-0" />
             <div className="relative max-w-[var(--layout-search-max-width)] flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 w-3.5 h-3.5" />
+              <Search
+                aria-hidden
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 w-3.5 h-3.5"
+              />
               <input
                 type="search"
                 aria-label="Search channels by frequency or tag"

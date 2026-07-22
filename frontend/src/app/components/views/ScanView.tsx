@@ -159,7 +159,7 @@ export function ScanView({
         <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-[clamp(32px,3cqmin,60px)] self-stretch py-[10px]">
           <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-[clamp(6px,1.8cqmin,28px)]">
             <div className="flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
-              <Radio className="size-[clamp(14px,3cqmin,52px)] text-brand-primary" />
+              <Radio aria-hidden className="size-[clamp(14px,3cqmin,52px)] text-brand-primary" />
               <h3 className="font-display font-bold text-[clamp(13px,3.5cqmin,56px)] text-scanner-text-light">
                 Recent Hits
               </h3>
@@ -177,7 +177,7 @@ export function ScanView({
                   )}
                   aria-label="Export activity log"
                 >
-                  <FileText className="size-[clamp(12px,2.5cqmin,40px)]" />
+                  <FileText aria-hidden className="size-[clamp(12px,2.5cqmin,40px)]" />
                 </button>
               </TooltipTrigger>
               <TooltipContent
@@ -253,7 +253,8 @@ export function ScanView({
         {/* Busiest Channels */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
           <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)] flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
-            <Signal className="size-[clamp(14px,3cqmin,52px)] text-blue-400" /> Busiest Channels
+            <Signal aria-hidden className="size-[clamp(14px,3cqmin,52px)] text-blue-400" /> Busiest
+            Channels
           </h3>
           {dashboardLoading ? (
             <div className="flex-1 flex items-center justify-center text-white/20 text-xs">
@@ -296,7 +297,8 @@ export function ScanView({
         {/* Activity Heatmap */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
           <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)] flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
-            <Clock className="size-[clamp(14px,3cqmin,52px)] text-green-400" /> Activity Heatmap
+            <Clock aria-hidden className="size-[clamp(14px,3cqmin,52px)] text-green-400" /> Activity
+            Heatmap
           </h3>
           <div className="flex flex-1 flex-col justify-center gap-[var(--layout-heatmap-cell-gap)]">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, row) => (
