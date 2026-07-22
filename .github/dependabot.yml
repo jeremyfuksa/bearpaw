@@ -1,0 +1,50 @@
+# Dependabot version updates. Security updates are enabled separately in repo
+# settings; this file keeps ALL dependencies current on a schedule, not just
+# the vulnerable ones.
+#
+# Ecosystems:
+#   - npm   at /frontend        (React + Vite SPA)
+#   - cargo at /                (Rust workspace; the root Cargo.lock covers both
+#                                crates/bearpaw-api and frontend/src-tauri, so
+#                                one entry is enough — do NOT add a second for
+#                                the Tauri crate, they share this lockfile)
+#   - github-actions at /       (workflow action versions)
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # Batch minor/patch bumps into one PR to cut review noise; majors still
+      # come through individually so breaking changes get a dedicated review.
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
