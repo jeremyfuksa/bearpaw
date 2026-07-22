@@ -73,7 +73,7 @@ export function TabBar({ currentTab, onTabChange }: TabBarProps) {
             className={`rounded-md px-3 py-1 font-sans text-xs transition-colors ${
               active
                 ? 'bg-white/10 text-scanner-text-light'
-                : 'text-white/40 hover:bg-white/5 hover:text-white/70'
+                : 'text-white/60 hover:bg-white/5 hover:text-white/80'
             }`}
           >
             {tab}

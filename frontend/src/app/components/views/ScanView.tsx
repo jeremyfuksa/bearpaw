@@ -191,7 +191,7 @@ export function ScanView({
             </Tooltip>
           </div>
           {recentHits.length === 0 ? (
-            <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 pr-2 text-white/20 text-[clamp(11px,3cqmin,52px)] italic">
+            <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 pr-2 text-white/60 text-[clamp(11px,3cqmin,52px)] italic">
               Waiting for signals...
             </div>
           ) : (
@@ -224,7 +224,7 @@ export function ScanView({
                     key={hit.id}
                     className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
                   >
-                    <span className="whitespace-nowrap text-white/30">
+                    <span className="whitespace-nowrap text-white/60">
                       {getRelativeTime(hit.time)}
                     </span>
                     <span className="whitespace-nowrap text-right font-mono text-brand-light">
@@ -257,11 +257,11 @@ export function ScanView({
             Channels
           </h3>
           {dashboardLoading ? (
-            <div className="flex-1 flex items-center justify-center text-white/20 text-xs">
+            <div className="flex-1 flex items-center justify-center text-white/60 text-xs">
               Loading...
             </div>
           ) : busiestChannels.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-white/20 text-xs italic">
+            <div className="flex-1 flex items-center justify-center text-white/60 text-xs italic">
               No data yet
             </div>
           ) : (
@@ -303,7 +303,7 @@ export function ScanView({
           <div className="flex flex-1 flex-col justify-center gap-[var(--layout-heatmap-cell-gap)]">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, row) => (
               <div key={day} className="flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
-                <span className="text-[clamp(10px,2.4cqmin,40px)] text-white/30 w-[clamp(20px,4cqmin,72px)] text-right font-mono uppercase">
+                <span className="text-[clamp(10px,2.4cqmin,40px)] text-white/60 w-[clamp(20px,4cqmin,72px)] text-right font-mono uppercase">
                   {day}
                 </span>
                 <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[var(--layout-heatmap-cell-gap)]">
@@ -330,7 +330,7 @@ export function ScanView({
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-[clamp(10px,2.4cqmin,40px)] text-white/30 mt-1 pl-[clamp(20px,4.5cqmin,80px)]">
+          <div className="flex justify-between text-[clamp(10px,2.4cqmin,40px)] text-white/60 mt-1 pl-[clamp(20px,4.5cqmin,80px)]">
             <span>00</span>
             <span>06</span>
             <span>12</span>
