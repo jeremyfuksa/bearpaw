@@ -458,7 +458,6 @@ fn empty_channel(index: u16) -> ChannelData {
 /// an empty string, to be explicit.
 ///
 /// No caller yet — this is groundwork for the future CIN-write path.
-/// See `docs/PROTOCOL_AUDIT_PLAN.md` Phase 9 PR-6.
 pub fn validate_channel_name(name: &str) -> Result<(), &'static str> {
     if name.is_empty() {
         return Err("channel name is empty");

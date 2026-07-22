@@ -10,6 +10,8 @@ logs/
 .playwright-mcp/
 docs/manual.pdf
 docs/op-spec.pdf
+# Personal scanner config dump (real callsign + programmed channels); keep local, don't publish
+docs/fixtures/kf0nui.bc125at_ss
 crates/bearpaw-api/scanner.db
 crates/bearpaw-api/scanner.db-wal
 crates/bearpaw-api/scanner.db-shm

@@ -172,7 +172,7 @@ Idle GLG (between channels) would need a separate capture — none of our sample
 
 ## What this changes about the audit plan
 
-**Nothing structurally.** The plan in [docs/PROTOCOL_AUDIT_PLAN.md](../../PROTOCOL_AUDIT_PLAN.md) is still right. Phase 1 is now complete; Phase 2 (parser rewrite) starts next.
+**Nothing structurally.** The audit plan (since retired) was still right. Phase 1 is now complete; Phase 2 (parser rewrite) starts next.
 
 **Two refinements to bake into Phase 2:**
 
@@ -245,7 +245,7 @@ Model for the app: a bank has **zero or one** priority channel. SET = plain CIN
 `write_channel_to_scanner` read-back-verify must still tolerate a *plain*
 priority-downgrade write not sticking (it uses the plain path). Surfaced first
 when drag-reorder (#195) let users edit priority. Tracked in the priority-UX
-redesign (superpowers spec `docs/superpowers/specs/`).
+redesign.
 
 ### Finding — empty slots carry a factory lockout=1 bit (added 2026-07-21)
 

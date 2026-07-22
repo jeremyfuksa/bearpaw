@@ -216,18 +216,14 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 ## Documentation
 
 - [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) — canonical wire-protocol reference
-- [`docs/PROTOCOL_AUDIT_PLAN.md`](docs/PROTOCOL_AUDIT_PLAN.md) — audit history (Phases 1–4 done; 5–7 partly in v1.1)
 - [`docs/API_SPEC.md`](docs/API_SPEC.md) — REST + WebSocket API contract
 - [`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) — WS message shapes
 - [`docs/openapi.json`](docs/openapi.json), [`docs/postman_environment.json`](docs/postman_environment.json) — machine-readable API spec + Postman env
 - [`docs/BACKEND_LOGGING.md`](docs/BACKEND_LOGGING.md), [`docs/DATA_LIFECYCLE.md`](docs/DATA_LIFECYCLE.md)
 - [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — decompiled Uniden reference. Second source only — where it disagrees with our wire captures, the captures win.
 - [`docs/wire_captures/`](docs/wire_captures/) — real BC125AT wire traffic + audit reconciliation (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`)
-- [`docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md`](docs/compass_artifact_wf-4d260a13-b490-4b4e-830c-010c039981ab_text_markdown.md) — broader protocol research notes (second-source cross-check)
 - [`docs/IDEAS.md`](docs/IDEAS.md) — designated home for future-work ideas
-- [`docs/BUG_AUDIT_2026-07-02.md`](docs/BUG_AUDIT_2026-07-02.md) — bug-audit snapshot
-- [`docs/fixtures/kf0nui.bc125at_ss`](docs/fixtures/kf0nui.bc125at_ss) — sample Sentinel `.hpe` config dump
-- [`docs/superpowers/`](docs/superpowers/) — design specs (`specs/`) and implementation plans (`plans/`) for non-trivial features. Each gets a dated markdown file before implementation starts (e.g. `specs/2026-07-08-live-tone-display-design.md` + `plans/2026-07-08-live-tone-display.md` for the #171 tone work). Start there when picking up a planned feature.
+- [`docs/guide/`](docs/guide/) — end-user guide (getting started, scan, channels, device, glossary, troubleshooting)
 
 ## Common pitfalls
 
