@@ -44,7 +44,6 @@ export interface AppStore {
   banks: boolean[];
   sync: SyncState;
   importProgress: ImportProgressState;
-  activityLog: ActivityLogEntry[];
   fullActivityLog: ActivityLogEntry[];
   preferences: Preferences;
   lastSequence: number;
@@ -58,7 +57,6 @@ export interface AppStore {
   setBanks: (banks: boolean[]) => void;
   updateSync: (patch: Partial<SyncState>) => void;
   setImportProgress: (patch: Partial<ImportProgressState>) => void;
-  addActivityLogEntry: (entry: ActivityLogEntry) => void;
   clearActivityLog: () => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
   setMemoryEditingIndex: (index: number | null) => void;
@@ -114,7 +112,6 @@ export const useStore = create<AppStore>((set) => ({
   banks: defaultBanks,
   sync: defaultSync,
   importProgress: defaultImportProgress,
-  activityLog: [],
   fullActivityLog: [],
   preferences: defaultPreferences,
   lastSequence: 0,
@@ -156,17 +153,12 @@ export const useStore = create<AppStore>((set) => ({
   updateSync: (patch) => set((prev) => ({ sync: { ...prev.sync, ...patch } })),
   setImportProgress: (patch) =>
     set((prev) => ({ importProgress: { ...prev.importProgress, ...patch } })),
-  addActivityLogEntry: (entry) =>
-    set((prev) => ({
-      activityLog: [entry, ...prev.activityLog].slice(0, 5),
-    })),
-
   addToFullActivityLog: (entry) =>
     set((prev) => ({
       fullActivityLog: [entry, ...prev.fullActivityLog],
     })),
 
-  clearActivityLog: () => set({ activityLog: [], fullActivityLog: [] }),
+  clearActivityLog: () => set({ fullActivityLog: [] }),
 
   hydrateActivityLogs: (entries) =>
     set((prev) => {
@@ -179,7 +171,6 @@ export const useStore = create<AppStore>((set) => ({
       const sorted = [...entries].sort((a, b) => b.timestamp - a.timestamp);
       return {
         fullActivityLog: sorted,
-        activityLog: sorted.slice(0, 5),
       };
     }),
 

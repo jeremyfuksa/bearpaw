@@ -1,6 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
 import { useStore } from '../useStore';
-import { vi } from 'vitest';
 
 describe('useStore', () => {
   beforeEach(() => {
@@ -95,26 +94,6 @@ describe('useStore', () => {
     });
   });
 
-  describe('addActivityLogEntry', () => {
-    it('should limit log to 5 entries', () => {
-      const { result } = renderHook(() => useStore());
-
-      for (let i = 1; i <= 7; i++) {
-        act(() => {
-          result.current.addActivityLogEntry({
-            id: `entry-${i}`,
-            timestamp: Date.now() / 1000,
-            frequency: 145.5,
-            type: 'hit',
-          });
-        });
-      }
-
-      expect(result.current.activityLog).toHaveLength(5);
-      expect(result.current.activityLog[0].id).toBe('entry-7');
-    });
-  });
-
   describe('addToFullActivityLog', () => {
     it('should keep all entries', () => {
       const { result } = renderHook(() => useStore());
@@ -136,7 +115,7 @@ describe('useStore', () => {
 
   describe('hydrateActivityLogs', () => {
     beforeEach(() => {
-      useStore.setState({ activityLog: [], fullActivityLog: [] });
+      useStore.setState({ fullActivityLog: [] });
     });
 
     it('seeds full and recent logs sorted newest-first', () => {
@@ -151,25 +130,6 @@ describe('useStore', () => {
       });
 
       expect(result.current.fullActivityLog.map((e) => e.id)).toEqual(['new', 'mid', 'old']);
-      expect(result.current.activityLog.map((e) => e.id)).toEqual(['new', 'mid', 'old']);
-    });
-
-    it('caps activityLog at 5 even when more history is hydrated', () => {
-      const { result } = renderHook(() => useStore());
-
-      act(() => {
-        result.current.hydrateActivityLogs(
-          Array.from({ length: 8 }, (_, i) => ({
-            id: `e-${i}`,
-            timestamp: i,
-            frequency: 146.5,
-            type: 'hit' as const,
-          })),
-        );
-      });
-
-      expect(result.current.fullActivityLog).toHaveLength(8);
-      expect(result.current.activityLog).toHaveLength(5);
     });
 
     it('does not clobber an existing in-memory log', () => {
