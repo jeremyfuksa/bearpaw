@@ -34,7 +34,7 @@ pub fn init_backend_logging(service_name: &str) -> Result<LoggingGuard, String> 
     let (error_writer, error_guard) = tracing_appender::non_blocking(backend_error_file);
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("bearpaw_api=debug,bearpaw_desktop=info,axum=info,tower_http=info")
+        EnvFilter::new("bearpaw_api=warn,bearpaw_desktop=warn,axum=warn,tower_http=warn")
     });
 
     let stdout_layer = fmt::layer()
