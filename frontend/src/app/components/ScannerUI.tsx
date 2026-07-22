@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
 import { Usb } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 import { Slider } from './ui/slider';
 import usbSvgPaths from '../../imports/svg-4af8p5er03';
 import socketSvgPaths from '../../imports/svg-10gl6kikm0';
@@ -120,8 +126,6 @@ function ScannerControls({
   onHoldToggle,
   onLockout,
 }: ScannerControlsProps) {
-  const [isLockoutOpen, setIsLockoutOpen] = useState(false);
-
   return (
     <div className="flex shrink-0 items-center gap-[clamp(4px,2cqmin,28px)]">
       <Popover>
@@ -140,48 +144,39 @@ function ScannerControls({
           />
         </PopoverContent>
       </Popover>
-      <Popover open={isLockoutOpen} onOpenChange={setIsLockoutOpen}>
-        <PopoverTrigger asChild>
+      {/* A real DropdownMenu (not a Popover with hand-written menu roles): it
+          brings correct role=menu/menuitem, arrow-key navigation, Escape, and
+          close-on-select for free. Styled as a chip cut from the amber display
+          pane — solid amber surface, dark-slate rgba(28,31,38) ink and hover
+          wash, the same vocabulary as CONTROL_BUTTON_CLASSES — overriding the
+          component's default dark popover palette. Portals outside the
+          container-type:size pane, so no cqmin units. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <button type="button" className={CONTROL_BUTTON_CLASSES} aria-label="Lockout">
             L/O ▾
           </button>
-        </PopoverTrigger>
-        {/* Styled to read as a chip cut from the amber display pane: solid
-            amber surface, dark-slate rgba(28,31,38) ink and hover wash — the
-            same vocabulary as CONTROL_BUTTON_CLASSES — rather than the app's
-            dark scanner-select-content menu, which floats foreign on amber.
-            Portals outside the container-type:size pane, so no cqmin units. */}
-        <PopoverContent
-          className="w-40 rounded-scanner-xs border border-[rgba(28,31,38,0.6)] bg-[#e48813] p-1 shadow-lg"
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          className="w-40 rounded-scanner-xs border-[rgba(28,31,38,0.6)] bg-[#e48813] p-1 shadow-lg"
           side="bottom"
           align="center"
-          role="menu"
         >
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)]"
-            onClick={() => {
-              onLockout('temporary');
-              setIsLockoutOpen(false);
-            }}
+          <DropdownMenuItem
+            className="cursor-pointer justify-start rounded-scanner-xs px-3 py-2 font-mono text-sm text-[rgba(28,31,38,0.9)] focus:bg-[rgba(28,31,38,0.1)] focus:text-[rgba(28,31,38,0.9)]"
+            onSelect={() => onLockout('temporary')}
           >
             Temporary
-          </button>
-          <div className="mx-2 my-1 border-t border-[rgba(28,31,38,0.35)]" />
-          <button
-            type="button"
-            role="menuitem"
-            className="w-full rounded-scanner-xs px-3 py-2 text-left font-mono text-sm font-semibold text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)]"
-            onClick={() => {
-              onLockout('permanent');
-              setIsLockoutOpen(false);
-            }}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="mx-1 bg-[rgba(28,31,38,0.35)]" />
+          <DropdownMenuItem
+            className="cursor-pointer justify-start rounded-scanner-xs px-3 py-2 font-mono text-sm font-semibold text-[rgba(28,31,38,0.9)] focus:bg-[rgba(28,31,38,0.1)] focus:text-[rgba(28,31,38,0.9)]"
+            onSelect={() => onLockout('permanent')}
           >
             Permanent
-          </button>
-        </PopoverContent>
-      </Popover>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <button
         type="button"
         className={cn(
