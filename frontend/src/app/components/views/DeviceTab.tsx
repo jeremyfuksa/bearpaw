@@ -1379,6 +1379,7 @@ export function DeviceTab() {
                   <p className="text-sm text-white/60 leading-relaxed">
                     Community-developed control software for Uniden scanners.
                   </p>
+                  <p className="text-sm text-white/50">Created by Jeremy Fuksa · KF0NUI</p>
                   <div className="flex gap-2 pt-2">
                     <button
                       onClick={() => openExternalUrl('https://github.com/jeremyfuksa/bearpaw')}
