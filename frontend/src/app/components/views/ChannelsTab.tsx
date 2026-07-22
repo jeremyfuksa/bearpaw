@@ -373,6 +373,18 @@ export function ChannelsTab() {
     );
   }, [channels, memoryDrafts, reorderTargets]);
 
+  // Rows that have REAL pending changes. isPending (the row's "modified"
+  // highlight) is derived from this, not from Boolean(draft): a draft object
+  // can exist without representing any change — e.g. the sheet's Save writes a
+  // draft even when only an immediate-action field (priority/lockout, #206)
+  // was toggled, or when nothing changed at all. draftChanges is the value-diff
+  // that already gates Upload/Discard and already folds in drag-reorder
+  // (targetIndex !== channelIndex), so a no-op draft never lights a row.
+  const pendingChannelIds = useMemo(
+    () => new Set(draftChanges.map((c) => c.channelIndex)),
+    [draftChanges],
+  );
+
   const handleOpenEditSheet = useCallback(
     (channelIndex: number) => {
       const channel = channels.find((ch) => ch.index === channelIndex);
@@ -620,10 +632,12 @@ export function ChannelsTab() {
     if (!confirmed) return;
 
     // Pending state has two independent surfaces: field edits in memoryDrafts
-    // and drag-reorder in bankOrders. isPending fires on Boolean(draft) OR a
-    // shifted position, so discard must wipe BOTH. Rebuilding drafts from the
-    // channel (the old approach) left a non-null draft in place — Boolean(draft)
-    // stayed true and rows stayed lit (#195). Remove the drafts outright.
+    // and drag-reorder in bankOrders. Both feed draftChanges (which drives
+    // isPending), so discard must wipe BOTH. Rebuilding drafts from the channel
+    // (the old approach) left a non-null draft in place; back when isPending was
+    // Boolean(draft) that kept rows lit (#195). isPending is now value-based, but
+    // an outright removal is still the correct discard — a leftover no-op draft
+    // is pointless state. Remove the drafts outright.
     clearMemoryDrafts();
     setBankOrders({});
     toast.success('Drafts discarded');
@@ -924,7 +938,7 @@ export function ChannelsTab() {
                   // channel for the same reason (see the priority note there).
                   const displayLockout = isCleared ? false : channel.lockout;
                   const displayPriority = isCleared ? false : channel.priority;
-                  const isPending = Boolean(draft) || displayIndex !== channel.index;
+                  const isPending = pendingChannelIds.has(channel.index);
 
                   return (
                     <ChannelRow
