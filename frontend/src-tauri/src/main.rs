@@ -33,6 +33,9 @@ mod menu_ids {
     // that opens the OS-native About panel, so it has no event ID.
     pub const HELP_DOCS: &str = "bearpaw:help:docs";
     pub const HELP_ISSUES: &str = "bearpaw:help:issues";
+    // Reveals the current backend log file in the OS file manager. Handled
+    // entirely in the Rust shell (see on_menu_event) — no frontend event.
+    pub const HELP_SHOW_LOGS: &str = "bearpaw:help:show-logs";
 }
 
 #[derive(Default)]
@@ -318,6 +321,7 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
     let help_submenu = SubmenuBuilder::new(app, "Help")
         .item(&MenuItemBuilder::with_id(menu_ids::HELP_DOCS, "Documentation").build(app)?)
         .item(&MenuItemBuilder::with_id(menu_ids::HELP_ISSUES, "GitHub Issues").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::HELP_SHOW_LOGS, "Show Log Files").build(app)?)
         .separator()
         .item(&PredefinedMenuItem::about(
             app,
