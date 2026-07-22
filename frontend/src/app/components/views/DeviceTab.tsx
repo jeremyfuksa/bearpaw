@@ -782,7 +782,7 @@ export function DeviceTab() {
               </div>
             </div>
 
-            <div className="flex-1 rounded-lg border border-white/5 bg-black/10 overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-white/5 bg-black/10 overflow-hidden">
               <div className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-xs font-bold uppercase tracking-wider text-white/40 bg-white/5 border-b border-white/10 px-3 py-2">
                 <div>Select</div>
                 <div className="text-center">CH</div>
@@ -792,7 +792,7 @@ export function DeviceTab() {
                 <div className="text-center">Action</div>
               </div>
 
-              <div className="max-h-[var(--layout-scroll-max-height)] divide-y divide-white/5 overflow-y-auto">
+              <div className="flex-1 divide-y divide-white/5 overflow-y-auto">
                 {filteredLockedChannels.map((channel) => {
                   const isSelected = selectedChannels.includes(channel.index);
                   return (
