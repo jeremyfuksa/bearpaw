@@ -736,9 +736,6 @@ struct PollState {
     /// Logged periodically — these are normal under the firmware's documented
     /// "occasionally drops or truncates STS" behavior.
     dropped_sts: u64,
-    /// Count of ticks where STS.sql and GLG.sql disagreed. Should be 0 in
-    /// normal operation; non-zero values may indicate a parser bug.
-    squelch_disagreements: u64,
     /// Consecutive ticks where EVERY parse failed (#149): the port is open
     /// but the scanner isn't producing anything usable. After
     /// STALE_AFTER_FAILED_TICKS of this, the display is marked stale so the
@@ -754,7 +751,6 @@ impl PollState {
         Self {
             last_pwr: None,
             dropped_sts: 0,
-            squelch_disagreements: 0,
             consecutive_failed_ticks: 0,
             stale_broadcast: false,
         }
@@ -807,29 +803,11 @@ fn process_poll_tick(
         }
     }
 
-    // Cross-check squelch polarity between STS and GLG.
-    if let (Some(s), Some(g)) = (sts.as_ref(), glg.as_ref()) {
-        if s.squelch_open != g.squelch_open {
-            poll.squelch_disagreements += 1;
-            if poll.squelch_disagreements.is_multiple_of(10) {
-                // DIAGNOSTIC (#202): dump the raw STS + GLG frames on
-                // disagreement to tell a misparse (find_sts_tail_start anchored
-                // on the wrong field) apart from benign scan-cycle timing skew
-                // (STS and GLG are separate round-trips ~ms apart). Remove once
-                // the cause is confirmed.
-                warn!(
-                    "STS.sql != GLG.sql {} times ({}): STS={}, GLG={} — investigate parser. raw_sts={:?} raw_glg={:?} sts_sig_lvl={}",
-                    poll.squelch_disagreements,
-                    source,
-                    s.squelch_open,
-                    g.squelch_open,
-                    sts_resp.map(|r| r.trim()),
-                    glg_resp.map(|r| r.trim()),
-                    s.sig_lvl,
-                );
-            }
-        }
-    }
+    // STS.sql and GLG.sql can legitimately differ on a given tick: they're
+    // separate round-trips ~50ms apart (STS uses send_and_read_multiline),
+    // and during SCAN the squelch can open/close inside that gap. The #202
+    // diagnostic confirmed this is timing skew, not a misparse, so there's no
+    // cross-check here — livestate_from_frames prefers GLG for squelch_open.
 
     if sts.is_none() && glg.is_none() && pwr_effective.is_none() {
         debug!("All poll-tick parses failed ({})", source);
