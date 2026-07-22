@@ -155,6 +155,23 @@ pub struct ChannelData {
     pub bank: u8,
 }
 
+impl ChannelData {
+    /// True when this is a *programmed* channel that is locked out.
+    ///
+    /// Empty slots read back from the scanner as `,00000000,AUTO,0,2,1,0` —
+    /// a factory-default `lockout=1` bit on a channel that holds no frequency.
+    /// That bit is meaningless (there is nothing to lock), and the scanner
+    /// refuses to clear it: a `CIN,...,0` write to an empty slot returns
+    /// `CIN,OK` but no-ops, leaving `lockout=1`. Treating the bare bit as a
+    /// real lockout inflates the "locked channels" list with every unprogrammed
+    /// slot and makes the clear sweep spin on writes that can never stick
+    /// (surfaced by the `lockout not persisted` field warning on empty ch 469).
+    /// A channel is only meaningfully locked when it actually has a frequency.
+    pub fn is_active_lockout(&self) -> bool {
+        self.lockout && self.frequency > 0.0
+    }
+}
+
 /// Cached channel memory from last sync.
 #[derive(Clone, Debug, Default)]
 pub struct ShadowState {
@@ -188,5 +205,42 @@ mod tests {
         );
         assert_eq!(ch.frequency, 146.52);
         assert_eq!(ch.alpha_tag, "Simplex");
+    }
+
+    // REGRESSION GUARD: an empty slot reads back as `,00000000,AUTO,0,2,1,0`
+    // (factory lockout=1, freq 0). It must NOT count as a locked channel — the
+    // scanner won't clear that bit, so counting it inflates the locked list and
+    // makes the clear sweep fail on ch 469 with `lockout not persisted`.
+    #[test]
+    fn is_active_lockout_ignores_empty_slots() {
+        let empty_locked = ChannelData {
+            frequency: 0.0,
+            lockout: true,
+            ..Default::default()
+        };
+        assert!(
+            !empty_locked.is_active_lockout(),
+            "empty slot (freq 0) with factory lockout=1 is not a real lockout"
+        );
+
+        let real_locked = ChannelData {
+            frequency: 146.64,
+            lockout: true,
+            ..Default::default()
+        };
+        assert!(
+            real_locked.is_active_lockout(),
+            "programmed channel with lockout=1 is a real lockout"
+        );
+
+        let real_unlocked = ChannelData {
+            frequency: 146.64,
+            lockout: false,
+            ..Default::default()
+        };
+        assert!(
+            !real_unlocked.is_active_lockout(),
+            "programmed channel with lockout=0 is not locked"
+        );
     }
 }
