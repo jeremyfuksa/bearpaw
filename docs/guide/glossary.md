@@ -78,9 +78,9 @@ Telling the scanner to **skip** a frequency or channel so it stops stopping on i
   remove it.
 
 Both are toggles; apply again to remove. On the
-[Scan tab](scan.md#lo-lock-out-a-frequency), a single click sets a temporary
-lockout and a double-click sets a permanent one. You can review and clear
-permanent lockouts under [Locked Channels](device.md#locked-channels).
+[Scan tab](scan.md#lo-lock-out-a-frequency), the **L/O** button opens a menu
+with **Temporary** and **Permanent** choices. You can review and clear permanent
+lockouts under [Locked Channels](device.md#locked-channels).
 
 ### Memory sync
 

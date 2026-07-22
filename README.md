@@ -14,15 +14,14 @@ the live frequency, the alpha tag, the signal strength, in a display big enough
 to read across the room. Edit all 500 channels without the radio's keypad, and
 move them in and out of the radio as plain CSV or native Uniden files.
 
-It does one thing the radio and the official software never did: it watches the
-band. While it runs, Bearpaw logs every hit and turns the record into a read on
-the radio world around you, which channels are busy and when, and hands you the
+It does one thing the radio and the official software never did: while it runs, Bearpaw logs every hit and records a log of 
+the radio world around you, and hands you the
 raw data as CSV whenever you want it.
 
 It talks to the scanner the same way Uniden's Sentinel software does, over the
 USB cable, and runs live while you're listening, on macOS, Windows, and Linux.
 
-> **This is a beta.** It works, and it's been tested against real hardware, but
+> **This is a beta.** It's been tested against real hardware, but
 > you may hit rough edges. Found one?
 > [Open an issue](https://github.com/jeremyfuksa/bearpaw/issues).
 
@@ -60,7 +59,7 @@ time you open the app.
 ## Connect your scanner
 
 Plug the BC125AT into a USB port and launch Bearpaw. It auto-detects the scanner
-on every platform, including macOS. No config file, no port setup.
+on every platform.
 
 If it doesn't connect, two things to check:
 
@@ -68,44 +67,39 @@ If it doesn't connect, two things to check:
   have, try a different cable.
 - Make sure the scanner is **powered on**.
 
-The dot in the bottom-left corner shows the connection state: **green** is
-connected, **yellow** is connecting, **red** is not connected. When it goes
-green, Bearpaw reads your channels from the radio, which takes about 30 to 45
+Once connected, Bearpaw reads your channels from the radio, which takes about 30 to 45
 seconds the first time.
 
 ## Learn your way around
 
-The full user guide walks through every part of the app in plain language:
+The full user guide walks through every part of the app:
 
 - **[Getting Started](docs/guide/getting-started.md)**: from plugging in to your
-  first received signal, step by step.
+  first received signal.
 - **[The Scan Tab](docs/guide/scan.md)**: the live display, the "hit" workflow,
   and the on-screen controls.
 - **[The Channels Tab](docs/guide/channels.md)**: viewing and editing your 500
   channels, and how to save your changes back to the radio.
-- **[The Device Tab](docs/guide/device.md)**: the scanner's own settings (volume,
-  squelch, Close Call, searches) plus the app's preferences.
+- **[The Device Tab](docs/guide/device.md)**: the scanner's own settings plus the app's preferences.
 - **[Menu & Keyboard Shortcuts](docs/guide/troubleshooting.md#menu--keyboard-shortcuts)**
   and **[Troubleshooting](docs/guide/troubleshooting.md)**.
-- **[Glossary](docs/guide/glossary.md)**: every radio and app term the guide
-  uses, defined once.
+- **[Glossary](docs/guide/glossary.md)**
 
 ## What Bearpaw is and isn't
 
 Bearpaw is a **community project**. It is not made by or affiliated with Uniden.
-It reads and writes your scanner over the documented USB protocol, and stays
-inside what the scanner can already do from its own keypad. Bearpaw reads your
-channel memory fresh from the radio each time it starts.
+It reads and writes your scanner over the documented USB protocol, replicating what the scanner can already do from its own keypad.
 
 ## For developers
 
 Building from source, the architecture, and the wire protocol are documented
-separately. See [`CLAUDE.md`](CLAUDE.md) and the reference material in
-[`docs/`](docs/). Bearpaw is a Rust backend (Axum plus a Tauri desktop shell)
-with a React/TypeScript frontend.
+separately. See [`CONTRIBUTING.md`](CONTRIBUTING.md) to get set up, [`CLAUDE.md`](CLAUDE.md)
+for the fullest map of the system, and the reference material in [`docs/`](docs/).
+Bearpaw is a Rust backend (Axum plus a Tauri desktop shell) with a
+React/TypeScript frontend. Release notes live in [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
-_Bearpaw is licensed for personal use. Made by
+_Bearpaw is released under the [MIT License](LICENSE). Made by
 [Jeremy Fuksa](https://github.com/jeremyfuksa). If it's useful to you, you can
 [buy the developer a coffee](https://buymeacoffee.com/jeremyfuksa)._

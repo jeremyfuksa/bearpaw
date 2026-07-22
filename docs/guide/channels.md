@@ -1,14 +1,12 @@
 # The Channels Tab
 
-The Channels tab is where you manage your scanner's memory: all 500 channels,
-without the radio's keypad. Rename them, change frequencies, set tones, lock out
-the noisy ones, and reorder them. When you're done, you push your changes back to
+The Channels tab is where you manage your scanner's memory: Rename channels, change frequencies, set tones, lock out
+the noisy frequencies, and reorder them. When you're done, you push your changes back to
 the radio.
 
 > **Your edits don't reach the scanner until you press "Upload Changes."**
 > Everything you change here is held as a _draft_, a pending change stored in the
-> app, until you upload it. Close the editor, switch tabs, edit ten more
-> channels: nothing touches the radio until you upload. Batching this way lets
+> app, until you upload it. Batching this way lets
 > you make a set of changes and review them before they go to the scanner. (More
 > on this [below](#drafts-and-uploading-the-important-part).)
 
@@ -74,17 +72,12 @@ transmission ends before it resumes scanning, giving you time to hear a reply.
 Choose from **-10, -5, 0, 1, 2, 3, 4, 5**. The negative values are _pre-delays_:
 the scanner holds _before_ the next transmission.
 
-**Lockout** is a switch. On means the scanner skips this channel. It's a draft,
-like the fields above, and takes effect when you upload.
+**Lockout** is a switch. On means the scanner skips this channel.
 
 **Priority** is a switch, and it applies to the scanner immediately rather than
 waiting for Upload. The radio allows only one priority channel per bank, so
 turning it on where another channel already has priority asks you to confirm
 moving it. (More on priority in the [Glossary](glossary.md#priority).)
-
-At the bottom: **Save Draft** stores your changes as a pending draft, and won't
-let you save while a field has an error. **Clear** blanks the panel to an empty
-channel. **Cancel** discards your edits.
 
 ## Drafts and uploading (the important part)
 
@@ -103,7 +96,7 @@ to two buttons: **Discard Changes** and **Upload Changes**.
 To throw away all your pending edits without uploading, press **Discard Changes**
 (it asks you to confirm first).
 
-The **Priority** switch is the exception. It applies the moment you toggle it.
+> The **Priority** switch is the exception. It applies the moment you toggle it.
 Everything else waits for Upload.
 
 ## The toolbar
@@ -117,11 +110,18 @@ Across the top of the tab:
 - **Import** / **Export**: move channels between the scanner and a file. Both
   work in two formats, CSV and native Uniden. See
   [Import and export](#import-and-export) below.
-- **Drag to reorder**: grab a row's handle (⠿) and drag it up or down to change
-  the channel order within the bank. Reordering is a draft, and uploads with
-  everything else.
+- **Drag to reorder**: change the channel order within the bank by dragging.
+  Reordering is a draft, and uploads with everything else.
 
-> Reordering is mouse-only. There's no keyboard path to it yet.
+**To reorder a channel:** point at the **drag handle** (⠿) at the left of the
+row then press and hold the mouse button
+and drag the row up or down. Release it where you want the channel to land. The
+move is saved as a draft (a colored bar appears on the affected rows) and goes to
+the radio on your next **Upload Changes**.
+
+> Two limits. Reordering is **mouse-only** — there's no keyboard path to it yet.
+> And drag is **turned off while a search is active**, since the list you see is
+> filtered rather than the full bank order; clear the search box to drag again.
 
 ## Import and export
 
@@ -133,15 +133,13 @@ them off to other software.
 
 **CSV** is a plain spreadsheet: one row per channel, with columns for frequency,
 tag, mode, tone, delay, and lockout. Open it in Excel, Numbers, or Google Sheets,
-make bulk edits by copy-and-paste or find-and-replace, and load it back in. It's
-the channel list on its own, nothing else.
+make bulk edits, and load it back in.
 
 **Native Uniden** (a `.bc125at_ss` file) is the same format the official Sentinel
 software reads and writes. It's a full snapshot: all 500 channels _and_ the
 scanner's settings. Because it speaks Sentinel's own language, you can move a
 channel set between Bearpaw and Uniden's software in either direction, or keep one
-as a complete backup of the radio. Bearpaw builds this file by reading the live
-settings off the scanner, so exporting it takes a few seconds longer than CSV.
+as a complete backup of the radio. Exporting it takes a few seconds longer than CSV.
 
 ### Exporting
 
@@ -161,10 +159,6 @@ you to confirm before it does.
 > progress bar covering the screen while it works (a full native-file restore is
 > around 80 seconds of writes). When it finishes, Bearpaw re-reads the channels so
 > the list matches what's now in the radio.
-
-Separately, the [Scan tab](scan.md#exporting-your-activity-data) exports your
-_activity log_ (what the scanner has heard over time) to CSV. That's hit data for
-analysis, a different thing from these channel files.
 
 ## Refreshing from the scanner (memory sync)
 
