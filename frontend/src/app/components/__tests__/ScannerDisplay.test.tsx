@@ -103,6 +103,21 @@ describe('ScannerDisplay', () => {
       );
     });
 
+    it('opens and selects a lockout item by keyboard alone', async () => {
+      // Keyboard-only path: the click tests never exercise arrow-key
+      // navigation, which is the whole reason the L/O control uses a real
+      // DropdownMenu rather than a Popover. Focus the trigger, open with
+      // Enter, arrow to the second item (Permanent), and select with Enter.
+      const onLockout = vi.fn();
+      render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);
+      const trigger = screen.getByRole('button', { name: /lockout/i });
+      trigger.focus();
+      await userEvent.keyboard('{Enter}');
+      expect(await screen.findByRole('menuitem', { name: 'Permanent' })).toBeInTheDocument();
+      await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+      expect(onLockout).toHaveBeenCalledWith('permanent');
+    });
+
     it('calls onHoldToggle when HOLD button is clicked', async () => {
       const onHoldToggle = vi.fn();
       render(<ScannerDisplay {...defaultProps} onHoldToggle={onHoldToggle} />);
