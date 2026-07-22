@@ -915,8 +915,15 @@ export function ChannelsTab() {
                   const displayDelay = isCleared
                     ? 0
                     : Number.parseInt(draft?.delay ?? channel.delay.toString(), 10);
-                  const displayLockout = isCleared ? false : (draft?.lockout ?? channel.lockout);
-                  const displayPriority = isCleared ? false : (draft?.priority ?? channel.priority);
+                  // Lockout and priority are immediate actions (#206), not
+                  // batched draft fields — their live truth is always the
+                  // channel, never a draft snapshot. Reading `draft?.x ??
+                  // channel.x` here let a stale draft (e.g. one frozen with
+                  // priority=true) keep the LED/lock lit after an immediate
+                  // clear zeroed the channel. draftChanges already mirrors the
+                  // channel for the same reason (see the priority note there).
+                  const displayLockout = isCleared ? false : channel.lockout;
+                  const displayPriority = isCleared ? false : channel.priority;
                   const isPending = Boolean(draft) || displayIndex !== channel.index;
 
                   return (
