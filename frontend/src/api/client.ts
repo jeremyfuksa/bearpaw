@@ -159,6 +159,14 @@ export class ScannerAPIClient {
     });
   }
 
+  async setChannelPriority(index: number, priority: boolean): Promise<ChannelData[]> {
+    const res = await this.request<{ changed: ChannelData[] }>(
+      `/memory/channels/${index}/priority`,
+      { method: 'POST', body: JSON.stringify({ priority }) },
+    );
+    return res.changed;
+  }
+
   async startProgramMode(): Promise<void> {
     await this.request('/memory/program-mode/start', { method: 'POST' });
   }

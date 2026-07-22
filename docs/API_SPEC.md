@@ -444,6 +444,47 @@ Get specific channel by index.
 
 ---
 
+#### POST /memory/channels/{index}/priority
+
+Set or clear a channel's priority. Enforces one priority channel per bank
+(the hardware limit).
+
+**Path Parameters:**
+- `index`: Channel number (1-500)
+
+**Request:**
+
+```json
+{ "priority": true }
+```
+
+- `true` — set this channel as its bank's priority. If the bank already has
+  a different priority channel, it is cleared first (atomic swap).
+- `false` — clear this channel's priority. Uses delete-then-rewrite (`DCH` +
+  `CIN`) because the firmware refuses an in-place priority downgrade; the
+  channel's other data is preserved.
+
+**Response:** `200 OK`
+
+```json
+{ "changed": [ /* ChannelData, ... */ ] }
+```
+
+`changed` lists the channels whose state changed (the cleared old channel,
+if any, then the newly-set channel).
+
+**Errors:**
+- `400 channel_out_of_range` if index out of range (< 1 or > 500)
+- `400 priority_set_empty_channel` if the target channel is empty
+- `400 priority_clear_not_persisted` / `priority_set_not_persisted` if
+  hardware read-back verification failed
+
+**Note:** see
+[`docs/wire_captures/2026-05-21/audit-reconciliation.md`](wire_captures/2026-05-21/audit-reconciliation.md)
+(2026-07-21 finding) for why clearing requires `DCH` + rewrite.
+
+---
+
 #### POST /memory/sync
 
 Start full memory sync from scanner (read all channels).

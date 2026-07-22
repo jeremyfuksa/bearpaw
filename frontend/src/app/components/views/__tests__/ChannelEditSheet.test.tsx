@@ -17,8 +17,9 @@ describe('ChannelEditSheet', () => {
   let mockDraft: ChannelDraft;
   let mockOnSave: Mock<(draft: ChannelDraft) => Promise<void>>;
   let mockOnClose: Mock<() => void>;
+  let mockOnPriorityChange: Mock<(next: boolean) => void | Promise<void>>;
 
-  const renderSheet = (isOpen = true) =>
+  const renderSheet = (isOpen = true, priorityChecked = false) =>
     render(
       <ChannelEditSheet
         channel={mockChannel}
@@ -26,6 +27,8 @@ describe('ChannelEditSheet', () => {
         isOpen={isOpen}
         onClose={mockOnClose}
         onSave={mockOnSave}
+        priorityChecked={priorityChecked}
+        onPriorityChange={mockOnPriorityChange}
       />,
     );
 
@@ -44,6 +47,7 @@ describe('ChannelEditSheet', () => {
     mockDraft = createTestChannelDraft();
     mockOnSave = vi.fn().mockResolvedValue(undefined);
     mockOnClose = vi.fn();
+    mockOnPriorityChange = vi.fn();
   });
 
   describe('Rendering', () => {
@@ -107,6 +111,8 @@ describe('ChannelEditSheet', () => {
           isOpen={false}
           onClose={mockOnClose}
           onSave={mockOnSave}
+          priorityChecked={false}
+          onPriorityChange={mockOnPriorityChange}
         />,
       );
       rerender(
@@ -116,6 +122,8 @@ describe('ChannelEditSheet', () => {
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
+          priorityChecked={false}
+          onPriorityChange={mockOnPriorityChange}
         />,
       );
       expect(screen.getByLabelText('Alpha Tag')).toHaveValue(mockDraft.alpha_tag);
@@ -201,13 +209,29 @@ describe('ChannelEditSheet', () => {
   });
 
   describe('Switches', () => {
-    it('toggling lockout/priority is committed on save', async () => {
+    it('toggling lockout is committed on save', async () => {
       renderSheet();
       await userEvent.click(screen.getByRole('switch', { name: /lockout/i }));
-      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
       await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
       await waitFor(() => expect(mockOnSave).toHaveBeenCalled());
-      expect(mockOnSave.mock.calls[0][0]).toMatchObject({ lockout: true, priority: true });
+      expect(mockOnSave.mock.calls[0][0]).toMatchObject({ lockout: true });
+    });
+
+    // Priority is an immediate action (Task 6), not a batched draft field —
+    // toggling it calls onPriorityChange directly and never rides onSave.
+    it('toggling priority calls onPriorityChange immediately, not onSave', async () => {
+      renderSheet(true, false);
+      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+      expect(mockOnPriorityChange).toHaveBeenCalledWith(true);
+      expect(mockOnSave).not.toHaveBeenCalled();
+    });
+
+    it('priority switch reflects the priorityChecked prop, not the draft', () => {
+      renderSheet(true, true);
+      expect(screen.getByRole('switch', { name: /priority/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
     });
   });
 

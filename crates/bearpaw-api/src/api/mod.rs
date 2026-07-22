@@ -198,6 +198,10 @@ pub fn router(state: AppState) -> Router {
             get(handlers::memory::get_memory_channel).put(handlers::memory::put_memory_channel),
         )
         .route(
+            "/api/v1/memory/channels/:index/priority",
+            post(handlers::memory::put_memory_channel_priority),
+        )
+        .route(
             "/api/v1/memory/sync",
             post(handlers::memory::post_memory_sync),
         )
@@ -1508,6 +1512,29 @@ fn readback_matches(wrote: &ChannelData, readback: &ChannelData, wrote_alpha: &s
         && priority_ok
 }
 
+/// A channel needs an actual DCH+rewrite clear only if it is programmed
+/// (freq != 0) and currently priority. Empty or already-non-priority
+/// channels are a no-op.
+fn needs_priority_clear(ch: &ChannelData) -> bool {
+    ch.frequency.abs() >= 0.00005 && ch.priority
+}
+
+/// Strict persisted-check for `clear_channel_priority`. `readback_matches`
+/// carries a deliberate tolerance (PR #198) that treats a refused in-place
+/// priority downgrade (wrote 0, read back 1) as a match — correct for the
+/// plain CIN write path, where that refusal is expected and priority isn't
+/// the thing being verified. `clear_channel_priority`'s entire purpose is to
+/// force priority to 0 via DCH+rewrite, so that tolerance must not apply
+/// here: a stuck priority bit is exactly the failure this function exists to
+/// catch, and `readback_matches` alone would silently report it as success.
+fn priority_clear_persisted(
+    rewritten: &ChannelData,
+    readback: &ChannelData,
+    wrote_alpha: &str,
+) -> bool {
+    readback_matches(rewritten, readback, wrote_alpha) && !readback.priority
+}
+
 /// The fixed tail the scanner stamps on any channel with no frequency:
 /// delay=2, lockout=1, priority=0, no tone (`...,00000000,AUTO,0,2,1,0`). See
 /// `readback_matches` for the capture citations. Only the tail is checked: the
@@ -1521,6 +1548,31 @@ fn is_factory_empty(ch: &ChannelData) -> bool {
         && ch.lockout
         && !ch.priority
         && ch.tone_squelch_kind == crate::state::ToneSquelchKind::None
+}
+
+/// The index of the bank's current priority channel, if any. A bank holds
+/// 0 or 1 priority channel (one-per-bank). `bank` is 1..=10.
+fn bank_priority_index(
+    channels: &std::collections::HashMap<u16, ChannelData>,
+    bank: u8,
+) -> Option<u16> {
+    channels
+        .values()
+        .filter(|c| c.priority && crate::protocol::index_to_bank(c.index) == bank)
+        .map(|c| c.index)
+        .min()
+}
+
+/// Decide the swap: which channel (if any) must be cleared, and which is set.
+/// Returns (old_to_clear, new_to_set). old is Some only when a DIFFERENT
+/// channel in the same bank currently holds priority.
+fn plan_priority_swap(
+    channels: &std::collections::HashMap<u16, ChannelData>,
+    index: u16,
+) -> (Option<u16>, u16) {
+    let bank = crate::protocol::index_to_bank(index);
+    let old = bank_priority_index(channels, bank).filter(|&old| old != index);
+    (old, index)
 }
 
 pub(crate) async fn write_channel_to_scanner(
@@ -1577,6 +1629,135 @@ pub(crate) async fn write_channel_to_scanner(
         return Err(ApiError::BadRequest("channel_not_persisted".to_string()));
     }
     Ok(readback)
+}
+
+/// Clear a channel's priority. The firmware refuses an in-place priority
+/// 1->0 CIN write, so the only mechanism is DCH (wipe to factory-empty)
+/// then rewrite the channel with priority=0 (verified: #203 probe).
+///
+/// DATA-LOSS SAFETY: DCH deletes the channel. We read the full channel
+/// FIRST, abort before DCH if the read fails, then rewrite from the saved
+/// copy and read-back-verify. All inside one ProgramModeGuard.
+pub(crate) async fn clear_channel_priority(
+    state: &AppState,
+    index: u16,
+) -> Result<ChannelData, ApiError> {
+    let _guard = ProgramModeGuard::enter(state).await?;
+    clear_channel_priority_locked(state, index).await
+}
+
+/// Body of `clear_channel_priority`, assuming the caller already holds a
+/// `ProgramModeGuard`. Does NOT enter one itself — used by `set_channel_priority`
+/// so the clear-old + set-new swap runs inside a single bracket instead of two.
+async fn clear_channel_priority_locked(
+    state: &AppState,
+    index: u16,
+) -> Result<ChannelData, ApiError> {
+    // 1. Read the full channel first. Never DCH an unread channel.
+    let current = read_channel_from_scanner(state, index).await?;
+
+    // 2. No-op if nothing to clear.
+    if !needs_priority_clear(&current) {
+        return Ok(current);
+    }
+
+    // 3. Build the rewrite payload (same fields, priority off) BEFORE deleting,
+    //    so a payload-build error can't strand us post-DCH.
+    let mut rewritten = current.clone();
+    rewritten.priority = false;
+    let payload = build_cin_write_payload(&rewritten)?;
+
+    // 4. DCH — wipe to factory-empty.
+    match classify_response(&send_raw_command(state, &format!("DCH,{index}"), false).await?) {
+        ScannerReply::Ok => {}
+        _ => return Err(ApiError::BadRequest("priority_clear_dch_failed".to_string())),
+    }
+
+    // 5. Rewrite with priority=0.
+    let write_cmd = format!("CIN,{index},{payload}");
+    match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
+        ScannerReply::Ok => {}
+        _ => return Err(ApiError::BadRequest("priority_clear_rewrite_failed".to_string())),
+    }
+
+    // 6. Read-back-verify the rewrite.
+    let read_response = send_raw_command(state, &format!("CIN,{index}"), false).await?;
+    let readback = parse_cin_response(index, &read_response)
+        .ok_or_else(|| ApiError::BadRequest("priority_clear_readback_failed".to_string()))?;
+    let wrote_alpha = rewritten
+        .alpha_tag
+        .replace(',', " ")
+        .trim()
+        .chars()
+        .take(16)
+        .collect::<String>();
+    if !priority_clear_persisted(&rewritten, &readback, &wrote_alpha) {
+        warn!(
+            index = index,
+            wrote = %write_cmd,
+            read_back = %read_response.trim(),
+            "priority clear rewrite not persisted as sent"
+        );
+        return Err(ApiError::BadRequest("priority_clear_not_persisted".to_string()));
+    }
+    Ok(readback)
+}
+
+/// Set `index` as its bank's priority channel, enforcing one-per-bank.
+/// Clears the bank's current priority channel first (if a different one
+/// exists), then sets `index`. Atomic: if the clear fails, `index` is NOT
+/// set. Returns every channel changed (cleared-old first, then the new one).
+pub(crate) async fn set_channel_priority(
+    state: &AppState,
+    index: u16,
+) -> Result<Vec<ChannelData>, ApiError> {
+    let (old_to_clear, new_to_set) = {
+        let shadow = state.shadow.read().unwrap();
+        plan_priority_swap(&shadow.channels, index)
+    };
+
+    let _guard = ProgramModeGuard::enter(state).await?; // ONE bracket for the whole swap
+    let mut changed = Vec::new();
+
+    // REGRESSION GUARD (priority swap atomicity): clear the OLD priority channel
+    // BEFORE setting the new one, inside a SINGLE program-mode bracket, and
+    // propagate the clear's error with `?` so a failed clear ABORTS the swap.
+    // Setting first, ignoring the clear error, or dropping/re-entering the guard
+    // between clear and set can leave a bank with two priority channels, a
+    // DCH-deleted channel, or an interleaved command mid-swap. See the priority spec.
+    if let Some(old) = old_to_clear {
+        let cleared = clear_channel_priority_locked(state, old).await?; // locked: no inner guard
+        state.shadow.write().unwrap().channels.insert(old, cleared.clone());
+        changed.push(cleared);
+    }
+
+    // Set the new priority channel with a plain CIN write (SET works in place).
+    let current = read_channel_from_scanner(state, new_to_set).await?;
+    if current.frequency.abs() < 0.00005 {
+        return Err(ApiError::BadRequest("priority_set_empty_channel".to_string()));
+    }
+    let mut wrote = current.clone();
+    wrote.priority = true;
+    let payload = build_cin_write_payload(&wrote)?;
+    let write_cmd = format!("CIN,{new_to_set},{payload}");
+    match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
+        ScannerReply::Ok => {}
+        _ => return Err(ApiError::BadRequest("priority_set_failed".to_string())),
+    }
+    let read_response = send_raw_command(state, &format!("CIN,{new_to_set}"), false).await?;
+    let readback = parse_cin_response(new_to_set, &read_response)
+        .ok_or_else(|| ApiError::BadRequest("priority_set_readback_failed".to_string()))?;
+    if !readback.priority {
+        return Err(ApiError::BadRequest("priority_set_not_persisted".to_string()));
+    }
+    state
+        .shadow
+        .write()
+        .unwrap()
+        .channels
+        .insert(new_to_set, readback.clone());
+    changed.push(readback);
+    Ok(changed)
 }
 
 pub(crate) async fn set_channel_lockout_on_scanner(
@@ -1786,6 +1967,50 @@ mod tests {
         }
     }
 
+    fn empty_channel_readback() -> ChannelData {
+        let mut c = test_channel();
+        c.frequency = 0.0;
+        c.priority = false;
+        c
+    }
+
+    #[test]
+    fn needs_priority_clear_only_when_programmed_and_priority() {
+        let mut ch = test_channel(); // freq 145.13
+        ch.priority = true;
+        assert!(needs_priority_clear(&ch)); // programmed + priority => clear needed
+
+        ch.priority = false;
+        assert!(!needs_priority_clear(&ch)); // not priority => no-op
+
+        let empty = empty_channel_readback(); // freq 0 (helper below)
+        assert!(!needs_priority_clear(&empty)); // empty slot => no-op
+    }
+
+    #[test]
+    fn priority_clear_persisted_rejects_stuck_priority_bit() {
+        // clear_channel_priority always writes priority=false; a readback of
+        // true means the DCH+rewrite failed to clear it. readback_matches's
+        // refused-downgrade tolerance must NOT paper over that here.
+        let mut rewritten = test_channel();
+        rewritten.priority = false;
+        let wrote_alpha = rewritten.alpha_tag.clone();
+
+        let mut readback = rewritten.clone();
+        readback.priority = true; // stuck bit
+        assert!(!priority_clear_persisted(&rewritten, &readback, &wrote_alpha));
+
+        // Sanity: a genuinely persisted clear (readback.priority == false,
+        // everything else matching) must still pass.
+        let mut readback_ok = rewritten.clone();
+        readback_ok.priority = false;
+        assert!(priority_clear_persisted(
+            &rewritten,
+            &readback_ok,
+            &wrote_alpha
+        ));
+    }
+
     // REGRESSION GUARD (#195, #197): writing an empty channel (freq 0) is a
     // no-op — the scanner discards every programmed field and re-stamps the
     // factory-empty signature `,00000000,AUTO,0,2,1,0`. When we wrote freq 0,
@@ -1949,6 +2174,23 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn priority_endpoint_rejects_out_of_range_index() {
+        let app = router(default_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/channels/999/priority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"priority":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
     // REGRESSION GUARD (#143): post_lockout must range-check the channel index.
     #[tokio::test]
     async fn post_lockout_rejects_out_of_range_channel() {
@@ -2076,5 +2318,63 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[test]
+    fn bank_priority_index_finds_the_one_priority_channel() {
+        use std::collections::HashMap;
+        let mut ch = HashMap::new();
+        // Bank 1 = indices 1..=50. CH2 is priority; CH9 is not.
+        let mut c2 = test_channel();
+        c2.index = 2;
+        c2.priority = true;
+        let mut c9 = test_channel();
+        c9.index = 9;
+        c9.priority = false;
+        ch.insert(2, c2);
+        ch.insert(9, c9);
+        assert_eq!(bank_priority_index(&ch, 1), Some(2));
+        assert_eq!(bank_priority_index(&ch, 2), None); // bank 2 empty
+    }
+
+    #[test]
+    fn plan_priority_swap_identifies_old_and_new() {
+        use std::collections::HashMap;
+        let mut ch = HashMap::new();
+        let mut c2 = test_channel();
+        c2.index = 2;
+        c2.priority = true; // current bank-1 priority
+        ch.insert(2, c2);
+        // Setting CH9 (also bank 1) must clear CH2 and set CH9.
+        assert_eq!(plan_priority_swap(&ch, 9), (Some(2), 9));
+        // Setting the channel that is ALREADY priority: no clear needed.
+        assert_eq!(plan_priority_swap(&ch, 2), (None, 2));
+        // Bank with no current priority: nothing to clear.
+        let empty = HashMap::new();
+        assert_eq!(plan_priority_swap(&empty, 9), (None, 9));
+    }
+
+    #[test]
+    fn plan_priority_swap_orders_clear_before_set() {
+        // Half of the atomicity contract that IS unit-testable without a
+        // failure-injectable transport: the planner must identify the
+        // old-to-clear target so the swap clears it BEFORE setting the new one.
+        // The abort-on-failure itself is enforced in `set_channel_priority` by
+        // the `?` on `clear_channel_priority_locked(...).await?` and the
+        // REGRESSION GUARD comment there — a true abort-path test needs a mock
+        // transport that fails the DCH/clear round-trip (tracked as follow-up).
+        use std::collections::HashMap;
+        let mut ch = HashMap::new();
+        let mut c2 = test_channel();
+        c2.index = 2;
+        c2.priority = true;
+        ch.insert(2, c2);
+        let (old, new) = plan_priority_swap(&ch, 9);
+        assert_eq!(
+            old,
+            Some(2),
+            "old priority channel must be identified so the swap clears it before setting the new one"
+        );
+        assert_eq!(new, 9);
     }
 }
