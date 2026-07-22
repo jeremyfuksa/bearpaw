@@ -13,6 +13,7 @@ use tauri::menu::{
 };
 use tauri::Emitter;
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
 
 /// Menu-item IDs emitted as Tauri events when the user clicks them.
 ///
@@ -340,6 +341,53 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
         .build()
 }
 
+/// Reveal the current backend log file in the OS file manager so beta
+/// users can attach it to a GitHub issue. Best-effort: any failure is
+/// logged to stderr and swallowed — this is a diagnostic convenience,
+/// not a critical path.
+///
+/// Targets the most-recently-modified `*.log.*` file rather than a
+/// computed date: `tracing_appender::rolling::daily` writes files named
+/// `bearpaw-desktop-backend.log.YYYY-MM-DD`, and the newest-modified one
+/// is always the file currently being written, regardless of rotation.
+fn reveal_logs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let log_dir = match env::var("BEARPAW_LOG_DIR") {
+        Ok(dir) => PathBuf::from(dir),
+        Err(_) => {
+            eprintln!("bearpaw: BEARPAW_LOG_DIR not set; cannot reveal logs");
+            return;
+        }
+    };
+
+    let newest = std::fs::read_dir(&log_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .contains(".log.")
+        })
+        .filter_map(|entry| {
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some((entry.path(), modified))
+        })
+        .max_by_key(|(_, modified)| *modified)
+        .map(|(path, _)| path);
+
+    let opener = app.opener();
+    let result = match newest {
+        Some(file) => opener.reveal_item_in_dir(file),
+        None => opener.open_path(log_dir.to_string_lossy().to_string(), None::<&str>),
+    };
+
+    if let Err(err) = result {
+        eprintln!("bearpaw: failed to reveal logs: {}", err);
+    }
+}
+
 /// Platform-specific data dir for the legacy `com.uniden.bearpaw`
 /// bundle identifier. Returns `None` if the platform's home/data env
 /// var isn't set (best-effort — migration just doesn't run).
@@ -468,6 +516,12 @@ fn main() {
             // The menu-item ID is also the event name we emit. Frontend
             // subscribes via `listen("bearpaw:nav:scan", ...)` etc.
             let id = event.id().as_ref();
+            // Show Log Files is handled entirely in the shell — reveal the
+            // current backend log in the OS file manager, no frontend hop.
+            if id == menu_ids::HELP_SHOW_LOGS {
+                reveal_logs(app);
+                return;
+            }
             if let Err(err) = app.emit(id, ()) {
                 eprintln!("failed to emit menu event {}: {}", id, err);
             }
