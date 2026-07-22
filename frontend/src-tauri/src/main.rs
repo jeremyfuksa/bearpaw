@@ -346,10 +346,13 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
 /// logged to stderr and swallowed — this is a diagnostic convenience,
 /// not a critical path.
 ///
-/// Targets the most-recently-modified `*.log.*` file rather than a
-/// computed date: `tracing_appender::rolling::daily` writes files named
-/// `bearpaw-desktop-backend.log.YYYY-MM-DD`, and the newest-modified one
-/// is always the file currently being written, regardless of rotation.
+/// The backend writes two rolling logs into the same directory —
+/// `bearpaw-desktop-backend.log.YYYY-MM-DD` (main log) and
+/// `bearpaw-desktop-backend-error.log.YYYY-MM-DD` (errors only). The
+/// filter below matches on `-backend.log.`, which the main log's name
+/// contains and the error log's name (`-backend-error.log.`) does not,
+/// so only main-log files are considered. Among those, the
+/// newest-modified one is picked to handle daily rotation.
 fn reveal_logs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let log_dir = match env::var("BEARPAW_LOG_DIR") {
         Ok(dir) => PathBuf::from(dir),
@@ -368,7 +371,7 @@ fn reveal_logs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             entry
                 .file_name()
                 .to_string_lossy()
-                .contains(".log.")
+                .contains("-backend.log.")
         })
         .filter_map(|entry| {
             let modified = entry.metadata().ok()?.modified().ok()?;
