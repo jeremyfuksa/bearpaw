@@ -703,7 +703,7 @@ export function DeviceTab() {
 
         {/* Locked Channels */}
         {selectedCategory === 'Locked Channels' && (
-          <div className="flex flex-col h-full max-w-5xl mx-auto gap-4">
+          <div className="flex flex-col h-full gap-4">
             <div className="flex flex-col gap-4 rounded-lg border border-white/5 bg-white/5 p-4">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
