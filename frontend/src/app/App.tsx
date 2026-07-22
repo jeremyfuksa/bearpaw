@@ -970,7 +970,9 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'Device' && <DeviceTab />}
+          {currentTab === 'Device' && (
+            <DeviceTab onScanResume={(reason) => requestScanResume(reason, { delayMs: 1000 })} />
+          )}
           {currentTab === 'Channels' && <ChannelsTab />}
         </AnimatePresence>
       </div>
