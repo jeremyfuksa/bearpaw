@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 
+use crate::protocol::{classify_response, ScannerReply};
 use crate::state::{ChannelData, ScannerMode};
 
 use super::super::security::validate_wire_field;
@@ -228,7 +229,26 @@ pub(crate) async fn program_mode_start(
     // Manual PRG/EPG here (instead of ProgramModeGuard) because this handler
     // intentionally leaves the scanner in program mode across HTTP requests.
     // The matching EPG is in program_mode_end.
-    let _ = send_raw_command(&state, "PRG", false).await?;
+    //
+    // REGRESSION GUARD (#262): a transport-level Ok is not enough — the scanner
+    // answers `PRG,NG`/`ERR` when it can't enter program mode (e.g. it's sitting
+    // in its own on-device menu), and that comes back as Ok("PRG,NG"). Treating
+    // it as success sets program_mode_active (freezing the live display on
+    // "Programming") while every later CIN/SCG write fails against a scanner
+    // that never left normal operation. Classify the reply as
+    // ProgramModeGuard::enter does. See `program_mode_start_rejects_prg_ng`.
+    let resp = send_raw_command(&state, "PRG", false).await?;
+    if !matches!(classify_response(&resp), ScannerReply::Ok) {
+        // send_raw_command set program_mode_active on the PRG at the command
+        // level and only clears it on a transport error — an NG/ERR reply
+        // leaves it stranded, which would keep the poll loop suspended. Clear
+        // it here before returning.
+        state.program_mode_active.store(false, Ordering::Relaxed);
+        return Err(ApiError::BadRequest(format!(
+            "program_mode_refused: {}",
+            resp.trim()
+        )));
+    }
     state
         .program_mode_forced_hold
         .store(forced_hold, Ordering::Relaxed);
@@ -261,4 +281,72 @@ pub(crate) async fn program_mode_end(
         };
     }
     Ok(Json(json!({ "status": "ok" })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::default_state;
+    use std::sync::{Arc, Mutex};
+
+    /// Wire `state.command_tx` to a thread that answers every `Raw` command by
+    /// echoing `<CMD>` back with a suffix chosen by `prg_reply` for PRG and a
+    /// plain `,OK` for everything else (e.g. the KEY,H forced-hold keypress).
+    /// Records the commands it saw so the test can assert on them.
+    fn fake_responder(state: &AppState, prg_reply: &'static str) -> Arc<Mutex<Vec<String>>> {
+        let (tx, rx) = std::sync::mpsc::channel::<ControlCommand>();
+        *state.command_tx.lock().unwrap() = Some(tx);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_thread = seen.clone();
+        std::thread::spawn(move || {
+            while let Ok(cmd) = rx.recv() {
+                if let ControlCommand::Raw {
+                    command, reply, ..
+                } = cmd
+                {
+                    seen_thread.lock().unwrap().push(command.clone());
+                    let response = if command.eq_ignore_ascii_case("PRG") {
+                        prg_reply.to_string()
+                    } else {
+                        format!("{},OK", command)
+                    };
+                    let _ = reply.send(Ok(response));
+                }
+            }
+        });
+        seen
+    }
+
+    // REGRESSION GUARD (#262): a `PRG,NG` reply (scanner refused program mode,
+    // e.g. it's in its own menu) must NOT be treated as success. Before the
+    // fix, program_mode_start set program_mode_active=true and mode=Programming
+    // on any transport-level Ok, freezing the live display while every later
+    // CIN/SCG write failed.
+    #[tokio::test]
+    async fn program_mode_start_rejects_prg_ng() {
+        let state = default_state();
+        let seen = fake_responder(&state, "PRG,NG");
+
+        let result = program_mode_start(State(state.clone())).await;
+
+        assert!(matches!(result, Err(ApiError::BadRequest(_))));
+        // The command-level flag set by send_raw_command must be cleared.
+        assert!(!state.program_mode_active.load(Ordering::Relaxed));
+        // Live mode must stay out of Programming.
+        assert_ne!(state.live.read().unwrap().mode, ScannerMode::Programming);
+        // It really did send PRG (and refuse on the reply, not before).
+        assert!(seen.lock().unwrap().iter().any(|c| c == "PRG"));
+    }
+
+    #[tokio::test]
+    async fn program_mode_start_accepts_prg_ok() {
+        let state = default_state();
+        let _seen = fake_responder(&state, "PRG,OK");
+
+        let result = program_mode_start(State(state.clone())).await;
+
+        assert!(result.is_ok());
+        assert!(state.program_mode_active.load(Ordering::Relaxed));
+        assert_eq!(state.live.read().unwrap().mode, ScannerMode::Programming);
+    }
 }
