@@ -53,11 +53,11 @@ export function StatusBar({
   const { statusColor, statusText } = getStatusDisplay(connectionStatus, modelName);
 
   return (
-    <div
-      role="status"
-      aria-label="Scanner status"
-      className="flex items-center justify-between px-4 py-1.5 relative shrink-0 w-full border-t border-scanner-bg-dark bg-scanner-bg-dark/40"
-    >
+    // No role="status" here: this bar holds the live session stats (Hits /
+    // Active) that tick continuously, and a status region would announce that
+    // churn as noise. Connection transitions are announced by ScanAnnouncer
+    // instead (a11y S4).
+    <div className="flex items-center justify-between px-4 py-1.5 relative shrink-0 w-full border-t border-scanner-bg-dark bg-scanner-bg-dark/40">
       <div className="flex gap-2 items-center">
         <div className="relative shrink-0 size-[var(--size-status-dot)]">
           <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 8 8">
