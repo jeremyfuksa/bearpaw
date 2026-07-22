@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { X, Download, Calendar, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Download, Calendar, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { saveExport } from '../../../tauri-shell';
@@ -171,125 +171,109 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50"
-            onClick={onClose}
-          />
-          <motion.div
-            initial={{ y: '100%', opacity: 0 }}
-            animate={{ y: '0%', opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
-            transition={{
-              type: 'spring',
-              damping: 25,
-              stiffness: 300,
-            }}
-            className="scanner-modal w-[var(--layout-modal-activity-width)] rounded-t-xl"
-          >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
-              <h3 className="text-lg font-bold text-white">Export Activity Log</h3>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="text-white/50 hover:text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      {/* Radix Dialog supplies role="dialog", aria-modal, focus trap + restore,
+          and Escape-to-close (a11y C1–C4). Neutralizing utilities override
+          DialogContent's own grid/padding/sm:max-w-lg so scanner-modal wins. */}
+      <DialogContent className="scanner-modal w-[var(--layout-modal-activity-width)] max-w-none translate-x-[-50%] translate-y-[-50%] gap-0 rounded-t-xl border-white/10 p-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <DialogTitle className="text-lg font-bold text-white">Export Activity Log</DialogTitle>
+        </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              <div className="space-y-3">
-                <label className="text-xs font-medium text-white/70 uppercase tracking-wider">
-                  Select timeframe
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['today', 'week', 'month', 'all', 'custom'] as Timeframe[]).map((timeframe) => (
-                    <button
-                      key={timeframe}
-                      onClick={() => setSelectedTimeframe(timeframe)}
-                      className={cn(
-                        'flex items-center gap-2 px-4 py-3 rounded text-sm font-medium transition-colors',
-                        selectedTimeframe === timeframe
-                          ? 'border border-brand-primary/30 bg-brand-primary/20 text-brand-primary'
-                          : 'scanner-button-muted border',
-                      )}
-                    >
-                      <Calendar size={16} />
-                      {getTimeframeLabel(timeframe)}
-                    </button>
-                  ))}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="space-y-3">
+            <label className="text-xs font-medium text-white/70 uppercase tracking-wider">
+              Select timeframe
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['today', 'week', 'month', 'all', 'custom'] as Timeframe[]).map((timeframe) => (
+                <button
+                  key={timeframe}
+                  onClick={() => setSelectedTimeframe(timeframe)}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-3 rounded text-sm font-medium transition-colors',
+                    selectedTimeframe === timeframe
+                      ? 'border border-brand-primary/30 bg-brand-primary/20 text-brand-primary'
+                      : 'scanner-button-muted border',
+                  )}
+                >
+                  <Calendar size={16} />
+                  {getTimeframeLabel(timeframe)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {selectedTimeframe === 'custom' && (
+            <div className="space-y-4 border-t border-white/10 pt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="activity-export-start-date"
+                    className="text-xs font-medium text-white/70"
+                  >
+                    Start Date
+                  </label>
+                  <input
+                    id="activity-export-start-date"
+                    type="date"
+                    value={customStartDate ? customStartDate.toISOString().slice(0, 10) : ''}
+                    onChange={(e) =>
+                      setCustomStartDate(e.target.value ? new Date(e.target.value) : null)
+                    }
+                    className="scanner-input w-full px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="activity-export-end-date"
+                    className="text-xs font-medium text-white/70"
+                  >
+                    End Date
+                  </label>
+                  <input
+                    id="activity-export-end-date"
+                    type="date"
+                    value={customEndDate ? customEndDate.toISOString().slice(0, 10) : ''}
+                    onChange={(e) =>
+                      setCustomEndDate(e.target.value ? new Date(e.target.value) : null)
+                    }
+                    className="scanner-input w-full px-3 py-2 text-sm"
+                  />
                 </div>
               </div>
-
-              {selectedTimeframe === 'custom' && (
-                <div className="space-y-4 border-t border-white/10 pt-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="activity-export-start-date"
-                        className="text-xs font-medium text-white/70"
-                      >
-                        Start Date
-                      </label>
-                      <input
-                        id="activity-export-start-date"
-                        type="date"
-                        value={customStartDate ? customStartDate.toISOString().slice(0, 10) : ''}
-                        onChange={(e) =>
-                          setCustomStartDate(e.target.value ? new Date(e.target.value) : null)
-                        }
-                        className="scanner-input w-full px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="activity-export-end-date"
-                        className="text-xs font-medium text-white/70"
-                      >
-                        End Date
-                      </label>
-                      <input
-                        id="activity-export-end-date"
-                        type="date"
-                        value={customEndDate ? customEndDate.toISOString().slice(0, 10) : ''}
-                        onChange={(e) =>
-                          setCustomEndDate(e.target.value ? new Date(e.target.value) : null)
-                        }
-                        className="scanner-input w-full px-3 py-2 text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
+          )}
+        </div>
 
-            <div className="px-6 py-4 border-t border-white/10 shrink-0 space-y-3">
-              <button
-                onClick={handleExport}
-                disabled={!hasActivity || isExporting}
-                className="scanner-button-primary flex w-full items-center justify-center gap-2 py-3 text-sm uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Download size={16} />
-                {isExporting ? 'Exporting...' : 'Download CSV'}
-              </button>
-              <button
-                onClick={handleCleanup}
-                disabled={isExporting}
-                className="flex w-full items-center justify-center gap-2 rounded border border-destructive bg-destructive py-3 text-sm font-bold uppercase tracking-wider text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Trash2 size={16} />
-                {isExporting ? 'Cleaning...' : 'Cleanup Analytics'}
-              </button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+        <div className="px-6 py-4 border-t border-white/10 shrink-0 space-y-3">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={!hasActivity || isExporting}
+            aria-busy={isExporting}
+            className="scanner-button-primary flex w-full items-center justify-center gap-2 py-3 text-sm uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download size={16} aria-hidden="true" />
+            {isExporting ? 'Exporting...' : 'Download CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={handleCleanup}
+            disabled={isExporting}
+            aria-busy={isExporting}
+            className="flex w-full items-center justify-center gap-2 rounded border border-destructive bg-destructive py-3 text-sm font-bold uppercase tracking-wider text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2 size={16} aria-hidden="true" />
+            {isExporting ? 'Cleaning...' : 'Cleanup Analytics'}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
