@@ -7,11 +7,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{env, path::PathBuf};
 
 use serde::Serialize;
+use tauri::image::Image;
 use tauri::menu::{
     AboutMetadataBuilder, Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
 use tauri::Emitter;
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
 
 /// Menu-item IDs emitted as Tauri events when the user clicks them.
 ///
@@ -33,6 +35,9 @@ mod menu_ids {
     // that opens the OS-native About panel, so it has no event ID.
     pub const HELP_DOCS: &str = "bearpaw:help:docs";
     pub const HELP_ISSUES: &str = "bearpaw:help:issues";
+    // Reveals the current backend log file in the OS file manager. Handled
+    // entirely in the Rust shell (see on_menu_event) — no frontend event.
+    pub const HELP_SHOW_LOGS: &str = "bearpaw:help:show-logs";
 }
 
 #[derive(Default)]
@@ -231,6 +236,12 @@ fn backend_status(state: tauri::State<'_, ShellState>) -> BackendStatus {
     capture_backend_status(&state.backend)
 }
 
+#[tauri::command]
+fn reveal_logs_command(app: tauri::AppHandle) {
+    // Reuse the same reveal used by the Help → Show Log Files menu item.
+    reveal_logs(&app);
+}
+
 /// Build the native macOS menu bar. The first submenu (the "app" menu) is
 /// populated by Tauri with the standard `Bearpaw › About / Hide / Quit`
 /// entries. Then our three custom submenus: View, Scanner, Help.
@@ -252,6 +263,7 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
             "Desktop control interface for the Uniden BC125AT scanner.",
         ))
         .copyright(Some("© 2026 Jeremy Fuksa"))
+        .icon(Image::from_bytes(include_bytes!("../icons/icon.png")).ok())
         .build();
 
     // Apple menu — the standard macOS app submenu. About/Hide/Quit live
@@ -318,6 +330,7 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
     let help_submenu = SubmenuBuilder::new(app, "Help")
         .item(&MenuItemBuilder::with_id(menu_ids::HELP_DOCS, "Documentation").build(app)?)
         .item(&MenuItemBuilder::with_id(menu_ids::HELP_ISSUES, "GitHub Issues").build(app)?)
+        .item(&MenuItemBuilder::with_id(menu_ids::HELP_SHOW_LOGS, "Show Log Files").build(app)?)
         .separator()
         .item(&PredefinedMenuItem::about(
             app,
@@ -332,6 +345,56 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
         .item(&scanner_submenu)
         .item(&help_submenu)
         .build()
+}
+
+/// Reveal the current backend log file in the OS file manager so beta
+/// users can attach it to a GitHub issue. Best-effort: any failure is
+/// logged to stderr and swallowed — this is a diagnostic convenience,
+/// not a critical path.
+///
+/// The backend writes two rolling logs into the same directory —
+/// `bearpaw-desktop-backend.log.YYYY-MM-DD` (main log) and
+/// `bearpaw-desktop-backend-error.log.YYYY-MM-DD` (errors only). The
+/// filter below matches on `-backend.log.`, which the main log's name
+/// contains and the error log's name (`-backend-error.log.`) does not,
+/// so only main-log files are considered. Among those, the
+/// newest-modified one is picked to handle daily rotation.
+fn reveal_logs<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let log_dir = match env::var("BEARPAW_LOG_DIR") {
+        Ok(dir) => PathBuf::from(dir),
+        Err(_) => {
+            eprintln!("bearpaw: BEARPAW_LOG_DIR not set; cannot reveal logs");
+            return;
+        }
+    };
+
+    let newest = std::fs::read_dir(&log_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .contains("-backend.log.")
+        })
+        .filter_map(|entry| {
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some((entry.path(), modified))
+        })
+        .max_by_key(|(_, modified)| *modified)
+        .map(|(path, _)| path);
+
+    let opener = app.opener();
+    let result = match newest {
+        Some(file) => opener.reveal_item_in_dir(file),
+        None => opener.open_path(log_dir.to_string_lossy().to_string(), None::<&str>),
+    };
+
+    if let Err(err) = result {
+        eprintln!("bearpaw: failed to reveal logs: {}", err);
+    }
 }
 
 /// Platform-specific data dir for the legacy `com.uniden.bearpaw`
@@ -426,6 +489,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(ShellState {
             backend: backend_state.clone(),
         })
@@ -461,11 +525,17 @@ fn main() {
             // The menu-item ID is also the event name we emit. Frontend
             // subscribes via `listen("bearpaw:nav:scan", ...)` etc.
             let id = event.id().as_ref();
+            // Show Log Files is handled entirely in the shell — reveal the
+            // current backend log in the OS file manager, no frontend hop.
+            if id == menu_ids::HELP_SHOW_LOGS {
+                reveal_logs(app);
+                return;
+            }
             if let Err(err) = app.emit(id, ()) {
                 eprintln!("failed to emit menu event {}: {}", id, err);
             }
         })
-        .invoke_handler(tauri::generate_handler![shell_info, backend_status])
+        .invoke_handler(tauri::generate_handler![shell_info, backend_status, reveal_logs_command])
         .build(tauri::generate_context!())
         .expect("error while building bearpaw application")
         .run(move |_app, event| {

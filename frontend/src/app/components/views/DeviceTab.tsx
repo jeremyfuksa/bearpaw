@@ -17,7 +17,7 @@ import appIcon from '@/assets/app-icon.png';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore, type Preferences } from '../../../store/useStore';
-import { openExternalUrl } from '../../../tauri-shell';
+import { openExternalUrl, revealLogs, isTauriRuntime } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
@@ -1450,6 +1450,22 @@ export function DeviceTab() {
                       </span>
                     </div>
                   </div>
+                  {isTauriRuntime() && (
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="space-y-0.5">
+                        <label className="text-base font-medium text-white">Log Files</label>
+                        <p className="text-sm text-white/60">
+                          Open the folder containing this session's backend log
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => void revealLogs()}
+                        className="shrink-0 py-1.5 px-3 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5"
+                      >
+                        Show Log Files
+                      </button>
+                    </div>
+                  )}
                 </div>
               </section>
 

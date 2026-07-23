@@ -42,6 +42,13 @@ export async function getBackendStatus(): Promise<BackendStatus | null> {
   return invoke<BackendStatus>('backend_status');
 }
 
+export async function revealLogs(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke('reveal_logs_command').catch((error) => {
+    console.warn('Failed to reveal logs via shell', error);
+  });
+}
+
 /**
  * Open a URL in the user's default browser via Tauri's shell plugin.
  * Falls back to `window.open` outside Tauri (e.g. plain `npm run dev`),
