@@ -15,7 +15,8 @@
   --border-scanner: #1e2024;
   --font-display: "Hanken Grotesk", sans-serif;
   --font-body: "Manrope", sans-serif;
-  --font-mono: "DM Mono", monospace;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
 
 * {
@@ -96,9 +97,9 @@ code {
 .site-nav a {
   color: var(--text-muted);
   text-decoration: none;
-  font-family: var(--font-mono);
+  font-weight: 600;
   font-size: 0.9375rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -220,140 +221,57 @@ code {
 }
 
 .ph-freq {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
+  font-weight: 800;
   font-size: clamp(2rem, 6vw, 3.5rem);
   color: var(--brand-light);
   text-shadow: 0 0 5px currentColor;
 }
 
 .ph-tag {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.2em;
   color: var(--text-muted);
 }
 
-/* ---- activity log strip (signature) ---- */
+/* ---- channels showcase (Sentinel replacement) ---- */
 
-.logstrip {
+.showcase {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: center;
   max-width: 68rem;
-  margin: 0 auto 4rem;
+  margin: 0 auto 5rem;
   padding: 0 1.5rem;
 }
 
-.logstrip-head {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  background: var(--bg-semi);
-  border: 1px solid var(--border-scanner);
-  border-bottom: none;
-  border-radius: 7px 7px 0 0;
-  padding: 0.5rem 1rem;
+.showcase-shot {
+  min-width: 0;
 }
 
-.led {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--led-green);
-  box-shadow: 0 0 5px var(--led-green);
-  animation: led-blink 2.4s steps(1) infinite;
+.showcase-copy h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: 1.25rem;
 }
 
-.logstrip-title {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.14em;
-  color: var(--text);
-}
-
-.logstrip-note {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
+.showcase-copy p {
   color: var(--text-muted);
+  font-size: 1.125rem;
+  max-width: 32rem;
 }
 
-.logrows {
-  list-style: none;
-  padding: 0.5rem 0;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-scanner);
-  border-radius: 0 0 7px 7px;
-  overflow-x: auto;
-}
-
-.logrow {
-  display: grid;
-  grid-template-columns: 6rem 7rem 1fr;
-  gap: 1rem;
-  padding: 0.375rem 1rem;
-  font-family: var(--font-mono);
-  font-size: 0.9375rem;
-  white-space: nowrap;
-  opacity: 0;
-  animation: row-in 0.4s ease forwards;
-}
-
-.logrow:nth-child(1) {
-  animation-delay: 0.2s;
-}
-.logrow:nth-child(2) {
-  animation-delay: 0.9s;
-}
-.logrow:nth-child(3) {
-  animation-delay: 1.6s;
-}
-.logrow:nth-child(4) {
-  animation-delay: 2.3s;
-}
-.logrow:nth-child(5) {
-  animation-delay: 3s;
-}
-
-.lr-time {
-  color: var(--text-muted);
-}
-.lr-freq {
-  color: var(--brand-light);
-}
-.lr-tag {
-  color: var(--text);
-}
-
-.lr-scan {
-  color: var(--text-muted);
-  animation: led-blink 1.2s steps(1) infinite;
-}
-
-@keyframes row-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.25rem);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes led-blink {
-  50% {
-    opacity: 0.25;
-  }
+.showcase-copy p + p {
+  margin-top: 1rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
-  }
-  .logrow {
-    animation: none;
-    opacity: 1;
-  }
-  .led,
-  .lr-scan {
-    animation: none;
   }
 }
 
@@ -414,8 +332,7 @@ code {
 }
 
 .download-version {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   color: var(--text-muted);
   margin-bottom: 1.25rem;
 }
@@ -438,7 +355,6 @@ code {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  font-family: var(--font-mono);
   font-size: 0.9375rem;
   text-decoration: none;
   color: var(--text);
@@ -562,16 +478,20 @@ code {
     gap: 2.5rem;
   }
 
+  .showcase {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .showcase-shot {
+    order: 2;
+  }
+
   .feature-grid {
     grid-template-columns: 1fr;
   }
 
   .download-panel {
     padding: 1.25rem;
-  }
-
-  .logrow {
-    grid-template-columns: 5rem 6rem 1fr;
-    font-size: 0.8125rem;
   }
 }

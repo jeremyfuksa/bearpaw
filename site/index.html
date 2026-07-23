@@ -29,7 +29,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="style.css" />
@@ -109,41 +109,27 @@
         </figure>
       </section>
 
-      <section class="logstrip" aria-label="Example activity log">
-        <div class="logstrip-head">
-          <span class="led" aria-hidden="true"></span>
-          <span class="logstrip-title">ACTIVITY LOG</span>
-          <span class="logstrip-note"
-            >recorded while you listen. yours as CSV, any time</span
-          >
+      <section class="showcase">
+        <figure class="showcase-shot">
+          <div class="bezel">
+            <img
+              src="assets/channels.png"
+              alt="Bearpaw's Channels tab: an editable grid of channels with frequency, tag, mode, tone, and lockout columns, plus import, export, and upload controls"
+            />
+          </div>
+        </figure>
+        <div class="showcase-copy">
+          <h2>The programmer Sentinel should have been.</h2>
+          <p>
+            Uniden's Sentinel only runs on Windows. Bearpaw does the same job on
+            Mac, Windows, and Linux: edit all 500 channels, banks, tones, and
+            lockouts from a real keyboard, then upload the lot to the radio.
+          </p>
+          <p>
+            Import and export as CSV or native Uniden files, so whatever you
+            already have comes straight across.
+          </p>
         </div>
-        <ul class="logrows">
-          <li class="logrow">
-            <span class="lr-time">14:32:07</span
-            ><span class="lr-freq">146.8500</span
-            ><span class="lr-tag">KC 2M RPTR</span>
-          </li>
-          <li class="logrow">
-            <span class="lr-time">14:32:41</span
-            ><span class="lr-freq">162.5500</span
-            ><span class="lr-tag">NOAA WX</span>
-          </li>
-          <li class="logrow">
-            <span class="lr-time">14:33:12</span
-            ><span class="lr-freq">154.2800</span
-            ><span class="lr-tag">FIRE MUTUAL</span>
-          </li>
-          <li class="logrow">
-            <span class="lr-time">14:33:55</span
-            ><span class="lr-freq">155.4750</span
-            ><span class="lr-tag">LAW MUTUAL</span>
-          </li>
-          <li class="logrow logrow-scanning">
-            <span class="lr-time">--:--:--</span
-            ><span class="lr-freq lr-scan">Scanning&hellip;</span
-            ><span class="lr-tag"></span>
-          </li>
-        </ul>
       </section>
 
       <section class="features" id="features">
