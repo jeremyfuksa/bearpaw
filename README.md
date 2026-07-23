@@ -81,8 +81,8 @@ walks through every part of the app:
   "hit" workflow, and the on-screen controls.
 - **[The Channels Tab](https://bearpaw.app/docs/channels.html)**: viewing and
   editing your 500 channels, and how to save your changes back to the radio.
-- **[The Device Tab](https://bearpaw.app/docs/device.html)**: the scanner's own
-  settings plus the app's preferences.
+- **[The Device Tab](https://bearpaw.app/docs/device-config.html)**: the
+  scanner's own settings plus the app's preferences.
 - **[Menu & Keyboard Shortcuts](https://bearpaw.app/docs/troubleshooting.html#menu--keyboard-shortcuts)**
   and **[Troubleshooting](https://bearpaw.app/docs/troubleshooting.html)**.
 - **[Glossary](https://bearpaw.app/docs/glossary.html)**

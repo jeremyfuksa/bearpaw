@@ -4,16 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Getting Started — Bearpaw docs</title>
-    <meta
-      name="description"
-      content="Plug in the scanner, launch Bearpaw, and watch live traffic on screen. The path from cable to first hit."
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="../assets/favicon-32.png"
-    />
+    <meta name="description" content="Plug in the scanner, launch Bearpaw, and watch live traffic on screen. The path from cable to first hit." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,7 +22,6 @@
         <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav">
-        <a href="../index.html#features">Features</a>
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -42,15 +33,16 @@
         <p class="docs-sidebar-title">User Guide</p>
         <ul class="docs-nav">
           <li><a href="index.html">Overview</a></li>
-          <li>
-            <a href="getting-started.html" aria-current="page"
-              >Getting Started</a
-            >
-          </li>
+          <li><a href="getting-started.html" aria-current="page">Getting Started</a></li>
           <li><a href="scan.html">The Scan Tab</a></li>
           <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li><a href="troubleshooting.html">Menu &amp; Troubleshooting</a></li>
+          <li><a href="device-config.html">Device Config</a></li>
+          <li><a href="close-call.html">Close Call</a></li>
+          <li><a href="service-search.html">Service Search</a></li>
+          <li><a href="custom-search.html">Custom Search</a></li>
+          <li><a href="locked-channels.html">Locked Channels</a></li>
+          <li><a href="preferences.html">Preferences</a></li>
+          <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
           <li><a href="glossary.html">Glossary</a></li>
         </ul>
       </aside>
@@ -92,15 +84,15 @@
         </p>
         <ul>
           <li>
-            🟡 <strong>Yellow, "Connecting…"</strong>: Bearpaw is reaching for
+            <span class="status-dot dot-yellow" aria-hidden="true"></span> <strong>Yellow, "Connecting…"</strong>: Bearpaw is reaching for
             the scanner, which is normal for a few seconds at launch.
           </li>
           <li>
-            🟢 <strong>Green, "BC125AT"</strong>: connected, showing your
+            <span class="status-dot dot-green" aria-hidden="true"></span> <strong>Green, "BC125AT"</strong>: connected, showing your
             scanner's model name.
           </li>
           <li>
-            🔴 <strong>Red, "Disconnected"</strong>: no link yet. If it stays
+            <span class="status-dot dot-red" aria-hidden="true"></span> <strong>Red, "Disconnected"</strong>: no link yet. If it stays
             red, go to <a href="troubleshooting.html">Troubleshooting</a>.
           </li>
         </ul>
@@ -156,7 +148,7 @@
 
         <figure class="docs-figure">
           <img
-            src="assets/scan-dashboard.jpg"
+            src="assets/scan-dashboard.webp"
             alt="Bearpaw's Scan tab during a hit: the big amber display reads 'WOF Security' with frequency 463.425 NFM CH 84, the Recent Hits list on the right, and the Busiest Channels and Activity Heatmap dashboards below."
           />
           <figcaption>
@@ -203,31 +195,27 @@
           </li>
           <li>
             <strong>Adjust the scanner itself</strong>, volume, squelch, Close
-            Call, custom searches: <a href="device.html">The Device Tab</a>
+            Call, custom searches: <a href="device-config.html">The Device Tab</a>
           </li>
           <li>
             <strong>Something not working?</strong>
             <a href="troubleshooting.html">Troubleshooting</a>
           </li>
         </ul>
-
-        <p class="docs-pager"><strong>Next:</strong> <a href="scan.html">The Scan Tab</a></p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="index.html"><span class="page-dir">← Previous</span><span class="page-title">Overview</span></a>
+          <a class="page-next" href="scan.html"><span class="page-dir">Next →</span><span class="page-title">The Scan Tab</span></a>
+        </nav>
       </main>
     </div>
 
     <footer class="site-footer">
       <div class="footer-brand">
-        <img
-          src="../assets/app-icon.png"
-          alt=""
-          class="footer-icon"
-          aria-hidden="true"
-        />
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
         <span class="footer-name">Bearpaw</span>
       </div>
       <p class="footer-credit">
-        Made by
-        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
       </p>
       <p>
         MIT licensed &middot;

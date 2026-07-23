@@ -4,16 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>The Channels Tab — Bearpaw docs</title>
-    <meta
-      name="description"
-      content="Manage your scanner's memory: rename channels, change frequencies, set tones, lock out noisy frequencies, reorder, and upload to the radio."
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="../assets/favicon-32.png"
-    />
+    <meta name="description" content="Manage your scanner's memory: rename channels, change frequencies, set tones, lock out noisy frequencies, reorder, and upload to the radio." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,7 +22,6 @@
         <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav">
-        <a href="../index.html#features">Features</a>
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -44,11 +35,14 @@
           <li><a href="index.html">Overview</a></li>
           <li><a href="getting-started.html">Getting Started</a></li>
           <li><a href="scan.html">The Scan Tab</a></li>
-          <li>
-            <a href="channels.html" aria-current="page">The Channels Tab</a>
-          </li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li><a href="troubleshooting.html">Menu &amp; Troubleshooting</a></li>
+          <li><a href="channels.html" aria-current="page">The Channels Tab</a></li>
+          <li><a href="device-config.html">Device Config</a></li>
+          <li><a href="close-call.html">Close Call</a></li>
+          <li><a href="service-search.html">Service Search</a></li>
+          <li><a href="custom-search.html">Custom Search</a></li>
+          <li><a href="locked-channels.html">Locked Channels</a></li>
+          <li><a href="preferences.html">Preferences</a></li>
+          <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
           <li><a href="glossary.html">Glossary</a></li>
         </ul>
       </aside>
@@ -185,7 +179,7 @@
 
         <figure class="docs-figure">
           <img
-            src="assets/channels-tab.jpg"
+            src="assets/channels-tab.webp"
             alt="The Channels tab showing Bank 2: a bank sidebar on the left, and an editable grid of channels with CH, FREQ, TAG, MODE, TONE, DLY, L/O, and PRIO columns, plus Import, Export, and Upload Changes controls."
           />
           <figcaption>
@@ -386,27 +380,20 @@
           <kbd>Ctrl/⌘ + Y</kbd>). A panel covers the screen with a progress bar
           and blocks the UI until it's done.
         </p>
-
-        <p class="docs-pager">
-          <strong>Next:</strong> <a href="device.html">The Device Tab</a>, the
-          scanner's own settings and the app's preferences.
-        </p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="scan.html"><span class="page-dir">← Previous</span><span class="page-title">The Scan Tab</span></a>
+          <a class="page-next" href="device-config.html"><span class="page-dir">Next →</span><span class="page-title">Device Config</span></a>
+        </nav>
       </main>
     </div>
 
     <footer class="site-footer">
       <div class="footer-brand">
-        <img
-          src="../assets/app-icon.png"
-          alt=""
-          class="footer-icon"
-          aria-hidden="true"
-        />
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
         <span class="footer-name">Bearpaw</span>
       </div>
       <p class="footer-credit">
-        Made by
-        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
       </p>
       <p>
         MIT licensed &middot;

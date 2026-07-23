@@ -3,17 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bearpaw docs — the user guide</title>
-    <meta
-      name="description"
-      content="How to use Bearpaw with your Uniden BC125AT: getting started, the Scan tab, the Channels tab, the Device tab, troubleshooting, and a glossary."
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="../assets/favicon-32.png"
-    />
+    <title>Overview — Bearpaw docs</title>
+    <meta name="description" content="How to use Bearpaw with your Uniden BC125AT: getting started, the tabs, searches, troubleshooting, and a glossary." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,7 +22,6 @@
         <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav">
-        <a href="../index.html#features">Features</a>
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -45,8 +36,13 @@
           <li><a href="getting-started.html">Getting Started</a></li>
           <li><a href="scan.html">The Scan Tab</a></li>
           <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li><a href="troubleshooting.html">Menu &amp; Troubleshooting</a></li>
+          <li><a href="device-config.html">Device Config</a></li>
+          <li><a href="close-call.html">Close Call</a></li>
+          <li><a href="service-search.html">Service Search</a></li>
+          <li><a href="custom-search.html">Custom Search</a></li>
+          <li><a href="locked-channels.html">Locked Channels</a></li>
+          <li><a href="preferences.html">Preferences</a></li>
+          <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
           <li><a href="glossary.html">Glossary</a></li>
         </ul>
       </aside>
@@ -56,7 +52,7 @@
         <p>
           Everything you need to run Bearpaw with your Uniden BC125AT — from
           plugging in the cable to reading the activity dashboards. Start at the
-          beginning, or jump straight to the tab you're working in.
+          beginning, or jump straight to the page you need.
         </p>
 
         <div class="docs-index-grid">
@@ -66,46 +62,61 @@
           </a>
           <a class="docs-card" href="scan.html">
             <h2>The Scan Tab</h2>
-            <p>
-              The live display, the controls, activity tracking, and the
-              dashboards.
-            </p>
+            <p>The live display, the controls, activity tracking, and the dashboards.</p>
           </a>
           <a class="docs-card" href="channels.html">
             <h2>The Channels Tab</h2>
-            <p>
-              View and edit all 500 channels, then upload them to the scanner.
-            </p>
-          </a>
-          <a class="docs-card" href="device.html">
-            <h2>The Device Tab</h2>
-            <p>The scanner's own settings, plus the app's preferences.</p>
-          </a>
-          <a class="docs-card" href="troubleshooting.html">
-            <h2>Menu &amp; Troubleshooting</h2>
-            <p>Menus, keyboard shortcuts, and what to do when it won't connect.</p>
+            <p>View and edit all 500 channels, then upload them to the scanner.</p>
           </a>
           <a class="docs-card" href="glossary.html">
             <h2>Glossary</h2>
             <p>Every radio and app term the guide uses, defined once.</p>
           </a>
+          <a class="docs-card" href="troubleshooting.html">
+            <h2>Menu &amp; Troubleshooting</h2>
+            <p>Menus, keyboard shortcuts, and what to do when it won't connect.</p>
+          </a>
         </div>
+
+        <h2 id="the-device-tab">The Device Tab</h2>
+        <p>The scanner's own settings, one page per section:</p>
+        <div class="docs-index-grid">
+          <a class="docs-card" href="device-config.html">
+            <h2>Device Config</h2>
+            <p>Audio, display, scanning logic, and device info.</p>
+          </a>
+          <a class="docs-card" href="close-call.html">
+            <h2>Close Call</h2>
+            <p>Uniden's nearby-strong-signal detector.</p>
+          </a>
+          <a class="docs-card" href="service-search.html">
+            <h2>Service Search</h2>
+            <p>Sweep the factory band presets.</p>
+          </a>
+          <a class="docs-card" href="custom-search.html">
+            <h2>Custom Search</h2>
+            <p>Sweep frequency ranges you define yourself.</p>
+          </a>
+          <a class="docs-card" href="locked-channels.html">
+            <h2>Locked Channels</h2>
+            <p>Review and clear the scanner's skip list.</p>
+          </a>
+          <a class="docs-card" href="preferences.html">
+            <h2>Preferences</h2>
+            <p>The app's own settings — not the scanner.</p>
+          </a>
+        </div>
+
       </main>
     </div>
 
     <footer class="site-footer">
       <div class="footer-brand">
-        <img
-          src="../assets/app-icon.png"
-          alt=""
-          class="footer-icon"
-          aria-hidden="true"
-        />
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
         <span class="footer-name">Bearpaw</span>
       </div>
       <p class="footer-credit">
-        Made by
-        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
       </p>
       <p>
         MIT licensed &middot;

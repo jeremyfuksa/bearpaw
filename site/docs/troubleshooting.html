@@ -4,16 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Menu, Shortcuts &amp; Troubleshooting — Bearpaw docs</title>
-    <meta
-      name="description"
-      content="Reference for Bearpaw's menus and keyboard shortcuts, plus what to do when the scanner won't connect."
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="../assets/favicon-32.png"
-    />
+    <meta name="description" content="Reference for Bearpaw's menus and keyboard shortcuts, plus what to do when the scanner won't connect." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,7 +22,6 @@
         <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav">
-        <a href="../index.html#features">Features</a>
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -45,12 +36,13 @@
           <li><a href="getting-started.html">Getting Started</a></li>
           <li><a href="scan.html">The Scan Tab</a></li>
           <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li>
-            <a href="troubleshooting.html" aria-current="page"
-              >Menu &amp; Troubleshooting</a
-            >
-          </li>
+          <li><a href="device-config.html">Device Config</a></li>
+          <li><a href="close-call.html">Close Call</a></li>
+          <li><a href="service-search.html">Service Search</a></li>
+          <li><a href="custom-search.html">Custom Search</a></li>
+          <li><a href="locked-channels.html">Locked Channels</a></li>
+          <li><a href="preferences.html">Preferences</a></li>
+          <li><a href="troubleshooting.html" aria-current="page">Menu & Troubleshooting</a></li>
           <li><a href="glossary.html">Glossary</a></li>
         </ul>
       </aside>
@@ -225,7 +217,7 @@
         </ol>
         <p>
           If none of that works, the Device tab's
-          <a href="device.html#device-information">Device Information</a> card
+          <a href="device-config.html#device-information">Device Information</a> card
           shows a diagnostic message that can point at the specific problem. For
           USB-detection issues on macOS, a short troubleshooting checklist appears
           there automatically.
@@ -265,7 +257,7 @@
           <strong>Temporary</strong> and <strong>Permanent</strong> choices. To
           clear a permanent lockout, pick <strong>Permanent</strong> again while
           on that channel, or clear it from the
-          <a href="device.html#locked-channels">Locked Channels</a> list on the
+          <a href="locked-channels.html">Locked Channels</a> list on the
           Device tab.
         </p>
 
@@ -329,28 +321,20 @@
             the app won't launch, delete it and try again.
           </p>
         </div>
-
-        <p class="docs-pager">
-          <strong>Back to:</strong>
-          <a href="getting-started.html">Getting Started</a> &middot;
-          <a href="glossary.html">Glossary</a>
-        </p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="preferences.html"><span class="page-dir">← Previous</span><span class="page-title">Preferences</span></a>
+          <a class="page-next" href="glossary.html"><span class="page-dir">Next →</span><span class="page-title">Glossary</span></a>
+        </nav>
       </main>
     </div>
 
     <footer class="site-footer">
       <div class="footer-brand">
-        <img
-          src="../assets/app-icon.png"
-          alt=""
-          class="footer-icon"
-          aria-hidden="true"
-        />
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
         <span class="footer-name">Bearpaw</span>
       </div>
       <p class="footer-credit">
-        Made by
-        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
       </p>
       <p>
         MIT licensed &middot;

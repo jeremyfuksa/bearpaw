@@ -4,16 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Glossary — Bearpaw docs</title>
-    <meta
-      name="description"
-      content="Every radio and app term the Bearpaw guide uses, defined once."
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="../assets/favicon-32.png"
-    />
+    <meta name="description" content="Every radio and app term the Bearpaw guide uses, defined once." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,7 +22,6 @@
         <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav">
-        <a href="../index.html#features">Features</a>
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -45,8 +36,13 @@
           <li><a href="getting-started.html">Getting Started</a></li>
           <li><a href="scan.html">The Scan Tab</a></li>
           <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li><a href="troubleshooting.html">Menu &amp; Troubleshooting</a></li>
+          <li><a href="device-config.html">Device Config</a></li>
+          <li><a href="close-call.html">Close Call</a></li>
+          <li><a href="service-search.html">Service Search</a></li>
+          <li><a href="custom-search.html">Custom Search</a></li>
+          <li><a href="locked-channels.html">Locked Channels</a></li>
+          <li><a href="preferences.html">Preferences</a></li>
+          <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
           <li><a href="glossary.html" aria-current="page">Glossary</a></li>
         </ul>
       </aside>
@@ -85,7 +81,7 @@
           Uniden's feature for detecting a strong signal from a transmitter
           physically close to you and jumping to it automatically, even if that
           frequency isn't in your channels. Configured on the
-          <a href="device.html#close-call">Device tab</a>.
+          <a href="close-call.html">Device tab</a>.
         </p>
 
         <h3 id="ctcss--tone--dcs">CTCSS / tone / DCS</h3>
@@ -169,7 +165,7 @@
           <strong>L/O</strong> button opens a menu with
           <strong>Temporary</strong> and <strong>Permanent</strong> choices. You
           can review and clear permanent lockouts under
-          <a href="device.html#locked-channels">Locked Channels</a>.
+          <a href="locked-channels.html">Locked Channels</a>.
         </p>
 
         <h3 id="memory-sync">Memory sync</h3>
@@ -198,7 +194,7 @@
           In Bearpaw, the Priority switch applies to the scanner immediately, not
           as a <a href="#draft">draft</a>. Priority <em>mode</em> (off/on/plus) is
           set separately on the
-          <a href="device.html#scanning-logic">Device tab</a>.
+          <a href="device-config.html#scanning-logic">Device tab</a>.
         </p>
 
         <h3 id="rssi">RSSI</h3>
@@ -231,30 +227,19 @@
           <a href="channels.html">Channels tab</a>, your edits stay in the app and
           the radio is untouched.
         </p>
-
-        <p class="docs-pager">
-          <strong>Back to:</strong>
-          <a href="getting-started.html">Getting Started</a> &middot;
-          <a href="scan.html">The Scan Tab</a> &middot;
-          <a href="channels.html">The Channels Tab</a> &middot;
-          <a href="device.html">The Device Tab</a>
-        </p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="troubleshooting.html"><span class="page-dir">← Previous</span><span class="page-title">Menu, Shortcuts & Troubleshooting</span></a>
+        </nav>
       </main>
     </div>
 
     <footer class="site-footer">
       <div class="footer-brand">
-        <img
-          src="../assets/app-icon.png"
-          alt=""
-          class="footer-icon"
-          aria-hidden="true"
-        />
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
         <span class="footer-name">Bearpaw</span>
       </div>
       <p class="footer-credit">
-        Made by
-        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
       </p>
       <p>
         MIT licensed &middot;

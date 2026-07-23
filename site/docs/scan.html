@@ -4,16 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>The Scan Tab — Bearpaw docs</title>
-    <meta
-      name="description"
-      content="The Scan tab: the live display, the controls you reach for most, activity tracking, the dashboards, and the status bar."
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="../assets/favicon-32.png"
-    />
+    <meta name="description" content="The Scan tab: the live display, the controls you reach for most, activity tracking, the dashboards, and the status bar." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,7 +22,6 @@
         <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav">
-        <a href="../index.html#features">Features</a>
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -45,8 +36,13 @@
           <li><a href="getting-started.html">Getting Started</a></li>
           <li><a href="scan.html" aria-current="page">The Scan Tab</a></li>
           <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li><a href="troubleshooting.html">Menu &amp; Troubleshooting</a></li>
+          <li><a href="device-config.html">Device Config</a></li>
+          <li><a href="close-call.html">Close Call</a></li>
+          <li><a href="service-search.html">Service Search</a></li>
+          <li><a href="custom-search.html">Custom Search</a></li>
+          <li><a href="locked-channels.html">Locked Channels</a></li>
+          <li><a href="preferences.html">Preferences</a></li>
+          <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
           <li><a href="glossary.html">Glossary</a></li>
         </ul>
       </aside>
@@ -65,7 +61,7 @@
 
         <figure class="docs-figure">
           <img
-            src="assets/scan-dashboard.jpg"
+            src="assets/scan-dashboard.webp"
             alt="The Scan tab: a large amber display showing a hit, the Recent Hits list, and the Busiest Channels bar chart and Activity Heatmap below."
           />
           <figcaption>The Scan tab, mid-hit.</figcaption>
@@ -180,7 +176,7 @@
           If you set a permanent lockout by mistake, choose
           <strong>Permanent</strong> again while on that channel to clear it, or
           remove it from the
-          <a href="device.html#locked-channels">Locked Channels</a> list on the
+          <a href="locked-channels.html">Locked Channels</a> list on the
           Device tab.
         </p>
 
@@ -245,7 +241,7 @@
             A transmission has to last at least a minimum length of time (2
             seconds by default) to show up here. Brief static bursts and key-ups
             are ignored. You can change that threshold under
-            <a href="device.html#preferences-app-settings"
+            <a href="preferences.html"
               >Preferences → Hit Minimum Duration</a
             >.
           </p>
@@ -284,13 +280,13 @@
         <p><strong>On the left:</strong> the connection dot and label.</p>
         <ul>
           <li>
-            🟢 green plus your scanner's model name: <strong>connected</strong>
+            <span class="status-dot dot-green" aria-hidden="true"></span> green plus your scanner's model name: <strong>connected</strong>
           </li>
           <li>
-            🟡 yellow plus "Connecting…": <strong>establishing the link</strong>
+            <span class="status-dot dot-yellow" aria-hidden="true"></span> yellow plus "Connecting…": <strong>establishing the link</strong>
           </li>
           <li>
-            🔴 red plus "Disconnected": <strong>no connection</strong> (see
+            <span class="status-dot dot-red" aria-hidden="true"></span> red plus "Disconnected": <strong>no connection</strong> (see
             <a href="troubleshooting.html">Troubleshooting</a>)
           </li>
         </ul>
@@ -332,26 +328,20 @@
             the channels in the scanner's memory.
           </p>
         </div>
-
-        <p class="docs-pager">
-          <strong>Next:</strong> <a href="channels.html">The Channels Tab</a>
-        </p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="getting-started.html"><span class="page-dir">← Previous</span><span class="page-title">Getting Started</span></a>
+          <a class="page-next" href="channels.html"><span class="page-dir">Next →</span><span class="page-title">The Channels Tab</span></a>
+        </nav>
       </main>
     </div>
 
     <footer class="site-footer">
       <div class="footer-brand">
-        <img
-          src="../assets/app-icon.png"
-          alt=""
-          class="footer-icon"
-          aria-hidden="true"
-        />
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
         <span class="footer-name">Bearpaw</span>
       </div>
       <p class="footer-credit">
-        Made by
-        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
       </p>
       <p>
         MIT licensed &middot;
