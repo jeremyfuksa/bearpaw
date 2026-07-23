@@ -1,6 +1,6 @@
 # Bearpaw API Specification
 
-**Version:** 1.0.0-beta.1 (the backend echoes its crate version at `GET /health`)
+**Version:** 1.0.0-beta.2 (the backend echoes its crate version at `GET /health`)
 **Protocol:** HTTP REST + WebSocket
 **Format:** JSON
 **Base URL:** `http://localhost:8000/api/v1`
@@ -188,7 +188,7 @@ about scanner connectivity (use `/status` / `/device/info` for that).
 ```json
 {
   "status": "ok",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "timestamp": 1704412800.123
 }
 ```

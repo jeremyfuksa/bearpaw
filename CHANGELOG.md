@@ -4,6 +4,28 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.2] — 2026-07-23
+
+Second beta. Fixes the macOS "damaged" install error, a USB connection wedge,
+and adds a one-click way to grab logs for bug reports.
+
+### Fixed
+
+- **macOS "damaged" install.** Release builds are now ad-hoc signed, so the app
+  no longer opens to a "Bearpaw is damaged and can't be opened" error on macOS.
+- **USB connection wedge.** A USB endpoint stall (STALL) mid-command left the
+  scanner unreachable in a reconnect loop that only a physical unplug could
+  clear. The transport now clears the halted endpoint on reconnect, so it
+  self-recovers.
+
+### Added
+
+- **Show Log Files.** A Help → Show Log Files menu item and a button in Device
+  settings that reveals the current backend log in the OS file manager — makes
+  attaching a log to a bug report a single click.
+
+[1.0.0-beta.2]: https://github.com/jeremyfuksa/bearpaw/releases/tag/v1.0.0-beta.2
+
 ## [1.0.0-beta.1] — 2026-07-22
 
 First public beta. A desktop control interface for the Uniden BC125AT scanner,
