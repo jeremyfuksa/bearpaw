@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menu, Shortcuts &amp; Troubleshooting — Bearpaw docs</title>
+    <meta
+      name="description"
+      content="Reference for Bearpaw's menus and keyboard shortcuts, plus what to do when the scanner won't connect."
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="../assets/favicon-32.png"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav">
+        <a href="../index.html#features">Features</a>
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title">User Guide</p>
+        <ul class="docs-nav">
+          <li><a href="index.html">Overview</a></li>
+          <li><a href="getting-started.html">Getting Started</a></li>
+          <li><a href="scan.html">The Scan Tab</a></li>
+          <li><a href="channels.html">The Channels Tab</a></li>
+          <li><a href="device.html">The Device Tab</a></li>
+          <li>
+            <a href="troubleshooting.html" aria-current="page"
+              >Menu &amp; Troubleshooting</a
+            >
+          </li>
+          <li><a href="glossary.html">Glossary</a></li>
+        </ul>
+      </aside>
+
+      <main class="docs-content">
+        <h1>Menu, Shortcuts &amp; Troubleshooting</h1>
+        <p>
+          Reference for the menus and keyboard shortcuts, plus what to do when the
+          scanner won't connect.
+        </p>
+        <ul>
+          <li>
+            <a href="#menu--keyboard-shortcuts">Menu &amp; Keyboard Shortcuts</a>
+          </li>
+          <li>
+            <a href="#the-scanner-wont-connect">The scanner won't connect</a>
+          </li>
+          <li><a href="#other-common-issues">Other common issues</a></li>
+        </ul>
+
+        <h2 id="menu--keyboard-shortcuts">Menu &amp; Keyboard Shortcuts</h2>
+
+        <h3 id="the-menu">The menu</h3>
+        <p>
+          Bearpaw's menu bar has three menus of its own, plus the standard app
+          menu.
+        </p>
+        <p><strong>View</strong> jumps between the three tabs.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Shortcut</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Scan</td><td><kbd>Ctrl/⌘ + 1</kbd></td></tr>
+              <tr><td>Device</td><td><kbd>Ctrl/⌘ + 2</kbd></td></tr>
+              <tr><td>Channels</td><td><kbd>Ctrl/⌘ + 3</kbd></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p><strong>Scanner</strong> covers actions on the radio.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Shortcut</th>
+                <th>What it does</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Hold</td>
+                <td><kbd>Ctrl/⌘ + H</kbd></td>
+                <td>Park on the current channel</td>
+              </tr>
+              <tr>
+                <td>Scan</td>
+                <td><kbd>Ctrl/⌘ + S</kbd></td>
+                <td>Resume scanning</td>
+              </tr>
+              <tr>
+                <td>Sync Memory</td>
+                <td><kbd>Ctrl/⌘ + Y</kbd></td>
+                <td>Re-read all 500 channels from the scanner (30 to 45 s)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p><strong>Help</strong> opens in your web browser.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Goes to</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Documentation</td><td>The project README on GitHub</td></tr>
+              <tr><td>GitHub Issues</td><td>Where to report bugs</td></tr>
+              <tr><td>About Bearpaw</td><td>Version and credits</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="keyboard-shortcuts">Keyboard shortcuts</h3>
+        <p>
+          Every shortcut uses a modifier key (Ctrl on Windows/Linux, ⌘ on Mac)
+          except Escape. Shortcuts are ignored while you're typing in a text box.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Shortcut</th>
+                <th>What it does</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><kbd>Esc</kbd></td>
+                <td>Close any open panel or dialog</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + /</kbd></td>
+                <td>Show the keyboard-shortcuts help</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + S</kbd></td>
+                <td>Scan (resume scanning)</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + H</kbd></td>
+                <td>Hold</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + C</kbd></td>
+                <td>Copy the current frequency to the clipboard</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + L</kbd></td>
+                <td>Toggle a temporary lockout on the current frequency</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + Shift + L</kbd></td>
+                <td>Open the activity log</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + M</kbd></td>
+                <td>Open the channels (memory) browser</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + ↑</kbd></td>
+                <td>Scanner: navigate up</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl/⌘ + ↓</kbd></td>
+                <td>Scanner: navigate down</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="the-scanner-wont-connect">The scanner won't connect</h2>
+        <p>
+          If the connection dot in the bottom-left corner is
+          <strong>red</strong> and stays there, work down this list.
+        </p>
+        <ol>
+          <li><strong>Is the scanner powered on?</strong></li>
+          <li>
+            <strong>Is it a data USB cable?</strong> This is the most common
+            cause. Many USB cables, especially ones that came with other devices,
+            carry power but not data, so the scanner charges but never appears to
+            the computer. Try a different cable, ideally the one that came with the
+            scanner.
+          </li>
+          <li>
+            <strong>Try a different USB port</strong> on your computer, and avoid
+            unpowered USB hubs. Plug directly into the machine if you can.
+          </li>
+          <li>
+            <strong>Give it a few seconds.</strong> Bearpaw reconnects on its own.
+          </li>
+          <li><strong>Quit and relaunch Bearpaw.</strong></li>
+        </ol>
+        <p>
+          If none of that works, the Device tab's
+          <a href="device.html#device-information">Device Information</a> card
+          shows a diagnostic message that can point at the specific problem. For
+          USB-detection issues on macOS, a short troubleshooting checklist appears
+          there automatically.
+        </p>
+        <div class="callout">
+          <p>
+            You don't normally need a config file. Bearpaw auto-detects the
+            scanner on all platforms. A config file is only for advanced cases,
+            like forcing a specific serial port when auto-detect keeps picking the
+            wrong device. If you need one, see
+            <a href="#advanced-forcing-a-specific-port"
+              >the config note below</a
+            >.
+          </p>
+        </div>
+
+        <h2 id="other-common-issues">Other common issues</h2>
+
+        <h3 id="my-channel-edits-didnt-save-to-the-scanner">
+          My channel edits didn't save to the scanner
+        </h3>
+        <p>
+          Edits on the Channels tab are held as <strong>drafts</strong> until you
+          press <strong>Upload Changes</strong>. If your changes seem to have
+          vanished, check the pending-changes strip above the channel list. "N
+          pending" means your edits are waiting to be uploaded. See
+          <a href="channels.html#drafts-and-uploading-the-important-part"
+            >Drafts and uploading</a
+          >. (The Priority switch is the exception; it applies immediately.)
+        </p>
+
+        <h3 id="i-set-a-permanent-lockout-by-accident">
+          I set a permanent lockout by accident
+        </h3>
+        <p>
+          The <strong>L/O</strong> button on the Scan tab opens a menu with
+          <strong>Temporary</strong> and <strong>Permanent</strong> choices. To
+          clear a permanent lockout, pick <strong>Permanent</strong> again while
+          on that channel, or clear it from the
+          <a href="device.html#locked-channels">Locked Channels</a> list on the
+          Device tab.
+        </p>
+
+        <h3 id="the-app-warns-its-from-an-unidentified-developer">
+          The app warns it's from an "unidentified developer"
+        </h3>
+        <p>
+          The beta builds aren't code-signed yet, so your operating system flags
+          them on first launch. See the
+          <a href="../index.html#download">install instructions</a> for how to
+          open it anyway.
+        </p>
+
+        <h3 id="a-setting-on-the-device-tab-didnt-take">
+          A setting on the Device tab didn't take
+        </h3>
+        <p>
+          Scanner settings are written to the radio the instant you change them. A
+          failed write (a momentary USB hiccup, say) shows a red error message, and
+          the setting may not have changed. Try again; if it keeps failing, check
+          the connection.
+        </p>
+
+        <h3 id="advanced-forcing-a-specific-port">
+          Advanced: forcing a specific port
+        </h3>
+        <p>
+          Auto-detect handles the scanner on every platform, so you almost
+          certainly don't need this. But if auto-detect keeps selecting the wrong
+          USB-serial device, a <code>config.yaml</code> file can force a specific
+          port.
+        </p>
+        <p>Put it in the app's data folder:</p>
+        <ul>
+          <li>
+            <strong>macOS</strong>:
+            <code
+              >~/Library/Application
+              Support/com.jeremyfuksa.bearpaw/config.yaml</code
+            >
+          </li>
+          <li>
+            <strong>Windows</strong>:
+            <code>%APPDATA%\com.jeremyfuksa.bearpaw\config.yaml</code>
+          </li>
+          <li>
+            <strong>Linux</strong>:
+            <code>~/.local/share/com.jeremyfuksa.bearpaw/config.yaml</code>
+          </li>
+        </ul>
+        <p>A minimal example:</p>
+        <pre><code>device:
+  # Only set this if auto-detect picks the wrong device:
+  port: /dev/cu.usbmodem14101 # macOS
+  # port: COM3                # Windows
+  # port: /dev/ttyUSB0        # Linux</code></pre>
+        <div class="callout">
+          <p>
+            A <code>config.yaml</code> that exists but has a typo (bad YAML) stops
+            the app from starting, rather than being ignored. If you add one and
+            the app won't launch, delete it and try again.
+          </p>
+        </div>
+
+        <p class="docs-pager">
+          <strong>Back to:</strong>
+          <a href="getting-started.html">Getting Started</a> &middot;
+          <a href="glossary.html">Glossary</a>
+        </p>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img
+          src="../assets/app-icon.png"
+          alt=""
+          class="footer-icon"
+          aria-hidden="true"
+        />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by
+        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>
