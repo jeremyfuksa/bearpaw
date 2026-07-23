@@ -475,6 +475,13 @@ code {
     padding-bottom: 0.5rem;
   }
 
+  /* Let the nav wrap and center so no link clips at narrow widths. */
+  .site-nav {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.875rem 1.25rem;
+  }
+
   .hero-actions {
     flex-direction: column;
   }
