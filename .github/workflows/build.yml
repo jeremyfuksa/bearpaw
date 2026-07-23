@@ -153,22 +153,22 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ steps.prerelease.outputs.value }}
-          # These builds are UNSIGNED — prepend per-OS instructions for getting
-          # past Gatekeeper/SmartScreen above the auto-generated changelog.
+          # These builds are ad-hoc signed but not notarized — prepend per-OS
+          # instructions for getting past Gatekeeper/SmartScreen above the
+          # auto-generated changelog.
           body: |
             ## Installing this build
 
             Bearpaw is a control interface for the Uniden BC125AT scanner. These
-            builds are **not yet code-signed**, so your OS will warn you the
-            first time you open the app. That's expected — here's how to run it:
+            builds are ad-hoc signed but **not notarized by Apple**, so your OS
+            will warn you the first time you open the app. That's expected —
+            here's how to run it:
 
             **macOS** (`.dmg`): open the dmg and drag Bearpaw to Applications. On
-            first launch, right-click the app → **Open** → **Open** (a plain
-            double-click will say it "can't be opened"). If it still refuses,
-            open Terminal and run:
-            ```
-            xattr -cr /Applications/Bearpaw.app
-            ```
+            first launch macOS says it "cannot verify the developer" — right-click
+            the app → **Open** → **Open** to run it anyway. If a plain
+            double-click was your first attempt, open System Settings → Privacy &
+            Security and click **Open Anyway**.
 
             **Windows** (`.msi` / `.exe`): if SmartScreen shows "Windows
             protected your PC", click **More info** → **Run anyway**.
