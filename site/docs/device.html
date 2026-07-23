@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Locked Channels — Bearpaw docs</title>
-    <meta name="description" content="Review and clear the scanner's skip list of locked-out channels." />
+    <title>The Device Tab — Bearpaw docs</title>
+    <meta name="description" content="The Device tab: the scanner's own settings across six pages — device config, Close Call, service and custom search, locked channels, and app preferences." />
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -36,12 +36,12 @@
           <li><a href="getting-started.html">Getting Started</a></li>
           <li><a href="scan.html">The Scan Tab</a></li>
           <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
+          <li><a href="device.html" aria-current="page">The Device Tab</a></li>
           <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
           <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
           <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
           <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
-          <li class="docs-nav-child"><a href="locked-channels.html" aria-current="page">Locked Channels</a></li>
+          <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
           <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
           <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
           <li><a href="glossary.html">Glossary</a></li>
@@ -49,50 +49,52 @@
       </aside>
 
       <main class="docs-content">
-        <h1>Locked Channels</h1>
+        <h1>The Device Tab</h1>
         <p>
-          A <a href="glossary.html#lockout">locked-out</a> channel is one you've
-          told the scanner to <strong>skip</strong> while scanning. This page
-          lists every currently locked-out channel and lets you unlock them.
+          The Device tab is where you adjust the scanner hardware and set a
+          couple of preferences for the app. It's split across six pages, one
+          per section.
         </p>
+        <div class="callout">
+          <p>
+            Changes to scanner settings apply immediately. There's no Save
+            button. When you move a slider or flip a switch on any of the
+            hardware pages, the app enters the scanner's programming mode to
+            write the change, and live scanning pauses while that write happens.
+            A failed write shows a red error message. (Preferences is the
+            exception — it's app-side only and never touches the radio.)
+          </p>
+        </div>
 
-        <figure class="docs-figure">
-          <img
-            src="assets/device-locked-channels.webp"
-            alt="The Locked Channels section: a summary showing 36 locked channels, a search box and bank filter, and a table of locked channels each with a per-row Unlock button."
-          />
-          <figcaption>Locked Channels — review and clear the skip list.</figcaption>
-        </figure>
-
-        <p>
-          The list is read from the scanner when you open this page, with a
-          timestamp showing when.
-        </p>
-        <ul>
-          <li>
-            <strong>Search</strong> and <strong>filter by bank</strong> to narrow
-            the list.
-          </li>
-          <li>
-            <strong>Select</strong> channels with their checkboxes, then
-            <strong>Unlock Selected</strong> to clear them in a batch.
-          </li>
-          <li>
-            Or use each row's own <strong>Unlock</strong> button to clear just
-            that one.
-          </li>
-        </ul>
-        <p>
-          Unlocking brings a channel you'd previously skipped back into the scan
-          rotation. (To <em>lock</em> a channel out, use the
-          <strong>L/O</strong> button on the
-          <a href="scan.html#lo-lock-out-a-frequency">Scan tab</a> or the Lockout
-          switch when
-          <a href="channels.html#editing-a-channel">editing the channel</a>.)
-        </p>
+        <div class="docs-index-grid">
+          <a class="docs-card" href="device-config.html">
+            <h2>Device Config</h2>
+            <p>Audio, display, scanning logic, and read-only device info.</p>
+          </a>
+          <a class="docs-card" href="close-call.html">
+            <h2>Close Call</h2>
+            <p>Uniden's nearby-strong-signal detector.</p>
+          </a>
+          <a class="docs-card" href="service-search.html">
+            <h2>Service Search</h2>
+            <p>Sweep the factory band presets.</p>
+          </a>
+          <a class="docs-card" href="custom-search.html">
+            <h2>Custom Search</h2>
+            <p>Sweep frequency ranges you define yourself.</p>
+          </a>
+          <a class="docs-card" href="locked-channels.html">
+            <h2>Locked Channels</h2>
+            <p>Review and clear the scanner's skip list.</p>
+          </a>
+          <a class="docs-card" href="preferences.html">
+            <h2>Preferences</h2>
+            <p>The app's own settings — not the scanner.</p>
+          </a>
+        </div>
         <nav class="docs-pagination" aria-label="Guide pages">
-          <a class="page-prev" href="custom-search.html"><span class="page-dir">← Previous</span><span class="page-title">Custom Search</span></a>
-          <a class="page-next" href="preferences.html"><span class="page-dir">Next →</span><span class="page-title">Preferences</span></a>
+          <a class="page-prev" href="channels.html"><span class="page-dir">← Previous</span><span class="page-title">The Channels Tab</span></a>
+          <a class="page-next" href="device-config.html"><span class="page-dir">Next →</span><span class="page-title">Device Config</span></a>
         </nav>
       </main>
     </div>

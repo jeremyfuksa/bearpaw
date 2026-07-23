@@ -63,6 +63,12 @@
   background: var(--bg-semi);
 }
 
+/* Device sub-pages nest under the Device Tab index: indent + smaller text. */
+.docs-nav-child a {
+  padding-left: 1.875rem;
+  font-size: 0.9063rem;
+}
+
 /* ---- content column ---- */
 
 .docs-content {
@@ -234,9 +240,6 @@ kbd {
   display: block;
   width: 100%;
   height: auto;
-  border: 1px solid var(--border-scanner);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
 .docs-figure figcaption {
@@ -397,6 +400,11 @@ kbd {
   .docs-nav a[aria-current="page"] {
     border-left: none;
     border-bottom-color: var(--brand);
+  }
+
+  /* No indent in the horizontal strip — children sit inline with the rest. */
+  .docs-nav-child a {
+    padding-left: 0.875rem;
   }
 
   .docs-index-grid {
