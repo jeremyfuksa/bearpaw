@@ -126,11 +126,11 @@ function ChannelRow({
             onSelect();
           }}
           onClick={(event) => event.stopPropagation()}
-          className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
+          className="form-checkbox h-5 w-5 text-brand-primary bg-black/40 border-white/20 rounded"
         />
       </div>
       <div role="cell" className="flex items-center justify-center text-white/40">
-        <GripVertical size={12} aria-hidden className={cn(disableDrag && 'opacity-30')} />
+        <GripVertical size={20} aria-hidden className={cn(disableDrag && 'opacity-30')} />
       </div>
       <div role="cell" className="font-mono text-white/60 text-xs pl-1">
         {displayIndex}
@@ -158,7 +158,7 @@ function ChannelRow({
       </div>
       <div role="cell" className="flex justify-center">
         {displayLockout ? (
-          <Lock size={10} aria-label="Locked out" className="text-red-400" />
+          <Lock size={20} aria-label="Locked out" className="text-red-400" />
         ) : (
           <div className="w-1 h-1 rounded-full bg-white/5" aria-hidden />
         )}
@@ -859,7 +859,7 @@ export function ChannelsTab() {
                 className="scanner-button-primary flex items-center gap-1.5 px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isExportingSs ? 'Exporting…' : 'Export'}
-                <ChevronDown className="size-3.5" aria-hidden />
+                <ChevronDown className="size-5" aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={handleExportCSV}>CSV</DropdownMenuItem>
@@ -920,7 +920,7 @@ export function ChannelsTab() {
                     )
                   }
                   onChange={handleToggleSelectAll}
-                  className="form-checkbox h-3.5 w-3.5 text-brand-primary bg-black/40 border-white/20 rounded"
+                  className="form-checkbox h-5 w-5 text-brand-primary bg-black/40 border-white/20 rounded"
                 />
               </div>
               <div role="columnheader" aria-label="Reorder" />

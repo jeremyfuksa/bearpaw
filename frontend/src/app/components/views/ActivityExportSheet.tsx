@@ -202,7 +202,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
                       : 'scanner-button-muted border',
                   )}
                 >
-                  <Calendar size={16} aria-hidden />
+                  <Calendar size={20} aria-hidden />
                   {getTimeframeLabel(timeframe)}
                 </button>
               ))}
@@ -259,7 +259,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
             aria-busy={isExporting}
             className="scanner-button-primary flex w-full items-center justify-center gap-2 py-3 text-sm uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Download size={16} aria-hidden="true" />
+            <Download size={20} aria-hidden="true" />
             {isExporting ? 'Exporting...' : 'Download CSV'}
           </button>
           <button
@@ -269,7 +269,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
             aria-busy={isExporting}
             className="flex w-full items-center justify-center gap-2 rounded border border-destructive bg-destructive py-3 text-sm font-bold uppercase tracking-wider text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Trash2 size={16} aria-hidden="true" />
+            <Trash2 size={20} aria-hidden="true" />
             {isExporting ? 'Cleaning...' : 'Cleanup Analytics'}
           </button>
         </div>
