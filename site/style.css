@@ -13,8 +13,13 @@
   --text-muted: #acbbcc;
   --led-green: #67e79e;
   --border-scanner: #1e2024;
-  --font-display: "Hanken Grotesk", sans-serif;
-  --font-body: "Manrope", sans-serif;
+  /* System font stack — no network fonts, matching the app (PR #302). */
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
