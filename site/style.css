@@ -321,7 +321,7 @@ code {
 .download {
   max-width: 68rem;
   margin: 0 auto;
-  padding: 2rem 1.5rem 6rem;
+  padding: 2rem 1.5rem 3rem;
 }
 
 .download-panel {
@@ -432,7 +432,7 @@ code {
 
 .site-footer {
   border-top: 1px solid var(--border-scanner);
-  padding: 3rem 1.5rem 4rem;
+  padding: 2.5rem 1.5rem 3rem;
   text-align: center;
   color: var(--text-muted);
   font-size: 0.875rem;
@@ -456,6 +456,14 @@ code {
   font-weight: 700;
   font-size: 1rem;
   color: var(--text);
+}
+
+.footer-credit {
+  margin-top: 0.25rem;
+}
+
+.footer-support {
+  margin-top: 0.5rem;
 }
 
 /* ---- responsive ---- */
