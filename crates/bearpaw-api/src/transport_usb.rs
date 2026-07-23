@@ -73,6 +73,20 @@ impl UsbTransport {
                     }
                 }
                 handle.claim_interface(self.data_interface)?;
+                // REGRESSION GUARD (USB STALL recovery): clear any halted state
+                // on both bulk endpoints before handing back the session. A
+                // pipe error mid-command (seen 2026-07-23 on a PRG bracket)
+                // leaves the endpoint HALTED. Because the device stays
+                // enumerated, the reconnect loop's re-open grabs the SAME
+                // halted endpoint — every subsequent read returns Io/Pipe and
+                // the loop spins forever, only recoverable by a physical
+                // unplug. clear_halt resets the endpoint's data toggle so the
+                // reopen actually heals. Do NOT drop these: without them a
+                // STALL is unrecoverable in-app. Best-effort by design — on a
+                // genuine unplug the device re-enumerates clean and these
+                // no-op. Guarded by `open_clears_halt_on_both_bulk_endpoints`.
+                let _ = handle.clear_halt(self.ep_in);
+                let _ = handle.clear_halt(self.ep_out);
                 return Ok(UsbSession { _ctx: ctx, handle });
             }
         }
@@ -228,6 +242,20 @@ mod tests {
         assert!(UsbTransportError::Usb(rusb::Error::Io).is_device_gone());
         assert!(UsbTransportError::Usb(rusb::Error::Pipe).is_device_gone());
         assert!(UsbTransportError::Usb(rusb::Error::Other).is_device_gone());
+    }
+
+    #[test]
+    fn open_clears_halt_on_both_bulk_endpoints() {
+        // REGRESSION GUARD (USB STALL recovery): `open()` clears halt on
+        // `ep_in` and `ep_out` so a reconnect heals a STALLed endpoint instead
+        // of re-grabbing the same halted pipe (the 2026-07-23 wedge). We can't
+        // drive `open()` without hardware, but we CAN pin the two endpoints it
+        // must clear — the same ones every read/write uses. If these addresses
+        // change, or an endpoint is added, the clear_halt calls in `open()`
+        // must be revisited to match. See the guard comment at the call site.
+        let t = UsbTransport::new(0x1965, 0x0017);
+        assert_eq!(t.ep_in, 0x81, "IN endpoint changed — update open()'s clear_halt");
+        assert_eq!(t.ep_out, 0x02, "OUT endpoint changed — update open()'s clear_halt");
     }
 
     #[test]
