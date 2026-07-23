@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Custom Search — Bearpaw docs</title>
+    <meta name="description" content="Custom Search: sweep up to ten frequency ranges you define yourself." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html" aria-current="page">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html">Glossary</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main class="docs-content" id="content">
+        <h1>Custom Search</h1>
+        <p>
+          Custom Search sweeps frequency ranges you define yourself. The scanner
+          supports <strong>10 custom ranges</strong>, and the header shows how
+          many are active ("N of 10 active").
+        </p>
+
+        <figure class="docs-figure">
+          <img
+            src="assets/device-custom-search.webp"
+            alt="The Custom Search section: a table of ten ranges (R-1 to R-10), each with an Active switch, a Label, and Lower and Upper frequency values in MHz."
+          />
+          <figcaption>Custom Search — your own frequency ranges.</figcaption>
+        </figure>
+
+        <p>Set the ranges here, then start the search on the radio.</p>
+        <p>Each of the ten rows has:</p>
+        <ul>
+          <li>
+            An <strong>Active</strong> switch to include that range in the sweep.
+          </li>
+          <li>
+            A <strong>Range</strong> label (R-1 through R-10) identifying the
+            slot.
+          </li>
+          <li>
+            A <strong>Label</strong> for your own reference (e.g. "Local Ham").
+            The label stays in the app; it is not written to the scanner.
+          </li>
+          <li>
+            <strong>Lower (MHz)</strong> and <strong>Upper (MHz)</strong>, the
+            start and end of the range. These are written to the scanner.
+          </li>
+        </ul>
+        <div class="callout">
+          <p>
+            To set one up: flip a row's <strong>Active</strong> switch on, type a
+            <strong>Lower</strong> and <strong>Upper</strong> frequency, name it
+            if you like, then start Custom Search on the radio.
+          </p>
+        </div>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="service-search.html"><span class="page-dir">← Previous</span><span class="page-title">Service Search</span></a>
+          <a class="page-next" href="locked-channels.html"><span class="page-dir">Next →</span><span class="page-title">Locked Channels</span></a>
+        </nav>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>

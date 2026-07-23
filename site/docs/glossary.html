@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Glossary — Bearpaw docs</title>
+    <meta name="description" content="Every radio and app term the Bearpaw guide uses, defined once." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html" aria-current="page">Glossary</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main class="docs-content docs-glossary" id="content">
+        <h1>Glossary</h1>
+        <p>Every radio and app term the guide uses, defined once.</p>
+
+        <h2 id="alpha-tag">Alpha tag</h2>
+        <p>
+          The text name saved for a channel, like "FIRE DISPATCH" or "NOAA WX1."
+          It's what shows on the big display during a <a href="#hit">hit</a>
+          instead of a bare frequency.
+        </p>
+        <div class="callout">
+          <p>
+            Alpha tags come from the scanner's memory, so they're blank until the
+            <a href="#memory-sync">memory sync</a> finishes. Before sync
+            completes, hits show just the frequency.
+          </p>
+        </div>
+
+        <h2 id="bank">Bank</h2>
+        <p>
+          A group of 50 channels. The BC125AT's 500 channels are divided into
+          <strong>10 banks of 50</strong>: channels 1 to 50 are Bank 1, 51 to 100
+          are Bank 2, and so on. You can turn whole banks on or off for scanning
+          (on the
+          <a href="scan.html#the-bank-buttons-1-to-9-then-0">Scan tab</a>), and
+          you view and edit one bank at a time (on the
+          <a href="channels.html#banks-the-sidebar">Channels tab</a>).
+        </p>
+
+        <h2 id="close-call">Close Call</h2>
+        <p>
+          Uniden's feature for detecting a strong signal from a transmitter
+          physically close to you and jumping to it automatically, even if that
+          frequency isn't in your channels. Configured on the
+          <a href="close-call.html">Device tab</a>.
+        </p>
+
+        <h2 id="ctcss--tone--dcs">CTCSS / tone / DCS</h2>
+        <p>
+          Sub-audible codes sent along with a transmission so a receiver can be set
+          to open only for its own group and ignore everyone else sharing the
+          frequency.
+        </p>
+        <ul>
+          <li>
+            <strong>CTCSS</strong> is a continuous tone, identified by its
+            frequency in Hz (e.g. 123.0). Bearpaw lets you set a CTCSS tone when
+            <a href="channels.html#editing-a-channel">editing a channel</a>.
+          </li>
+          <li>
+            <strong>DCS</strong> is a digital version of the same idea, identified
+            by a code number.
+          </li>
+        </ul>
+        <p>
+          Bearpaw shows whichever a live signal is carrying, on the display, for as
+          long as the signal is open.
+        </p>
+
+        <h2 id="delay">Delay</h2>
+        <p>
+          How long the scanner waits on a channel after a transmission ends before
+          it resumes scanning, so you have time to hear the reply. Set per channel,
+          in seconds. Bearpaw also supports <em>negative</em> delays (pre-delays),
+          where the scanner holds <em>before</em> the next transmission.
+        </p>
+
+        <h2 id="draft">Draft</h2>
+        <p>
+          An edit you've made on the
+          <a href="channels.html">Channels tab</a> that is
+          <strong>held in the app and not yet written to the scanner</strong>. You
+          make as many drafts as you want, then push them all to the radio at once
+          with <strong>Upload Changes</strong>. (See
+          <a href="channels.html#drafts-and-uploading-the-important-part"
+            >Drafts and uploading</a
+          >.)
+        </p>
+
+        <h2 id="hit">Hit</h2>
+        <p>
+          When the scanner stops on a frequency because a signal is present. The
+          display switches from "Scanning…" to the live frequency and details, and
+          if the transmission lasts long enough, it's recorded in your activity
+          log. (See the
+          <a href="getting-started.html#step-4-your-first-hit">hit workflow</a>.)
+        </p>
+
+        <h2 id="hold">Hold</h2>
+        <p>
+          A mode where the scanner stays parked on the current channel instead of
+          cycling through them. <em>You</em> turn Hold on (with the HOLD button or
+          Ctrl/⌘ + H). During an ordinary <a href="#hit">hit</a> the scanner is
+          paused but <strong>not</strong> in Hold. It's still scanning, just
+          waiting out the transmission.
+        </p>
+
+        <h2 id="lockout">Lockout</h2>
+        <p>
+          Telling the scanner to <strong>skip</strong> a frequency or channel so it
+          stops stopping on it.
+        </p>
+        <ul>
+          <li>
+            A <strong>temporary lockout</strong> lasts until the scanner is powered
+            off, and targets the frequency you're currently on.
+          </li>
+          <li>
+            A <strong>permanent lockout</strong> is written into the channel's
+            memory and stays until you remove it.
+          </li>
+        </ul>
+        <p>
+          Both are toggles; apply again to remove. On the
+          <a href="scan.html#lo-lock-out-a-frequency">Scan tab</a>, the
+          <strong>L/O</strong> button opens a menu with
+          <strong>Temporary</strong> and <strong>Permanent</strong> choices. You
+          can review and clear permanent lockouts under
+          <a href="locked-channels.html">Locked Channels</a>.
+        </p>
+
+        <h2 id="memory-sync">Memory sync</h2>
+        <p>
+          Reading all 500 channels out of the scanner into the app. Because the
+          scanner hands them over one at a time, it takes about 30 to 45 seconds.
+          It runs automatically when the app connects, and you can re-run it from
+          <strong>Scanner → Sync Memory</strong>. Bearpaw doesn't store your
+          channels between sessions; it re-reads them from the radio each time.
+        </p>
+
+        <h2 id="modulation">Modulation</h2>
+        <p>
+          How a signal carries its audio. The BC125AT handles <strong>AM</strong>,
+          <strong>FM</strong>, and <strong>NFM</strong> (narrow FM). When
+          <a href="channels.html#editing-a-channel">editing a channel</a> you can
+          also choose <strong>AUTO</strong>, which lets the scanner pick based on
+          the frequency.
+        </p>
+
+        <h2 id="priority">Priority</h2>
+        <p>
+          A channel the scanner checks periodically even while it's scanning or
+          holding somewhere else, so you don't miss activity on a channel that
+          matters. <strong>Each bank can have only one priority channel.</strong>
+          In Bearpaw, the Priority switch applies to the scanner immediately, not
+          as a <a href="#draft">draft</a>. Priority <em>mode</em> (off/on/plus) is
+          set separately on the
+          <a href="device-config.html#scanning-logic">Device tab</a>.
+        </p>
+
+        <h2 id="rssi">RSSI</h2>
+        <p>
+          Received Signal Strength Indicator: how strong the received signal is.
+          Bearpaw shows it as a five-bar meter next to the frequency during a hit.
+        </p>
+
+        <h2 id="squelch">Squelch</h2>
+        <p>
+          The circuit that mutes the receiver until a signal is strong enough to be
+          worth hearing. Raising squelch means only stronger signals get through;
+          lowering it lets weaker ones (and more noise) in.
+        </p>
+        <div class="callout">
+          <p>
+            In the app's data, "squelch open" means a signal <em>is</em> present
+            (the scanner has un-muted), which is the opposite of how "open" might
+            sound at first.
+          </p>
+        </div>
+
+        <h2 id="sync">Sync</h2>
+        <p>See <a href="#memory-sync">memory sync</a>.</p>
+
+        <h2 id="upload-upload-changes">Upload (Upload Changes)</h2>
+        <p>
+          The action that writes your pending channel <a href="#draft">drafts</a>
+          to the scanner. Until you press <strong>Upload Changes</strong> on the
+          <a href="channels.html">Channels tab</a>, your edits stay in the app and
+          the radio is untouched.
+        </p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="troubleshooting.html"><span class="page-dir">← Previous</span><span class="page-title">Menu, Shortcuts & Troubleshooting</span></a>
+        </nav>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>

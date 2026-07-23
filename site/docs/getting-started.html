@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Getting Started — Bearpaw docs</title>
+    <meta name="description" content="Plug in the scanner, launch Bearpaw, and watch live traffic on screen. The path from cable to first hit." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html" aria-current="page">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html">Glossary</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main class="docs-content" id="content">
+        <h1>Getting Started</h1>
+        <p>
+          Plug in the scanner, launch Bearpaw, and you're watching live traffic
+          on screen. This walks the path from cable to first hit. It assumes you
+          know your way around a BC125AT; if a Bearpaw-specific term is new, the
+          <a href="glossary.html">Glossary</a> has it.
+        </p>
+
+        <h2 id="what-youll-need">What you'll need</h2>
+        <ul>
+          <li>
+            A <strong>Uniden BC125AT</strong> scanner. Bearpaw also works with
+            the closely related BCT125AT, UBC125XLT, UBC126AT, and AE125H.
+          </li>
+          <li>
+            The <strong>USB cable</strong> that came with it, or any USB cable
+            that carries <em>data</em>, not just power. A charge-only cable is
+            the usual reason the app won't connect.
+          </li>
+          <li>
+            Bearpaw installed on your computer. If you haven't done that yet, see
+            the <a href="../index.html#download">download section</a>.
+          </li>
+        </ul>
+
+        <h2 id="step-1-plug-in-and-launch">Step 1: Plug in and launch</h2>
+        <p>
+          Connect the scanner to your computer with the USB cable, turn the
+          scanner on, and open Bearpaw.
+        </p>
+        <p>
+          The colored dot in the bottom-left corner shows where the connection
+          stands:
+        </p>
+        <ul>
+          <li>
+            <span class="status-dot dot-yellow" aria-hidden="true"></span> <strong>Yellow, "Connecting…"</strong>: Bearpaw is reaching for
+            the scanner, which is normal for a few seconds at launch.
+          </li>
+          <li>
+            <span class="status-dot dot-green" aria-hidden="true"></span> <strong>Green, "BC125AT"</strong>: connected, showing your
+            scanner's model name.
+          </li>
+          <li>
+            <span class="status-dot dot-red" aria-hidden="true"></span> <strong>Red, "Disconnected"</strong>: no link yet. If it stays
+            red, go to <a href="troubleshooting.html">Troubleshooting</a>.
+          </li>
+        </ul>
+
+        <h2 id="step-2-the-first-sync">Step 2: The first sync</h2>
+        <p>
+          Each time Bearpaw launches, it reads all 500 channels out of the
+          scanner, and it takes a few seconds.
+        </p>
+        <p>
+          A "Syncing Scanner Memory" panel covers the screen with a progress bar
+          while it runs.
+        </p>
+        <div class="callout">
+          <p>
+            Bearpaw doesn't keep a copy of your channels on the computer between
+            sessions. It re-reads them fresh every time it starts, so what you
+            see is what's actually in the radio.
+          </p>
+        </div>
+
+        <h2 id="step-3-watch-it-scan">Step 3: Watch it scan</h2>
+        <p>
+          The big amber panel is designed to resemble the display panel on your
+          scanner, scaled up to fill the window.
+        </p>
+
+        <h2 id="step-4-your-first-hit">Step 4: Your first hit</h2>
+        <p>
+          When the scanner lands on an active frequency, that's a
+          <strong>hit</strong>.
+        </p>
+        <ol>
+          <li>
+            <strong>"Scanning…" is replaced by the signal.</strong> The big line
+            shows the channel's name (its <em>alpha tag</em>) if it has one, or
+            the frequency if it doesn't.
+          </li>
+          <li>
+            <strong>The detail line fills in</strong> underneath: the frequency,
+            the modulation (FM, AM, or NFM), the channel number, and, if the
+            transmission carries one, the CTCSS tone.
+          </li>
+          <li>
+            <strong>The signal-strength bars</strong> on the right fill to match
+            the RSSI.
+          </li>
+          <li>
+            When the transmission ends, the scanner resumes and the display goes
+            back to "Scanning…".
+          </li>
+        </ol>
+
+        <figure class="docs-figure">
+          <img
+            src="assets/scan-dashboard.webp"
+            alt="Bearpaw's Scan tab during a hit: the big amber display reads 'WOF Security' with frequency 463.425 NFM CH 84, the Recent Hits list on the right, and the Busiest Channels and Activity Heatmap dashboards below."
+          />
+          <figcaption>
+            The Scan tab during a hit — big display, Recent Hits, and the
+            activity dashboards.
+          </figcaption>
+        </figure>
+
+        <h2 id="step-5-look-at-what-youve-caught">
+          Step 5: Look at what you've caught
+        </h2>
+        <p>
+          Bearpaw records every hit and turns the record into a read on your
+          local activity:
+        </p>
+        <ul>
+          <li>
+            The <strong>Recent Hits</strong> list, to the right of the big
+            display, shows the last few active frequencies with how long ago
+            each one happened.
+          </li>
+          <li>
+            The <strong>dashboards</strong> below, a "Busiest Channels" bar chart
+            and an "Activity Heatmap," show <em>which</em> channels carry traffic
+            and <em>when</em>, over time.
+          </li>
+          <li>
+            You can <strong>export the whole log to CSV</strong> and analyze it
+            yourself.
+          </li>
+        </ul>
+
+        <h2 id="where-to-go-next">Where to go next</h2>
+        <ul>
+          <li>
+            <strong>Everything on the Scan tab</strong>, the controls, the status
+            bar, what each part of the display means:
+            <a href="scan.html">The Scan Tab</a>
+          </li>
+          <li>
+            <strong>Edit your channels</strong>, rename them, change frequencies,
+            lock out the noisy ones:
+            <a href="channels.html">The Channels Tab</a>
+          </li>
+          <li>
+            <strong>Adjust the scanner itself</strong>, volume, squelch, Close
+            Call, custom searches: <a href="device-config.html">The Device Tab</a>
+          </li>
+          <li>
+            <strong>Something not working?</strong>
+            <a href="troubleshooting.html">Troubleshooting</a>
+          </li>
+        </ul>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="index.html"><span class="page-dir">← Previous</span><span class="page-title">Overview</span></a>
+          <a class="page-next" href="scan.html"><span class="page-dir">Next →</span><span class="page-title">The Scan Tab</span></a>
+        </nav>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>

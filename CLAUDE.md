@@ -221,7 +221,7 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`docs/BACKEND_LOGGING.md`](docs/BACKEND_LOGGING.md), [`docs/DATA_LIFECYCLE.md`](docs/DATA_LIFECYCLE.md)
 - [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — decompiled Uniden reference. Second source only — where it disagrees with our wire captures, the captures win.
 - [`docs/wire_captures/`](docs/wire_captures/) — real BC125AT wire traffic + audit reconciliation (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`)
-- [`docs/guide/`](docs/guide/) — end-user guide (getting started, scan, channels, device, glossary, troubleshooting)
+- **End-user guide** — lives on the marketing site at [bearpaw.app/docs](https://bearpaw.app/docs/), hand-authored HTML in [`site/docs/`](site/docs/) (getting started, scan, channels, device, glossary, troubleshooting). Not in `docs/` — that holds developer/protocol docs only.
 
 ## Common pitfalls
 

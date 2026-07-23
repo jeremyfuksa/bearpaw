@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Channels Tab — Bearpaw docs</title>
+    <meta name="description" content="Manage your scanner's memory: rename channels, change frequencies, set tones, lock out noisy frequencies, reorder, and upload to the radio." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html" aria-current="page">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html">Glossary</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main class="docs-content" id="content">
+        <h1>The Channels Tab</h1>
+        <p>
+          The Channels tab is where you manage your scanner's memory: rename
+          channels, change frequencies, set tones, lock out the noisy
+          frequencies, and reorder them. When you're done, you push your changes
+          back to the radio.
+        </p>
+        <div class="callout">
+          <p>
+            <strong
+              >Your edits don't reach the scanner until you press "Upload
+              Changes."</strong
+            >
+            Everything you change here is held as a <em>draft</em>, a pending
+            change stored in the app, until you upload it. Batching this way lets
+            you make a set of changes and review them before they go to the
+            scanner. (More on this
+            <a href="#drafts-and-uploading-the-important-part">below</a>.)
+          </p>
+        </div>
+
+        <h2 id="banks-the-sidebar">Banks: the sidebar</h2>
+        <p>
+          Your 500 channels are organized into
+          <strong>10 banks of 50 channels each</strong>. Channels 1 to 50 are
+          Bank 1, 51 to 100 are Bank 2, and so on. The left sidebar has a button
+          for each bank.
+        </p>
+        <p>
+          <strong>Click a bank to see its 50 channels.</strong> Only one bank
+          shows at a time; the app opens on Bank 1. The selected bank is
+          highlighted with a small glowing dot, and its number appears next to
+          the "Bank Channels" heading.
+        </p>
+        <div class="callout">
+          <p>
+            These sidebar buttons choose <em>which channels you're looking at and
+            editing</em>. They're different from the bank buttons on the
+            <a href="scan.html#the-bank-buttons-1-to-9-then-0">Scan tab</a>, which
+            turn banks on and off <em>for scanning</em>.
+          </p>
+        </div>
+
+        <h2 id="the-channel-list">The channel list</h2>
+        <p>Each row is one channel. The columns, left to right:</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Column</th>
+                <th>What it means</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>☑</td>
+                <td>
+                  A checkbox to <strong>select</strong> the row for a bulk action
+                  (see the <a href="#the-toolbar">toolbar</a>).
+                </td>
+              </tr>
+              <tr>
+                <td>⠿</td>
+                <td>
+                  A <strong>drag handle</strong>. Grab it to reorder the channel
+                  within its bank.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>CH</strong></td>
+                <td>The channel number (1 to 500).</td>
+              </tr>
+              <tr>
+                <td><strong>FREQ</strong></td>
+                <td>The frequency, in MHz (e.g. <code>146.8500</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>TAG</strong></td>
+                <td>
+                  The channel's name (its
+                  <a href="glossary.html#alpha-tag">alpha tag</a>), or a dash if
+                  unnamed.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>MODE</strong></td>
+                <td>
+                  The <a href="glossary.html#modulation">modulation</a>: AUTO, FM,
+                  AM, or NFM.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>TONE</strong></td>
+                <td>
+                  The <a href="glossary.html#ctcss--tone--dcs">CTCSS tone</a> in
+                  Hz, or a dash for none.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>DLY</strong></td>
+                <td>
+                  The <a href="glossary.html#delay">delay</a> in seconds before
+                  the scanner resumes after a transmission.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>L/O</strong></td>
+                <td>
+                  A red <strong>lock</strong> icon if the channel is
+                  <a href="glossary.html#lockout">locked out</a> (skipped when
+                  scanning).
+                </td>
+              </tr>
+              <tr>
+                <td><strong>PRIO</strong></td>
+                <td>
+                  A glowing dot if this is the bank's
+                  <a href="glossary.html#priority">priority</a> channel.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <strong>To edit a channel, click anywhere on its row</strong> except
+          the checkbox. That opens the edit panel. The checkbox in the header row
+          selects (or clears) every channel currently shown.
+        </p>
+
+        <figure class="docs-figure">
+          <img
+            src="assets/channels-tab.webp"
+            alt="The Channels tab showing Bank 2: a bank sidebar on the left, and an editable grid of channels with CH, FREQ, TAG, MODE, TONE, DLY, L/O, and PRIO columns, plus Import, Export, and Upload Changes controls."
+          />
+          <figcaption>
+            The Channels tab — the per-bank editable grid, with Import, Export,
+            and Upload Changes.
+          </figcaption>
+        </figure>
+
+        <h2 id="editing-a-channel">Editing a channel</h2>
+        <p>
+          Clicking a row opens the <strong>Edit Channel</strong> panel. Every
+          field:
+        </p>
+        <p>
+          <strong>Frequency (MHz)</strong> is a direct entry. The BC125AT doesn't
+          cover one continuous range; it covers four bands:
+          <strong>25 to 54, 108 to 174, 225 to 380, and 400 to 512 MHz</strong>.
+          Enter something outside those bands (say, 90.0 MHz) and the app rejects
+          it with a message. Enter <code>0</code> to mark the channel empty.
+        </p>
+        <p>
+          <strong>Alpha Tag</strong> is the channel's name, up to
+          <strong>16 characters</strong>.
+        </p>
+        <p>
+          <strong>Modulation</strong> is one of <strong>AUTO</strong>,
+          <strong>FM</strong>, <strong>AM</strong>, or <strong>NFM</strong>
+          (narrow FM). AUTO lets the scanner choose based on the frequency.
+        </p>
+        <p>
+          <strong>Tone Squelch (CTCSS Hz)</strong> sets a
+          <a href="glossary.html#ctcss--tone--dcs">CTCSS tone</a> so the scanner
+          only opens on transmissions carrying that tone. Leave it blank for none.
+          The app accepts only the standard CTCSS tones (67.0 to 254.1 Hz) and
+          warns you on a value that isn't one of them.
+        </p>
+        <p>
+          <strong>Delay (seconds)</strong> is how long the scanner waits on a
+          channel after a transmission ends before it resumes scanning, giving you
+          time to hear a reply. Choose from
+          <strong>-10, -5, 0, 1, 2, 3, 4, 5</strong>. The negative values are
+          <em>pre-delays</em>: the scanner holds <em>before</em> the next
+          transmission.
+        </p>
+        <p>
+          <strong>Lockout</strong> is a switch. On means the scanner skips this
+          channel.
+        </p>
+        <p>
+          <strong>Priority</strong> is a switch, and it applies to the scanner
+          immediately rather than waiting for Upload. The radio allows only one
+          priority channel per bank, so turning it on where another channel
+          already has priority asks you to confirm moving it. (More on priority in
+          the <a href="glossary.html#priority">Glossary</a>.)
+        </p>
+
+        <h2 id="drafts-and-uploading-the-important-part">
+          Drafts and uploading (the important part)
+        </h2>
+        <p>
+          Between the toolbar and the channel list is a status strip that reads
+          either
+          <strong>"Edits are saved as drafts. No pending changes."</strong> or
+          <strong>"…N pending."</strong>, next to two buttons:
+          <strong>Discard Changes</strong> and <strong>Upload Changes</strong>.
+        </p>
+        <ol>
+          <li>
+            <strong>Edit</strong> one or more channels. Each saved edit becomes a
+            <em>draft</em>. Rows with pending changes get a colored bar down their
+            left edge, and the pending count ticks up.
+          </li>
+          <li>
+            <strong>Review.</strong> Nothing has touched the radio yet. Edit more,
+            or change your mind.
+          </li>
+          <li>
+            <strong>Upload.</strong> Press <strong>Upload Changes</strong>. The
+            app writes your drafts to the scanner, then re-reads the channels to
+            confirm they took. The button reads "Uploading…" while it works.
+          </li>
+        </ol>
+        <p>
+          To throw away all your pending edits without uploading, press
+          <strong>Discard Changes</strong> (it asks you to confirm first).
+        </p>
+        <div class="callout">
+          <p>
+            The <strong>Priority</strong> switch is the exception. It applies the
+            moment you toggle it. Everything else waits for Upload.
+          </p>
+        </div>
+
+        <h2 id="the-toolbar">The toolbar</h2>
+        <p>Across the top of the tab:</p>
+        <ul>
+          <li>
+            <strong>Search box</strong>: filter the current bank by frequency or
+            name. Drag-reorder is turned off while a search is active.
+          </li>
+          <li>
+            <strong>Clear Selected</strong>: blanks all the checkbox-selected
+            channels. Like edits, this creates drafts; it doesn't wipe them from
+            the radio until you upload.
+          </li>
+          <li>
+            <strong>Import</strong> / <strong>Export</strong>: move channels
+            between the scanner and a file. Both work in two formats, CSV and
+            native Uniden. See
+            <a href="#import-and-export">Import and export</a> below.
+          </li>
+          <li>
+            <strong>Drag to reorder</strong>: change the channel order within the
+            bank by dragging. Reordering is a draft, and uploads with everything
+            else.
+          </li>
+        </ul>
+        <p>
+          <strong>To reorder a channel:</strong> point at the
+          <strong>drag handle</strong> (⠿) at the left of the row then press and
+          hold the mouse button and drag the row up or down. Release it where you
+          want the channel to land. The move is saved as a draft (a colored bar
+          appears on the affected rows) and goes to the radio on your next
+          <strong>Upload Changes</strong>.
+        </p>
+        <div class="callout">
+          <p>
+            Two limits. Reordering is <strong>mouse-only</strong> — there's no
+            keyboard path to it yet. And drag is
+            <strong>turned off while a search is active</strong>, since the list
+            you see is filtered rather than the full bank order; clear the search
+            box to drag again.
+          </p>
+        </div>
+
+        <h2 id="import-and-export">Import and export</h2>
+        <p>
+          Your channels don't have to live only in the radio. Bearpaw reads and
+          writes them to files, in two formats, so you can back them up, edit them
+          at your desk, or hand them off to other software.
+        </p>
+
+        <h3 id="the-two-formats">The two formats</h3>
+        <p>
+          <strong>CSV</strong> is a plain spreadsheet: one row per channel, with
+          columns for frequency, tag, mode, tone, delay, and lockout. Open it in
+          Excel, Numbers, or Google Sheets, make bulk edits, and load it back in.
+        </p>
+        <p>
+          <strong>Native Uniden</strong> (a <code>.bc125at_ss</code> file) is the
+          same format the official Sentinel software reads and writes. It's a full
+          snapshot: all 500 channels <em>and</em> the scanner's settings. Because
+          it speaks Sentinel's own language, you can move a channel set between
+          Bearpaw and Uniden's software in either direction, or keep one as a
+          complete backup of the radio. Exporting it takes a few seconds longer
+          than CSV.
+        </p>
+
+        <h3 id="exporting">Exporting</h3>
+        <p>
+          <strong>Export</strong> saves your channels to a file. Pick
+          <strong>CSV</strong> for just the channel list, or
+          <strong>BC125AT</strong> for the full backup. The app writes
+          <code>channels.csv</code> or <code>scanner.bc125at_ss</code> and lets
+          you choose where it goes.
+        </p>
+
+        <h3 id="importing">Importing</h3>
+        <p>
+          <strong>Import</strong> loads channels from a file, and reads either
+          format automatically. A CSV brings in just the channels. A
+          <code>.bc125at_ss</code> file brings in everything it holds and
+          <strong>overwrites all channels and settings</strong> on the radio, so
+          the app asks you to confirm before it does.
+        </p>
+        <div class="callout">
+          <p>
+            Import writes straight to the scanner. Unlike a hand edit, it isn't
+            held as a draft: the file's channels are written to the radio as the
+            import runs, with a progress bar covering the screen while it works (a
+            full native-file restore is around 80 seconds of writes). When it
+            finishes, Bearpaw re-reads the channels so the list matches what's now
+            in the radio.
+          </p>
+        </div>
+
+        <h2 id="refreshing-from-the-scanner-memory-sync">
+          Refreshing from the scanner (memory sync)
+        </h2>
+        <p>
+          Your channels are read from the scanner when the app starts. This
+          <strong>memory sync</strong> takes about 30 to 45 seconds, because the
+          scanner hands over its 500 channels one at a time.
+        </p>
+        <p>
+          To re-read them manually, say after you changed something on the radio's
+          own keypad, use <strong>Scanner → Sync Memory</strong> in the menu (or
+          <kbd>Ctrl/⌘ + Y</kbd>). A panel covers the screen with a progress bar
+          and blocks the UI until it's done.
+        </p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="scan.html"><span class="page-dir">← Previous</span><span class="page-title">The Scan Tab</span></a>
+          <a class="page-next" href="device.html"><span class="page-dir">Next →</span><span class="page-title">The Device Tab</span></a>
+        </nav>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>

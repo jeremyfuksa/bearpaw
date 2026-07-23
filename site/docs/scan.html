@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Scan Tab — Bearpaw docs</title>
+    <meta name="description" content="The Scan tab: the live display, the controls you reach for most, activity tracking, the dashboards, and the status bar." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html" aria-current="page">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html">Glossary</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main class="docs-content" id="content">
+        <h1>The Scan Tab</h1>
+        <p>
+          The Scan tab shows what the radio is doing right now, gives you the
+          controls you reach for most, and keeps a record of what's been active.
+          The big amber panel is front and center. To its right is the
+          <strong>Recent Hits</strong> list; below are two dashboards,
+          <strong>Busiest Channels</strong> and the
+          <strong>Activity Heatmap</strong>; and the <strong>status bar</strong>
+          runs along the very bottom of the window.
+        </p>
+
+        <figure class="docs-figure">
+          <img
+            src="assets/scan-dashboard.webp"
+            alt="The Scan tab: a large amber display showing a hit, the Recent Hits list, and the Busiest Channels bar chart and Activity Heatmap below."
+          />
+          <figcaption>The Scan tab, mid-hit.</figcaption>
+        </figure>
+
+        <h2 id="the-big-display">The big display</h2>
+        <p>This is your scanner's screen, enlarged.</p>
+        <p>
+          The display scales to whatever size you give it. Maximize the window
+          and the frequency, tag, and signal bars grow to fill it. Put Bearpaw on
+          a spare monitor in the shack and you can read what your scanner is doing
+          from the workbench, the couch, or the other end of the room.
+        </p>
+
+        <h3 id="while-scanning">While scanning</h3>
+        <p>
+          When the scanner is cycling through channels looking for activity, the
+          display reads <strong>"Scanning…"</strong> (pulsing) with
+          <strong>"Searching for signal…"</strong> beneath it.
+        </p>
+
+        <h3 id="during-a-hit">During a hit</h3>
+        <p>
+          When the scanner stops on an active frequency, the display switches to
+          a stable readout:
+        </p>
+        <ul>
+          <li>
+            <strong>The big line</strong> shows the channel's
+            <strong>alpha tag</strong> (its saved name, like "FIRE DISPATCH") if
+            it has one. A channel with no name shows the
+            <strong>frequency</strong> instead.
+          </li>
+          <li>
+            <strong>The detail line</strong> underneath is built from whatever's
+            available, separated by dots:
+            <code>146.850 • FM • CH 12 • CTCSS 123.0</code>. That's the
+            frequency, the <a href="glossary.html#modulation">modulation</a>, the
+            channel number, and the
+            <a href="glossary.html#ctcss--tone--dcs">tone</a> the transmission
+            carries (which shows only while the signal is live).
+          </li>
+          <li>
+            <strong>The signal bars</strong> on the right fill according to
+            strength.
+          </li>
+        </ul>
+
+        <h3 id="other-states">Other states</h3>
+        <ul>
+          <li>
+            <strong>Syncing</strong>: "Syncing Scanner Memory" with progress
+            text, and a panel covers the screen. (See
+            <a href="channels.html#refreshing-from-the-scanner-memory-sync"
+              >memory sync</a
+            >.)
+          </li>
+          <li>
+            <strong>Disconnected</strong>: "Scanner Offline" with a plain-language
+            reason, and the USB icon shows an error.
+          </li>
+        </ul>
+
+        <h2 id="the-controls">The controls</h2>
+        <p>
+          Four kinds of control live on the display: <strong>VOL</strong>,
+          <strong>L/O</strong>, <strong>HOLD</strong>, and the row of
+          <strong>bank</strong> buttons.
+        </p>
+
+        <h3 id="vol-volume">VOL: volume</h3>
+        <p>
+          Click <strong>VOL</strong> to open a slider. Volume runs 0 to 15.
+          Dragging it changes the scanner's speaker level, live.
+        </p>
+
+        <h3 id="hold-park-on-the-current-channel">
+          HOLD: park on the current channel
+        </h3>
+        <p>
+          <strong>HOLD</strong> stops the scanner cycling and parks it on wherever
+          it is right now. Press it again to resume scanning.
+        </p>
+        <p>
+          The button always says <strong>"HOLD"</strong>. It doesn't flip to
+          "SCAN" when the scanner is held. When Hold is active the button is
+          highlighted (filled, with amber text).
+        </p>
+
+        <h3 id="lo-lock-out-a-frequency">L/O: lock out a frequency</h3>
+        <p>
+          <strong>Lockout</strong> tells the scanner to skip something, which is
+          handy for a frequency you don't care about. The <strong>L/O</strong>
+          button opens a small menu with two choices:
+        </p>
+        <ul>
+          <li>
+            <strong>Temporary</strong>: skips the frequency you're currently on,
+            until the scanner is powered off.
+          </li>
+          <li>
+            <strong>Permanent</strong>: writes the lockout into the channel's
+            memory, so it stays skipped across power cycles.
+          </li>
+        </ul>
+        <p>
+          Both are toggles. Pick the same option again to remove the lockout. A
+          message at the top of the screen confirms each action, naming the
+          channel and whether it was enabled or cleared.
+        </p>
+        <p>
+          If you set a permanent lockout by mistake, choose
+          <strong>Permanent</strong> again while on that channel to clear it, or
+          remove it from the
+          <a href="locked-channels.html">Locked Channels</a> list on the
+          Device tab.
+        </p>
+
+        <h3 id="the-bank-buttons-1-to-9-then-0">
+          The bank buttons (1 to 9, then 0)
+        </h3>
+        <p>
+          Along the bottom are ten buttons: <strong>1 through 9, then 0</strong>
+          (that last one is bank 10). Your 500 channels are split into ten
+          <a href="glossary.html#bank">banks</a> of 50, and these buttons turn
+          each bank on or off <em>for scanning</em>:
+        </p>
+        <ul>
+          <li>
+            <strong>Highlighted</strong> (filled, amber number): the bank's 50
+            channels are <strong>included</strong> in the scan.
+          </li>
+          <li>
+            <strong>Outlined</strong> (dark number): the bank's 50 channels are
+            <strong>skipped</strong>.
+          </li>
+        </ul>
+
+        <h2 id="activity-tracking">Activity tracking</h2>
+        <p>
+          While it's running, Bearpaw keeps a record of every signal your scanner
+          stops on, and turns that record into a picture of what's active around
+          you: which channels carry the most traffic, and when. Three surfaces on
+          the Scan tab show it, and you can export the raw data to CSV.
+        </p>
+
+        <h2 id="recent-hits">Recent Hits</h2>
+        <p>
+          To the right of the display, <strong>Recent Hits</strong> lists the
+          five most recent active frequencies, newest at the top. Each row shows:
+        </p>
+        <ul>
+          <li>
+            <strong>How long ago</strong> it happened ("just now", "2 minutes
+            ago"), which updates as time passes.
+          </li>
+          <li><strong>The frequency.</strong></li>
+          <li>
+            <strong>The tag</strong> (the channel's name), or a dash if it has
+            none.
+          </li>
+          <li><strong>A mini signal-strength meter</strong> for that hit.</li>
+        </ul>
+        <div class="callout">
+          <p>
+            <strong>Repeated hits are grouped.</strong> When the same channel
+            hits several times in a row, they collapse into a single row with a
+            count — <code>WOF Rides (6)</code> means that channel was active six
+            times back-to-back. The time shown is the most recent of those hits,
+            and the signal meter is their average. A hit from a different channel
+            starts a new row, so an alternating pattern still shows each channel
+            separately.
+          </p>
+        </div>
+        <div class="callout">
+          <p>
+            A transmission has to last at least a minimum length of time (2
+            seconds by default) to show up here. Brief static bursts and key-ups
+            are ignored. You can change that threshold under
+            <a href="preferences.html"
+              >Preferences → Hit Minimum Duration</a
+            >.
+          </p>
+        </div>
+
+        <h2 id="the-dashboards">The dashboards</h2>
+        <p>
+          Below the display, two charts turn the log into a picture of your local
+          activity.
+        </p>
+
+        <h3 id="busiest-channels">Busiest Channels</h3>
+        <p>
+          A bar chart of your <strong>most active channels of all time</strong>,
+          tallest bar first, labeled by channel name.
+        </p>
+
+        <h3 id="activity-heatmap">Activity Heatmap</h3>
+        <p>
+          A grid of <strong>7 days by 24 hours</strong>: one row per day (Monday
+          to Sunday), one column per hour. The brighter a cell, the more hits
+          happened in that day-and-hour, over <strong>the last 7 days</strong>.
+          Hover any cell to see the exact count.
+        </p>
+        <div class="callout">
+          <p>
+            Busiest Channels is all-time; the Heatmap is a rolling week. Both
+            count only hits that met the minimum-duration threshold.
+          </p>
+        </div>
+
+        <h2 id="the-status-bar">The status bar</h2>
+        <p>
+          The strip along the bottom of the window is visible on every tab.
+        </p>
+        <p><strong>On the left:</strong> the connection dot and label.</p>
+        <ul>
+          <li>
+            <span class="status-dot dot-green" aria-hidden="true"></span> green plus your scanner's model name: <strong>connected</strong>
+          </li>
+          <li>
+            <span class="status-dot dot-yellow" aria-hidden="true"></span> yellow plus "Connecting…": <strong>establishing the link</strong>
+          </li>
+          <li>
+            <span class="status-dot dot-red" aria-hidden="true"></span> red plus "Disconnected": <strong>no connection</strong> (see
+            <a href="troubleshooting.html">Troubleshooting</a>)
+          </li>
+        </ul>
+        <p>Then the name of the tab you're on.</p>
+        <p>
+          <strong>On the right (Scan tab only):</strong> three running session
+          counts.
+        </p>
+        <ul>
+          <li><strong>Hits</strong>: how many hits this session.</li>
+          <li>
+            <strong>Active</strong>: total time signals were actually active this
+            session, shown as minutes:seconds. This is airtime, not a clock time.
+          </li>
+          <li>
+            <strong>Channels</strong>: how many <em>different</em> channels have
+            gone active this session. Not the number of channels in your scanner,
+            the number that have <em>had traffic</em>.
+          </li>
+        </ul>
+
+        <h2 id="exporting-your-activity-data">Exporting your activity data</h2>
+        <p>
+          Click the small <strong>export icon</strong> in the Recent Hits header,
+          or press <kbd>Ctrl/⌘ + Shift + L</kbd>. (It's greyed out until there's
+          something to export.) The dialog lets you pick a date range and download
+          the matching hits as a <strong>CSV file</strong>.
+        </p>
+        <p>
+          Each row is one hit, with its timestamp, frequency, channel, tag, and
+          how long the signal lasted. Open it in a spreadsheet and you can feed
+          the data into whatever analysis you like.
+        </p>
+        <div class="callout">
+          <p>
+            This is your <em>activity log</em>, the record of what the scanner has
+            heard. It's a different export from the channel files on the
+            <a href="channels.html#import-and-export">Channels tab</a>, which save
+            the channels in the scanner's memory.
+          </p>
+        </div>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="getting-started.html"><span class="page-dir">← Previous</span><span class="page-title">Getting Started</span></a>
+          <a class="page-next" href="channels.html"><span class="page-dir">Next →</span><span class="page-title">The Channels Tab</span></a>
+        </nav>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Close Call — Bearpaw docs</title>
+    <meta name="description" content="Close Call, Uniden's nearby-strong-signal detector: mode, alerts, and enabled bands." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html" aria-current="page">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html">Glossary</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main class="docs-content" id="content">
+        <h1>Close Call</h1>
+        <p>
+          <a href="glossary.html#close-call">Close Call</a> is Uniden's
+          nearby-strong-signal detector. It listens for a strong transmission from
+          a radio physically close to you, like a handheld at an event, and jumps
+          to that frequency automatically, even if it isn't in any of your
+          channels.
+        </p>
+        <div class="callout">
+          <p>
+            Changes here apply to the scanner immediately — the app writes them in
+            programming mode, and live scanning pauses while it does. A failed
+            write shows a red error message.
+          </p>
+        </div>
+
+        <figure class="docs-figure">
+          <img
+            src="assets/device-close-call.webp"
+            alt="The Close Call section: a Mode dropdown, Lockout Hits While Scanning toggle, Alert Beep and Alert Light toggles, and Enabled Bands switches for VHF Low, Air, VHF High, UHF, and 800 MHz."
+          />
+          <figcaption>Close Call — nearby-strong-signal detection.</figcaption>
+        </figure>
+
+        <h2 id="mode">Mode</h2>
+        <p><strong>Mode</strong> is the master switch, with three settings:</p>
+        <ul>
+          <li><strong>Off</strong>: Close Call disabled.</li>
+          <li>
+            <strong>CC DND</strong> ("Do Not Disturb"): only checks between your
+            normal scanning, so it won't interrupt what you're already listening
+            to.
+          </li>
+          <li>
+            <strong>CC Priority</strong>: checks continuously, interrupting other
+            activity to catch close calls the moment they happen.
+          </li>
+        </ul>
+        <div class="callout">
+          <p>
+            When Mode is <strong>Off</strong>, every other Close Call setting on
+            the page is greyed out.
+          </p>
+        </div>
+
+        <h2 id="other-settings">Other settings</h2>
+        <p>With a mode active, you can also set:</p>
+        <ul>
+          <li>
+            <strong>Lockout Hits While Scanning</strong>: automatically skip a
+            frequency Close Call finds, so it doesn't keep re-triggering on the
+            same one.
+          </li>
+          <li>
+            <strong>Alert Beep</strong>: beep when a close call is detected.
+          </li>
+          <li>
+            <strong>Alert Light</strong>: flash the scanner's backlight when one
+            is detected.
+          </li>
+          <li>
+            <strong>Enabled Bands</strong>: five switches (<strong>VHF Low, Air,
+            VHF High, UHF, 800 MHz</strong>) choosing which radio bands Close Call
+            watches. Turning off bands you don't care about makes it faster and
+            reduces false hits.
+          </li>
+        </ul>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="device-config.html"><span class="page-dir">← Previous</span><span class="page-title">Device Config</span></a>
+          <a class="page-next" href="service-search.html"><span class="page-dir">Next →</span><span class="page-title">Service Search</span></a>
+        </nav>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>

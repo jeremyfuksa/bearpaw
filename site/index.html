@@ -32,6 +32,7 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <a class="skip-link" href="#top">Skip to content</a>
     <svg width="0" height="0" style="position: absolute" aria-hidden="true">
       <symbol id="os-apple" viewBox="0 0 24 24">
         <path
@@ -60,8 +61,8 @@
         <img src="assets/app-icon.png" alt="" class="brand-icon" />
         <span class="brand-name">Bearpaw</span>
       </a>
-      <nav class="site-nav">
-        <a href="#features">Features</a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="docs/index.html">Docs</a>
         <a href="#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
       </nav>
@@ -158,7 +159,11 @@
       <section class="download" id="download">
         <div class="download-panel">
           <h2 class="section-title">Download</h2>
-          <p class="download-version" id="release-version">
+          <p
+            class="download-version"
+            id="release-version"
+            aria-live="polite"
+          >
             Fetching the latest release&hellip;
           </p>
           <div class="download-primary" id="download-primary">

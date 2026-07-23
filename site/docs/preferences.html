@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Preferences — Bearpaw docs</title>
+    <meta name="description" content="Bearpaw's own app settings: hit minimum duration and data retention. Not written to the scanner." />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../style.css" />
+    <link rel="stylesheet" href="docs.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../index.html">
+        <img src="../assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="index.html">Docs</a>
+        <a href="../index.html#download">Download</a>
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html" aria-current="page">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html">Glossary</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main class="docs-content" id="content">
+        <h1>Preferences</h1>
+        <p>
+          These settings live in the app on your computer, not the scanner.
+          Unlike the other Device pages, nothing here is written to the radio.
+        </p>
+
+        <figure class="docs-figure">
+          <img
+            src="assets/device-preferences.webp"
+            alt="The Preferences section: an About card with the app version and a GitHub link, a Buy me a coffee card, and Application Settings for Hit Minimum Duration and Data Retention."
+          />
+          <figcaption>Preferences — the app's own settings.</figcaption>
+        </figure>
+
+        <ul>
+          <li>
+            <strong>Hit Minimum Duration</strong>: 0.5 to 10 seconds. The shortest
+            a transmission must last for the app to record it as a hit in your
+            <a href="scan.html#recent-hits">activity log</a>. Raise it to filter
+            out brief static bursts; lower it to catch quick exchanges. It's an
+            app-side logging filter, separate from how the scanner behaves.
+          </li>
+          <li>
+            <strong>Data Retention</strong>: 30 Days, 90 Days, or 1 Year. How long
+            the app keeps its own activity and analytics logs before automatically
+            deleting the old ones.
+          </li>
+        </ul>
+        <p>
+          The page also has an <strong>About</strong> card (the app version, and a
+          link to the project on GitHub) and a
+          <strong>Buy me a coffee</strong> link to support the developer.
+        </p>
+        <nav class="docs-pagination" aria-label="Guide pages">
+          <a class="page-prev" href="locked-channels.html"><span class="page-dir">← Previous</span><span class="page-title">Locked Channels</span></a>
+          <a class="page-next" href="troubleshooting.html"><span class="page-dir">Next →</span><span class="page-title">Menu, Shortcuts & Troubleshooting</span></a>
+        </nav>
+      </main>
+    </div>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="../assets/app-icon.png" alt="" class="footer-icon" aria-hidden="true" />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
+      <p>
+        MIT licensed &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+    </footer>
+  </body>
+</html>

@@ -72,18 +72,20 @@ seconds the first time.
 
 ## Learn your way around
 
-The full user guide walks through every part of the app:
+The full user guide lives at **[bearpaw.app/docs](https://bearpaw.app/docs/)** and
+walks through every part of the app:
 
-- **[Getting Started](docs/guide/getting-started.md)**: from plugging in to your
-  first received signal.
-- **[The Scan Tab](docs/guide/scan.md)**: the live display, the "hit" workflow,
-  and the on-screen controls.
-- **[The Channels Tab](docs/guide/channels.md)**: viewing and editing your 500
-  channels, and how to save your changes back to the radio.
-- **[The Device Tab](docs/guide/device.md)**: the scanner's own settings plus the app's preferences.
-- **[Menu & Keyboard Shortcuts](docs/guide/troubleshooting.md#menu--keyboard-shortcuts)**
-  and **[Troubleshooting](docs/guide/troubleshooting.md)**.
-- **[Glossary](docs/guide/glossary.md)**
+- **[Getting Started](https://bearpaw.app/docs/getting-started.html)**: from
+  plugging in to your first received signal.
+- **[The Scan Tab](https://bearpaw.app/docs/scan.html)**: the live display, the
+  "hit" workflow, and the on-screen controls.
+- **[The Channels Tab](https://bearpaw.app/docs/channels.html)**: viewing and
+  editing your 500 channels, and how to save your changes back to the radio.
+- **[The Device Tab](https://bearpaw.app/docs/device.html)**: the scanner's own
+  settings plus the app's preferences.
+- **[Menu & Keyboard Shortcuts](https://bearpaw.app/docs/troubleshooting.html#menu--keyboard-shortcuts)**
+  and **[Troubleshooting](https://bearpaw.app/docs/troubleshooting.html)**.
+- **[Glossary](https://bearpaw.app/docs/glossary.html)**
 
 ## What Bearpaw is and isn't
 
