@@ -227,12 +227,12 @@ export function ScanView({
                   disabled={fullActivityLog.length === 0}
                   className={cn(
                     'inline-flex items-center justify-center rounded-scanner-xs border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:border-white/20 hover:text-white',
-                    'h-[clamp(20px,4.5cqmin,72px)] w-[clamp(24px,5cqmin,84px)]',
+                    'h-[clamp(28px,4.5cqmin,72px)] w-[clamp(28px,5cqmin,84px)]',
                     fullActivityLog.length === 0 && 'opacity-50 cursor-not-allowed',
                   )}
                   aria-label="Export activity log"
                 >
-                  <FileText aria-hidden className="size-[clamp(12px,2.5cqmin,40px)]" />
+                  <FileText aria-hidden className="size-[clamp(20px,2.5cqmin,40px)]" />
                 </button>
               </TooltipTrigger>
               <TooltipContent

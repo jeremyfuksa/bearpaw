@@ -1382,7 +1382,7 @@ export function DeviceTab() {
                       onClick={() => openExternalUrl('https://github.com/jeremyfuksa/bearpaw')}
                       className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
                     >
-                      <Code size={10} aria-hidden /> Github
+                      <Code size={20} aria-hidden /> Github
                     </button>
                   </div>
                 </div>
@@ -1404,7 +1404,7 @@ export function DeviceTab() {
                     onClick={() => openExternalUrl('https://buymeacoffee.com/jeremyfuksa')}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-sm font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
                   >
-                    <Heart aria-hidden className="w-3 h-3 fill-white/20" />
+                    <Heart aria-hidden className="w-5 h-5 fill-white/20" />
                     Buy me a coffee
                   </button>
                 </div>
