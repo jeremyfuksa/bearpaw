@@ -475,9 +475,46 @@ code {
     padding-bottom: 0.5rem;
   }
 
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-actions .btn,
+  .download-primary .btn {
+    display: block;
+    text-align: center;
+  }
+
+  /* Icon centered against the full two-line block: row becomes a grid with an
+     icon column and a text column; the platform label lifts into the text
+     column via negative order and sits under the filename. */
   .asset-list a {
-    flex-wrap: wrap;
-    row-gap: 0.25rem;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    column-gap: 0.75rem;
+    row-gap: 0.125rem;
+  }
+
+  .asset-name {
+    display: contents;
+  }
+
+  .asset-icon {
+    grid-row: 1 / span 2;
+  }
+
+  .asset-name span {
+    grid-column: 2;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .asset-platform {
+    grid-column: 2;
+    text-align: left;
   }
 
   .hero {
