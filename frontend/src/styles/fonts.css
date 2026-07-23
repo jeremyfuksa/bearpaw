@@ -1,3 +1,2 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+/* System font stack — no network fonts, so the app renders fully offline.
+   Font families are defined via the --font-* tokens in theme.css. */
