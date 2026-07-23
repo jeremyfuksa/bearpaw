@@ -14,6 +14,19 @@
       sizes="32x32"
       href="assets/favicon-32.png"
     />
+    <!-- Google Analytics (GA4) -->
+    <script
+      async
+      src="https://www.googletagmanager.com/gtag/js?id=G-VWKWBEC25R"
+    ></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+      gtag("config", "G-VWKWBEC25R");
+    </script>
     <meta
       property="og:title"
       content="Bearpaw: see the radio world around you"
@@ -159,11 +172,7 @@
       <section class="download" id="download">
         <div class="download-panel">
           <h2 class="section-title">Download</h2>
-          <p
-            class="download-version"
-            id="release-version"
-            aria-live="polite"
-          >
+          <p class="download-version" id="release-version" aria-live="polite">
             Fetching the latest release&hellip;
           </p>
           <div class="download-primary" id="download-primary">

@@ -1,5 +1,48 @@
 const REPO = "jeremyfuksa/bearpaw";
 
+// Analytics: fire GA4 events for the conversions we care about — download
+// intent, real installer downloads (per platform), and coffee clicks. Downloads
+// use event delegation because the links are injected by loadRelease() after
+// fetch; a listener bound at parse time would miss them. gtag may be absent if
+// GA is blocked or offline, so guard every call.
+function track(name, params) {
+  if (typeof window.gtag === "function") window.gtag("event", name, params);
+}
+
+// Map a download link to its platform via the same asset name, so download
+// events carry which OS was picked. Set once loadRelease() knows the assets.
+let assetPlatformByUrl = {};
+
+function initAnalytics() {
+  const hero = document.getElementById("hero-download");
+  if (hero) {
+    hero.addEventListener("click", () => track("download_intent"));
+  }
+
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest("a[href]");
+    if (!link) return;
+    const href = link.href;
+
+    if (href.startsWith("https://buymeacoffee.com/")) {
+      track("coffee_click");
+      return;
+    }
+
+    const platform = assetPlatformByUrl[href];
+    if (platform) {
+      track("download", {
+        platform: platform.key,
+        file: platform.file,
+        source: link.closest("#asset-list") ? "asset-list" : "primary-button",
+      });
+    } else if (href === `https://github.com/${REPO}/releases`) {
+      // The static fallback button, shown when the release fetch fails.
+      track("download", { platform: "unknown", source: "releases-fallback" });
+    }
+  });
+}
+
 // Order matters: first pattern that matches an asset name wins its slot.
 const PLATFORMS = [
   {
@@ -78,6 +121,15 @@ async function loadRelease() {
     if (found.length === 0)
       throw new Error("no installer assets in latest release");
 
+    // Record each download URL's platform so the delegated click handler can
+    // tag download events without re-deriving the platform from the DOM.
+    assetPlatformByUrl = Object.fromEntries(
+      found.map((p) => [
+        p.asset.browser_download_url,
+        { key: p.key, file: p.asset.name },
+      ]),
+    );
+
     versionEl.textContent = `Latest release: ${release.tag_name}`;
 
     const mine = found.find((p) => p.key === detectPlatformKey());
@@ -114,4 +166,5 @@ async function loadRelease() {
   }
 }
 
+initAnalytics();
 loadRelease();
