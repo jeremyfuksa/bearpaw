@@ -16,12 +16,13 @@
     <link rel="stylesheet" href="docs.css" />
   </head>
   <body>
+    <a class="skip-link" href="#content">Skip to content</a>
     <header class="site-header">
       <a class="brand" href="../index.html">
         <img src="../assets/app-icon.png" alt="" class="brand-icon" />
         <span class="brand-name">Bearpaw</span>
       </a>
-      <nav class="site-nav">
+      <nav class="site-nav" aria-label="Primary">
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -30,29 +31,31 @@
 
     <div class="docs-layout">
       <aside class="docs-sidebar">
-        <p class="docs-sidebar-title">User Guide</p>
-        <ul class="docs-nav">
-          <li><a href="index.html">Overview</a></li>
-          <li><a href="getting-started.html">Getting Started</a></li>
-          <li><a href="scan.html">The Scan Tab</a></li>
-          <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
-          <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
-          <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
-          <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
-          <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
-          <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
-          <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
-          <li><a href="glossary.html" aria-current="page">Glossary</a></li>
-        </ul>
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html" aria-current="page">Glossary</a></li>
+          </ul>
+        </nav>
       </aside>
 
-      <main class="docs-content">
+      <main class="docs-content docs-glossary" id="content">
         <h1>Glossary</h1>
         <p>Every radio and app term the guide uses, defined once.</p>
 
-        <h3 id="alpha-tag">Alpha tag</h3>
+        <h2 id="alpha-tag">Alpha tag</h2>
         <p>
           The text name saved for a channel, like "FIRE DISPATCH" or "NOAA WX1."
           It's what shows on the big display during a <a href="#hit">hit</a>
@@ -66,7 +69,7 @@
           </p>
         </div>
 
-        <h3 id="bank">Bank</h3>
+        <h2 id="bank">Bank</h2>
         <p>
           A group of 50 channels. The BC125AT's 500 channels are divided into
           <strong>10 banks of 50</strong>: channels 1 to 50 are Bank 1, 51 to 100
@@ -77,7 +80,7 @@
           <a href="channels.html#banks-the-sidebar">Channels tab</a>).
         </p>
 
-        <h3 id="close-call">Close Call</h3>
+        <h2 id="close-call">Close Call</h2>
         <p>
           Uniden's feature for detecting a strong signal from a transmitter
           physically close to you and jumping to it automatically, even if that
@@ -85,7 +88,7 @@
           <a href="close-call.html">Device tab</a>.
         </p>
 
-        <h3 id="ctcss--tone--dcs">CTCSS / tone / DCS</h3>
+        <h2 id="ctcss--tone--dcs">CTCSS / tone / DCS</h2>
         <p>
           Sub-audible codes sent along with a transmission so a receiver can be set
           to open only for its own group and ignore everyone else sharing the
@@ -107,7 +110,7 @@
           long as the signal is open.
         </p>
 
-        <h3 id="delay">Delay</h3>
+        <h2 id="delay">Delay</h2>
         <p>
           How long the scanner waits on a channel after a transmission ends before
           it resumes scanning, so you have time to hear the reply. Set per channel,
@@ -115,7 +118,7 @@
           where the scanner holds <em>before</em> the next transmission.
         </p>
 
-        <h3 id="draft">Draft</h3>
+        <h2 id="draft">Draft</h2>
         <p>
           An edit you've made on the
           <a href="channels.html">Channels tab</a> that is
@@ -127,7 +130,7 @@
           >.)
         </p>
 
-        <h3 id="hit">Hit</h3>
+        <h2 id="hit">Hit</h2>
         <p>
           When the scanner stops on a frequency because a signal is present. The
           display switches from "Scanning…" to the live frequency and details, and
@@ -136,7 +139,7 @@
           <a href="getting-started.html#step-4-your-first-hit">hit workflow</a>.)
         </p>
 
-        <h3 id="hold">Hold</h3>
+        <h2 id="hold">Hold</h2>
         <p>
           A mode where the scanner stays parked on the current channel instead of
           cycling through them. <em>You</em> turn Hold on (with the HOLD button or
@@ -145,7 +148,7 @@
           waiting out the transmission.
         </p>
 
-        <h3 id="lockout">Lockout</h3>
+        <h2 id="lockout">Lockout</h2>
         <p>
           Telling the scanner to <strong>skip</strong> a frequency or channel so it
           stops stopping on it.
@@ -169,7 +172,7 @@
           <a href="locked-channels.html">Locked Channels</a>.
         </p>
 
-        <h3 id="memory-sync">Memory sync</h3>
+        <h2 id="memory-sync">Memory sync</h2>
         <p>
           Reading all 500 channels out of the scanner into the app. Because the
           scanner hands them over one at a time, it takes about 30 to 45 seconds.
@@ -178,7 +181,7 @@
           channels between sessions; it re-reads them from the radio each time.
         </p>
 
-        <h3 id="modulation">Modulation</h3>
+        <h2 id="modulation">Modulation</h2>
         <p>
           How a signal carries its audio. The BC125AT handles <strong>AM</strong>,
           <strong>FM</strong>, and <strong>NFM</strong> (narrow FM). When
@@ -187,7 +190,7 @@
           the frequency.
         </p>
 
-        <h3 id="priority">Priority</h3>
+        <h2 id="priority">Priority</h2>
         <p>
           A channel the scanner checks periodically even while it's scanning or
           holding somewhere else, so you don't miss activity on a channel that
@@ -198,13 +201,13 @@
           <a href="device-config.html#scanning-logic">Device tab</a>.
         </p>
 
-        <h3 id="rssi">RSSI</h3>
+        <h2 id="rssi">RSSI</h2>
         <p>
           Received Signal Strength Indicator: how strong the received signal is.
           Bearpaw shows it as a five-bar meter next to the frequency during a hit.
         </p>
 
-        <h3 id="squelch">Squelch</h3>
+        <h2 id="squelch">Squelch</h2>
         <p>
           The circuit that mutes the receiver until a signal is strong enough to be
           worth hearing. Raising squelch means only stronger signals get through;
@@ -218,10 +221,10 @@
           </p>
         </div>
 
-        <h3 id="sync">Sync</h3>
+        <h2 id="sync">Sync</h2>
         <p>See <a href="#memory-sync">memory sync</a>.</p>
 
-        <h3 id="upload-upload-changes">Upload (Upload Changes)</h3>
+        <h2 id="upload-upload-changes">Upload (Upload Changes)</h2>
         <p>
           The action that writes your pending channel <a href="#draft">drafts</a>
           to the scanner. Until you press <strong>Upload Changes</strong> on the

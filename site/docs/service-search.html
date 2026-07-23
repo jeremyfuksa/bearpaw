@@ -16,12 +16,13 @@
     <link rel="stylesheet" href="docs.css" />
   </head>
   <body>
+    <a class="skip-link" href="#content">Skip to content</a>
     <header class="site-header">
       <a class="brand" href="../index.html">
         <img src="../assets/app-icon.png" alt="" class="brand-icon" />
         <span class="brand-name">Bearpaw</span>
       </a>
-      <nav class="site-nav">
+      <nav class="site-nav" aria-label="Primary">
         <a href="index.html">Docs</a>
         <a href="../index.html#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -30,25 +31,27 @@
 
     <div class="docs-layout">
       <aside class="docs-sidebar">
-        <p class="docs-sidebar-title">User Guide</p>
-        <ul class="docs-nav">
-          <li><a href="index.html">Overview</a></li>
-          <li><a href="getting-started.html">Getting Started</a></li>
-          <li><a href="scan.html">The Scan Tab</a></li>
-          <li><a href="channels.html">The Channels Tab</a></li>
-          <li><a href="device.html">The Device Tab</a></li>
-          <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
-          <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
-          <li class="docs-nav-child"><a href="service-search.html" aria-current="page">Service Search</a></li>
-          <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
-          <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
-          <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
-          <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
-          <li><a href="glossary.html">Glossary</a></li>
-        </ul>
+        <p class="docs-sidebar-title" id="guide-nav-title">User Guide</p>
+        <nav aria-labelledby="guide-nav-title">
+          <ul class="docs-nav">
+            <li><a href="index.html">Overview</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="scan.html">The Scan Tab</a></li>
+            <li><a href="channels.html">The Channels Tab</a></li>
+            <li><a href="device.html">The Device Tab</a></li>
+            <li class="docs-nav-child"><a href="device-config.html">Device Config</a></li>
+            <li class="docs-nav-child"><a href="close-call.html">Close Call</a></li>
+            <li class="docs-nav-child"><a href="service-search.html" aria-current="page">Service Search</a></li>
+            <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
+            <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
+            <li class="docs-nav-child"><a href="preferences.html">Preferences</a></li>
+            <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
+            <li><a href="glossary.html">Glossary</a></li>
+          </ul>
+        </nav>
       </aside>
 
-      <main class="docs-content">
+      <main class="docs-content" id="content">
         <h1>Service Search</h1>
         <p>
           The BC125AT has built-in, factory-set frequency ranges for common radio

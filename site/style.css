@@ -48,6 +48,35 @@ a:focus-visible,
   outline-offset: 3px;
 }
 
+/* ---- skip link ---- */
+
+/* Off-screen until focused, then it drops into the top-left corner so a
+   keyboard user can jump straight past the header/nav to the main content. */
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -3rem;
+  z-index: 100;
+  background: var(--brand);
+  color: #1c1f27;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
+}
+
 code {
   font-family: var(--font-mono);
   font-size: 0.875em;

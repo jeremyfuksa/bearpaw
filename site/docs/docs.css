@@ -110,6 +110,17 @@
   margin: 2rem 0 0.75rem;
 }
 
+/* Glossary terms are h2 for a correct heading outline (each term is a direct
+   child of the page h1), but they read at h3 weight/size without the section
+   divider — the term list shouldn't look like a stack of top-level sections. */
+.docs-glossary h2 {
+  font-weight: 700;
+  font-size: 1.3125rem;
+  margin: 2rem 0 0.75rem;
+  padding-top: 0;
+  border-top: none;
+}
+
 .docs-content p,
 .docs-content li {
   font-size: 1.0625rem;
