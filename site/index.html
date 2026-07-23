@@ -3,30 +3,65 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bearpaw — desktop control for the Uniden BC125AT</title>
+    <title>Bearpaw: desktop control for the Uniden BC125AT</title>
     <meta
       name="description"
-      content="Bearpaw puts your Uniden BC125AT scanner on your computer screen. Live display, 500-channel editing, CSV import/export, and always-on activity logging. macOS, Windows, Linux."
+      content="Your Uniden BC125AT, live on any computer. As it scans, Bearpaw keeps track of everything the radio picks up, and shows you the patterns as they build. Mac, Windows, Linux."
     />
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
-    <meta property="og:title" content="Bearpaw — desktop control for the Uniden BC125AT" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="assets/favicon-32.png"
+    />
+    <meta
+      property="og:title"
+      content="Bearpaw: see the radio world around you"
+    />
     <meta
       property="og:description"
-      content="See what the scanner sees. Edit all 500 channels. Log every hit. macOS, Windows, Linux."
+      content="Your Uniden BC125AT, live on any computer. Bearpaw tracks what the radio picks up, and shows you the patterns. Mac, Windows, Linux."
     />
-    <meta property="og:image" content="https://jeremyfuksa.github.io/bearpaw/assets/hero.png" />
+    <meta
+      property="og:image"
+      content="https://jeremyfuksa.github.io/bearpaw/assets/hero.png"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;700;800&family=Manrope:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="os-apple" viewBox="0 0 24 24">
+        <path
+          d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
+        />
+      </symbol>
+      <symbol id="os-windows" viewBox="0 0 24 24">
+        <path
+          d="M0,0H11.377V11.372H0ZM12.623,0H24V11.372H12.623ZM0,12.623H11.377V24H0Zm12.623,0H24V24H12.623"
+        />
+      </symbol>
+      <symbol id="os-ubuntu" viewBox="0 0 24 24">
+        <path
+          d="M17.61.455a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zM12.92.8C8.923.777 5.137 2.941 3.148 6.451a4.5 4.5 0 0 1 .26-.007 4.92 4.92 0 0 1 2.585.737A8.316 8.316 0 0 1 12.688 3.6 4.944 4.944 0 0 1 13.723.834 11.008 11.008 0 0 0 12.92.8zm9.226 4.994a4.915 4.915 0 0 1-1.918 2.246 8.36 8.36 0 0 1-.273 8.303 4.89 4.89 0 0 1 1.632 2.54 11.156 11.156 0 0 0 .559-13.089zM3.41 7.932A3.41 3.41 0 0 0 0 11.342a3.41 3.41 0 0 0 3.41 3.409 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zm2.027 7.866a4.908 4.908 0 0 1-2.915.358 11.1 11.1 0 0 0 7.991 6.698 11.234 11.234 0 0 0 2.422.249 4.879 4.879 0 0 1-.999-2.85 8.484 8.484 0 0 1-.836-.136 8.304 8.304 0 0 1-5.663-4.32zm11.405.928a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41z"
+        />
+      </symbol>
+      <symbol id="os-appimage" viewBox="0 0 24 24">
+        <path
+          d="M1.64 0C.735 0 0 .736 0 1.64v20.72C0 23.265.736 24 1.64 24h20.72c.904 0 1.64-.736 1.64-1.64V1.64C24 .735 23.264 0 22.36 0Zm8.56 2.42h3.6v3.6h1.912L12 10.22l-3.713-4.2H10.2Zm1.331 8.4h1.313c.103 0 .169.177.169.394v1.368c.417.096.81.266 1.162.488l.975-.975c.153-.153.32-.223.394-.15l.918.919c.074.073.004.24-.15.393l-.975.975c.223.352.393.745.488 1.163h1.369c.217 0 .394.065.394.169v1.312c0 .104-.177.169-.394.169h-1.369a3.74 3.74 0 0 1-.487 1.162l.974.975c.154.154.224.32.15.394l-.918.919c-.074.073-.24.003-.394-.15l-.975-.975a3.74 3.74 0 0 1-1.163.487v1.37c0 .216-.065.393-.168.393H11.53c-.103 0-.169-.177-.169-.394v-1.369a3.74 3.74 0 0 1-1.162-.487l-.975.975c-.153.153-.32.223-.394.15l-.918-.919c-.074-.073-.004-.24.15-.394l.974-.975a3.74 3.74 0 0 1-.487-1.162H7.181c-.217 0-.393-.065-.393-.169v-1.312c0-.104.176-.17.393-.17H8.55a3.74 3.74 0 0 1 .487-1.162l-.974-.975c-.154-.153-.224-.32-.15-.393l.918-.92c.074-.072.24-.002.394.15l.975.976a3.74 3.74 0 0 1 1.163-.488v-1.368c0-.217.065-.394.168-.394zm.656 3.731c-.917 0-1.668.752-1.668 1.669s.751 1.669 1.669 1.669c.917 0 1.668-.752 1.668-1.67 0-.916-.751-1.668-1.669-1.668z"
+        />
+      </symbol>
+    </svg>
+
     <header class="site-header">
       <a class="brand" href="#top">
-        <img src="assets/bearpaw.svg" alt="Bearpaw" class="brand-logo" />
+        <img src="assets/app-icon.png" alt="" class="brand-icon" />
+        <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav">
         <a href="#features">Features</a>
@@ -38,17 +73,22 @@
     <main id="top">
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Uniden BC125AT &middot; macOS / Windows / Linux</p>
-          <h1>Your BC125AT, on your screen.</h1>
+          <h1>See the radio world around you.</h1>
           <p class="lede">
-            See what the scanner sees — the live frequency, the alpha tag, the
-            signal strength — in a display big enough to read across the room.
-            Edit all 500 channels without the radio's keypad, and move them in
-            and out as plain CSV or native Uniden files.
+            You listen. Bearpaw listens with you, keeping track of everything
+            your scanner picks up and showing you the patterns as they build.
+            Download a CSV if you want to dive deeper into the area's radio
+            activity.
           </p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="#download" id="hero-download">Download the beta</a>
-            <a class="btn btn-secondary" href="https://github.com/jeremyfuksa/bearpaw">View on GitHub</a>
+            <a class="btn btn-primary" href="#download" id="hero-download"
+              >Download the beta</a
+            >
+            <a
+              class="btn btn-secondary"
+              href="https://github.com/jeremyfuksa/bearpaw"
+              >View on GitHub</a
+            >
           </div>
         </div>
         <figure class="hero-shot">
@@ -56,7 +96,10 @@
             <img
               src="assets/hero.png"
               alt="Bearpaw showing a live scanner hit: frequency, alpha tag, and signal strength"
-              onerror="this.parentElement.classList.add('bezel-empty'); this.remove()"
+              onerror="
+                this.parentElement.classList.add('bezel-empty');
+                this.remove();
+              "
             />
             <div class="bezel-placeholder" aria-hidden="true">
               <span class="ph-freq">146.8500</span>
@@ -66,71 +109,50 @@
         </figure>
       </section>
 
-      <section class="logstrip" aria-label="Example activity log">
-        <div class="logstrip-head">
-          <span class="led" aria-hidden="true"></span>
-          <span class="logstrip-title">ACTIVITY LOG</span>
-          <span class="logstrip-note">recorded while you listen — yours as CSV, any time</span>
+      <section class="showcase">
+        <figure class="showcase-shot">
+          <div class="bezel">
+            <img
+              src="assets/channels.png"
+              alt="Bearpaw's Channels tab: an editable grid of channels with frequency, tag, mode, tone, and lockout columns, plus import, export, and upload controls"
+            />
+          </div>
+        </figure>
+        <div class="showcase-copy">
+          <h2>The channel editor, everywhere.</h2>
+          <p>
+            The BC125AT's own software is Windows-only. Bearpaw does the same
+            job on Mac, Windows, and Linux: edit all 500 channels, banks, tones,
+            and lockouts, then upload the lot to the radio.
+          </p>
+          <p>
+            Import and export as CSV or native Uniden files, so you can use
+            legacy backup files.
+          </p>
         </div>
-        <ul class="logrows">
-          <li class="logrow"><span class="lr-time">14:32:07</span><span class="lr-freq">146.8500</span><span class="lr-tag">KC 2M RPTR</span></li>
-          <li class="logrow"><span class="lr-time">14:32:41</span><span class="lr-freq">162.5500</span><span class="lr-tag">NOAA WX</span></li>
-          <li class="logrow"><span class="lr-time">14:33:12</span><span class="lr-freq">154.2800</span><span class="lr-tag">FIRE MUTUAL</span></li>
-          <li class="logrow"><span class="lr-time">14:33:55</span><span class="lr-freq">155.4750</span><span class="lr-tag">LAW MUTUAL</span></li>
-          <li class="logrow logrow-scanning"><span class="lr-time">--:--:--</span><span class="lr-freq lr-scan">Scanning&hellip;</span><span class="lr-tag"></span></li>
-        </ul>
       </section>
 
       <section class="features" id="features">
-        <h2 class="section-title">What it does</h2>
         <div class="feature-grid">
           <article class="card">
-            <p class="eyebrow">Live display</p>
             <h3>Readable across the room</h3>
             <p>
-              Frequency, alpha tag, modulation, and signal strength, updated
-              live while the scanner runs. No squinting at a two-line LCD.
+              Everything from the scanner display, big enough to read from
+              across the room. No more tiny LCD.
             </p>
           </article>
           <article class="card">
-            <p class="eyebrow">Channel memory</p>
-            <h3>Edit all 500 channels</h3>
+            <h3>Every knob, from the app</h3>
             <p>
-              Every channel, bank, tone, and lockout — edited from a real
-              keyboard instead of the radio's keypad.
+              The scanner's own settings at your fingertips without all the
+              button pressing.
             </p>
           </article>
           <article class="card">
-            <p class="eyebrow">Import / export</p>
-            <h3>Plain CSV in and out</h3>
+            <h3>Charts, not just a log</h3>
             <p>
-              Move channel lists in and out of the radio as CSV or native
-              Uniden files. Your data stays yours.
-            </p>
-          </article>
-          <article class="card">
-            <p class="eyebrow">Activity logging</p>
-            <h3>Every hit, on the record</h3>
-            <p>
-              The one thing the radio and the official software never did:
-              Bearpaw logs every hit while it runs and hands you the raw data
-              as CSV whenever you want it.
-            </p>
-          </article>
-          <article class="card">
-            <p class="eyebrow">Wire protocol</p>
-            <h3>Speaks fluent Uniden</h3>
-            <p>
-              Talks to the scanner the same way Uniden's Sentinel software
-              does, over the USB cable — verified against real wire captures.
-            </p>
-          </article>
-          <article class="card">
-            <p class="eyebrow">Cross-platform</p>
-            <h3>macOS, Windows, Linux</h3>
-            <p>
-              One app, built with Tauri, running live while you listen — on
-              whatever machine sits next to the radio.
+              Bearpaw gives you a visual of radio activity. You can also
+              download the log and do your own thing.
             </p>
           </article>
         </div>
@@ -139,18 +161,25 @@
       <section class="download" id="download">
         <div class="download-panel">
           <h2 class="section-title">Download</h2>
-          <p class="download-version" id="release-version">Fetching the latest release&hellip;</p>
+          <p class="download-version" id="release-version">
+            Fetching the latest release&hellip;
+          </p>
           <div class="download-primary" id="download-primary">
-            <a class="btn btn-primary" href="https://github.com/jeremyfuksa/bearpaw/releases">
+            <a
+              class="btn btn-primary"
+              href="https://github.com/jeremyfuksa/bearpaw/releases"
+            >
               Download from GitHub Releases
             </a>
           </div>
           <ul class="asset-list" id="asset-list"></ul>
           <div class="install-notes">
             <p class="install-beta">
-              <strong>This is a beta.</strong> It's been tested against real
-              hardware, but you may hit rough edges. Found one?
-              <a href="https://github.com/jeremyfuksa/bearpaw/issues">Open an issue</a>.
+              <strong>This is a beta.</strong> You may hit rough edges. Found
+              one?
+              <a href="https://github.com/jeremyfuksa/bearpaw/issues"
+                >Open an issue</a
+              >.
             </p>
             <p>
               Beta builds aren't code-signed yet, so your computer flags them
@@ -160,7 +189,8 @@
               <li>
                 <strong>macOS:</strong> right-click the app and choose
                 <em>Open</em>, then <em>Open</em> again. Still refuses? Run
-                <code>xattr -cr /Applications/Bearpaw.app</code> once in Terminal.
+                <code>xattr -cr /Applications/Bearpaw.app</code> once in
+                Terminal.
               </li>
               <li>
                 <strong>Windows:</strong> at &ldquo;Windows protected your
@@ -177,11 +207,25 @@
     </main>
 
     <footer class="site-footer">
-      <img src="assets/bearpaw.svg" alt="" class="footer-logo" aria-hidden="true" />
+      <div class="footer-brand">
+        <img
+          src="assets/app-icon.png"
+          alt=""
+          class="footer-icon"
+          aria-hidden="true"
+        />
+        <span class="footer-name">Bearpaw</span>
+      </div>
+      <p class="footer-credit">
+        Made by
+        <a href="https://jeremyfuksa.com">Jeremy Fuksa</a> &middot; KF0NUI
+      </p>
       <p>
         MIT licensed &middot;
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a> &middot;
-        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a> &middot;
+        <a href="https://github.com/jeremyfuksa/bearpaw/issues">Issues</a>
+      </p>
+      <p class="footer-support">
         <a href="https://buymeacoffee.com/jeremyfuksa">Buy me a coffee</a>
       </p>
     </footer>
