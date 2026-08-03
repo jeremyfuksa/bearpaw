@@ -50,7 +50,6 @@ export interface ChannelDraft {
   tone_squelch: string;
   delay: string;
   lockout: boolean;
-  priority: boolean;
   comments: string;
 }
 

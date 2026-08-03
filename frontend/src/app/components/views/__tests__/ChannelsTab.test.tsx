@@ -545,9 +545,10 @@ describe('ChannelsTab', () => {
       const store = createMockStore({
         channels: [channel],
         memoryDrafts: {
-          // Stale snapshot: priority/lockout still true from before the
-          // immediate clear updated the channel to false.
-          1: createTestChannelDraft({ priority: true, lockout: true }),
+          // Stale snapshot: lockout still true from before the immediate clear
+          // updated the channel to false. (Priority can no longer go stale this
+          // way — ChannelDraft has no `priority` field as of #250.)
+          1: createTestChannelDraft({ lockout: true }),
         },
       });
       setMockStore(store);
@@ -579,16 +580,15 @@ describe('ChannelsTab', () => {
       const store = createMockStore({
         channels: [channel],
         memoryDrafts: {
-          // Draft equal to the channel on every batched field. priority=true
-          // here mirrors an immediate toggle, but priority never counts as a
-          // draft diff (it has its own endpoint), so this draft is a no-op.
+          // Draft equal to the channel on every batched field, so it is a
+          // no-op. Priority is absent by construction (#250): it has its own
+          // immediate endpoint and never counts as a draft diff.
           1: createTestChannelDraft({
             frequency: '151.2500',
             alpha_tag: 'Test Channel',
             modulation: 'FM',
             tone_squelch: '',
             delay: '2',
-            priority: true,
           }),
         },
       });

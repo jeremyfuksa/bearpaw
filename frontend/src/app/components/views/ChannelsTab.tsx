@@ -194,7 +194,6 @@ function buildDraft(channel: ChannelData): ChannelDraft {
     tone_squelch: channel.tone_squelch?.toString() ?? '',
     delay: channel.delay.toString(),
     lockout: channel.lockout,
-    priority: channel.priority,
     comments: '',
   };
 }
@@ -207,7 +206,6 @@ function buildEmptyDraft(): ChannelDraft {
     tone_squelch: '',
     delay: '0',
     lockout: false,
-    priority: false,
     comments: '',
   };
 }
@@ -353,16 +351,16 @@ export function ChannelsTab() {
           tone_squelch_kind: toneKind,
           tone_dcs_code: toneKind === 'dcs' ? (channel.tone_dcs_code ?? null) : null,
           lockout: draft?.lockout ?? channel.lockout,
-          // Priority no longer rides the plain-CIN upload path (Task 6): it
-          // has its own immediate endpoint (setChannelPriority) because a
-          // plain CIN write can't clear priority and would trigger false
-          // channel_write_mismatch warnings. Always mirror the channel's
-          // live value here so priority never counts as a draft diff.
+          // Priority does not ride the plain-CIN upload path (Task 6): it has
+          // its own immediate endpoint (setChannelPriority) because a plain CIN
+          // write can't clear priority and would trigger false
+          // channel_write_mismatch warnings. The API payload still carries the
+          // field, so mirror the channel's live value — it is never a draft
+          // diff, which is why ChannelDraft has no `priority` (#250).
           priority: channel.priority,
         };
 
         const lockoutChanged = normalized.lockout !== channel.lockout;
-        const priorityChanged = normalized.priority !== channel.priority;
         const targetIndex = reorderTargets[channelIndex] ?? channelIndex;
         const hasChanges =
           normalized.frequency !== channel.frequency ||
@@ -371,7 +369,6 @@ export function ChannelsTab() {
           normalized.delay !== channel.delay ||
           normalized.tone_squelch !== (channel.tone_squelch ?? null) ||
           lockoutChanged ||
-          priorityChanged ||
           targetIndex !== channelIndex;
 
         if (!hasChanges) return acc;
@@ -387,7 +384,6 @@ export function ChannelsTab() {
             bank: bankValue,
           },
           lockoutChanged,
-          priorityChanged,
           targetIndex,
         });
 
@@ -399,7 +395,6 @@ export function ChannelsTab() {
         draft: ChannelDraft | undefined;
         payload: Omit<ChannelData, 'index'>;
         lockoutChanged: boolean;
-        priorityChanged: boolean;
         targetIndex: number;
       }>,
     );
@@ -529,7 +524,7 @@ export function ChannelsTab() {
             ...payload,
             bank: targetBank,
           };
-          if (!change.lockoutChanged && !change.priorityChanged) {
+          if (!change.lockoutChanged) {
             try {
               const latest = await api.getChannel(change.channelIndex);
               payload = {
@@ -581,19 +576,15 @@ export function ChannelsTab() {
                 matchesPrimaryFields,
               });
               const lockoutApplied = refreshed.lockout === change.payload.lockout;
-              const priorityApplied = refreshed.priority === change.payload.priority;
               setChannels((prev) =>
                 prev.map((entry) => (entry.index === refreshed.index ? refreshed : entry)),
               );
               setMemoryDraft(refreshed.index, buildDraft(refreshed));
               if (matchesPrimaryFields) {
-                if (
-                  (change.lockoutChanged && !lockoutApplied) ||
-                  (change.priorityChanged && !priorityApplied)
-                ) {
+                if (change.lockoutChanged && !lockoutApplied) {
                   warnings.push({
                     index: change.channelIndex,
-                    detail: 'Lockout/Priority did not apply',
+                    detail: 'Lockout did not apply',
                   });
                 }
                 continue;
@@ -647,7 +638,7 @@ export function ChannelsTab() {
     if (failed.length === 0 && warnings.length === 0) {
       toast.success(`Uploaded ${draftChanges.length} channel edits`);
     } else if (failed.length === 0 && warnings.length > 0) {
-      toast.error(`Uploaded with ${warnings.length} warnings (lockout/priority not applied)`);
+      toast.error(`Uploaded with ${warnings.length} warnings (lockout not applied)`);
     } else if (failed.length > 0) {
       const firstFailure = failed[0];
       const detailText = firstFailure.detail ? ` (${firstFailure.detail})` : '';

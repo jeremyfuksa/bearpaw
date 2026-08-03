@@ -26,7 +26,6 @@ export const createTestChannelDraft = (overrides: Partial<ChannelDraft> = {}): C
   tone_squelch: '',
   delay: '2',
   lockout: false,
-  priority: false,
   comments: '',
   ...overrides,
 });
