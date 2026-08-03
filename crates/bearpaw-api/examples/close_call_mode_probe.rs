@@ -177,7 +177,7 @@ fn main() {
         }
     }
     if weak.is_empty() {
-        println!("  => all three digits directly observed.");
+        println!("  => all {} digits directly observed.", order.len());
     } else {
         println!(
             "  => {} step(s) observed no transition: {}. The mapping may still be\n     \

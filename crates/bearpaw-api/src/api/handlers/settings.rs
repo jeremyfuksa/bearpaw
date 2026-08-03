@@ -397,8 +397,14 @@ pub(crate) async fn set_close_call(
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     // Validate before narrowing — 256 truncates to 0 and passes. #143.
+    //
+    // Range is 0..=3: Off/Priority/DND/Only. Mode 3 (`CC Only`) is NOT in
+    // BC125AT_PROTOCOL.md §7.6, which documents only 0-2 — it was found on
+    // hardware, see docs/wire_captures/2026-08-03/clc-mode-probe-cc-only.txt.
+    // This used to cap at 2, so a radio in CC Only reported a mode the API
+    // would refuse to write back.
     let mode = match body.get("mode").and_then(Value::as_u64) {
-        Some(v) if (0..=2).contains(&v) => v as u8,
+        Some(v) if (0..=3).contains(&v) => v as u8,
         None => 0,
         Some(_) => return Err(ApiError::BadRequest("close_call_mode_invalid".to_string())),
     };

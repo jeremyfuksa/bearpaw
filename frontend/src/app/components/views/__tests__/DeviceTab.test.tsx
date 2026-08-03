@@ -5,6 +5,7 @@ import {
   PREFERENCE_KEY_MAP,
   CLOSE_CALL_MODE_TO_WIRE,
   CLOSE_CALL_WIRE_TO_MODE,
+  closeCallWireToMode,
   PRIORITY_MODE_TO_WIRE,
   priorityWireToMode,
 } from '../DeviceTab';
@@ -333,13 +334,17 @@ describe('PREFERENCE_KEY_MAP', () => {
 });
 
 describe('CLOSE_CALL_MODE_TO_WIRE', () => {
-  // Digits confirmed on hardware (fw 1.06.06, #241) — captured twice, see
-  // docs/wire_captures/2026-08-03/. The app previously had these INVERTED, so
+  // Digits confirmed on hardware (fw 1.06.06, #241) — captured three times, see
+  // docs/wire_captures/2026-08-03/. The app previously had 1/2 INVERTED, so
   // selecting "CC Priority" put the radio in DND. Pin them.
+  //
+  // Mode 3 (`CC Only`) is NOT in BC125AT_PROTOCOL.md §7.6 — found on hardware
+  // in clc-mode-probe-cc-only.txt, where it moved 2 -> 3 off the keypad.
   it.each([
     ['off', 0],
     ['cc_priority', 1],
     ['cc_dnd', 2],
+    ['cc_only', 3],
   ])('maps %s to wire %i', (mode, wire) => {
     expect(CLOSE_CALL_MODE_TO_WIRE[mode]).toBe(wire);
   });
@@ -350,6 +355,34 @@ describe('CLOSE_CALL_MODE_TO_WIRE', () => {
     for (const [mode, wire] of Object.entries(CLOSE_CALL_MODE_TO_WIRE)) {
       expect(CLOSE_CALL_WIRE_TO_MODE[wire]).toBe(mode);
     }
+  });
+
+  it('models every digit the backend accepts', () => {
+    // set_close_call validates (0..=3) in api/handlers/settings.rs. A digit the
+    // backend accepts but the UI cannot display is the #241/#340 bug class.
+    // Keep these in step — if the backend range widens, this fails until the
+    // UI follows.
+    expect(Object.values(CLOSE_CALL_MODE_TO_WIRE).sort()).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe('closeCallWireToMode', () => {
+  it.each([
+    [0, 'off'],
+    [1, 'cc_priority'],
+    [2, 'cc_dnd'],
+    [3, 'cc_only'],
+  ])('maps wire %i to %s', (wire, mode) => {
+    expect(closeCallWireToMode(wire)).toBe(mode);
+  });
+
+  // Same guard as priorityWireToMode, for the same reason (#340): the dropdown
+  // is also the write path, so an unmodelled digit rendered as "Off" becomes a
+  // CLC,0 write on the next save. `CC Only` was exactly that case before it was
+  // mapped — the radio reported 3 and the UI showed Off.
+  it('returns null for an unmodelled wire mode instead of falling back to off', () => {
+    expect(closeCallWireToMode(4)).toBeNull();
+    expect(closeCallWireToMode(99)).toBeNull();
   });
 });
 
