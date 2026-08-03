@@ -97,6 +97,14 @@ function ChannelRow({
     },
   });
 
+  // react-dnd's connector API: `drag`/`drop` are connector functions that
+  // attach the DND behavior to the row element, and composing them onto the
+  // ref during render is how the library (v16) is meant to be wired.
+  // react-hooks/refs is suppressed rather than worked around — the connectors
+  // have no post-commit call site, and restructuring this into callback refs
+  // would rewrite the drag path that the #236 keyboard-reorder guard below
+  // depends on for no behavioral gain.
+  // eslint-disable-next-line react-hooks/refs
   drag(drop(ref));
 
   return (
@@ -298,7 +306,14 @@ export function buildEmptyDraft(): ChannelDraft {
 
 export function ChannelsTab() {
   const api = getAPI();
-  const channels = useStore((state) => state.channels) ?? [];
+  // The `?? []` fallback is memoized rather than applied inline: a bare
+  // `useStore(...) ?? []` allocates a fresh array on every render while
+  // channels is null, and that identity feeds five downstream memos/callbacks
+  // (filteredChannels, bankChannels, channelStats, buildDraft, and the
+  // duplicate-frequency check), defeating all of them
+  // (react-hooks/exhaustive-deps).
+  const storedChannels = useStore((state) => state.channels);
+  const channels = useMemo(() => storedChannels ?? [], [storedChannels]);
   const memoryDrafts = useStore((state) => state.memoryDrafts);
   const setMemoryDraft = useStore((state) => state.setMemoryDraft);
   const clearMemoryDrafts = useStore((state) => state.clearMemoryDrafts);
@@ -348,6 +363,13 @@ export function ChannelsTab() {
     // filters" forever; channels added later (CSV import) were silently
     // dropped. Keep the user's drag order for surviving indexes, drop stale
     // ones, append newcomers in index order.
+    //
+    // set-state-in-effect is suppressed, not fixed: the rule's remedy is to
+    // derive during render, but bank order carries history — the user's drag
+    // sequence — so it is state, not a function of the current channel list.
+    // The updater is already a no-op when the reconciled order matches
+    // (`unchanged ? prev : ...` below), so this cannot cascade.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBankOrders((prev) => {
       const existing = prev[activeBank];
       if (!existing) {

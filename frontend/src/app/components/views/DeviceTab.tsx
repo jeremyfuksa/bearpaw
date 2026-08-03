@@ -136,7 +136,11 @@ export function DeviceTab() {
   const connectionStatus = useConnectionStatus();
   const deviceInfo = useStore((state) => state.deviceInfo);
   const liveState = useStore((state) => state.liveState);
-  const channels = useStore((state) => state.channels) ?? [];
+  // Selected raw and defaulted inside the memo below rather than with a
+  // `?? []` here: the fallback allocates a new array on every render while
+  // channels is null, which lands in the `lockedChannels` deps array and
+  // defeats that memo (react-hooks/exhaustive-deps).
+  const channels = useStore((state) => state.channels);
   const setChannels = useStore((state) => state.setChannels);
   const preferences = useStore((state) => state.preferences);
   const updatePreferences = useStore((state) => state.updatePreferences);
@@ -228,7 +232,7 @@ export function DeviceTab() {
 
   const lockedChannels = useMemo(() => {
     if (!lockedChannelIds.length) return [];
-    const channelMap = new Map(channels.map((ch) => [ch.index, ch]));
+    const channelMap = new Map((channels ?? []).map((ch) => [ch.index, ch]));
     return lockedChannelIds
       .map((id) => channelMap.get(id))
       .filter((ch): ch is NonNullable<typeof ch> => Boolean(ch));
@@ -246,15 +250,21 @@ export function DeviceTab() {
     });
   }, [bankFilter, lockedChannels, searchTerm]);
 
+  // Selection scoped to what the active search/bank filter currently shows.
+  // Derived during render rather than pruned by an effect
+  // (react-hooks/set-state-in-effect): the raw `selectedChannels` state can
+  // hold ids that the filter has since hidden, and an effect-synced copy is
+  // stale for the render in which the filter changed. Every read below goes
+  // through this value — including the unlock target, so the user can never
+  // unlock a channel they cannot see.
+  const visibleSelectedChannels = useMemo(() => {
+    const visible = new Set(filteredLockedChannels.map((channel) => channel.index));
+    return selectedChannels.filter((id) => visible.has(id));
+  }, [filteredLockedChannels, selectedChannels]);
+
   const allSelected =
     filteredLockedChannels.length > 0 &&
-    filteredLockedChannels.every((channel) => selectedChannels.includes(channel.index));
-
-  useEffect(() => {
-    setSelectedChannels((prev) =>
-      prev.filter((id) => filteredLockedChannels.some((channel) => channel.index === id)),
-    );
-  }, [filteredLockedChannels]);
+    filteredLockedChannels.every((channel) => visibleSelectedChannels.includes(channel.index));
 
   useEffect(() => {
     if (selectedCategory !== 'Locked Channels') return;
@@ -414,7 +424,7 @@ export function DeviceTab() {
 
   const handleUnlockSelected = useCallback(
     async (targetIds?: number[]) => {
-      const targets = targetIds ?? selectedChannels;
+      const targets = targetIds ?? visibleSelectedChannels;
       if (targets.length === 0) {
         toast.info('Select channels to unlock');
         return;
@@ -439,7 +449,7 @@ export function DeviceTab() {
         setIsClearing(false);
       }
     },
-    [api, selectedChannels, setChannels],
+    [api, visibleSelectedChannels, setChannels],
   );
 
   // Setting handlers
@@ -825,7 +835,7 @@ export function DeviceTab() {
                     Total: {lockedChannelIds.length}
                   </span>
                   <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
-                    Selected: {selectedChannels.length}
+                    Selected: {visibleSelectedChannels.length}
                   </span>
                   {bankFilter !== 'all' && (
                     <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
@@ -867,10 +877,10 @@ export function DeviceTab() {
                     </button>
                     <button
                       onClick={() => handleUnlockSelected()}
-                      disabled={selectedChannels.length === 0 || isClearing}
+                      disabled={visibleSelectedChannels.length === 0 || isClearing}
                       className="px-3 py-2 text-sm font-bold text-black bg-brand-primary hover:bg-brand-hover rounded border border-brand-primary/40 transition-colors disabled:opacity-50"
                     >
-                      Unlock Selected ({selectedChannels.length || 0})
+                      Unlock Selected ({visibleSelectedChannels.length || 0})
                     </button>
                   </div>
                 </div>
@@ -902,7 +912,7 @@ export function DeviceTab() {
 
               <div role="rowgroup" className="flex-1 divide-y divide-white/5 overflow-y-auto">
                 {filteredLockedChannels.map((channel) => {
-                  const isSelected = selectedChannels.includes(channel.index);
+                  const isSelected = visibleSelectedChannels.includes(channel.index);
                   return (
                     <div
                       key={channel.index}
