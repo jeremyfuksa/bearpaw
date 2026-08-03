@@ -98,7 +98,11 @@ export default function App() {
     return 'Scan';
   });
   const [toggleBusy, setToggleBusy] = useState(false);
-  const [chartAnimate, setChartAnimate] = useState(false);
+  // Starts true so the one-shot mount animation is on for the very first paint;
+  // the timer below turns it off after 700ms. Previously this initialized false
+  // and an effect flipped it true on mount, which rendered one un-animated
+  // frame first (react-hooks/set-state-in-effect).
+  const [chartAnimate, setChartAnimate] = useState(true);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const shellStatusText = useShellStatusText();
@@ -478,7 +482,10 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [api, setChannels, setDeviceInfo, updateLiveState]);
+    // setBanks is a Zustand store action — stable by identity, like the
+    // setChannels/setDeviceInfo already listed — so declaring it is honest
+    // about what the effect reads without changing when it re-runs.
+  }, [api, setBanks, setChannels, setDeviceInfo, updateLiveState]);
 
   useEffect(() => {
     // Refetch banks once the scanner is reachable AND any initial memory
@@ -536,8 +543,8 @@ export default function App() {
   useEffect(() => {
     // One-shot animation pass on mount so the bar chart slides in once.
     // After 700ms Recharts switches to its no-anim render path, which
-    // matches the prior behaviour when entering dashboard view.
-    setChartAnimate(true);
+    // matches the prior behaviour when entering dashboard view. The "on"
+    // half is the useState initializer above; this effect only ends it.
     const timeout = window.setTimeout(() => setChartAnimate(false), 700);
     return () => window.clearTimeout(timeout);
   }, []);
@@ -626,6 +633,15 @@ export default function App() {
     const isProgramModeNow = normalizedMode === 'PGM';
 
     if (isProgramModeNow !== isInProgramMode) {
+      // set-state-in-effect is suppressed, not fixed. Deriving this from
+      // liveState?.mode during render would flip it true the moment a sync's
+      // PRG bracket opened — precisely the race the isMemorySyncing bail above
+      // exists to avoid. The value must HOLD its last state through sync, so
+      // it is history, not a function of the current mode. It also has a second
+      // writer (the post-sync PGM re-check around line 283), which a derived
+      // value could not accommodate. The `!==` guard makes this a no-op unless
+      // the mode actually changed, so it cannot cascade.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsInProgramMode(isProgramModeNow);
     }
   }, [liveState?.mode, isInProgramMode, isMemorySyncing]);
@@ -702,13 +718,23 @@ export default function App() {
   );
   useMenuEvents(menuHandlers);
 
-  const getScannerMode = () => {
+  // Memoized on liveState?.mode, the only input it reads. Left unmemoized this
+  // was redeclared every render, which put a new identity into the deps of the
+  // four useCallbacks below — and made the React Compiler skip preserving their
+  // memoization entirely (react-hooks/preserve-manual-memoization).
+  //
+  // NOTE: this is a *derivation*, not a subscription. Handlers that need the
+  // live mode at invocation time must still read
+  // `useStore.getState().liveState?.mode` — see the WS-subscribe REGRESSION
+  // GUARD. Depending on this value inside the WS-subscribe effect would
+  // reintroduce the ~5 Hz re-registration that guard exists to catch.
+  const getScannerMode = useCallback(() => {
     const normalized = (liveState?.mode ?? '').toString().trim().toUpperCase();
     if (normalized === 'DIRECT') return 'SEARCH';
     if (normalized === 'CLOSE_CALL') return 'CLOSE_CALL';
     if (normalized === 'HOLD') return 'HOLD';
     return 'SCAN';
-  };
+  }, [liveState?.mode]);
 
   const isInitialSyncing = isMemorySyncing && !sync.hasSyncedInitially;
 
@@ -752,6 +778,17 @@ export default function App() {
     return { mainText: main, subText: parts.join(' • ') };
   }, [deviceInfo, hasFreshLiveFrame, isInitialSyncing, liveState, syncProgressMessage]);
 
+  // REGRESSION GUARD (#330, react-hooks/preserve-manual-memoization): the three
+  // callbacks below keep narrow `liveState?.channel` / `liveState?.frequency`
+  // deps on purpose. The React Compiler infers whole `liveState` instead ("less
+  // specific property than source") and skips optimizing them, so the rule is
+  // suppressed rather than satisfied — matching it would mean WIDENING these
+  // deps to the whole 5 Hz-churning liveState object, which is the exact
+  // direction the WS-subscribe guard above forbids. All three are event
+  // handlers (onHoldToggle / the lockout key handler), never effect inputs, so
+  // the lost memoization costs a re-render, not correctness. Do not "fix" these
+  // by broadening the deps.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const handleToggle = useCallback(async () => {
     if (!connected || toggleBusy) return;
     setToggleBusy(true);
@@ -769,6 +806,8 @@ export default function App() {
     }
   }, [api, connected, getScannerMode, toggleBusy]);
 
+  // See the preserve-manual-memoization note on handleToggle above.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const triggerTemporaryLockout = useCallback(async () => {
     if (!connected) return;
     try {
@@ -800,6 +839,8 @@ export default function App() {
     }
   }, [api, connected, getScannerMode, liveState?.channel, liveState?.frequency, requestScanResume]);
 
+  // See the preserve-manual-memoization note on handleToggle above.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const triggerPermanentLockout = useCallback(async () => {
     if (!connected) return;
     try {
