@@ -43,6 +43,20 @@ vi.mock('../../../../store/useStore', () => ({
   useStore: vi.fn(),
 }));
 
+// Mirror of buildEmptyDraft in ChannelsTab.tsx (not exported). Kept in sync
+// deliberately: the #272 guard below exists to catch this shape drifting away
+// from what the scanner reports for a cleared channel, so it must NOT be
+// derived from createTestChannelDraft's defaults.
+const buildEmptyDraftShape = {
+  frequency: '0',
+  alpha_tag: '',
+  modulation: 'AUTO',
+  tone_squelch: '',
+  delay: '2',
+  lockout: true,
+  comments: '',
+};
+
 describe('ChannelsTab', () => {
   let mockApiClient: ReturnType<typeof createMockApiClient>;
   let mockChannels: ChannelData[];
@@ -603,9 +617,10 @@ describe('ChannelsTab', () => {
 
     // #272: a staged clear is destructive, but it used to render with the same
     // generic `isPending` styling as an ordinary edit — so clearing a row was
-    // the least noticeable action in the table. A cleared row now takes amber
-    // instead of the brand tint, and data-cleared drives the one-shot flash.
-    it('styles a cleared row amber rather than with the ordinary pending tint', () => {
+    // the least noticeable action in the table. A row with a clear STAGED now
+    // takes amber instead of the brand tint, and data-cleared drives the
+    // one-shot flash.
+    it('styles a staged clear amber rather than with the ordinary pending tint', () => {
       const channel = createTestChannel({ index: 1, alpha_tag: 'Channel 1' });
       const store = createMockStore({
         channels: [channel],
@@ -647,6 +662,150 @@ describe('ChannelsTab', () => {
       expect(row).not.toHaveClass('bg-amber-500/10');
       expect(row).not.toHaveClass('channel-row--cleared');
       expect(row).not.toHaveAttribute('data-cleared');
+    });
+
+    // REGRESSION GUARD (#272): the amber treatment means "clear STAGED, not yet
+    // uploaded" and must clear once the write lands. A successful upload
+    // REBUILDS the draft from the written channel (handleUploadDrafts) rather
+    // than deleting it, so a genuinely-cleared channel keeps a zero-frequency
+    // draft for the life of the session. Gating the amber on "frequency is 0"
+    // alone therefore left the row amber and flashing forever, long after the
+    // radio had been written. It must be gated on pending state as well.
+    it('drops the cleared styling once the clear has been uploaded', () => {
+      // Post-upload state: the channel is now zeroed on the radio and the draft
+      // was rebuilt from it (handleUploadDrafts refetches, then calls
+      // buildDraft for every participating index), so the two agree and nothing
+      // is pending. The draft still exists and its frequency is still 0 — which
+      // is exactly why "frequency is 0" cannot be the gate.
+      const uploadedChannel = createTestChannel({
+        index: 1,
+        frequency: 0,
+        alpha_tag: '',
+        modulation: 'AUTO',
+        delay: 2,
+      });
+      const store = createMockStore({
+        channels: [uploadedChannel],
+        memoryDrafts: {
+          1: createTestChannelDraft({
+            frequency: '0',
+            alpha_tag: '',
+            modulation: 'AUTO',
+            tone_squelch: '',
+            delay: '2',
+          }),
+        },
+      });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /Edit channel 1, unnamed/i });
+      expect(row).not.toHaveClass('bg-amber-500/10');
+      expect(row).not.toHaveClass('channel-row--cleared');
+      expect(row).not.toHaveAttribute('data-cleared');
+      // ...and it is not stuck showing as an ordinary pending edit either.
+      expect(row).not.toHaveClass('bg-brand-primary/10');
+    });
+
+    // REGRESSION GUARD (#272): the real-hardware case behind "I deleted a
+    // channel and the amber never cleared". buildDraft short-circuits to
+    // buildEmptyDraft for any zero-frequency channel, so after an uploaded
+    // clear the rebuilt draft IS buildEmptyDraft(). Its delay must therefore
+    // equal what the scanner reports for a cleared channel (2 — verified on
+    // hardware across 149 cleared channels), or hasChanges compares 0 !== 2,
+    // the channel sits in pendingChannelIds forever, and the row keeps both its
+    // styling and its place in Upload Changes. Assert the PENDING state, not
+    // just the class: the styling was only the visible symptom.
+    it('an uploaded clear stops counting as a pending change', () => {
+      // Exactly what the refetch returns for a cleared slot on real hardware.
+      // Profiled across all 149 cleared channels on the dev unit: delay 2,
+      // modulation AUTO, tone null, and lockout TRUE (the scanner locks a slot
+      // out when it is emptied). Do not "simplify" these to zeroes — a field
+      // that disagrees with buildEmptyDraft is exactly the bug.
+      const clearedChannel = createTestChannel({
+        index: 1,
+        frequency: 0,
+        alpha_tag: '',
+        modulation: 'AUTO',
+        delay: 2,
+        tone_squelch: null,
+        lockout: true,
+      });
+      setMockStore(
+        createMockStore({
+          channels: [clearedChannel],
+          // The draft handleUploadDrafts rebuilds via buildDraft ->
+          // buildEmptyDraft. Built from that function's real output so the
+          // comparison under test is the production one.
+          memoryDrafts: { 1: { ...buildEmptyDraftShape } },
+        }),
+      );
+
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /Edit channel 1, unnamed/i });
+      // Not amber, not brand-tinted — no pending styling of any kind.
+      expect(row).not.toHaveClass('bg-amber-500/10');
+      expect(row).not.toHaveClass('channel-row--cleared');
+      expect(row).not.toHaveAttribute('data-cleared');
+      expect(row).not.toHaveClass('bg-brand-primary/10');
+      // The row is not offered for upload either — the underlying bug, of which
+      // the stuck styling was only the visible half. (The button always
+      // renders; "nothing pending" is expressed by disabling it.)
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+    });
+
+    // REGRESSION GUARD (#272): the discriminating case. A zeroed draft can
+    // outlive the upload that consumed it — the post-upload refetch that
+    // rebuilds drafts is wrapped in a try whose failure is only warn-logged
+    // (handleUploadDrafts), and a partial upload leaves the failed channels'
+    // drafts in place. Here the channel is NOT zeroed (nothing was written) but
+    // a zeroed draft exists, so isCleared is true. Gating the amber on
+    // isCleared alone lit this row permanently; it must track pending state.
+    it('keeps a staged clear amber only while it is genuinely pending', () => {
+      // Draft is zeroed but the channel is untouched — a real pending clear.
+      const channel = createTestChannel({ index: 1, frequency: 151.25, alpha_tag: 'Channel 1' });
+      setMockStore(
+        createMockStore({
+          channels: [channel],
+          memoryDrafts: { 1: createTestChannelDraft({ frequency: '0', alpha_tag: '' }) },
+        }),
+      );
+
+      const { unmount } = render(<ChannelsTab />);
+      expect(screen.getByRole('row', { name: /Edit channel 1, unnamed/i })).toHaveClass(
+        'bg-amber-500/10',
+      );
+      unmount();
+
+      // Same zeroed draft, but the channel now matches it (the write landed).
+      // The draft is unchanged — only the channel moved — so any gate that
+      // reads the draft alone still says "cleared" and would stay amber.
+      setMockStore(
+        createMockStore({
+          channels: [
+            createTestChannel({
+              index: 1,
+              frequency: 0,
+              alpha_tag: '',
+              modulation: 'AUTO',
+              delay: 2,
+            }),
+          ],
+          memoryDrafts: {
+            1: createTestChannelDraft({
+              frequency: '0',
+              alpha_tag: '',
+              modulation: 'AUTO',
+              tone_squelch: '',
+              delay: '2',
+            }),
+          },
+        }),
+      );
+      render(<ChannelsTab />);
+      expect(screen.getByRole('row', { name: /Edit channel 1, unnamed/i })).not.toHaveClass(
+        'bg-amber-500/10',
+      );
     });
   });
 
