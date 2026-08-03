@@ -1,15 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type {
-  WSMessage,
-  LiveState,
-  DeviceInfo,
-  ChannelData,
-  LockoutsResponse,
-  ConfigSnapshot,
-  ChannelDraft,
-  CloseCallSettings,
-} from '../../types';
-import { mockApiResponses, mockApiErrors } from '../../test/fixtures';
+import type { LiveState, ChannelData, LockoutsResponse, ConfigSnapshot } from '../../types';
+import { mockApiResponses } from '../../test/fixtures';
 
 describe('API Contract Tests', () => {
   describe('Command Endpoints', () => {

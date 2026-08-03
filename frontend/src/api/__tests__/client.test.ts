@@ -1,13 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ScannerAPIClient, APIError } from '../../api/client';
-import {
-  mockApiResponse,
-  mockFetch,
-  mockFetchError,
-  mockFetchNetworkError,
-  resetMockFetch,
-} from '../../test/utils';
-import { mockApiResponses, mockApiErrors } from '../../test/fixtures';
+import { mockFetch, mockFetchError, mockFetchNetworkError, resetMockFetch } from '../../test/utils';
+import { mockApiResponses } from '../../test/fixtures';
 
 describe('ScannerAPIClient', () => {
   let client: ScannerAPIClient;

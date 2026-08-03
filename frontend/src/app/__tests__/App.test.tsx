@@ -1,6 +1,4 @@
-import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import App from '../App';
 
 function normalizeSignal(value?: number): number {
   if (value === undefined || value === null) return 0;

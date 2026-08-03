@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { Search, Lock, Edit3, GripVertical, ChevronDown } from 'lucide-react';
+import { Search, Lock, GripVertical, ChevronDown } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 // TouchBackend, not HTML5Backend: the app ships in Tauri's WKWebView, where
 // react-dnd's HTML5 backend never fires dragover/drop — rows show the (+)
@@ -28,7 +28,6 @@ const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
 const DND_ITEM_TYPE = 'channel-row';
 
 interface ChannelRowProps {
-  channelIndex: number;
   displayIndex: number;
   rowIndex: number;
   isEditing: boolean;
@@ -48,7 +47,6 @@ interface ChannelRowProps {
 }
 
 function ChannelRow({
-  channelIndex,
   displayIndex,
   rowIndex,
   isEditing,
@@ -983,7 +981,6 @@ export function ChannelsTab() {
                   return (
                     <ChannelRow
                       key={channel.index}
-                      channelIndex={channel.index}
                       displayIndex={displayIndex}
                       isEditing={isEditing}
                       isPending={isPending}
