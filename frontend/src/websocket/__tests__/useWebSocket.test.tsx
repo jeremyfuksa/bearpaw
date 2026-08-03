@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { waitFor, act, render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { screen } from '@testing-library/react';
 import { ScannerWebSocket } from '../ScannerWebSocket';
 import { WebSocketProvider, useWebSocket } from '../useWebSocket';
@@ -136,7 +136,8 @@ describe('ScannerWebSocket', () => {
 
     it('should emit error events for JSON parse errors', () => {
       const mockEmit = vi.spyOn(ws, 'emit' as any);
-      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      // Silences the expected parse-error log; the spy handle isn't asserted on.
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       ws.connect();
 
       if (mockWs.onmessage) {

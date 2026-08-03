@@ -409,25 +409,9 @@ describe('ActivityExportSheet', () => {
     });
 
     it('should show exporting state during download', async () => {
-      const mockEntries: ActivityLogEntry[] = [
-        {
-          id: 'test-1',
-          timestamp: Date.now() / 1000,
-          frequency: 151.25,
-          channel: 1,
-          alpha_tag: 'Test Channel',
-          type: 'hit',
-          rssi: 75,
-          hasAudio: false,
-          duration: 2.5,
-          ended_at: Date.now() / 1000,
-        },
-      ];
-
-      let resolveFetch;
-      const fetchPromise = new Promise((resolve) => {
-        resolveFetch = resolve;
-      });
+      // Deliberately never resolved: it pins the component in its exporting
+      // state for the assertion below.
+      const fetchPromise = new Promise(() => {});
       global.fetch = vi.fn(() => fetchPromise) as unknown as typeof fetch;
 
       render(<ActivityExportSheet {...mockProps} />);

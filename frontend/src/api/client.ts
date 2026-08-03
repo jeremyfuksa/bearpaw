@@ -12,9 +12,7 @@ import type {
   LiveState,
   LockoutsResponse,
   PrioritySettings,
-  SearchSettings,
   ServiceSearchSettings,
-  WeatherSettings,
 } from '../types';
 
 export class APIError extends Error {

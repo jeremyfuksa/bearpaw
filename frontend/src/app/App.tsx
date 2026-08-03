@@ -3,7 +3,6 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { SyncSpinner } from './components/SyncSpinner';
 import { ImportProgressOverlay } from './components/ImportProgressOverlay';
-import { cn } from '../lib/utils';
 import { StatusBar } from './components/ScannerUI';
 import { ScanAnnouncer } from './components/ScanAnnouncer';
 import { getAPI, API_BASE } from '../api/useApi';
