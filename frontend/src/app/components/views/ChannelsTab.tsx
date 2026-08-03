@@ -33,6 +33,7 @@ interface ChannelRowProps {
   rowCount: number;
   isEditing: boolean;
   isPending: boolean;
+  isCleared: boolean;
   isSelected: boolean;
   isGrabbed: boolean;
   disableDrag: boolean;
@@ -57,6 +58,7 @@ function ChannelRow({
   rowCount,
   isEditing,
   isPending,
+  isCleared,
   isSelected,
   isGrabbed,
   disableDrag,
@@ -118,10 +120,20 @@ function ChannelRow({
         }
       }}
       data-grabbed={isGrabbed || undefined}
+      // #272: a staged clear is destructive but was styled identically to an
+      // ordinary edit (both merely `isPending`), so clearing rows was the least
+      // noticeable action in the table. Cleared-pending rows take an amber
+      // treatment instead of the brand one, and data-cleared drives a one-shot
+      // flash so the user sees WHICH rows the clear hit. The flash is decoration
+      // only — the persistent amber plus the "—"/"–" placeholder values carry
+      // the meaning for reduced-motion users (theme.css disables the animation).
+      data-cleared={isCleared || undefined}
       className={cn(
         'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         isEditing ? 'bg-brand-primary/20 border-brand-primary/30' : 'hover:bg-white/5',
-        isPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
+        isPending && !isCleared && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
+        isCleared &&
+          'channel-row--cleared bg-amber-500/10 border-l-2 border-amber-400/60 text-white/45',
         isDragging && 'opacity-60',
         isGrabbed && 'bg-brand-primary/25 ring-1 ring-inset ring-brand-primary/70',
       )}
@@ -1086,6 +1098,7 @@ export function ChannelsTab() {
                       displayIndex={displayIndex}
                       isEditing={isEditing}
                       isPending={isPending}
+                      isCleared={isCleared}
                       isSelected={selectedChannelIds.includes(channel.index)}
                       onSelect={() => handleToggleSelect(channel.index)}
                       onClick={() => handleOpenEditSheet(channel.index)}

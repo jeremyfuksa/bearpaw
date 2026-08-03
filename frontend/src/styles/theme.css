@@ -509,8 +509,29 @@
   animation: sync-spinner-rotate 1.6s linear infinite;
 }
 
+/* #272: one-shot flash when a channel row enters the staged-clear state, so the
+   user can see which rows a "Clear Selected" hit. Decoration only — the row's
+   persistent amber styling and its "—"/"–" placeholder values carry the meaning
+   without it. */
+@keyframes channel-row-cleared-flash {
+  0% {
+    background-color: rgb(251 191 36 / 0.45);
+  }
+  100% {
+    background-color: rgb(245 158 11 / 0.1);
+  }
+}
+
+.channel-row--cleared {
+  animation: channel-row-cleared-flash 600ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sync-spinner__spin {
+    animation: none;
+  }
+
+  .channel-row--cleared {
     animation: none;
   }
 }
