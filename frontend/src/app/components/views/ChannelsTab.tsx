@@ -247,7 +247,10 @@ function deriveBankFromIndex(index: number) {
   return Math.min(10, Math.ceil(normalized / 50));
 }
 
-function buildDraft(channel: ChannelData): ChannelDraft {
+// Exported for tests only (#272). The guard on buildEmptyDraft has to assert
+// the REAL function's output — earlier attempts asserted a hand-built copy in
+// the test file and passed happily with the bug reintroduced.
+export function buildDraft(channel: ChannelData): ChannelDraft {
   if (channel.frequency === 0) {
     return buildEmptyDraft();
   }
@@ -271,15 +274,17 @@ function buildDraft(channel: ChannelData): ChannelDraft {
 // styling, and Upload Changes stays lit and rewrites those channels on every
 // upload.
 //
-// Two fields were wrong. Verified against real hardware (all 149 cleared
-// channels on the dev unit): delay is 2 (the firmware default the backend also
-// falls back to in protocol/mod.rs), and lockout is TRUE — the BC125AT locks
-// out a slot when it is emptied. Neither is a "zero it" case: 0 is a valid
-// delay, and lockout false is a real, different state.
+// Two fields were wrong. Verified against real hardware — all 150 cleared
+// channels on the dev unit report delay 2 (the firmware default the backend
+// also falls back to in protocol/mod.rs) and lockout TRUE (the BC125AT locks a
+// slot out when it is emptied), with modulation AUTO, an empty tag and no tone.
+// Neither is a "zero it" case: 0 is a valid delay, and lockout false is a real,
+// different state. Replaying hasChanges over that live set: 150/150 stuck
+// pending with the old shape, 0/150 with this one.
 //
-// Guarded by ChannelsTab.test.tsx :: an uploaded clear stops counting as a
-// pending change.
-function buildEmptyDraft(): ChannelDraft {
+// Exported so the guard asserts THIS function rather than a copy of it.
+// Guarded by ChannelsTab.test.tsx :: buildEmptyDraft matches a cleared channel.
+export function buildEmptyDraft(): ChannelDraft {
   return {
     frequency: '0',
     alpha_tag: '',
