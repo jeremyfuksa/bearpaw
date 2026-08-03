@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ScannerWebSocket } from './ScannerWebSocket';
 import { useStore } from '../store/useStore';
 import { isTauriRuntime } from '../tauri-shell';
@@ -47,12 +47,16 @@ export function WebSocketProvider({ children, url }: { children: React.ReactNode
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
 
-  // Lazy-init via useRef so the socket survives any potential useMemo eviction.
-  const wsRef = useRef<ScannerWebSocket | null>(null);
-  if (wsRef.current === null) {
-    wsRef.current = new ScannerWebSocket(wsURL);
-  }
-  const ws = wsRef.current;
+  // Lazy-init so the socket is constructed exactly once and survives any
+  // potential useMemo eviction. Uses a useState initializer rather than the
+  // previous write-a-ref-during-render idiom (react-hooks/refs): React runs
+  // the initializer once on mount and owns the value, giving the same
+  // construct-once, stable-identity guarantee without a render-phase ref read.
+  //
+  // As before, a later `url` prop change does NOT rebuild the socket — the old
+  // `wsRef.current === null` guard ignored it too. The provider is mounted once
+  // at the app root, and the reconnect path lives inside ScannerWebSocket.
+  const [ws] = useState(() => new ScannerWebSocket(wsURL));
 
   useEffect(() => {
     const unsubscribe = ws.on('connection', (data) => {
