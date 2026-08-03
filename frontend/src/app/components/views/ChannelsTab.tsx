@@ -30,9 +30,11 @@ const DND_ITEM_TYPE = 'channel-row';
 interface ChannelRowProps {
   displayIndex: number;
   rowIndex: number;
+  rowCount: number;
   isEditing: boolean;
   isPending: boolean;
   isSelected: boolean;
+  isGrabbed: boolean;
   disableDrag: boolean;
   displayFrequency: string;
   displayAlpha: string;
@@ -44,14 +46,19 @@ interface ChannelRowProps {
   onSelect: () => void;
   onClick: () => void;
   onMove: (fromIndex: number, toIndex: number) => void;
+  onToggleGrab: () => void;
+  onKeyboardMove: (direction: -1 | 1) => void;
+  onReleaseGrab: () => void;
 }
 
 function ChannelRow({
   displayIndex,
   rowIndex,
+  rowCount,
   isEditing,
   isPending,
   isSelected,
+  isGrabbed,
   disableDrag,
   displayFrequency,
   displayAlpha,
@@ -63,6 +70,9 @@ function ChannelRow({
   onSelect,
   onClick,
   onMove,
+  onToggleGrab,
+  onKeyboardMove,
+  onReleaseGrab,
 }: ChannelRowProps) {
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -107,11 +117,13 @@ function ChannelRow({
           onClick();
         }
       }}
+      data-grabbed={isGrabbed || undefined}
       className={cn(
         'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         isEditing ? 'bg-brand-primary/20 border-brand-primary/30' : 'hover:bg-white/5',
         isPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
         isDragging && 'opacity-60',
+        isGrabbed && 'bg-brand-primary/25 ring-1 ring-inset ring-brand-primary/70',
       )}
     >
       <div role="cell" className="flex items-center justify-center">
@@ -128,7 +140,47 @@ function ChannelRow({
         />
       </div>
       <div role="cell" className="flex items-center justify-center text-white/40">
-        <GripVertical size={20} aria-hidden className={cn(disableDrag && 'opacity-30')} />
+        {/* REGRESSION GUARD (#236): the grip is a real button, not a decorative
+            icon, so a keyboard-only user can enter "grabbed" mode and nudge the
+            row with the arrow keys. react-dnd's TouchBackend has no keyboard
+            interaction, so this is the ONLY keyboard reorder path (WCAG 2.1.1,
+            Level A) — reverting it to a plain <GripVertical> removes the
+            capability with no visible change. It deliberately lives on its own
+            focusable control rather than overloading the row's Enter/Space,
+            which the a11y C1 guard above already claims (opens the sheet).
+            Pointer DnD is untouched: the row is still the drag source.
+            Guarded by ChannelsTab.test.tsx :: Keyboard reordering (#236). */}
+        <button
+          type="button"
+          disabled={disableDrag}
+          aria-label={`Reorder channel ${displayIndex}, position ${rowIndex + 1} of ${rowCount}`}
+          aria-pressed={isGrabbed}
+          aria-describedby="channel-reorder-hint"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleGrab();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+              if (!isGrabbed) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onKeyboardMove(event.key === 'ArrowUp' ? -1 : 1);
+              return;
+            }
+            if (event.key === 'Escape' && isGrabbed) {
+              event.preventDefault();
+              event.stopPropagation();
+              onReleaseGrab();
+            }
+          }}
+          className={cn(
+            'flex items-center justify-center rounded p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary disabled:cursor-not-allowed disabled:opacity-30',
+            isGrabbed ? 'text-brand-primary' : 'text-white/40 hover:text-white/70',
+          )}
+        >
+          <GripVertical size={20} aria-hidden />
+        </button>
       </div>
       <div role="cell" className="font-mono text-white/60 text-xs pl-1">
         {displayIndex}
@@ -306,6 +358,44 @@ export function ChannelsTab() {
       });
     },
     [activeBank, bankChannels],
+  );
+
+  // Keyboard reorder (#236). `grabbedChannelIndex` holds the channel index —
+  // not the row position — so the grab survives the reorder that arrow keys
+  // cause: the row moves out from under its old position on every nudge.
+  const [grabbedChannelIndex, setGrabbedChannelIndex] = useState<number | null>(null);
+  const [reorderAnnouncement, setReorderAnnouncement] = useState('');
+
+  const releaseGrab = useCallback(() => setGrabbedChannelIndex(null), []);
+
+  // Drop the grab whenever the grabbed row can no longer be seen or moved:
+  // switching banks unmounts it, and typing a search term disables reorder
+  // (it's filter-unsafe — rowIndex is a position in the filtered list, but
+  // moveRow splices the unfiltered bank order). Derived during render rather
+  // than synced in an effect, which would cost a cascading re-render.
+  const isReorderable = searchTerm.trim().length === 0;
+  const grabbedRowIndex = isReorderable
+    ? orderedFilteredChannels.findIndex((channel) => channel.index === grabbedChannelIndex)
+    : -1;
+  const activeGrabIndex = grabbedRowIndex === -1 ? null : grabbedChannelIndex;
+
+  const keyboardMoveRow = useCallback(
+    (rowIndex: number, direction: -1 | 1, rows: ChannelData[]) => {
+      const toIndex = rowIndex + direction;
+      const channel = rows[rowIndex];
+      if (!channel) return;
+      if (toIndex < 0 || toIndex >= rows.length) {
+        setReorderAnnouncement(
+          `Channel ${bankBase + rowIndex + 1} is already at the ${direction === -1 ? 'top' : 'bottom'} of the bank.`,
+        );
+        return;
+      }
+      moveRow(rowIndex, toIndex);
+      setReorderAnnouncement(
+        `Moved to position ${toIndex + 1} of ${rows.length}. Press Escape or Enter to drop.`,
+      );
+    },
+    [bankBase, moveRow],
   );
 
   const editingChannel =
@@ -882,6 +972,13 @@ export function ChannelsTab() {
           </div>
         </div>
 
+        {/* Keyboard-reorder announcements (#236). Separate from the drafts
+            status region above so a grab/move/drop doesn't clobber the pending
+            -changes count, and vice versa. */}
+        <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {reorderAnnouncement}
+        </div>
+
         {/* Table */}
         <DndProvider
           backend={TouchBackend}
@@ -912,7 +1009,12 @@ export function ChannelsTab() {
                   className="form-checkbox h-5 w-5 text-brand-primary bg-black/40 border-white/20 rounded"
                 />
               </div>
-              <div role="columnheader" aria-label="Reorder" />
+              <div role="columnheader" aria-label="Reorder">
+                <span id="channel-reorder-hint" className="sr-only">
+                  Press Enter or Space to grab this channel, then use the up and down arrow keys to
+                  move it and Escape to drop it.
+                </span>
+              </div>
               {['CH', 'FREQ', 'TAG', 'MODE', 'TONE', 'DLY', 'L/O', 'PRIO'].map((h) => (
                 <div
                   key={h}
@@ -988,7 +1090,31 @@ export function ChannelsTab() {
                       onSelect={() => handleToggleSelect(channel.index)}
                       onClick={() => handleOpenEditSheet(channel.index)}
                       onMove={moveRow}
+                      isGrabbed={activeGrabIndex === channel.index}
+                      onToggleGrab={() => {
+                        if (activeGrabIndex === channel.index) {
+                          setGrabbedChannelIndex(null);
+                          setReorderAnnouncement(
+                            `Dropped channel at position ${rowIndex + 1} of ${orderedFilteredChannels.length}.`,
+                          );
+                          return;
+                        }
+                        setGrabbedChannelIndex(channel.index);
+                        setReorderAnnouncement(
+                          `Grabbed channel at position ${rowIndex + 1} of ${orderedFilteredChannels.length}. Use the up and down arrow keys to move it, then Escape or Enter to drop.`,
+                        );
+                      }}
+                      onKeyboardMove={(direction) =>
+                        keyboardMoveRow(rowIndex, direction, orderedFilteredChannels)
+                      }
+                      onReleaseGrab={() => {
+                        releaseGrab();
+                        setReorderAnnouncement(
+                          `Dropped channel at position ${rowIndex + 1} of ${orderedFilteredChannels.length}.`,
+                        );
+                      }}
                       rowIndex={rowIndex}
+                      rowCount={orderedFilteredChannels.length}
                       disableDrag={searchTerm.trim().length > 0}
                       displayFrequency={displayFrequency}
                       displayAlpha={displayAlpha}
