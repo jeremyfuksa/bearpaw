@@ -57,7 +57,6 @@ export interface AppStore {
   setBanks: (banks: boolean[]) => void;
   updateSync: (patch: Partial<SyncState>) => void;
   setImportProgress: (patch: Partial<ImportProgressState>) => void;
-  clearActivityLog: () => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
   setMemoryEditingIndex: (index: number | null) => void;
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
@@ -157,8 +156,6 @@ export const useStore = create<AppStore>((set) => ({
     set((prev) => ({
       fullActivityLog: [entry, ...prev.fullActivityLog],
     })),
-
-  clearActivityLog: () => set({ fullActivityLog: [] }),
 
   hydrateActivityLogs: (entries) =>
     set((prev) => {
