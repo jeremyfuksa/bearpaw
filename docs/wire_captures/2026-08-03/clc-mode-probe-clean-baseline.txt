@@ -1,0 +1,63 @@
+# Close Call mode probe, RE-RUN from a clean baseline — 2026-08-03,
+# BC125AT fw 1.06.06 (USB direct transport)
+#
+# Why a second run: the first capture (clc-mode-probe.txt, same day) started
+# from a baseline that was ALREADY mode 1, so its `CC Priority` step read back
+# 1 and was equally consistent with "the mode never changed." That run's
+# finding rested on the DND step (1 -> 2) plus elimination. This run starts
+# from mode 0 (Off), so BOTH readings are direct observations.
+#
+# Method: READ-ONLY, identical to the first run. Operator sets each mode from
+# the radio's own keypad; the probe reads CLC back.
+# Source: crates/bearpaw-api/examples/close_call_mode_probe.rs
+#
+# CLC,<mode>,<alert_beep>,<alert_light>,<band>,<lockout>
+
+==> MDL
+<== MDL,BC125AT
+==> VER
+<== VER,Version 1.06.06
+
+--- baseline (before any keypad changes) ---
+==> PRG
+<== PRG,OK
+==> CLC
+<== CLC,0,1,1,01001,1
+==> EPG
+<== EPG,OK
+--- baseline CC mode digit: 0  (Off — the clean starting point this run needed)
+
+--- operator set `CC Priority` on the keypad ---
+==> PRG
+<== PRG,OK
+==> CLC
+<== CLC,1,1,1,01001,1
+==> EPG
+<== EPG,OK
+--- `CC Priority` reads back as mode digit 1   (moved 0 -> 1)
+
+--- operator set `CC DND` on the keypad ---
+==> PRG
+<== PRG,OK
+==> CLC
+<== CLC,2,1,1,01001,1
+==> EPG
+<== EPG,OK
+--- `CC DND` reads back as mode digit 2        (moved 1 -> 2)
+
+=== RESULTS (fw 1.06.06) ===
+keypad `CC Priority` -> wire mode digit 1
+keypad `CC DND`      -> wire mode digit 2
+
+# VERDICT: 1 = Priority, 2 = DND — confirms the first run, with no caveat.
+# Every mode moved the field off a value it was not already holding
+# (0 -> 1 -> 2), so neither reading can be explained by "the mode never
+# changed." Combined with the first capture, the mapping is now observed
+# twice independently on this firmware.
+#
+# No code change follows from this run: the shipped fix (#241 / PR #337,
+# corrected in PR #338) already maps 1 = cc_priority, 2 = cc_dnd. This
+# capture exists to retire the elimination step in the earlier record, not
+# to change a conclusion.
+#
+# Band mask 01001 and lockout=1 were untouched; this probe wrote nothing.

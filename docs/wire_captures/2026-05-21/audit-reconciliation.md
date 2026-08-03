@@ -286,9 +286,10 @@ The first conflict here where the **reference was right and our code was wrong**
 
 - **Our app said:** wire mode `1 = DND`, `2 = Priority` (`DeviceTab.tsx`, read map plus three duplicated write maps).
 - **Both references said:** `1 = Priority`, `2 = DND` (`BC125AT_PROTOCOL.md` §7.6 and its `CLC` field table).
-- **Our hardware says:** the references are correct on fw 1.06.06 (`docs/wire_captures/2026-08-03/clc-mode-probe.txt`). Setting `CC DND` from the keypad moves the mode field `1 → 2`; `CC Priority` reads back `1`.
-- **Verdict:** the app's map was inverted — selecting "CC Priority" sent `CLC,2` (DND) and vice versa. Fixed in `DeviceTab.tsx` (#241). The backend passes the digit through unchanged (`settings.rs`, `import_ss.rs`), so no backend change was needed.
-- **Caveat:** the probe's baseline was already mode `1`, so the `CC Priority` step alone is also consistent with "the mode never changed." The DND step carries the finding — it moved `1 → 2` off the keypad, proving the field tracks the menu. Priority is `1` by elimination (`0` is Off). A re-run from a non-Priority baseline would close this cleanly.
+- **Our hardware says:** the references are correct on fw 1.06.06. Captured **twice**, independently:
+  - `docs/wire_captures/2026-08-03/clc-mode-probe.txt` — baseline was already mode `1`, so `CC DND` moving `1 → 2` carried the finding and Priority was `1` by elimination.
+  - `docs/wire_captures/2026-08-03/clc-mode-probe-clean-baseline.txt` — re-run from mode `0` (Off). Both modes moved the field off a value it was not already holding (`0 → 1 → 2`), so **neither reading depends on elimination**. This retires the caveat the first run carried.
+- **Verdict:** the app's map was inverted — selecting "CC Priority" sent `CLC,2` (DND) and vice versa. Fixed in `DeviceTab.tsx` (#241 / PR #337; the four duplicated map sites were collapsed to one derived source of truth in PR #338). The backend passes the digit through unchanged (`settings.rs`, `import_ss.rs`), so no backend change was needed.
 
 Method note: the probe is **read-only** by design. Writing `CLC,<n>` and reading back `<n>` would only prove the scanner echoes what we sent; the mode had to be set from the radio's own keypad for the capture to mean anything. Same shape applies to any future "which digit means which label" question.
 
