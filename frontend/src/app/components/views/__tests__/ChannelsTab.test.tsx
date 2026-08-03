@@ -600,6 +600,54 @@ describe('ChannelsTab', () => {
       expect(row!).not.toHaveClass('bg-brand-primary/10');
       expect(row!).not.toHaveClass('border-l-2');
     });
+
+    // #272: a staged clear is destructive, but it used to render with the same
+    // generic `isPending` styling as an ordinary edit — so clearing a row was
+    // the least noticeable action in the table. A cleared row now takes amber
+    // instead of the brand tint, and data-cleared drives the one-shot flash.
+    it('styles a cleared row amber rather than with the ordinary pending tint', () => {
+      const channel = createTestChannel({ index: 1, alpha_tag: 'Channel 1' });
+      const store = createMockStore({
+        channels: [channel],
+        // A clear stages a zeroed draft (buildEmptyDraft) — frequency parses
+        // to 0, which is what marks the row cleared.
+        memoryDrafts: {
+          1: createTestChannelDraft({ frequency: '0', alpha_tag: '', modulation: 'AUTO' }),
+        },
+      });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      // A cleared row renders placeholders for every value, so its aria-label
+      // ("unnamed") is the stable handle rather than any cell's text.
+      const row = screen.getByRole('row', { name: /Edit channel 1, unnamed/i });
+      expect(row).toHaveClass('bg-amber-500/10');
+      expect(row).toHaveClass('border-amber-400/60');
+      // The flash hook, and the class the reduced-motion rule disables.
+      expect(row).toHaveClass('channel-row--cleared');
+      expect(row).toHaveAttribute('data-cleared');
+      // The two pending treatments are mutually exclusive — a cleared row must
+      // not also carry the brand tint, or the amber would be washed out.
+      expect(row).not.toHaveClass('bg-brand-primary/10');
+    });
+
+    it('does not style an ordinary edited row as cleared', () => {
+      const channel = createTestChannel({ index: 1, alpha_tag: 'Channel 1' });
+      const store = createMockStore({
+        channels: [channel],
+        memoryDrafts: {
+          1: createTestChannelDraft({ alpha_tag: 'Draft Channel' }),
+        },
+      });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /Edit channel 1, Draft Channel/i });
+      expect(row).toHaveClass('bg-brand-primary/10');
+      expect(row).not.toHaveClass('bg-amber-500/10');
+      expect(row).not.toHaveClass('channel-row--cleared');
+      expect(row).not.toHaveAttribute('data-cleared');
+    });
   });
 
   describe('Accessibility', () => {
