@@ -50,9 +50,11 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
 };
 
 // Close Call (CLC) mode: UI value -> wire digit. Digits confirmed on hardware
-// (fw 1.06.06, #241): 1 = Priority, 2 = DND — see
-// docs/wire_captures/2026-08-03/clc-mode-probe.txt. Both references agreed and
-// the app had them inverted, so "CC Priority" was sending DND to the radio.
+// (fw 1.06.06, #241): 1 = Priority, 2 = DND. Captured twice — see
+// docs/wire_captures/2026-08-03/clc-mode-probe.txt and
+// clc-mode-probe-clean-baseline.txt (the latter re-run from mode 0, so neither
+// reading rests on elimination). Both references agreed and the app had them
+// inverted, so "CC Priority" was sending DND to the radio.
 //
 // Single source of truth on purpose. This map was previously inlined at four
 // sites (one read, three writes); a fix that missed one would have the mode
