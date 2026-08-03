@@ -42,6 +42,12 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'esnext',
+    // Tauri loads this bundle from local disk over file://, not over the
+    // network, so the default 500 kB warning is measuring a cost we don't
+    // pay. Raised above the current ~990 kB entry chunk with headroom, but
+    // deliberately not set high enough to stop flagging a real jump. See
+    // issue #259.
+    chunkSizeWarningLimit: 1200,
   },
   // Environment variables
   define: {
