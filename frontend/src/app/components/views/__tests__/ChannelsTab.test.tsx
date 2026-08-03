@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
-import { ChannelsTab } from '../ChannelsTab';
+import { ChannelsTab, buildDraft, buildEmptyDraft } from '../ChannelsTab';
 import { createTestChannel, createTestChannelDraft } from '../../../../test/fixtures';
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import { createMockStore } from '../../../../test/mocks/mockStore';
@@ -43,18 +43,18 @@ vi.mock('../../../../store/useStore', () => ({
   useStore: vi.fn(),
 }));
 
-// Mirror of buildEmptyDraft in ChannelsTab.tsx (not exported). Kept in sync
-// deliberately: the #272 guard below exists to catch this shape drifting away
-// from what the scanner reports for a cleared channel, so it must NOT be
-// derived from createTestChannelDraft's defaults.
-const buildEmptyDraftShape = {
-  frequency: '0',
+// A cleared channel exactly as the BC125AT reports it, profiled across all 150
+// cleared channels on the dev unit (#272). This is the contract buildEmptyDraft
+// has to match: every field that disagrees keeps the channel in
+// pendingChannelIds forever after an uploaded clear.
+const CLEARED_CHANNEL_ON_HARDWARE = {
+  frequency: 0,
   alpha_tag: '',
-  modulation: 'AUTO',
-  tone_squelch: '',
-  delay: '2',
+  modulation: 'AUTO' as const,
+  delay: 2,
+  tone_squelch: null,
   lockout: true,
-  comments: '',
+  priority: false,
 };
 
 describe('ChannelsTab', () => {
@@ -707,29 +707,20 @@ describe('ChannelsTab', () => {
       expect(row).not.toHaveClass('bg-brand-primary/10');
     });
 
-    // REGRESSION GUARD (#272): the real-hardware case behind "I deleted a
-    // channel and the amber never cleared". buildDraft short-circuits to
-    // buildEmptyDraft for any zero-frequency channel, so after an uploaded
-    // clear the rebuilt draft IS buildEmptyDraft(). Its delay must therefore
-    // equal what the scanner reports for a cleared channel (2 — verified on
-    // hardware across 149 cleared channels), or hasChanges compares 0 !== 2,
-    // the channel sits in pendingChannelIds forever, and the row keeps both its
-    // styling and its place in Upload Changes. Assert the PENDING state, not
-    // just the class: the styling was only the visible symptom.
+    // REGRESSION GUARD (#272): the end-to-end half of the buildEmptyDraft
+    // contract — an uploaded clear must stop counting as a pending change.
+    // buildDraft short-circuits to buildEmptyDraft for any zero-frequency
+    // channel, so after an uploaded clear the rebuilt draft IS
+    // buildEmptyDraft(). If any of its fields disagree with what the scanner
+    // reports, hasChanges stays true, the channel sits in pendingChannelIds
+    // forever, and the row keeps both its styling and its place in Upload
+    // Changes. Assert the PENDING state, not just the class: the styling was
+    // only the visible symptom. The field-level contract is asserted directly
+    // by the "buildEmptyDraft matches a cleared channel" guard below.
     it('an uploaded clear stops counting as a pending change', () => {
-      // Exactly what the refetch returns for a cleared slot on real hardware.
-      // Profiled across all 149 cleared channels on the dev unit: delay 2,
-      // modulation AUTO, tone null, and lockout TRUE (the scanner locks a slot
-      // out when it is emptied). Do not "simplify" these to zeroes — a field
-      // that disagrees with buildEmptyDraft is exactly the bug.
       const clearedChannel = createTestChannel({
         index: 1,
-        frequency: 0,
-        alpha_tag: '',
-        modulation: 'AUTO',
-        delay: 2,
-        tone_squelch: null,
-        lockout: true,
+        ...CLEARED_CHANNEL_ON_HARDWARE,
       });
       setMockStore(
         createMockStore({
@@ -737,7 +728,8 @@ describe('ChannelsTab', () => {
           // The draft handleUploadDrafts rebuilds via buildDraft ->
           // buildEmptyDraft. Built from that function's real output so the
           // comparison under test is the production one.
-          memoryDrafts: { 1: { ...buildEmptyDraftShape } },
+          // The REAL function handleUploadDrafts rebuilds with, not a copy.
+          memoryDrafts: { 1: buildEmptyDraft() },
         }),
       );
 
@@ -752,6 +744,40 @@ describe('ChannelsTab', () => {
       // the stuck styling was only the visible half. (The button always
       // renders; "nothing pending" is expressed by disabling it.)
       expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+    });
+
+    // REGRESSION GUARD (#272): the field-level contract, asserted against the
+    // REAL buildEmptyDraft rather than a copy of its shape. Two earlier
+    // attempts at this guard hand-built the draft in the test file and passed
+    // happily with the bug reintroduced — the test never touched the production
+    // function. buildEmptyDraft must describe a cleared channel AS THE SCANNER
+    // REPORTS IT, not "everything zeroed": `delay: 0` and `lockout: false` are
+    // both valid, meaningful states, so neither is a safe "empty" sentinel.
+    // Measured across all 150 cleared channels on the dev unit.
+    it('buildEmptyDraft matches a cleared channel as the scanner reports it', () => {
+      const draft = buildEmptyDraft();
+      const hw = CLEARED_CHANNEL_ON_HARDWARE;
+
+      // Every field draftChanges' hasChanges compares, in its own assertion so
+      // a failure names the field that drifted.
+      expect(Number.parseFloat(draft.frequency)).toBe(hw.frequency);
+      expect(draft.alpha_tag).toBe(hw.alpha_tag);
+      expect(draft.modulation).toBe(hw.modulation);
+      expect(Number.parseInt(draft.delay, 10)).toBe(hw.delay);
+      expect(draft.lockout).toBe(hw.lockout);
+      // An empty tone string is how hasChanges encodes "no tone" (null).
+      expect(draft.tone_squelch.trim()).toBe('');
+      expect(hw.tone_squelch).toBeNull();
+    });
+
+    // REGRESSION GUARD (#272): buildDraft must route a cleared channel through
+    // buildEmptyDraft. This is the link that makes the contract above matter —
+    // it is what handleUploadDrafts calls to rebuild drafts after the refetch,
+    // so if the short-circuit is removed, a cleared channel gets a draft built
+    // from its live fields and the two guards above stop covering the real path.
+    it('buildDraft returns the empty-draft shape for a cleared channel', () => {
+      const cleared = createTestChannel({ index: 1, ...CLEARED_CHANNEL_ON_HARDWARE });
+      expect(buildDraft(cleared)).toEqual(buildEmptyDraft());
     });
 
     // REGRESSION GUARD (#272): the discriminating case. A zeroed draft can
