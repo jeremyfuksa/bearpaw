@@ -9,7 +9,9 @@ export interface TestProvidersProps {
   mockApi?: Record<string, unknown>;
 }
 
-const MockProviders = ({ children, mockStore, mockApi }: TestProvidersProps) => {
+// mockStore/mockApi are part of the props contract but intentionally unread:
+// tests stub the store and API client via vi.mock, not through this provider.
+const MockProviders = ({ children }: TestProvidersProps) => {
   return <>{children}</>;
 };
 
