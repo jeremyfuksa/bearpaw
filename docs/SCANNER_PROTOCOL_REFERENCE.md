@@ -366,6 +366,14 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 
 - **500 channels in a flat namespace**, divided into **10 banks of 50** (bank 1 = ch 1–50, bank 2 = 51–100, …, bank 10 = 451–500 — the "0" key on the LCD).
 - **One priority channel per bank max.**
+
+> **Priority clear via DCH+rewrite: VERIFIED ON HARDWARE 2026-08-03** (issue #251, firmware as shipped on this unit). The firmware refuses an in-place priority `1`→`0` CIN write (#203 probe), so the only mechanism is `DCH,<n>` (wipe to factory-empty) followed by a full CIN rewrite with priority=0 — implemented in `clear_channel_priority_locked`. Both hazards were exercised end-to-end against the physical scanner and confirmed on the front panel:
+>
+> - **One-per-bank holds on swap.** Setting priority on a second channel in a bank that already had one cleared the old channel first, inside a single `PRG`/`EPG` bracket. The panel showed exactly one priority channel afterward.
+> - **Channel data survives the DCH+rewrite.** A cleared channel read back byte-identical to its pre-clear state — frequency, alpha tag, modulation, delay, lockout, and tone all intact.
+>
+> Read-backs are not confusable with a wiped slot: factory-empty forces the fixed tail `delay=2, lockout=1, priority=0`, and both verified channels read back `lockout=0` (one with `delay=0`), which that tail cannot produce. **Not covered:** the abort window where `DCH` succeeds but the rewrite fails mid-bracket — reaching it requires interrupting the device mid-write. That path is covered in software by the failure-injectable transport mock (#249).
+
 - **No systems, no groups, no sites, no trunking.** This is a conventional-only analog scanner.
 - No user-programmable BearTracker memory; BCT125AT BearTracker frequencies are baked into firmware per state.
 
