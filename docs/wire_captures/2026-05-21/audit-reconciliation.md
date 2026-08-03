@@ -293,6 +293,17 @@ The first conflict here where the **reference was right and our code was wrong**
 
 Method note: the probe is **read-only** by design. Writing `CLC,<n>` and reading back `<n>` would only prove the scanner echoes what we sent; the mode had to be set from the radio's own keypad for the capture to mean anything. Same shape applies to any future "which digit means which label" question.
 
+**Update 2026-08-03 — a fourth mode the reference omits.** The radio has a `CC Only` (Close Call Only) mode absent from §7.6. A third capture (`clc-mode-probe-cc-only.txt`) walked all four with computed baseline-last ordering: `0→1` Priority, `1→2` DND, `2→3` **Only**, `3→0` Off. So the reference is **incomplete, not wrong** — 0/1/2 match it exactly (a third confirmation), and `3` is simply missing from it.
+
+This one was broken in **both** layers, unlike the `PRI` mode-3 gap in Conflict 5 where only the frontend lagged:
+
+- `set_close_call` validated `(0..=2)` and rejected `3` with `close_call_mode_invalid` — the API could not write back the mode the radio was reporting.
+- `CLOSE_CALL_MODE_TO_WIRE` had no entry, and the read site used `|| 'off'`, so a radio in CC Only displayed as "Off" and the next save would write `CLC,0` — the same silent-clobber shape as #340.
+
+Both fixed alongside the capture; the read site now uses a null-returning `closeCallWireToMode()` like its priority counterpart.
+
+Lesson worth carrying: two independent references agreeing on a range is not evidence the range is complete. Both said 0-2 for `CLC` and both were right about what they listed — they just didn't list everything the hardware does. A capture that only probes the documented values cannot discover this; the fourth mode surfaced because the operator knew the radio had it.
+
 ### Conflict 5 — `PRI` priority mode digits + an undocumented precondition (added 2026-08-03)
 
 Not a disagreement: the references were right about the digits. The finding here is the **precondition they omit**.

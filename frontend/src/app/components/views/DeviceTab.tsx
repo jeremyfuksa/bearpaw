@@ -61,15 +61,32 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
 // dropdown and the band/beep toggles sending DIFFERENT modes for the same
 // selection. Read direction is derived below rather than written out, so the
 // two cannot drift apart.
+// Mode 3 (`CC Only`) is NOT in BC125AT_PROTOCOL.md §7.6, which documents only
+// 0-2. It was found on hardware — see clc-mode-probe-cc-only.txt in the same
+// capture directory. Both layers used to cap at 2, so a radio in CC Only
+// reported a digit the UI could not display and the backend would reject.
 export const CLOSE_CALL_MODE_TO_WIRE: Record<string, number> = {
   off: 0,
   cc_priority: 1,
   cc_dnd: 2,
+  cc_only: 3,
 };
 
 export const CLOSE_CALL_WIRE_TO_MODE: Record<number, string> = Object.fromEntries(
   Object.entries(CLOSE_CALL_MODE_TO_WIRE).map(([mode, wire]) => [wire, mode]),
 );
+
+/**
+ * Map a wire Close Call digit to its UI value.
+ *
+ * Returns `null` for a digit we don't model rather than falling back to 'off' —
+ * the same guard `priorityWireToMode` carries, for the same reason (#340): this
+ * dropdown is also the write path, so a wrong read becomes a wrong write on the
+ * next save. `CC Only` (mode 3) was exactly that case before it was mapped.
+ */
+export function closeCallWireToMode(wire: number): string | null {
+  return CLOSE_CALL_WIRE_TO_MODE[wire] ?? null;
+}
 
 // Priority scan (PRI) mode: UI value -> wire digit. Same derived-inverse shape
 // as the Close Call maps above, and for the same reason — these were two
@@ -311,7 +328,16 @@ export function DeviceTab() {
 
         // Populate close call settings
         if (settings.close_call) {
-          setCloseCallMode(CLOSE_CALL_WIRE_TO_MODE[settings.close_call.mode] || 'off');
+          const ccMode = closeCallWireToMode(settings.close_call.mode);
+          if (ccMode === null) {
+            // Unmodelled wire mode. Don't render it as "Off" — that would let
+            // the next save clobber the radio's actual setting with CLC,0.
+            console.warn(
+              `Unsupported close call mode from scanner: ${settings.close_call.mode} (not shown in UI)`,
+            );
+          } else {
+            setCloseCallMode(ccMode);
+          }
           setCloseCallLockout(settings.close_call.lockout);
           setCloseCallBeep(settings.close_call.alert_beep);
           setCloseCallLight(settings.close_call.alert_light);
@@ -1156,6 +1182,7 @@ export function DeviceTab() {
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="cc_dnd">CC DND</SelectItem>
                       <SelectItem value="cc_priority">CC Priority</SelectItem>
+                      <SelectItem value="cc_only">CC Only</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
