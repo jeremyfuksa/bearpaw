@@ -1,0 +1,111 @@
+# Priority scan mode probe — 2026-08-03, BC125AT fw 1.06.06 (USB direct transport)
+# Question (#341): does PRI mode 3 (Priority DND) exist on this hardware, and
+# do digits 0-2 mean what the app assumes? The frontend modelled 0-2 only; both
+# BC125AT_PROTOCOL.md §7.5 and the backend's (0..=3) validation implied a fourth
+# mode, but no PRI capture existed to authorise adding it.
+#
+# Method: READ-ONLY. Operator sets each mode from the radio's own keypad; the
+# probe reads PRI back. A PRI write would only prove the scanner echoes the
+# digit we sent, which says nothing about which digit means which mode.
+# Source: crates/bearpaw-api/examples/priority_mode_probe.rs
+#
+# PRECONDITION (discovered this session): the radio refuses to enter any
+# priority mode when no channel is flagged priority — it shows "Priority Scan:
+# No Channel" and the menu selection does not stick. The probe now gates on
+# this. Channel 2 (Ararat UHF) carried the flag for this run.
+#
+# PRI replies with a single field: PRI,<mode>
+
+==> MDL
+<== MDL,BC125AT
+==> VER
+<== VER,Version 1.06.06
+
+--- precondition check: is any channel flagged priority? ---
+==> PRG
+<== PRG,OK
+==> CIN,1
+<== CIN,1,Azzzzzz,01466850,AUTO,0,2,0,0
+==> CIN,2
+<== CIN,2,Ararat UHF,01451300,AUTO,0,2,0,1
+==> EPG
+<== EPG,OK
+--- OK: channel 2 is flagged priority (CIN field 8 = 1). Proceeding.
+
+--- baseline (before any keypad changes, NOT a probe step) ---
+==> PRG
+<== PRG,OK
+==> PRI
+<== PRI,1
+==> EPG
+<== EPG,OK
+--- baseline priority digit: 1
+--- probe order (baseline-last): Off -> Plus -> DND -> Scan (on)
+
+--- operator set `Priority Off` on the keypad ---
+==> PRG
+<== PRG,OK
+==> PRI
+<== PRI,0
+==> EPG
+<== EPG,OK
+--- `Priority Off` reads back as mode digit 0        (moved 1 -> 0)
+
+--- operator set `Priority Plus` on the keypad ---
+==> PRG
+<== PRG,OK
+==> PRI
+<== PRI,2
+==> EPG
+<== EPG,OK
+--- `Priority Plus` reads back as mode digit 2       (moved 0 -> 2)
+
+--- operator set `Priority DND` on the keypad ---
+==> PRG
+<== PRG,OK
+==> PRI
+<== PRI,3
+==> EPG
+<== EPG,OK
+--- `Priority DND` reads back as mode digit 3        (moved 2 -> 3)
+
+--- operator set `Priority Scan (on)` on the keypad ---
+==> PRG
+<== PRG,OK
+==> PRI
+<== PRI,1
+==> EPG
+<== EPG,OK
+--- `Priority Scan (on)` reads back as mode digit 1  (moved 3 -> 1)
+
+=== RESULTS (fw 1.06.06) ===
+keypad `Priority Off      ` -> wire mode digit 0
+keypad `Priority Scan (on)` -> wire mode digit 1
+keypad `Priority Plus     ` -> wire mode digit 2
+keypad `Priority DND      ` -> wire mode digit 3
+
+--- transition check ---
+  Priority Off      : 1 -> 0  ok
+  Priority Plus     : 0 -> 2  ok
+  Priority DND      : 2 -> 3  ok
+  Priority Scan (on): 3 -> 1  ok
+  => all four digits directly observed.
+
+# VERDICT: 0 = Off, 1 = On, 2 = Plus, 3 = DND — matches BOTH references
+# (BC125AT_PROTOCOL.md §7.5 and its command summary `PRI,<0|1|2|3>`).
+#
+# Every mode was entered from a DIFFERENT mode, so no digit rests on
+# elimination — the weakness that required a second CLC capture (#339) does not
+# apply here. The probe computes its prompt order from the baseline to
+# guarantee this.
+#
+# `Priority DND` EXISTS on this firmware. That authorises adding mode 3 to the
+# frontend (PRIORITY_MODE_TO_WIRE + SelectItem). The backend needs no change:
+# set_priority already validates (0..=3).
+#
+# SECOND FINDING — the precondition above is not in any reference. PRI mode
+# reachability is gated on channel state that lives entirely outside the
+# priority UI. A user with no priority channel cannot enter any priority mode,
+# and the app does not currently surface why. Worth its own issue.
+#
+# This probe wrote nothing; the operator restored the baseline mode by keypad.

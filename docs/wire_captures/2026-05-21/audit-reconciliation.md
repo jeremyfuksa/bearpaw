@@ -293,6 +293,21 @@ The first conflict here where the **reference was right and our code was wrong**
 
 Method note: the probe is **read-only** by design. Writing `CLC,<n>` and reading back `<n>` would only prove the scanner echoes what we sent; the mode had to be set from the radio's own keypad for the capture to mean anything. Same shape applies to any future "which digit means which label" question.
 
+### Conflict 5 — `PRI` priority mode digits + an undocumented precondition (added 2026-08-03)
+
+Not a disagreement: the references were right about the digits. The finding here is the **precondition they omit**.
+
+- **Both references said:** `PRI` accepts `0|1|2|3` = Off/On/Plus/DND (`BC125AT_PROTOCOL.md` §7.5 and its command summary). The backend agreed, validating `(0..=3)` in `api/handlers/settings.rs::set_priority`.
+- **Our app said:** only 0-2. Mode `3` had no UI entry, so a radio in Priority DND could not be seen or set — and before PR #340 it displayed as "Off" and got clobbered to `PRI,0` on the next save.
+- **Our hardware says:** all four confirmed on fw 1.06.06 (`docs/wire_captures/2026-08-03/pri-mode-probe.txt`). Every mode was entered from a *different* mode — `1→0` Off, `0→2` Plus, `2→3` DND, `3→1` On — so no digit rests on elimination. `Priority DND` exists on this firmware.
+- **Verdict:** mode 3 added to the frontend (`PRIORITY_MODE_TO_WIRE` + `SelectItem`). Backend unchanged; it already allowed the full range.
+
+**The undocumented part.** The radio refuses to enter *any* priority mode when no channel carries the priority flag — it shows "Priority Scan: No Channel" and the menu selection does not stick. So `PRI` mode reachability is gated on channel state that lives entirely outside the priority UI, and no reference mentions this. The probe now checks the precondition read-only and aborts rather than collecting readings that would all show no transition.
+
+This compounds the 2026-07-21 priority finding above: setting the flag works via a plain `CIN` write, but clearing it is refused in place and needs `DCH` + full rewrite. A user who flags a channel to use priority modes cannot trivially unflag it.
+
+Method note: the probe computes its prompt order from the baseline so the mode already held is prompted **last**, guaranteeing every reading is a real transition. That exists because the `CLC` probe shipped twice with an unnoticed non-transition step (see Conflict 4's two captures). Any future "which digit means which label" probe should carry the same property.
+
 ### Governing rule
 
 Whenever `BC125AT_PROTOCOL.md` disagrees with a wire capture from this hardware, the capture wins. Document the disagreement in `docs/SCANNER_PROTOCOL_REFERENCE.md`; do not reshape the Rust code to match the reference's claim.
