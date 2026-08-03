@@ -33,7 +33,7 @@ interface ChannelRowProps {
   rowCount: number;
   isEditing: boolean;
   isPending: boolean;
-  isCleared: boolean;
+  isClearPending: boolean;
   isSelected: boolean;
   isGrabbed: boolean;
   disableDrag: boolean;
@@ -58,7 +58,7 @@ function ChannelRow({
   rowCount,
   isEditing,
   isPending,
-  isCleared,
+  isClearPending,
   isSelected,
   isGrabbed,
   disableDrag,
@@ -122,17 +122,19 @@ function ChannelRow({
       data-grabbed={isGrabbed || undefined}
       // #272: a staged clear is destructive but was styled identically to an
       // ordinary edit (both merely `isPending`), so clearing rows was the least
-      // noticeable action in the table. Cleared-pending rows take an amber
+      // noticeable action in the table. Rows with a clear STAGED take an amber
       // treatment instead of the brand one, and data-cleared drives a one-shot
       // flash so the user sees WHICH rows the clear hit. The flash is decoration
       // only — the persistent amber plus the "—"/"–" placeholder values carry
       // the meaning for reduced-motion users (theme.css disables the animation).
-      data-cleared={isCleared || undefined}
+      // Both clear once the upload lands: see the isClearPending note at the
+      // call site for why this tracks pending state, not "frequency is 0".
+      data-cleared={isClearPending || undefined}
       className={cn(
         'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         isEditing ? 'bg-brand-primary/20 border-brand-primary/30' : 'hover:bg-white/5',
-        isPending && !isCleared && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
-        isCleared &&
+        isPending && !isClearPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
+        isClearPending &&
           'channel-row--cleared bg-amber-500/10 border-l-2 border-amber-400/60 text-white/45',
         isDragging && 'opacity-60',
         isGrabbed && 'bg-brand-primary/25 ring-1 ring-inset ring-brand-primary/70',
@@ -1091,6 +1093,21 @@ export function ChannelsTab() {
                   const displayLockout = isCleared ? false : channel.lockout;
                   const displayPriority = isCleared ? false : channel.priority;
                   const isPending = pendingChannelIds.has(channel.index);
+                  // REGRESSION GUARD (#272): the amber row treatment means
+                  // "clear STAGED, not yet uploaded", so it must be gated on
+                  // isPending — NOT on isCleared alone. isCleared is a pure
+                  // value test (the draft's frequency parses to 0), and a
+                  // successful upload REBUILDS the draft from the written
+                  // channel (handleUploadDrafts) rather than deleting it. So a
+                  // genuinely-cleared channel keeps a zero-frequency draft for
+                  // the life of the session: gating on isCleared alone left the
+                  // row amber and flashing forever after the write had landed.
+                  // Only draftChanges (via pendingChannelIds) knows the change
+                  // already shipped. Same stale-draft trap as the isPending
+                  // (#195) and priority/lockout (#206) guards above.
+                  // Guarded by ChannelsTab.test.tsx :: keeps a staged clear
+                  // amber only while it is genuinely pending.
+                  const isClearPending = isCleared && isPending;
 
                   return (
                     <ChannelRow
@@ -1098,7 +1115,7 @@ export function ChannelsTab() {
                       displayIndex={displayIndex}
                       isEditing={isEditing}
                       isPending={isPending}
-                      isCleared={isCleared}
+                      isClearPending={isClearPending}
                       isSelected={selectedChannelIds.includes(channel.index)}
                       onSelect={() => handleToggleSelect(channel.index)}
                       onClick={() => handleOpenEditSheet(channel.index)}
