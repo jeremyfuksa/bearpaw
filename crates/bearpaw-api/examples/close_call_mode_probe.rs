@@ -37,8 +37,13 @@ const PID: u16 = 0x0017;
 
 /// Keypad path the operator follows for each mode, from the BC125AT manual's
 /// Close Call menu. Printed verbatim in the prompt so the run is self-contained.
-const KEYPAD_STEPS: &str = "\
-      1. Press [Func] then [Close Call] (the .../CC key) to open the CC menu.
+///
+/// Verified on hardware 2026-08-03 (fw 1.06.06): this sequence successfully
+/// changed the mode, confirmed by the wire read moving 1 -> 2 for `CC DND`
+/// (docs/wire_captures/2026-08-03/clc-mode-probe.txt). Not guesswork — but the
+/// menu wording can differ across firmware, so trust the radio's display over
+/// this text if they disagree.
+const KEYPAD_STEPS: &str = "      1. Press [Func] then [Close Call] (the .../CC key) to open the CC menu.
       2. Select `CC Mode` and press [E].
       3. Choose the mode named below, press [E] to confirm.
       4. Back out with [Scan/Srch] until the radio is scanning again.";
