@@ -1,0 +1,63 @@
+# Close Call mode probe — 2026-08-03, BC125AT fw 1.06.06 (USB direct transport)
+# Question (#241): which CLC <mode> digit means Priority, and which means DND?
+# The app mapped 1=DND / 2=Priority; both references say 1=Priority / 2=DND.
+# No CLC capture existed, so captures-win left it unresolvable from docs alone.
+#
+# Method: READ-ONLY. Operator sets each mode from the radio's own keypad; the
+# probe reads CLC back. A CLC write would only prove the scanner echoes the
+# digit we sent, which says nothing about which digit means which mode.
+# Source: crates/bearpaw-api/examples/close_call_mode_probe.rs
+#
+# CLC,<mode>,<alert_beep>,<alert_light>,<band>,<lockout>
+
+==> MDL
+<== MDL,BC125AT
+==> VER
+<== VER,Version 1.06.06
+
+--- baseline (before any keypad changes) ---
+==> PRG
+<== PRG,OK
+==> CLC
+<== CLC,1,1,1,01001,1
+==> EPG
+<== EPG,OK
+--- baseline CC mode digit: 1
+
+--- operator set `CC Priority` on the keypad ---
+==> PRG
+<== PRG,OK
+==> CLC
+<== CLC,1,1,1,01001,1
+==> EPG
+<== EPG,OK
+--- `CC Priority` reads back as mode digit 1
+
+--- operator set `CC DND` on the keypad ---
+==> PRG
+<== PRG,OK
+==> CLC
+<== CLC,2,1,1,01001,1
+==> EPG
+<== EPG,OK
+--- `CC DND` reads back as mode digit 2
+
+=== RESULTS (fw 1.06.06) ===
+keypad `CC Priority` -> wire mode digit 1
+keypad `CC DND`      -> wire mode digit 2
+
+# VERDICT: 1 = Priority, 2 = DND on this hardware — matches BOTH references
+# (docs/BC125AT_PROTOCOL.md §7.6 and its CLC field table). The app's map was
+# INVERTED: selecting "CC Priority" sent CLC,2 (DND) and vice versa. Fixed in
+# frontend/src/app/components/views/DeviceTab.tsx (read map + three write maps).
+#
+# CAVEAT on the Priority reading: the baseline was already mode 1, and the
+# `CC Priority` step read back 1 — so that step alone is also consistent with
+# "the mode never changed." The DND step is the load-bearing observation: it
+# moved 1 -> 2 off the keypad, proving the field tracks the menu selection and
+# that DND is 2. Priority is 1 by elimination (it is a distinct selectable mode
+# and 0 is Off). A cleaner re-run would start from a non-Priority baseline.
+# This does not change the verdict, but a future capture should close it.
+#
+# Band mask 01001 and the trailing lockout=1 were untouched throughout; this
+# probe wrote nothing. The band-label question was settled separately in #240.
