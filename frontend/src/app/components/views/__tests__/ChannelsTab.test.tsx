@@ -43,6 +43,20 @@ vi.mock('../../../../store/useStore', () => ({
   useStore: vi.fn(),
 }));
 
+// Mirror of buildEmptyDraft in ChannelsTab.tsx (not exported). Kept in sync
+// deliberately: the #272 guard below exists to catch this shape drifting away
+// from what the scanner reports for a cleared channel, so it must NOT be
+// derived from createTestChannelDraft's defaults.
+const buildEmptyDraftShape = {
+  frequency: '0',
+  alpha_tag: '',
+  modulation: 'AUTO',
+  tone_squelch: '',
+  delay: '2',
+  lockout: true,
+  comments: '',
+};
+
 describe('ChannelsTab', () => {
   let mockApiClient: ReturnType<typeof createMockApiClient>;
   let mockChannels: ChannelData[];
@@ -691,6 +705,53 @@ describe('ChannelsTab', () => {
       expect(row).not.toHaveAttribute('data-cleared');
       // ...and it is not stuck showing as an ordinary pending edit either.
       expect(row).not.toHaveClass('bg-brand-primary/10');
+    });
+
+    // REGRESSION GUARD (#272): the real-hardware case behind "I deleted a
+    // channel and the amber never cleared". buildDraft short-circuits to
+    // buildEmptyDraft for any zero-frequency channel, so after an uploaded
+    // clear the rebuilt draft IS buildEmptyDraft(). Its delay must therefore
+    // equal what the scanner reports for a cleared channel (2 — verified on
+    // hardware across 149 cleared channels), or hasChanges compares 0 !== 2,
+    // the channel sits in pendingChannelIds forever, and the row keeps both its
+    // styling and its place in Upload Changes. Assert the PENDING state, not
+    // just the class: the styling was only the visible symptom.
+    it('an uploaded clear stops counting as a pending change', () => {
+      // Exactly what the refetch returns for a cleared slot on real hardware.
+      // Profiled across all 149 cleared channels on the dev unit: delay 2,
+      // modulation AUTO, tone null, and lockout TRUE (the scanner locks a slot
+      // out when it is emptied). Do not "simplify" these to zeroes — a field
+      // that disagrees with buildEmptyDraft is exactly the bug.
+      const clearedChannel = createTestChannel({
+        index: 1,
+        frequency: 0,
+        alpha_tag: '',
+        modulation: 'AUTO',
+        delay: 2,
+        tone_squelch: null,
+        lockout: true,
+      });
+      setMockStore(
+        createMockStore({
+          channels: [clearedChannel],
+          // The draft handleUploadDrafts rebuilds via buildDraft ->
+          // buildEmptyDraft. Built from that function's real output so the
+          // comparison under test is the production one.
+          memoryDrafts: { 1: { ...buildEmptyDraftShape } },
+        }),
+      );
+
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /Edit channel 1, unnamed/i });
+      // Not amber, not brand-tinted — no pending styling of any kind.
+      expect(row).not.toHaveClass('bg-amber-500/10');
+      expect(row).not.toHaveClass('channel-row--cleared');
+      expect(row).not.toHaveAttribute('data-cleared');
+      expect(row).not.toHaveClass('bg-brand-primary/10');
+      // The row is not offered for upload either — the underlying bug, of which
+      // the stuck styling was only the visible half. (The button always
+      // renders; "nothing pending" is expressed by disabling it.)
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
     });
 
     // REGRESSION GUARD (#272): the discriminating case. A zeroed draft can

@@ -262,14 +262,31 @@ function buildDraft(channel: ChannelData): ChannelDraft {
   };
 }
 
+// REGRESSION GUARD (#272): this must describe a cleared channel AS THE SCANNER
+// REPORTS IT, not "everything zeroed". buildDraft short-circuits to
+// buildEmptyDraft for any channel whose frequency is 0, so after a clear is
+// uploaded the rebuilt draft is diffed against the refetched channel by
+// draftChanges' hasChanges. Every field that disagrees keeps the channel
+// permanently in pendingChannelIds — the row never loses its pending/cleared
+// styling, and Upload Changes stays lit and rewrites those channels on every
+// upload.
+//
+// Two fields were wrong. Verified against real hardware (all 149 cleared
+// channels on the dev unit): delay is 2 (the firmware default the backend also
+// falls back to in protocol/mod.rs), and lockout is TRUE — the BC125AT locks
+// out a slot when it is emptied. Neither is a "zero it" case: 0 is a valid
+// delay, and lockout false is a real, different state.
+//
+// Guarded by ChannelsTab.test.tsx :: an uploaded clear stops counting as a
+// pending change.
 function buildEmptyDraft(): ChannelDraft {
   return {
     frequency: '0',
     alpha_tag: '',
     modulation: 'AUTO',
     tone_squelch: '',
-    delay: '0',
-    lockout: false,
+    delay: '2',
+    lockout: true,
     comments: '',
   };
 }
