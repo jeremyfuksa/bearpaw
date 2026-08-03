@@ -937,7 +937,7 @@ Export one from your own scanner via Uniden Sentinel (or Bearpaw's
 > Bearpaw's own macOS quirks are documented separately in
 > `SCANNER_PROTOCOL_REFERENCE.md` §1 and `audit-reconciliation.md`. The
 > short version: kernel CDC-ACM does not bind to our hardware revision, so
-> we use the `nusb` direct-USB transport configured via `device.usb_vid`
+> we use the `rusb` direct-USB transport configured via `device.usb_vid`
 > and `device.usb_pid` in `config.yaml`.
 
 ### Detecting the scanner
