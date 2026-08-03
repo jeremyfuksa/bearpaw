@@ -1875,6 +1875,143 @@ mod tests {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // Fake scanner (#249)
+    //
+    // There is no `Transport` trait to mock: `send_raw_command` reaches the
+    // hardware by pushing `ControlCommand::Raw` down the `command_tx` mpsc
+    // channel, and the poll loop (which owns the serial/USB handle) answers on
+    // the enclosed `reply` channel. So the injection seam is that channel —
+    // a fake scanner is just a thread draining `command_rx`.
+    //
+    // This is a better seam than a transport trait would be: it intercepts
+    // whole wire commands and returns whole wire responses, which is exactly
+    // the granularity the atomicity contract is written in ("a failed DCH must
+    // abort the swap"). It also needs no production code change.
+    //
+    // `fail_on` injects "connects fine, but this round-trip fails" — the
+    // failure mode the priority-swap abort path is built to survive.
+    struct FakeScanner {
+        /// Every command the fake received, in order. The atomicity assertion
+        /// is about ORDER (clear before set) and ABSENCE (no set after a
+        /// failed clear), so the transcript is the thing under test.
+        transcript: Arc<Mutex<Vec<String>>>,
+        _thread: std::thread::JoinHandle<()>,
+    }
+
+    impl FakeScanner {
+        /// Attach a fake scanner to `state`. `responder` maps a wire command to
+        /// the reply the scanner would send; returning `Err` simulates a failed
+        /// round-trip (the poll loop's error path), NOT a disconnect.
+        fn attach<F>(state: &AppState, responder: F) -> Self
+        where
+            F: Fn(&str) -> Result<String, String> + Send + 'static,
+        {
+            let (tx, rx) = std::sync::mpsc::channel::<ControlCommand>();
+            *state.command_tx.lock().unwrap() = Some(tx);
+            let transcript = Arc::new(Mutex::new(Vec::new()));
+            let recorded = transcript.clone();
+
+            let thread = std::thread::spawn(move || {
+                while let Ok(cmd) = rx.recv() {
+                    // Only `Raw` carries a command string; the typed variants
+                    // (Hold/Scan/StartSync) aren't used by these tests.
+                    if let ControlCommand::Raw {
+                        command, reply, ..
+                    } = cmd
+                    {
+                        recorded.lock().unwrap().push(command.clone());
+                        // Ignore send errors: `send_raw_command` gives up after
+                        // 3 s and drops the receiver, which is a legitimate
+                        // (if slow) outcome rather than a fake-scanner bug.
+                        let _ = reply.send(responder(&command));
+                    }
+                }
+            });
+
+            FakeScanner {
+                transcript,
+                _thread: thread,
+            }
+        }
+
+        fn transcript(&self) -> Vec<String> {
+            self.transcript.lock().unwrap().clone()
+        }
+
+        /// Commands the fake saw, keeping only those starting with `prefix`.
+        fn commands_starting_with(&self, prefix: &str) -> Vec<String> {
+            self.transcript()
+                .into_iter()
+                .filter(|c| c.starts_with(prefix))
+                .collect()
+        }
+    }
+
+    /// A scanner that answers every command successfully, except those matching
+    /// `fail_on`, which come back `ERR` — the "connects fine, but this
+    /// round-trip fails" case from #249.
+    ///
+    /// CIN reads are answered in the field order verified against hardware
+    /// (docs/wire_captures/2026-07-08): tag, freq, mod, tone, delay, lockout,
+    /// priority. `priority_of` decides the priority bit per channel index so a
+    /// test can describe the bank's starting state.
+    fn scanner_responder(
+        fail_on: Option<&'static str>,
+        priority_of: fn(u16) -> bool,
+    ) -> impl Fn(&str) -> Result<String, String> + Send + 'static {
+        move |command: &str| {
+            if let Some(pattern) = fail_on {
+                if command.starts_with(pattern) {
+                    return Ok("ERR\r".to_string());
+                }
+            }
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            // A bare `CIN,<idx>` is a READ; `CIN,<idx>,<payload>` is a WRITE.
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let mut fields = rest.splitn(2, ',');
+                let index: u16 = fields.next().unwrap_or("").parse().unwrap_or(0);
+                match fields.next() {
+                    // Write: ack it, and echo the written priority bit back on
+                    // the following read so read-back-verify passes.
+                    Some(payload) => {
+                        let wrote_priority = payload.rsplit(',').next() == Some("1");
+                        WROTE_PRIORITY.with(|w| {
+                            w.borrow_mut().insert(index, wrote_priority);
+                        });
+                        return Ok("CIN,OK\r".to_string());
+                    }
+                    None => {
+                        let priority = WROTE_PRIORITY
+                            .with(|w| w.borrow().get(&index).copied())
+                            .unwrap_or_else(|| priority_of(index));
+                        return Ok(format!(
+                            "CIN,{index},Test Chan,01451300,FM,0,2,0,{}\r",
+                            if priority { 1 } else { 0 }
+                        ));
+                    }
+                }
+            }
+            if command.starts_with("DCH,") {
+                return Ok("DCH,OK\r".to_string());
+            }
+            Ok("OK\r".to_string())
+        }
+    }
+
+    thread_local! {
+        /// Per-channel priority bit as last WRITTEN by the fake, so a
+        /// write→read-back round-trip is self-consistent. Thread-local because
+        /// the fake scanner runs on its own thread, one per test.
+        static WROTE_PRIORITY: std::cell::RefCell<HashMap<u16, bool>> =
+            std::cell::RefCell::new(HashMap::new());
+    }
+
     // REGRESSION GUARD (#132): CIN write order is name, freq, mod, tone,
     // delay, lockout, priority — verified against hardware 2026-07-08
     // (docs/wire_captures/2026-07-08/cin-write-order-probe.txt). The old
@@ -2355,13 +2492,11 @@ mod tests {
 
     #[test]
     fn plan_priority_swap_orders_clear_before_set() {
-        // Half of the atomicity contract that IS unit-testable without a
-        // failure-injectable transport: the planner must identify the
+        // The planner half of the atomicity contract: it must identify the
         // old-to-clear target so the swap clears it BEFORE setting the new one.
-        // The abort-on-failure itself is enforced in `set_channel_priority` by
-        // the `?` on `clear_channel_priority_locked(...).await?` and the
-        // REGRESSION GUARD comment there — a true abort-path test needs a mock
-        // transport that fails the DCH/clear round-trip (tracked as follow-up).
+        // The abort-on-failure half is now covered end-to-end by
+        // `failed_priority_clear_aborts_the_swap` (#249), which drives a fake
+        // scanner that ERRs the DCH round-trip.
         use std::collections::HashMap;
         let mut ch = HashMap::new();
         let mut c2 = test_channel();
@@ -2375,5 +2510,135 @@ mod tests {
             "old priority channel must be identified so the swap clears it before setting the new one"
         );
         assert_eq!(new, 9);
+    }
+
+    /// Seed the shadow cache so `plan_priority_swap` sees CH2 as bank 1's
+    /// current priority channel and CH9 as the new target.
+    fn seed_bank_with_priority_on_two(state: &AppState) {
+        let mut shadow = state.shadow.write().unwrap();
+        for index in [2u16, 9u16] {
+            let mut ch = test_channel();
+            ch.index = index;
+            ch.bank = 1;
+            ch.priority = index == 2;
+            shadow.channels.insert(index, ch);
+        }
+    }
+
+    // REGRESSION GUARD (priority swap atomicity, #249): the abort-path half of
+    // the contract that `plan_priority_swap_orders_clear_before_set` could only
+    // prove structurally. A failed clear must ABORT the swap — the new channel
+    // is never set — so the bank can't end up with two priority channels or a
+    // DCH-deleted, unrestored one. Enforced by the `?` on
+    // `clear_channel_priority_locked(...).await?` in `set_channel_priority`.
+    #[tokio::test]
+    async fn failed_priority_clear_aborts_the_swap() {
+        let state = default_state();
+        seed_bank_with_priority_on_two(&state);
+        // The clear's DCH round-trip fails: connected, but the command ERRs.
+        let scanner = FakeScanner::attach(&state, scanner_responder(Some("DCH,"), |i| i == 2));
+
+        let result = set_channel_priority(&state, 9).await;
+
+        assert!(
+            result.is_err(),
+            "a failed clear must surface as an error, not a partial success"
+        );
+
+        // The load-bearing assertion: no CIN WRITE to the new channel. A write
+        // is `CIN,9,<payload>`; a read is bare `CIN,9`.
+        let writes: Vec<String> = scanner
+            .commands_starting_with("CIN,9,")
+            .into_iter()
+            .collect();
+        assert!(
+            writes.is_empty(),
+            "new priority channel must NOT be set after a failed clear, but saw: {writes:?}"
+        );
+
+        // And the shadow cache must not claim CH9 became priority.
+        let shadow = state.shadow.read().unwrap();
+        assert!(
+            !shadow.channels.get(&9).map(|c| c.priority).unwrap_or(false),
+            "shadow cache must not record the aborted set"
+        );
+    }
+
+    // The clear runs BEFORE the set, inside one program-mode bracket.
+    #[tokio::test]
+    async fn priority_swap_clears_old_before_setting_new() {
+        let state = default_state();
+        seed_bank_with_priority_on_two(&state);
+        let scanner = FakeScanner::attach(&state, scanner_responder(None, |i| i == 2));
+
+        let changed = set_channel_priority(&state, 9)
+            .await
+            .expect("swap should succeed when every round-trip is OK");
+
+        let transcript = scanner.transcript();
+        let dch_at = transcript.iter().position(|c| c.starts_with("DCH,2"));
+        let set_at = transcript.iter().position(|c| c.starts_with("CIN,9,"));
+        assert!(dch_at.is_some(), "expected a DCH clearing CH2: {transcript:?}");
+        assert!(set_at.is_some(), "expected a CIN write setting CH9: {transcript:?}");
+        assert!(
+            dch_at < set_at,
+            "clear must precede set, got transcript: {transcript:?}"
+        );
+
+        // Both the cleared-old and the set-new channel come back.
+        assert_eq!(changed.len(), 2, "expected cleared-old then set-new");
+        assert_eq!(changed[0].index, 2);
+        assert!(!changed[0].priority, "old channel must come back cleared");
+        assert_eq!(changed[1].index, 9);
+        assert!(changed[1].priority, "new channel must come back set");
+    }
+
+    // Endpoint happy path (#249): `true` sets and `false` clears, through HTTP.
+    #[tokio::test]
+    async fn priority_endpoint_sets_and_clears_over_http() {
+        let state = default_state();
+        seed_bank_with_priority_on_two(&state);
+        let _scanner = FakeScanner::attach(&state, scanner_responder(None, |i| i == 2));
+
+        let app = router(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/channels/9/priority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"priority":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200, "set-priority should succeed");
+        let body = json_body(response).await;
+        let changed = body["changed"].as_array().expect("changed array");
+        assert!(
+            changed.iter().any(|c| c["index"] == 9 && c["priority"] == true),
+            "response should report CH9 as the new priority channel: {body}"
+        );
+
+        // Now clear it back through the same endpoint.
+        let app = router(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/channels/9/priority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"priority":false}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200, "clear-priority should succeed");
+        let body = json_body(response).await;
+        let changed = body["changed"].as_array().expect("changed array");
+        assert!(
+            changed.iter().any(|c| c["index"] == 9 && c["priority"] == false),
+            "response should report CH9 as cleared: {body}"
+        );
     }
 }
