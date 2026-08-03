@@ -158,7 +158,7 @@ CTCSS/DCS codes (0–231) are decoded to Hz in [`crates/bearpaw-api/src/protocol
 Two transports, picked based on config:
 
 - **`SerialTransport`** ([`crates/bearpaw-api/src/transport.rs`](crates/bearpaw-api/src/transport.rs)) — `serialport` crate, opens `/dev/cu.usbmodem*` / `/dev/ttyUSB0` / `COMx`.
-- **`UsbTransport`** ([`crates/bearpaw-api/src/transport_usb.rs`](crates/bearpaw-api/src/transport_usb.rs)) — `nusb` direct bulk endpoints. Used when serial CDC binding fails (macOS — see Pitfalls).
+- **`UsbTransport`** ([`crates/bearpaw-api/src/transport_usb.rs`](crates/bearpaw-api/src/transport_usb.rs)) — `rusb` direct bulk endpoints. Used when serial CDC binding fails (macOS — see Pitfalls).
 
 The poll loop dispatches to the right transport based on whether the resolved port string starts with `usb:` (USB pseudo-target) or looks like a serial device. See [`crates/bearpaw-api/src/config.rs::resolve_serial_port`](crates/bearpaw-api/src/config.rs).
 
@@ -177,7 +177,7 @@ api:
   port: 8000
 ```
 
-On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver never binds — `/dev/cu.usbmodem*` does not appear. Setting `usb_vid`/`usb_pid` forces the `nusb` direct-USB path. Linux/Windows usually omit those fields and let auto-detect handle it.
+On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver never binds — `/dev/cu.usbmodem*` does not appear. Setting `usb_vid`/`usb_pid` forces the `rusb` direct-USB path. Linux/Windows usually omit those fields and let auto-detect handle it.
 
 Frontend env (in `frontend/.env`):
 
@@ -241,7 +241,7 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 4. **Alpha tags need memory sync.** Until sync completes, channel-name lookups return null.
 
 ### macOS USB transport
-The BC125AT enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0017`) but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` never appears. Configure `usb_vid`/`usb_pid` in `config.yaml` to force the `nusb` direct-USB path. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the discrepancy with reference docs that claim CP210x VID/PID.
+The BC125AT enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0017`) but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` never appears. Configure `usb_vid`/`usb_pid` in `config.yaml` to force the `rusb` direct-USB path. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the discrepancy with reference docs that claim CP210x VID/PID.
 
 ## Testing and CI
 

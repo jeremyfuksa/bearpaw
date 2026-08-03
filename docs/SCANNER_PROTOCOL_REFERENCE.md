@@ -73,7 +73,7 @@ The `BC125AT_PROTOCOL.md` reference (decompiled from Uniden Sentinel + Scan125, 
 
 **Our captures win.** Bearpaw probes `0x1965:0x0017` and that is what it should keep doing for BC125AT-family hardware. If a user reports a `0x10C4:0xEA60` BC125AT in the future, we'll add a second VID/PID branch; until then it's hypothetical.
 
-The `BC125AT_PROTOCOL.md` reference also documents a known macOS quirk for which we have empirical evidence: the device enumerates at USB level but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` does not appear. Bearpaw works around this via the `nusb` direct-USB transport (`crates/bearpaw-api/src/transport_usb.rs`), configured by setting `device.usb_vid` and `device.usb_pid` in `config.yaml`. See [`crates/bearpaw-api/config.example.yaml`](../crates/bearpaw-api/config.example.yaml).
+The `BC125AT_PROTOCOL.md` reference also documents a known macOS quirk for which we have empirical evidence: the device enumerates at USB level but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` does not appear. Bearpaw works around this via the `rusb` direct-USB transport (`crates/bearpaw-api/src/transport_usb.rs`), configured by setting `device.usb_vid` and `device.usb_pid` in `config.yaml`. See [`crates/bearpaw-api/config.example.yaml`](../crates/bearpaw-api/config.example.yaml).
 
 ---
 

@@ -7,7 +7,7 @@
 device:
   # On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver
   # doesn't bind, so no /dev/cu.usbmodem* node appears. Setting usb_vid/usb_pid
-  # forces the nusb direct-USB transport, which works without kernel binding.
+  # forces the rusb direct-USB transport, which works without kernel binding.
   # Linux/Windows users can usually omit this and let auto-detect handle it.
   usb_vid: 0x1965
   usb_pid: 0x0017
