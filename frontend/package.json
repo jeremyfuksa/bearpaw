@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@jeremyfuksa/campfire": "2.0.0",
-    "@popperjs/core": "2.11.8",
     "@radix-ui/react-accordion": "1.2.20",
     "@radix-ui/react-alert-dialog": "1.1.23",
     "@radix-ui/react-aspect-ratio": "1.1.15",
@@ -65,7 +64,6 @@
     "react-dnd": "16.0.1",
     "react-dnd-touch-backend": "^16.0.1",
     "react-hook-form": "7.83.0",
-    "react-popper": "2.3.0",
     "react-resizable-panels": "2.1.9",
     "recharts": "3.10.1",
     "sonner": "2.0.7",
