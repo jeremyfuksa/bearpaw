@@ -1,4 +1,3 @@
 @import './fonts.css';
-@import '@jeremyfuksa/campfire/styles.css' layer(base);
 @import './tailwind.css';
 @import './theme.css';
