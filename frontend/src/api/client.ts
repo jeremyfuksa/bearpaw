@@ -64,7 +64,7 @@ export class ScannerAPIClient {
     });
 
     if (!response.ok) {
-      let payload: unknown = null;
+      let payload: unknown;
       try {
         payload = await response.json();
       } catch {
@@ -93,7 +93,7 @@ export class ScannerAPIClient {
     });
 
     if (!response.ok) {
-      let payload: unknown = null;
+      let payload: unknown;
       try {
         payload = await response.json();
       } catch {
@@ -408,7 +408,7 @@ export class ScannerAPIClient {
       // Non-JSON error bodies (an HTML 502 from a proxy, plain text) used to
       // escape as a SyntaxError from response.json() instead of an APIError
       // (#144). Parse defensively.
-      let payload: unknown = null;
+      let payload: unknown;
       try {
         payload = await response.json();
       } catch {
