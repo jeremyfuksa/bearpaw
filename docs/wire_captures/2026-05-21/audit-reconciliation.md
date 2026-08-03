@@ -280,6 +280,18 @@ lockout_realchannel_probe -- 469`, backend stopped):
 - **Our hardware says:** `DO,162.5500,NFM`, `DO,01625500,NFM`, and `QSH,01625500` all answer `ERR` on fw 1.06.06 (`docs/wire_captures/2026-07-08/direct-tune-probe.txt`).
 - **Verdict:** no wire direct-tune command exists on this firmware — direct entry is keypad-only (HOLD + digits + E). The never-routed `ControlCommand::Direct` plumbing was removed (#149) and `POST /frequency` is documented as unavailable.
 
+### Conflict 4 — `CLC` Close Call mode digits (added 2026-08-03)
+
+The first conflict here where the **reference was right and our code was wrong** — worth stating plainly, because Conflicts 1–3 all resolved the other way and "captures win" is not the same as "the reference always loses."
+
+- **Our app said:** wire mode `1 = DND`, `2 = Priority` (`DeviceTab.tsx`, read map plus three duplicated write maps).
+- **Both references said:** `1 = Priority`, `2 = DND` (`BC125AT_PROTOCOL.md` §7.6 and its `CLC` field table).
+- **Our hardware says:** the references are correct on fw 1.06.06 (`docs/wire_captures/2026-08-03/clc-mode-probe.txt`). Setting `CC DND` from the keypad moves the mode field `1 → 2`; `CC Priority` reads back `1`.
+- **Verdict:** the app's map was inverted — selecting "CC Priority" sent `CLC,2` (DND) and vice versa. Fixed in `DeviceTab.tsx` (#241). The backend passes the digit through unchanged (`settings.rs`, `import_ss.rs`), so no backend change was needed.
+- **Caveat:** the probe's baseline was already mode `1`, so the `CC Priority` step alone is also consistent with "the mode never changed." The DND step carries the finding — it moved `1 → 2` off the keypad, proving the field tracks the menu. Priority is `1` by elimination (`0` is Off). A re-run from a non-Priority baseline would close this cleanly.
+
+Method note: the probe is **read-only** by design. Writing `CLC,<n>` and reading back `<n>` would only prove the scanner echoes what we sent; the mode had to be set from the radio's own keypad for the capture to mean anything. Same shape applies to any future "which digit means which label" question.
+
 ### Governing rule
 
 Whenever `BC125AT_PROTOCOL.md` disagrees with a wire capture from this hardware, the capture wins. Document the disagreement in `docs/SCANNER_PROTOCOL_REFERENCE.md`; do not reshape the Rust code to match the reference's claim.

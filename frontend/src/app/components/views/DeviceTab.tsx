@@ -237,10 +237,12 @@ export function DeviceTab() {
 
         // Populate close call settings
         if (settings.close_call) {
+          // Wire mode digits confirmed on hardware (fw 1.06.06, #241):
+          // 1 = Priority, 2 = DND. See docs/wire_captures/ clc-mode-probe.
           const closeCallModeMap: Record<number, string> = {
             0: 'off',
-            1: 'cc_dnd',
-            2: 'cc_priority',
+            1: 'cc_priority',
+            2: 'cc_dnd',
           };
           setCloseCallMode(closeCallModeMap[settings.close_call.mode] || 'off');
           setCloseCallLockout(settings.close_call.lockout);
@@ -494,7 +496,7 @@ export function DeviceTab() {
   const handleCloseCallModeChange = useCallback(
     async (value: string) => {
       setCloseCallMode(value);
-      const modeMap: Record<string, number> = { off: 0, cc_dnd: 1, cc_priority: 2 };
+      const modeMap: Record<string, number> = { off: 0, cc_priority: 1, cc_dnd: 2 };
       try {
         await api.setCloseCallSettings({
           mode: modeMap[value] || 0,
@@ -513,7 +515,7 @@ export function DeviceTab() {
 
   const handleCloseCallSettingChange = useCallback(
     async (setting: string, value: boolean) => {
-      const modeMap: Record<string, number> = { off: 0, cc_dnd: 1, cc_priority: 2 };
+      const modeMap: Record<string, number> = { off: 0, cc_priority: 1, cc_dnd: 2 };
       const updates: Record<string, boolean> = {
         lockout: closeCallLockout,
         alert_beep: closeCallBeep,
@@ -545,7 +547,7 @@ export function DeviceTab() {
       const newBands = [...closeCallBands];
       newBands[index] = !newBands[index];
 
-      const modeMap: Record<string, number> = { off: 0, cc_dnd: 1, cc_priority: 2 };
+      const modeMap: Record<string, number> = { off: 0, cc_priority: 1, cc_dnd: 2 };
       try {
         await api.setCloseCallSettings({
           mode: modeMap[closeCallMode] || 0,
