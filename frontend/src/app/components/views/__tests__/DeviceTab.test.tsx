@@ -354,23 +354,30 @@ describe('CLOSE_CALL_MODE_TO_WIRE', () => {
 });
 
 describe('priorityWireToMode', () => {
+  // All four digits confirmed on hardware (fw 1.06.06, #341) — every mode was
+  // entered from a different one, so each is a directly observed transition:
+  // 1->0 Off, 0->2 Plus, 2->3 DND, 3->1 On.
+  // See docs/wire_captures/2026-08-03/pri-mode-probe.txt.
   it.each([
     [0, 'off'],
     [1, 'on'],
     [2, 'plus'],
+    [3, 'dnd'],
   ])('maps wire %i to %s', (wire, mode) => {
     expect(priorityWireToMode(wire)).toBe(mode);
   });
 
   // Regression guard: an unmodelled wire mode must NOT collapse to 'off'.
-  // The wire accepts 0-3 (mode 3 = Priority DND per BC125AT_PROTOCOL.md §7.5;
-  // the backend validates 0..=3) but the UI models only 0-2, pending a `PRI`
-  // wire capture. The old `priorityMap[mode] || 'off'` displayed "Off" for
-  // mode 3, and since that dropdown is also the write path, the next save sent
-  // PRI,0 and genuinely switched priority off — a display gap turning into an
+  // The old `priorityMap[mode] || 'off'` displayed "Off" for any unknown digit,
+  // and since that dropdown is also the write path, the next save sent PRI,0
+  // and genuinely switched priority off — a display gap turning into an
   // unrequested state change. Returning null keeps the read from lying.
+  //
+  // All four documented digits are mapped now, so this uses an out-of-range
+  // value. Do NOT delete this guard as redundant: the hazard is the silent
+  // fallback, which would return whenever the wire grows a digit we don't know.
   it('returns null for an unmodelled wire mode instead of falling back to off', () => {
-    expect(priorityWireToMode(3)).toBeNull();
+    expect(priorityWireToMode(4)).toBeNull();
   });
 
   it('returns null for out-of-range wire values', () => {
@@ -378,10 +385,11 @@ describe('priorityWireToMode', () => {
     expect(priorityWireToMode(-1)).toBeNull();
   });
 
-  it('does not model wire mode 3 yet (no PRI capture)', () => {
-    // If a capture later confirms mode 3, add it to PRIORITY_MODE_TO_WIRE plus
-    // a SelectItem, and update this test. Failing here means someone added the
-    // mapping without the UI entry or without the capture.
-    expect(Object.values(PRIORITY_MODE_TO_WIRE)).not.toContain(3);
+  it('models every digit the backend accepts', () => {
+    // set_priority validates (0..=3) in api/handlers/settings.rs. A digit the
+    // backend accepts but the UI cannot display is the #341 bug class: the
+    // radio sits in a mode the app renders as something else. Keep these in
+    // step — if the backend range widens, this fails until the UI follows.
+    expect(Object.values(PRIORITY_MODE_TO_WIRE).sort()).toEqual([0, 1, 2, 3]);
   });
 });

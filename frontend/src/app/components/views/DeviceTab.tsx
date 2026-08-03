@@ -75,21 +75,21 @@ export const CLOSE_CALL_WIRE_TO_MODE: Record<number, string> = Object.fromEntrie
 // as the Close Call maps above, and for the same reason — these were two
 // hand-maintained inverse literals that could drift apart.
 //
-// INCOMPLETE, KNOWINGLY: the wire accepts 0-3 (Off/On/Plus/DND). Both
-// BC125AT_PROTOCOL.md §7.5 and its command summary list mode 3 = Priority DND,
-// and the backend validates `(0..=3)` in api/handlers/settings.rs::set_priority
-// — but there is NO `PRI` wire capture in docs/wire_captures/, so per the
-// captures-win rule (see audit-reconciliation.md) mode 3 is not exposed in the
-// UI on reference authority alone. Tracked separately; needs a hardware probe
-// like crates/bearpaw-api/examples/close_call_mode_probe.rs.
+// All four digits confirmed on hardware (fw 1.06.06, #341) — see
+// docs/wire_captures/2026-08-03/pri-mode-probe.txt. Every mode was entered from
+// a different one, so each digit is a directly observed transition, not an
+// inference: 1->0 Off, 0->2 Plus, 2->3 DND, 3->1 On.
 //
-// Until then a radio left in Priority DND reads back mode 3, which is absent
-// here. `priorityWireToMode()` below surfaces that instead of silently
-// showing "Off" — see the comment there for why that mattered.
+// Mode 3 (DND) was withheld from the UI until that capture existed: both
+// references and the backend's `(0..=3)` validation agreed on it, but per the
+// captures-win rule (audit-reconciliation.md) agreeing references are not
+// authority for a user-facing mapping. #241 is why that rule is taken
+// literally here.
 export const PRIORITY_MODE_TO_WIRE: Record<string, number> = {
   off: 0,
   on: 1,
   plus: 2,
+  dnd: 3,
 };
 
 export const PRIORITY_WIRE_TO_MODE: Record<number, string> = Object.fromEntries(
@@ -99,11 +99,16 @@ export const PRIORITY_WIRE_TO_MODE: Record<number, string> = Object.fromEntries(
 /**
  * Map a wire priority digit to its UI value.
  *
- * Returns `null` for a digit we don't model (currently 3 = Priority DND) rather
- * than falling back to 'off'. The old `priorityMap[mode] || 'off'` turned an
- * unknown mode into a displayed "Off", and because the dropdown is also the
- * write path, the next save would send `PRI,0` and genuinely switch priority
- * off — a display gap quietly becoming a state change the user never asked for.
+ * Returns `null` for a digit we don't model rather than falling back to 'off'.
+ * The old `priorityMap[mode] || 'off'` turned an unknown mode into a displayed
+ * "Off", and because the dropdown is also the write path, the next save would
+ * send `PRI,0` and genuinely switch priority off — a display gap quietly
+ * becoming a state change the user never asked for.
+ *
+ * All four documented digits (0-3) are now mapped, so `null` means a digit
+ * outside the known range. Keep the null-return: the failure it guards against
+ * is a silent write of the wrong mode, which does not stop being a hazard just
+ * because today's map happens to be complete.
  */
 export function priorityWireToMode(wire: number): string | null {
   return PRIORITY_WIRE_TO_MODE[wire] ?? null;
@@ -1065,6 +1070,7 @@ export function DeviceTab() {
                       <SelectItem value="off">Off</SelectItem>
                       <SelectItem value="on">On</SelectItem>
                       <SelectItem value="plus">Plus</SelectItem>
+                      <SelectItem value="dnd">DND</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
