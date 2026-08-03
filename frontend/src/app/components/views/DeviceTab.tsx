@@ -71,6 +71,44 @@ export const CLOSE_CALL_WIRE_TO_MODE: Record<number, string> = Object.fromEntrie
   Object.entries(CLOSE_CALL_MODE_TO_WIRE).map(([mode, wire]) => [wire, mode]),
 );
 
+// Priority scan (PRI) mode: UI value -> wire digit. Same derived-inverse shape
+// as the Close Call maps above, and for the same reason — these were two
+// hand-maintained inverse literals that could drift apart.
+//
+// INCOMPLETE, KNOWINGLY: the wire accepts 0-3 (Off/On/Plus/DND). Both
+// BC125AT_PROTOCOL.md §7.5 and its command summary list mode 3 = Priority DND,
+// and the backend validates `(0..=3)` in api/handlers/settings.rs::set_priority
+// — but there is NO `PRI` wire capture in docs/wire_captures/, so per the
+// captures-win rule (see audit-reconciliation.md) mode 3 is not exposed in the
+// UI on reference authority alone. Tracked separately; needs a hardware probe
+// like crates/bearpaw-api/examples/close_call_mode_probe.rs.
+//
+// Until then a radio left in Priority DND reads back mode 3, which is absent
+// here. `priorityWireToMode()` below surfaces that instead of silently
+// showing "Off" — see the comment there for why that mattered.
+export const PRIORITY_MODE_TO_WIRE: Record<string, number> = {
+  off: 0,
+  on: 1,
+  plus: 2,
+};
+
+export const PRIORITY_WIRE_TO_MODE: Record<number, string> = Object.fromEntries(
+  Object.entries(PRIORITY_MODE_TO_WIRE).map(([mode, wire]) => [wire, mode]),
+);
+
+/**
+ * Map a wire priority digit to its UI value.
+ *
+ * Returns `null` for a digit we don't model (currently 3 = Priority DND) rather
+ * than falling back to 'off'. The old `priorityMap[mode] || 'off'` turned an
+ * unknown mode into a displayed "Off", and because the dropdown is also the
+ * write path, the next save would send `PRI,0` and genuinely switch priority
+ * off — a display gap quietly becoming a state change the user never asked for.
+ */
+export function priorityWireToMode(wire: number): string | null {
+  return PRIORITY_WIRE_TO_MODE[wire] ?? null;
+}
+
 export function DeviceTab() {
   const api = getAPI();
   const connectionStatus = useConnectionStatus();
@@ -250,8 +288,17 @@ export function DeviceTab() {
           setKeyBeepEnabled(settings.key_beep.level !== 99);
         }
         if (settings.priority) {
-          const priorityMap: Record<number, string> = { 0: 'off', 1: 'on', 2: 'plus' };
-          setPriorityMode(priorityMap[settings.priority.mode] || 'off');
+          const mode = priorityWireToMode(settings.priority.mode);
+          if (mode === null) {
+            // Unmodelled wire mode (3 = Priority DND per the reference; no
+            // capture yet). Don't render it as "Off" — that would let the next
+            // save clobber the radio's actual setting with PRI,0.
+            console.warn(
+              `Unsupported priority mode from scanner: ${settings.priority.mode} (not shown in UI)`,
+            );
+          } else {
+            setPriorityMode(mode);
+          }
         }
         if (settings.weather) {
           setWeatherAlert(settings.weather.priority);
@@ -484,9 +531,8 @@ export function DeviceTab() {
   const handlePriorityModeChange = useCallback(
     async (value: string) => {
       setPriorityMode(value);
-      const modeMap: Record<string, number> = { off: 0, on: 1, plus: 2 };
       try {
-        await api.setPrioritySettings(modeMap[value] || 0);
+        await api.setPrioritySettings(PRIORITY_MODE_TO_WIRE[value] || 0);
       } catch (error) {
         console.error('Failed to set priority mode', error);
         toast.error('Failed to set priority mode');
