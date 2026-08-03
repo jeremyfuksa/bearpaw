@@ -41,6 +41,14 @@ export function ScanAnnouncer({
   const prevSquelchRef = useRef(false);
   const prevConnRef = useRef<ConnectionStatus>(connectionStatus);
 
+  // react-hooks/set-state-in-effect is suppressed for this effect, not worked
+  // around. The rule's advice — derive the value during render instead — is
+  // exactly the a11y C2 failure the guard above forbids: `message` must change
+  // only on a transition edge, while the props it is computed from churn at the
+  // ~5 Hz poll rate. Deriving during render would re-announce on every tick.
+  // The setState calls below are all edge-gated (each sits behind a
+  // prev-ref comparison), so they fire once per transition, not per render.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     // During memory sync the scanner is parked in a PRG bracket and mode/squelch
     // churn through it; suppress hit/scan announcements so the bracket doesn't
@@ -79,6 +87,7 @@ export function ScanAnnouncer({
 
     prevSquelchRef.current = squelchOpen;
   }, [squelchOpen, mode, frequency, alphaTag, connectionStatus, isSyncing]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">

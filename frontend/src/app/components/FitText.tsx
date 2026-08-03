@@ -1,6 +1,19 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { cn } from '../../lib/utils';
 
+/**
+ * useLayoutEffect so the first paint already shows the fitted size (no flash of
+ * overflowing text). Falls back to useEffect on the server, where
+ * useLayoutEffect would warn.
+ *
+ * Selected once at module scope rather than per-render: the branch is a
+ * build/environment constant, and hoisting it keeps the call site below a
+ * statically-recognizable hook name — a hook picked from a local variable
+ * reads to eslint-plugin-react-hooks as a plain function being handed the
+ * refs, which it then flags as a render-time ref access (react-hooks/refs).
+ */
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
 interface FitTextProps {
   /** The string to render. Only single-line strings are supported. */
   children: string;
@@ -29,11 +42,6 @@ interface FitTextProps {
 export function FitText({ children, className, minFontSize = 12, title }: FitTextProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const textRef = useRef<HTMLSpanElement | null>(null);
-
-  // useLayoutEffect so the first paint already shows the fitted size
-  // (no flash of overflowing text). Falls back to useEffect on the
-  // server where useLayoutEffect would warn.
-  const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
   useIsomorphicLayoutEffect(() => {
     const container = containerRef.current;
@@ -76,7 +84,7 @@ export function FitText({ children, className, minFontSize = 12, title }: FitTex
       cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [children, minFontSize, useIsomorphicLayoutEffect]);
+  }, [children, minFontSize]);
 
   return (
     <div ref={containerRef} className="block w-full">

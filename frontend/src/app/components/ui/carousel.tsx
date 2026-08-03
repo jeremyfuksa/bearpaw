@@ -1,5 +1,16 @@
 'use client';
 
+/*
+ * Vendored shadcn/ui component, kept verbatim from upstream (#330).
+ *
+ * react-hooks/set-state-in-effect is disabled file-wide rather than fixed: the
+ * flagged `onSelect(api)` sync is upstream's own code, and editing it would
+ * make every future `shadcn add carousel` a conflict to re-resolve by hand for
+ * no behavioral gain. Nothing in src/ imports this file today, so the warning
+ * guards code that does not run.
+ */
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import * as React from 'react';
 import useEmblaCarousel, { type UseEmblaCarouselType } from 'embla-carousel-react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';

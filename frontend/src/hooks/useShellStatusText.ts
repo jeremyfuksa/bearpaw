@@ -22,11 +22,12 @@ export function useShellStatusText(): string | null {
   const [shellLabel, setShellLabel] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isTauriRuntime()) {
-      setShellStatus(null);
-      setShellLabel(null);
-      return;
-    }
+    // Outside Tauri there is no shell to query and nothing to subscribe to.
+    // Both pieces of state are already null from useState and nothing in this
+    // hook can set them without a Tauri runtime, so bail rather than issuing
+    // the no-op setState pair this used to (react-hooks/set-state-in-effect).
+    if (!isTauriRuntime()) return;
+
     let active = true;
     let cleanup: (() => void) | null = null;
 
