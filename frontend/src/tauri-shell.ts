@@ -49,6 +49,32 @@ export async function revealLogs(): Promise<void> {
   });
 }
 
+export interface UpdateCheck {
+  available: boolean;
+  latest_version: string | null;
+  release_url: string | null;
+  current_version: string;
+}
+
+/**
+ * Ask the shell whether a newer GitHub release exists (#273).
+ *
+ * The request is made in Rust, not here: the app's CSP restricts
+ * `connect-src` to self + localhost:8000, so a webview `fetch` to
+ * api.github.com would be blocked outright.
+ *
+ * Returns `null` outside Tauri (plain `npm run dev`, tests) and on any
+ * failure — the app is offline-first, so a failed check must be
+ * indistinguishable from "no update" to the user.
+ */
+export async function checkForUpdates(): Promise<UpdateCheck | null> {
+  if (!isTauriRuntime()) return null;
+  return invoke<UpdateCheck>('check_for_updates').catch((error) => {
+    console.warn('Update check failed', error);
+    return null;
+  });
+}
+
 /**
  * Open a URL in the user's default browser via Tauri's shell plugin.
  * Falls back to `window.open` outside Tauri (e.g. plain `npm run dev`),

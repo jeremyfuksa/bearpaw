@@ -15,6 +15,7 @@ import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useMenuEvents } from '../hooks/useMenuEvents';
 import { useShellStatusText } from '../hooks/useShellStatusText';
+import { useUpdateCheck } from '../hooks/useUpdateCheck';
 import { openExternalUrl } from '../tauri-shell';
 import type { BanksUpdateMessage, LiveState, ProgressMessage, StateUpdateMessage } from '../types';
 import { DeviceTab } from './components/views/DeviceTab';
@@ -671,6 +672,18 @@ export default function App() {
     [currentTab, isInProgramMode, requestScanResume],
   );
 
+  // Update check (#273). Startup runs it silently; the Help menu item runs
+  // it again and always reports, including "up to date".
+  const handleUpToDate = useCallback((current: string) => {
+    toast.info(current ? `Bearpaw ${current} is up to date` : 'Could not check for updates');
+  }, []);
+  const {
+    update: pendingUpdate,
+    checking: checkingForUpdates,
+    checkNow: checkForUpdatesNow,
+    dismiss: dismissUpdate,
+  } = useUpdateCheck(handleUpToDate);
+
   const menuHandlers = useMemo(
     () => ({
       onNavigate: (tab: Tab) => handleTabChange(tab),
@@ -713,10 +726,37 @@ export default function App() {
       onOpenIssues: () => {
         openExternalUrl('https://github.com/jeremyfuksa/bearpaw/issues');
       },
+      onCheckForUpdates: () => {
+        if (checkingForUpdates) return;
+        checkForUpdatesNow();
+      },
     }),
-    [api, connected, handleTabChange, updateSync],
+    [api, checkForUpdatesNow, checkingForUpdates, connected, handleTabChange, updateSync],
   );
   useMenuEvents(menuHandlers);
+
+  // Surface a pending update (#273). Persistent (duration: Infinity) because
+  // this is the only notice the user gets — the install is manual, so a
+  // toast that auto-dismisses would lose the release link. Download opens
+  // the GitHub release page in the default browser; the URL always points
+  // at github.com/jeremyfuksa/bearpaw/**, which is the only host the
+  // `shell:allow-open` capability permits.
+  useEffect(() => {
+    if (!pendingUpdate?.available || !pendingUpdate.release_url) return;
+    const releaseUrl = pendingUpdate.release_url;
+    const toastId = toast.info(`Bearpaw ${pendingUpdate.latest_version} is available`, {
+      description: `You're running ${pendingUpdate.current_version}.`,
+      duration: Infinity,
+      action: {
+        label: 'Download',
+        onClick: () => openExternalUrl(releaseUrl),
+      },
+      onDismiss: dismissUpdate,
+    });
+    return () => {
+      toast.dismiss(toastId);
+    };
+  }, [pendingUpdate, dismissUpdate]);
 
   // Memoized on liveState?.mode, the only input it reads. Left unmemoized this
   // was redeclared every render, which put a new identity into the deps of the
