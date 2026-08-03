@@ -1,6 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { DeviceTab, PREFERENCE_KEY_MAP } from '../DeviceTab';
+import {
+  DeviceTab,
+  PREFERENCE_KEY_MAP,
+  CLOSE_CALL_MODE_TO_WIRE,
+  CLOSE_CALL_WIRE_TO_MODE,
+  PRIORITY_MODE_TO_WIRE,
+  priorityWireToMode,
+} from '../DeviceTab';
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import {
   createTestChannel,
@@ -322,5 +329,59 @@ describe('PREFERENCE_KEY_MAP', () => {
     ['hitMinDuration', 'hit_min_duration'],
   ])('maps %s to %s', (camel, snake) => {
     expect(PREFERENCE_KEY_MAP[camel as keyof typeof PREFERENCE_KEY_MAP]).toBe(snake);
+  });
+});
+
+describe('CLOSE_CALL_MODE_TO_WIRE', () => {
+  // Digits confirmed on hardware (fw 1.06.06, #241) — captured twice, see
+  // docs/wire_captures/2026-08-03/. The app previously had these INVERTED, so
+  // selecting "CC Priority" put the radio in DND. Pin them.
+  it.each([
+    ['off', 0],
+    ['cc_priority', 1],
+    ['cc_dnd', 2],
+  ])('maps %s to wire %i', (mode, wire) => {
+    expect(CLOSE_CALL_MODE_TO_WIRE[mode]).toBe(wire);
+  });
+
+  it('derives the read map as an exact inverse', () => {
+    // The read direction is derived, not hand-written, so the two cannot drift.
+    // This asserts the derivation itself, not a second copy of the digits.
+    for (const [mode, wire] of Object.entries(CLOSE_CALL_MODE_TO_WIRE)) {
+      expect(CLOSE_CALL_WIRE_TO_MODE[wire]).toBe(mode);
+    }
+  });
+});
+
+describe('priorityWireToMode', () => {
+  it.each([
+    [0, 'off'],
+    [1, 'on'],
+    [2, 'plus'],
+  ])('maps wire %i to %s', (wire, mode) => {
+    expect(priorityWireToMode(wire)).toBe(mode);
+  });
+
+  // Regression guard: an unmodelled wire mode must NOT collapse to 'off'.
+  // The wire accepts 0-3 (mode 3 = Priority DND per BC125AT_PROTOCOL.md §7.5;
+  // the backend validates 0..=3) but the UI models only 0-2, pending a `PRI`
+  // wire capture. The old `priorityMap[mode] || 'off'` displayed "Off" for
+  // mode 3, and since that dropdown is also the write path, the next save sent
+  // PRI,0 and genuinely switched priority off — a display gap turning into an
+  // unrequested state change. Returning null keeps the read from lying.
+  it('returns null for an unmodelled wire mode instead of falling back to off', () => {
+    expect(priorityWireToMode(3)).toBeNull();
+  });
+
+  it('returns null for out-of-range wire values', () => {
+    expect(priorityWireToMode(99)).toBeNull();
+    expect(priorityWireToMode(-1)).toBeNull();
+  });
+
+  it('does not model wire mode 3 yet (no PRI capture)', () => {
+    // If a capture later confirms mode 3, add it to PRIORITY_MODE_TO_WIRE plus
+    // a SelectItem, and update this test. Failing here means someone added the
+    // mapping without the UI entry or without the capture.
+    expect(Object.values(PRIORITY_MODE_TO_WIRE)).not.toContain(3);
   });
 });
