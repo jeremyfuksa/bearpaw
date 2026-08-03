@@ -75,7 +75,7 @@
     "zustand": "5.0.14"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "4.3.3",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^6.9.1",
@@ -87,8 +87,7 @@
     "@vitejs/plugin-react": "6.0.4",
     "@vitest/coverage-v8": "^4.1.10",
     "@vitest/ui": "^4.1.7",
-    "eslint": "^9.39.4",
-    "eslint-plugin-react": "^7.37.5",
+    "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.8.0",
     "jsdom": "^30.0.1",
