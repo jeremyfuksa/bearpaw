@@ -16,6 +16,18 @@
 //! question for `CLC` (#241). Every design decision here was paid for by that
 //! probe getting it wrong first — see the ordering and transition notes below.
 //!
+//! PRECONDITION — at least one channel must be flagged priority. Field report
+//! (2026-08-03): on a radio with none, selecting any priority mode shows
+//! "Priority Scan: No Channel" and the selection does NOT stick, so every read
+//! would return the unchanged digit and the run would be worthless. The probe
+//! checks this read-only up front and aborts with instructions rather than
+//! collecting meaningless data.
+//!
+//! It deliberately does NOT set the flag itself. Priority is bank-exclusive,
+//! and per audit-reconciliation.md (2026-07-21) clearing it is refused in place
+//! and needs a destructive DCH + full rewrite — so which channel to mutate is
+//! the operator's call, not this probe's. That also keeps the probe read-only.
+//!
 //! Method: READ-ONLY. This probe never writes to the scanner. The operator sets
 //! the priority mode from the radio's own keypad, and the probe reads `PRI`
 //! back and reports the digit the hardware actually returns. Doing it from the
@@ -106,6 +118,39 @@ fn main() {
     println!("=== Priority scan mode probe (#341) ===");
     println!("READ-ONLY: this probe never writes scanner settings.");
     println!("You will set each mode on the KEYPAD; the probe reads PRI back.");
+
+    // PRECONDITION: at least one channel must be flagged priority.
+    //
+    // Field report (2026-08-03): selecting any priority mode on a radio with no
+    // priority channel shows "Priority Scan: No Channel" and the mode does NOT
+    // stick. Every probe step would then read back the unchanged digit and the
+    // transition check would flag all four as NO TRANSITION — a wasted run that
+    // looks like a hardware answer. Refuse to start instead.
+    //
+    // Checked read-only by walking CIN. We do NOT set the flag ourselves:
+    // priority is bank-exclusive and, per audit-reconciliation.md (2026-07-21),
+    // clearing it back is refused in place and needs a destructive DCH+rewrite.
+    // Choosing which channel to mutate is the operator's call, not ours.
+    if !has_priority_channel(&mut send) {
+        println!();
+        println!("ABORT: no channel is flagged priority on this scanner.");
+        println!();
+        println!("  The radio refuses to enter any priority mode without one —");
+        println!("  it shows \"Priority Scan: No Channel\" and the menu selection");
+        println!("  does not stick, so every reading below would be meaningless.");
+        println!();
+        println!("  Flag ONE channel priority first, then re-run:");
+        println!("    - in Bearpaw: Channels tab -> edit a channel -> Priority");
+        println!("    - or on the radio: Hold on the channel, [Func] + [1/Pri]");
+        println!();
+        println!("  Pick a channel you are happy to leave flagged: clearing the");
+        println!("  flag afterwards is refused in place and needs a DCH + full");
+        println!("  rewrite (see docs/wire_captures/2026-05-21/");
+        println!("  audit-reconciliation.md, 2026-07-21 finding).");
+        println!();
+        println!("  Nothing was written; the scanner is untouched.");
+        std::process::exit(1);
+    }
 
     // Whatever the radio was left in. NOT a probe step — see the header.
     let baseline = read_pri_mode(&mut send);
@@ -226,6 +271,49 @@ fn main() {
         baseline.as_deref().unwrap_or("<unparsed>")
     );
     println!("--- no scanner settings were written by this probe.");
+}
+
+/// Read-only check: does any channel carry the priority flag?
+///
+/// Walks `CIN,1..500` inside a single PRG bracket and stops at the first hit,
+/// so a radio that has one usually answers in a few round-trips. A full walk
+/// (nothing flagged) is the slow path at ~30-45 s — the same cost as a memory
+/// sync, and only paid when the answer is "no" and the run is aborting anyway.
+///
+/// `CIN,<idx>,<name>,<freq>,<mod>,<tone>,<delay>,<lockout>,<priority>` — split
+/// on commas that is index 8, matching `priority_clear_probe.rs`. Empty slots
+/// (`freq == 00000000`) are skipped: per audit-reconciliation.md (2026-07-21)
+/// an unprogrammed slot carries factory `lockout=1` and its priority bit is
+/// not a real channel flag.
+fn has_priority_channel(send: &mut dyn FnMut(&str) -> String) -> bool {
+    println!();
+    println!("--- checking precondition: is any channel flagged priority?");
+    send("PRG");
+    let mut found = None;
+    for idx in 1..=500u16 {
+        let raw = send(&format!("CIN,{idx}"));
+        let fields: Vec<&str> = raw.split(',').collect();
+        // Skip empty slots — an unprogrammed channel's flags are factory
+        // defaults, not a user-set priority.
+        if fields.get(3).map(|s| s.trim()) == Some("00000000") {
+            continue;
+        }
+        if fields.get(8).map(|s| s.trim()) == Some("1") {
+            found = Some(idx);
+            break;
+        }
+    }
+    send("EPG");
+    match found {
+        Some(idx) => {
+            println!("--- OK: channel {idx} is flagged priority. Proceeding.");
+            true
+        }
+        None => {
+            println!("--- none found across all 500 channels.");
+            false
+        }
+    }
 }
 
 /// Decide which order to prompt the modes in, given the baseline digit.
