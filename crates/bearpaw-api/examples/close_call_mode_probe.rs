@@ -1,12 +1,13 @@
-//! One-time hardware probe: resolve the Close Call (`CLC`) mode digit mapping.
+//! Hardware probe: capture the Close Call (`CLC`) mode digit mapping.
 //!
-//! Open question (#241): the app maps wire mode `1 = DND / 2 = Priority`
-//! (frontend/src/app/components/views/DeviceTab.tsx), while both protocol
-//! references say `1 = Priority / 2 = DND` (docs/BC125AT_PROTOCOL.md §7.6 and
-//! its CLC field table). There is NO `CLC` capture in docs/wire_captures/, so
-//! the references are second-source only and CLAUDE.md's captures-win rule
-//! leaves this unresolvable from documents alone. If the references are right,
-//! the two menu items are swapped on the wire.
+//! Origin (#241): the app mapped wire mode `1 = DND / 2 = Priority` while both
+//! protocol references said `1 = Priority / 2 = DND` (docs/BC125AT_PROTOCOL.md
+//! §7.6 and its CLC field table), and no `CLC` capture existed to break the tie.
+//! Captures on 2026-08-03 settled it in the references' favour; the app's map
+//! was inverted and was fixed in PR #337.
+//!
+//! This probe is kept as the reusable template for any "which digit means which
+//! label" question (see #341 for the same question on `PRI`).
 //!
 //! Method: READ-ONLY. This probe never writes to the scanner. The operator sets
 //! Close Call mode from the radio's own keypad, and the probe reads `CLC` back
@@ -14,6 +15,14 @@
 //! keypad (not via a `CLC` write) is the whole point — a write would only prove
 //! the scanner echoes back whatever digit we sent, which tells us nothing about
 //! which digit means which mode.
+//!
+//! ALL THREE modes are prompted (Priority, DND, Off) — the baseline read is not
+//! a substitute for probing Off. The first 2026-08-03 capture started from a
+//! baseline that already held the mode being tested, so that step observed no
+//! transition and the finding leaned on elimination. Every mode here is entered
+//! from a different one, so every reading is a real transition. Off is prompted
+//! LAST for the same reason: entering it from DND guarantees a transition no
+//! matter where the operator started.
 //!
 //! Each read is its own PRG/EPG bracket, so the scanner is never sitting in
 //! program mode while the operator works the keypad (the front panel is
@@ -79,48 +88,79 @@ fn main() {
 
     // Read the starting mode so the operator can restore it at the end. This is
     // also the first proof that CLC parses the way settings.rs expects.
+    //
+    // NOT a probe step: this is whatever the radio happened to be left in, so
+    // it proves nothing about which digit means which mode. Every mode below is
+    // prompted explicitly — see the ordering note there.
     let baseline = read_clc_mode(&mut send);
     println!(
-        "--- baseline CC mode digit (before any changes): {}",
+        "--- baseline CC mode digit (before any changes, NOT a probe step): {}",
         baseline.as_deref().unwrap_or("<unparsed>")
     );
 
     // Probe each mode by NAME as the radio's own menu labels it. The digit is
     // what we're trying to learn, so it must never appear in the prompt.
+    //
+    // Order is deliberate: Off LAST. If Off were prompted first and the radio
+    // already sat in Off, that step would observe no transition and would be
+    // consistent with "the mode never changed" — the exact weakness that made
+    // the first 2026-08-03 capture lean on elimination. Entering Off from DND
+    // guarantees a real transition no matter where the operator started.
     let priority = probe_mode(&mut send, "CC Priority");
     let dnd = probe_mode(&mut send, "CC DND");
+    let off = probe_mode(&mut send, "CC Off");
 
     println!();
     println!("=== RESULTS (fw {ver}) ===");
-    println!(
-        "keypad `CC Priority` -> wire mode digit {}",
-        priority.as_deref().unwrap_or("<unparsed>")
-    );
-    println!(
-        "keypad `CC DND`      -> wire mode digit {}",
-        dnd.as_deref().unwrap_or("<unparsed>")
-    );
+    for (label, digit) in [
+        ("CC Priority", &priority),
+        ("CC DND", &dnd),
+        ("CC Off", &off),
+    ] {
+        println!(
+            "keypad `{label:<11}` -> wire mode digit {}",
+            digit.as_deref().unwrap_or("<unparsed>")
+        );
+    }
     println!();
 
-    match (priority.as_deref(), dnd.as_deref()) {
-        (Some("1"), Some("2")) => {
-            println!("VERDICT: 1 = Priority, 2 = DND — matches the REFERENCES.");
-            println!("  => The app's map is INVERTED. Fix #241: flip the four Record");
-            println!("     literals in DeviceTab.tsx (read map ~240-244; write maps");
-            println!("     ~497, ~516, ~548) so cc_priority=1 and cc_dnd=2.");
-        }
-        (Some("2"), Some("1")) => {
-            println!("VERDICT: 2 = Priority, 1 = DND — matches the CURRENT APP.");
-            println!("  => The app is correct and both references are wrong for this");
-            println!("     hardware. Close #241 with no code change and record the");
-            println!("     disagreement in audit-reconciliation.md.");
-        }
-        (a, b) => {
-            println!("VERDICT: INCONCLUSIVE (Priority={a:?}, DND={b:?}).");
-            println!("  => Unexpected/duplicate digits usually mean a menu step was");
-            println!("     missed and the mode didn't actually change. Re-run and");
-            println!("     confirm the radio's display shows the requested mode");
-            println!("     before pressing Enter at each prompt.");
+    // Every mode must have parsed AND all three must be distinct. A duplicate
+    // means a menu step silently didn't take (the radio stayed where it was),
+    // which is the most likely operator error and must not read as a result.
+    let all: Vec<Option<&str>> = vec![priority.as_deref(), dnd.as_deref(), off.as_deref()];
+    let parsed: Vec<&str> = all.iter().flatten().copied().collect();
+    let mut distinct = parsed.clone();
+    distinct.sort_unstable();
+    distinct.dedup();
+
+    if parsed.len() != 3 {
+        println!("VERDICT: INCONCLUSIVE — a mode did not parse.");
+        println!("  => Inspect the raw CLC replies above; re-run.");
+    } else if distinct.len() != 3 {
+        println!("VERDICT: INCONCLUSIVE — two modes reported the SAME digit.");
+        println!("  => A menu step almost certainly didn't take: the radio stayed");
+        println!("     where it was. Re-run and confirm the display shows the");
+        println!("     requested mode before pressing Enter at each prompt.");
+    } else {
+        match (priority.as_deref(), dnd.as_deref(), off.as_deref()) {
+            (Some("1"), Some("2"), Some("0")) => {
+                println!("VERDICT: 0 = Off, 1 = Priority, 2 = DND — matches the REFERENCES.");
+                println!("  => Confirms the shipped mapping in DeviceTab.tsx");
+                println!("     (CLOSE_CALL_MODE_TO_WIRE). No code change needed.");
+            }
+            (Some("2"), Some("1"), Some("0")) => {
+                println!("VERDICT: 0 = Off, 2 = Priority, 1 = DND — CONTRADICTS the shipped map.");
+                println!("  => The Priority/DND fix from #241 would be wrong for this");
+                println!("     firmware. Do NOT ignore this: re-run to confirm, then");
+                println!("     flip CLOSE_CALL_MODE_TO_WIRE and record it in");
+                println!("     audit-reconciliation.md.");
+            }
+            (p, d, o) => {
+                println!("VERDICT: UNEXPECTED mapping (Priority={p:?}, DND={d:?}, Off={o:?}).");
+                println!("  => All three are distinct, so the menu steps took — but this");
+                println!("     is not a mapping either reference predicts. Capture it");
+                println!("     verbatim and reconcile before changing any code.");
+            }
         }
     }
 
