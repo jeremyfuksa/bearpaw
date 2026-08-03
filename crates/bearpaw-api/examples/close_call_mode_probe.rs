@@ -17,12 +17,16 @@
 //! which digit means which mode.
 //!
 //! ALL THREE modes are prompted (Priority, DND, Off) — the baseline read is not
-//! a substitute for probing Off. The first 2026-08-03 capture started from a
-//! baseline that already held the mode being tested, so that step observed no
-//! transition and the finding leaned on elimination. Every mode here is entered
-//! from a different one, so every reading is a real transition. Off is prompted
-//! LAST for the same reason: entering it from DND guarantees a transition no
-//! matter where the operator started.
+//! a substitute for probing a mode, because it is just wherever the operator
+//! left the radio.
+//!
+//! Prompt order is COMPUTED from the baseline, not fixed. A step that starts
+//! from the mode it is testing observes no transition, and a no-change read
+//! cannot be distinguished from "the menu step silently didn't take." Whichever
+//! mode the baseline already holds is therefore prompted LAST, so every step is
+//! entered from a different mode. Every earlier capture tripped on this in some
+//! form, so the results section now reports per-step transitions explicitly
+//! instead of leaving a reader to reconstruct them from the raw log.
 //!
 //! Each read is its own PRG/EPG bracket, so the scanner is never sitting in
 //! program mode while the operator works the keypad (the front panel is
@@ -101,20 +105,46 @@ fn main() {
     // Probe each mode by NAME as the radio's own menu labels it. The digit is
     // what we're trying to learn, so it must never appear in the prompt.
     //
-    // Order is deliberate: Off LAST. If Off were prompted first and the radio
-    // already sat in Off, that step would observe no transition and would be
-    // consistent with "the mode never changed" — the exact weakness that made
-    // the first 2026-08-03 capture lean on elimination. Entering Off from DND
-    // guarantees a real transition no matter where the operator started.
-    let priority = probe_mode(&mut send, "CC Priority");
-    let dnd = probe_mode(&mut send, "CC DND");
-    let off = probe_mode(&mut send, "CC Off");
+    // ORDER IS COMPUTED, NOT FIXED. A step that starts from the mode it is
+    // testing observes no transition, and a no-change read is consistent with
+    // "the menu step silently didn't take" — it proves nothing. Which step has
+    // that problem depends on where the operator left the radio, so the order
+    // cannot be hard-coded.
+    //
+    // Every earlier capture tripped on this: the 2026-08-03 runs left Priority
+    // (baseline 1) or nothing at all as a non-transition, and a fixed
+    // Priority/DND/Off order repeats it whenever the radio starts in Priority.
+    //
+    // Fix: prompt whichever mode already matches the baseline LAST. It is then
+    // entered from some other mode, so every step is a real transition.
+    let order = probe_order(baseline.as_deref());
+    println!(
+        "--- probe order (baseline-last so every step is a transition): {}",
+        order.join(" -> ")
+    );
+
+    let mut results: Vec<(&str, Option<String>)> = Vec::new();
+    for label in &order {
+        let digit = probe_mode(&mut send, label);
+        results.push((label, digit));
+    }
+    let digit_for = |want: &str| -> Option<String> {
+        results
+            .iter()
+            .find(|(label, _)| *label == want)
+            .and_then(|(_, d)| d.clone())
+    };
+    let priority = digit_for("CC Priority");
+    let dnd = digit_for("CC DND");
+    let off = digit_for("CC Off");
+    let only = digit_for("CC Only");
 
     println!();
     println!("=== RESULTS (fw {ver}) ===");
     for (label, digit) in [
         ("CC Priority", &priority),
         ("CC DND", &dnd),
+        ("CC Only", &only),
         ("CC Off", &off),
     ] {
         println!(
@@ -122,22 +152,64 @@ fn main() {
             digit.as_deref().unwrap_or("<unparsed>")
         );
     }
+
+    // State plainly whether each step actually moved the field. A step whose
+    // read equals the state before it proves nothing on its own — that digit is
+    // then pinned only by elimination. Say so here rather than leaving a reader
+    // to reconstruct it from the raw log, which is how the earlier captures
+    // shipped with an unnoticed non-transition step.
+    println!();
+    println!("--- transition check (did each step actually move the field?) ---");
+    let mut prev = baseline.clone();
+    let mut weak: Vec<&str> = Vec::new();
+    for label in &order {
+        let digit = digit_for(label);
+        match (prev.as_deref(), digit.as_deref()) {
+            (Some(p), Some(d)) if p == d => {
+                println!("  {label:<11}: {p} -> {d}  NO TRANSITION (pinned only by elimination)");
+                weak.push(label);
+            }
+            (Some(p), Some(d)) => println!("  {label:<11}: {p} -> {d}  ok"),
+            _ => println!("  {label:<11}: <unparsed>"),
+        }
+        if digit.is_some() {
+            prev = digit;
+        }
+    }
+    if weak.is_empty() {
+        println!("  => all three digits directly observed.");
+    } else {
+        println!(
+            "  => {} step(s) observed no transition: {}. The mapping may still be\n     \
+             correct, but re-run starting from a different mode to observe it\n     \
+             directly. (The probe orders baseline-last to avoid this; it can\n     \
+             still happen if the mode changed between the baseline read and the\n     \
+             first prompt.)",
+            weak.len(),
+            weak.join(", ")
+        );
+    }
     println!();
 
-    // Every mode must have parsed AND all three must be distinct. A duplicate
-    // means a menu step silently didn't take (the radio stayed where it was),
-    // which is the most likely operator error and must not read as a result.
-    let all: Vec<Option<&str>> = vec![priority.as_deref(), dnd.as_deref(), off.as_deref()];
-    let parsed: Vec<&str> = all.iter().flatten().copied().collect();
+    // The three documented modes must each have parsed and be distinct. A
+    // duplicate among them means a menu step silently didn't take (the radio
+    // stayed where it was) — the most likely operator error, and it must not
+    // read as a result.
+    //
+    // `CC Only` is handled separately below: it is NOT in the reference at all,
+    // so we have no expectation for it and must not fold it into a
+    // distinctness check that assumes four distinct digits exist.
+    let documented: Vec<Option<&str>> = vec![priority.as_deref(), dnd.as_deref(), off.as_deref()];
+    let parsed: Vec<&str> = documented.iter().flatten().copied().collect();
     let mut distinct = parsed.clone();
     distinct.sort_unstable();
     distinct.dedup();
 
     if parsed.len() != 3 {
-        println!("VERDICT: INCONCLUSIVE — a mode did not parse.");
+        println!("VERDICT: INCONCLUSIVE — a documented mode did not parse.");
         println!("  => Inspect the raw CLC replies above; re-run.");
     } else if distinct.len() != 3 {
-        println!("VERDICT: INCONCLUSIVE — two modes reported the SAME digit.");
+        println!("VERDICT: INCONCLUSIVE — two documented modes reported the SAME digit.");
         println!("  => A menu step almost certainly didn't take: the radio stayed");
         println!("     where it was. Re-run and confirm the display shows the");
         println!("     requested mode before pressing Enter at each prompt.");
@@ -146,7 +218,7 @@ fn main() {
             (Some("1"), Some("2"), Some("0")) => {
                 println!("VERDICT: 0 = Off, 1 = Priority, 2 = DND — matches the REFERENCES.");
                 println!("  => Confirms the shipped mapping in DeviceTab.tsx");
-                println!("     (CLOSE_CALL_MODE_TO_WIRE). No code change needed.");
+                println!("     (CLOSE_CALL_MODE_TO_WIRE).");
             }
             (Some("2"), Some("1"), Some("0")) => {
                 println!("VERDICT: 0 = Off, 2 = Priority, 1 = DND — CONTRADICTS the shipped map.");
@@ -164,6 +236,42 @@ fn main() {
         }
     }
 
+    // `CC Only` — the open question this run exists to answer. The reference
+    // documents only modes 0/1/2 and the backend REJECTS anything above 2
+    // (close_call_mode_invalid, settings.rs::set_close_call), so if this menu
+    // item reports a fourth digit the whole stack is incomplete. If instead it
+    // reports one of the known digits, `CC Only` is not part of the CLC mode
+    // field at all and lives somewhere else on the wire.
+    println!();
+    println!("--- `CC Only` (undocumented — not in BC125AT_PROTOCOL.md §7.6) ---");
+    match only.as_deref() {
+        None => {
+            println!("  did not parse. If the radio has no `CC Only` menu item, that is");
+            println!("  itself the answer: skip it and note the menu differs.");
+        }
+        Some(d) if !parsed.contains(&d) => {
+            println!("  reports NEW digit {d} — a fourth CLC mode the reference omits.");
+            println!("  => The stack is incomplete end to end:");
+            println!("     - backend set_close_call validates (0..=2) and would REJECT {d}");
+            println!("     - CLOSE_CALL_MODE_TO_WIRE has no entry, so the UI misreads it");
+            println!("     File this with the capture; do NOT widen either without it.");
+        }
+        Some(d) => {
+            let same = if Some(d) == priority.as_deref() {
+                "CC Priority"
+            } else if Some(d) == dnd.as_deref() {
+                "CC DND"
+            } else {
+                "CC Off"
+            };
+            println!("  reports digit {d}, the SAME as `{same}`.");
+            println!("  => `CC Only` is therefore NOT a distinct value of the CLC mode");
+            println!("     field. It is a separate operating state that reports");
+            println!("     elsewhere on the wire (or not at all). No CLC mode-map");
+            println!("     change follows; investigate which field carries it.");
+        }
+    }
+
     println!();
     println!(
         "--- restore: set CC mode back to its original setting on the keypad \
@@ -173,13 +281,57 @@ fn main() {
     println!("--- no scanner settings were written by this probe.");
 }
 
+/// Decide which order to prompt the three modes in, given the baseline digit.
+///
+/// Any mode prompted while the radio is already in it observes no transition,
+/// and a no-change read cannot be told apart from "the menu step didn't take."
+/// So whichever mode the baseline already holds goes LAST — by then the radio
+/// is in some other mode and entering it is a real transition.
+///
+/// An unknown or unparsed baseline falls back to the default order; the worst
+/// case is one non-transition step, which the results section flags.
+fn probe_order(baseline: Option<&str>) -> Vec<&'static str> {
+    const DEFAULT: [&str; 4] = ["CC Priority", "CC DND", "CC Only", "CC Off"];
+    // Baseline digit -> the label it corresponds to, per the shipped mapping.
+    // Only used to reorder prompts; the digits are still read from the wire and
+    // never assumed, so a wrong guess here costs ordering, not correctness.
+    let baseline_label = match baseline {
+        Some("0") => Some("CC Off"),
+        Some("1") => Some("CC Priority"),
+        Some("2") => Some("CC DND"),
+        _ => None,
+    };
+    let Some(last) = baseline_label else {
+        return DEFAULT.to_vec();
+    };
+    let mut order: Vec<&'static str> = DEFAULT.iter().copied().filter(|m| *m != last).collect();
+    order.push(DEFAULT.iter().copied().find(|m| *m == last).unwrap());
+    order
+}
+
 /// Prompt the operator to select `label` on the keypad, then read the resulting
 /// mode digit. Returns `None` if the reply didn't parse.
+///
+/// `CC Only` gets its own guidance: the reference documents no such CLC mode,
+/// so we must not assert it lives under the `CC Mode` menu item. The operator
+/// finds it wherever the radio actually puts it, and may skip it if this
+/// firmware has no such item — a skip is a legitimate result, not a failure.
 fn probe_mode(send: &mut dyn FnMut(&str) -> String, label: &str) -> Option<String> {
     println!();
-    println!("--- STEP: set Close Call mode to `{label}` on the radio's keypad.");
-    println!("{KEYPAD_STEPS}");
-    println!("    Confirm the radio's display shows `{label}` before continuing.");
+    if label == "CC Only" {
+        println!("--- STEP: set the radio to `CC Only` (Close Call Only).");
+        println!("      This mode is NOT in our protocol reference, so the menu path");
+        println!("      is unknown — on many BC125AT units it is [Func] + [Close Call]");
+        println!("      held, or a `CC Only` entry alongside CC Mode. Use whatever your");
+        println!("      radio actually offers.");
+        println!("      If this firmware has NO `CC Only` item, just press Enter to");
+        println!("      skip — 'no such mode' is a valid answer worth recording.");
+        println!("    Confirm the radio shows Close Call Only, then continue.");
+    } else {
+        println!("--- STEP: set Close Call mode to `{label}` on the radio's keypad.");
+        println!("{KEYPAD_STEPS}");
+        println!("    Confirm the radio's display shows `{label}` before continuing.");
+    }
     wait_for_enter();
     let mode = read_clc_mode(send);
     println!(
