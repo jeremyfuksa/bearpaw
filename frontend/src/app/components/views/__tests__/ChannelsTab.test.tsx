@@ -656,4 +656,163 @@ describe('ChannelsTab', () => {
       expect(screen.getAllByRole('columnheader')).toHaveLength(10);
     });
   });
+
+  // REGRESSION GUARD (#236): reorder must be operable without a pointer.
+  // react-dnd's TouchBackend has no keyboard story at all, so the grab/move/
+  // drop path below is the ONLY way a keyboard-only user can reorder. If the
+  // grip reverts to a decorative icon, or the arrow keys stop calling
+  // onKeyboardMove, these tests fail. See CLAUDE.md third-rail table.
+  describe('Keyboard reordering (#236)', () => {
+    // Three channels in bank 1 so there is somewhere to move to.
+    const setupBank = () => {
+      const bankChannels = [
+        createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Alpha' }),
+        createTestChannel({ index: 2, frequency: 152.25, bank: 1, alpha_tag: 'Bravo' }),
+        createTestChannel({ index: 3, frequency: 153.25, bank: 1, alpha_tag: 'Charlie' }),
+      ];
+      setMockStore(createMockStore({ channels: bankChannels }));
+    };
+
+    const tagOrder = () =>
+      screen
+        .getAllByRole('row')
+        .slice(1) // drop the header row
+        .map((row) => (/Alpha|Bravo|Charlie/.exec(row.textContent ?? '') ?? [''])[0]);
+
+    it('exposes the drag grip as a focusable button, not a decorative icon', () => {
+      setupBank();
+      render(<ChannelsTab />);
+      const grip = screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i });
+      expect(grip).toBeInTheDocument();
+      expect(grip).toBeEnabled();
+    });
+
+    // The other tests call grip.focus() directly, which proves the handlers
+    // work but NOT that a keyboard-only user can reach the grip. WCAG 2.1.1 is
+    // about reachability, so drive it with real Tab presses from the row.
+    it('reaches the grip by tabbing, without a pointer', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      const row = screen.getByRole('row', { name: /edit channel 1/i });
+      row.focus();
+      await userEvent.tab(); // row → select checkbox
+      await userEvent.tab(); // checkbox → reorder grip
+
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
+      );
+    });
+
+    it('moves a channel down with the arrow keys and commits the new order', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+      expect(tagOrder()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+
+      const grip = screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i });
+      grip.focus();
+      await userEvent.keyboard('{Enter}');
+      await userEvent.keyboard('{ArrowDown}');
+
+      expect(tagOrder()).toEqual(['Bravo', 'Alpha', 'Charlie']);
+    });
+
+    it('moves a channel back up with the arrow keys', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      const grip = screen.getByRole('button', { name: /reorder channel 3, position 3 of 3/i });
+      grip.focus();
+      await userEvent.keyboard('{Enter}');
+      await userEvent.keyboard('{ArrowUp}');
+
+      expect(tagOrder()).toEqual(['Alpha', 'Charlie', 'Bravo']);
+    });
+
+    it('does not move rows until the grip is grabbed', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      const grip = screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i });
+      grip.focus();
+      await userEvent.keyboard('{ArrowDown}');
+
+      expect(tagOrder()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    });
+
+    it('reflects grabbed state via aria-pressed and releases on Escape', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      const grip = screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i });
+      expect(grip).toHaveAttribute('aria-pressed', 'false');
+
+      grip.focus();
+      await userEvent.keyboard('{Enter}');
+      expect(
+        screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
+      ).toHaveAttribute('aria-pressed', 'true');
+
+      await userEvent.keyboard('{Escape}');
+      expect(
+        screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
+      ).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('announces grab and move to screen readers', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      const grip = screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i });
+      grip.focus();
+      await userEvent.keyboard('{Enter}');
+
+      await waitFor(() => {
+        const announcer = screen
+          .getAllByRole('status')
+          .find((el) => /grabbed channel/i.test(el.textContent ?? ''));
+        expect(announcer).toBeDefined();
+      });
+
+      await userEvent.keyboard('{ArrowDown}');
+
+      await waitFor(() => {
+        const announcer = screen
+          .getAllByRole('status')
+          .find((el) => /moved to position 2 of 3/i.test(el.textContent ?? ''));
+        expect(announcer).toBeDefined();
+      });
+    });
+
+    it('announces the edge instead of moving past the end of the bank', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      const grip = screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i });
+      grip.focus();
+      await userEvent.keyboard('{Enter}');
+      await userEvent.keyboard('{ArrowUp}');
+
+      expect(tagOrder()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+      await waitFor(() => {
+        const announcer = screen
+          .getAllByRole('status')
+          .find((el) => /already at the top/i.test(el.textContent ?? ''));
+        expect(announcer).toBeDefined();
+      });
+    });
+
+    // Reorder is filter-unsafe: rowIndex is a position in the FILTERED list but
+    // moveRow splices the unfiltered bank order, so the pointer path already
+    // sets disableDrag while searching. The keyboard path must match.
+    it('disables the grip while a search filter is active', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      const searchInput = screen.getByPlaceholderText(/search frequency or tag/i);
+      await userEvent.type(searchInput, 'Alpha');
+
+      expect(screen.getByRole('button', { name: /reorder channel 1/i })).toBeDisabled();
+    });
+  });
 });
