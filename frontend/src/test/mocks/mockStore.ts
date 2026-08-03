@@ -26,7 +26,6 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     setDeviceInfo: vi.fn(),
     setChannels: vi.fn(),
     addToFullActivityLog: vi.fn(),
-    clearActivityLog: vi.fn(),
     updatePreferences: vi.fn(),
     setMemoryEditingIndex: vi.fn(),
     setMemoryDraft: vi.fn(),
