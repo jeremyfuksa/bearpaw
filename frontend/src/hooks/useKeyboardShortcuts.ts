@@ -38,7 +38,15 @@ function reportCommandError(label: string, error: unknown): void {
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
   const api = getAPI();
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+
+  // Keep the ref pointing at the latest handlers without re-registering the
+  // keydown listener. Written in an effect rather than during render
+  // (react-hooks/refs): the listener below only ever reads
+  // `handlersRef.current` from an event callback, which always runs after
+  // commit, so the post-render write is early enough.
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

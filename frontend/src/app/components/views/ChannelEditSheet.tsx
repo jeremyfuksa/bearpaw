@@ -84,13 +84,22 @@ export function ChannelEditSheet({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
+  // Reseed the local working copy when the sheet opens (or switches channel
+  // while open); `draft` is deliberately read at open time, not tracked live —
+  // tracking it would overwrite in-progress edits from the store.
+  //
+  // set-state-in-effect is suppressed rather than fixed: the rule's remedy is
+  // to derive during render or reset via a `key`, but the local copy must
+  // survive re-renders while the sheet is open (that is the whole point of
+  // #146 — a cancelled edit must not reach the store), so it cannot be
+  // derived. The write is edge-gated on `isOpen`/`channel.index`, so it runs
+  // once per open, not per render.
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalDraft(draft);
       setErrors({});
     }
-    // Reseed only when the sheet opens (or switches channel while open);
-    // `draft` is deliberately read at open time, not tracked live.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, channel.index]);
 
