@@ -211,7 +211,21 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`frontend/src/store/useStore.ts`](frontend/src/store/useStore.ts) — Zustand store
 - [`frontend/src/api/client.ts`](frontend/src/api/client.ts) — REST client
 - [`frontend/src/websocket/ScannerWebSocket.ts`](frontend/src/websocket/ScannerWebSocket.ts) — WS client with auto-reconnect
-- [`frontend/src/hooks/`](frontend/src/hooks/) — `useConnectionStatus`, `useActivityLogTracker`, `useActivityLogHydrate`, `useDashboardAnalytics`, `useShellStatusText`, `useKeyboardShortcuts`, `useMenuEvents`
+- [`frontend/src/hooks/`](frontend/src/hooks/) — `useConnectionStatus`, `useActivityLogTracker`, `useActivityLogHydrate`, `useDashboardAnalytics`, `useShellStatusText`, `useKeyboardShortcuts`, `useMenuEvents`, `useUpdateCheck`
+
+### Desktop shell (Tauri)
+- [`frontend/src-tauri/src/main.rs`](frontend/src-tauri/src/main.rs) — shell entry point, sidecar backend, menu wiring
+- [`frontend/src-tauri/src/updates.rs`](frontend/src-tauri/src/updates.rs) — update check against the GitHub Releases API
+
+## Update checks
+
+The desktop shell checks GitHub Releases for a newer version (#273). Three properties are deliberate and easy to break:
+
+1. **Check-and-notify only.** There is no in-app download, signature verification, or self-replacement — the banner's Download button opens the release page in a browser. Real self-update needs `tauri-plugin-updater`, a minisign keypair in CI, and a Developer ID cert (the bundle is ad-hoc signed today, so a swapped bundle would be Gatekeeper-quarantined).
+2. **Every failure is silent.** Bearpaw is offline-first, so `check_for_updates` returns "no update" on *any* transport, status, or parse failure. A user with no network must never see an error, a toast, or a stall. The startup check is silent unless an update exists; the manual check (Help → Check for Updates) always reports, including "you're up to date," because a menu item that appears to do nothing reads as broken.
+3. **Betas track betas.** A prerelease is only ever offered to a user already running a prerelease; stable users are never pushed onto a beta. The policy is applied twice — against GitHub's `prerelease` flag *and* against the parsed tag — because the flag is what GitHub was told while the tag is the truth. Selection uses `max_by`, not first-match: GitHub returns releases newest-*created* first, which is not newest-*version* when a patch to an older line ships later.
+
+Gated by the `check_updates_on_launch` preference (default `true`, toggled on the Device tab). The startup check waits for preferences to load rather than acting on a default that may be about to change. `updates.rs` carries unit tests plus an `#[ignore]`d live test against the real API (`cargo test -p bearpaw-desktop -- --ignored`).
 
 ## Documentation
 

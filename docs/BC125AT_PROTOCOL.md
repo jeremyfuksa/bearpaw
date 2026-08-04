@@ -638,6 +638,19 @@ buffer when a hit occurs).
 | Priority | `1` |
 | DND | `2` |
 
+> **Incomplete — hardware has a fourth mode (2026-08-03).** The table above is
+> what the decompilation yielded and is preserved as-is; `0`/`1`/`2` are
+> confirmed correct on fw 1.06.06. But the radio also has **`CC Only` = `3`**,
+> which this reference omits entirely. Verified by walking all four modes from
+> the keypad with baseline-last ordering, so every reading is a real transition
+> (`docs/wire_captures/2026-08-03/clc-mode-probe-cc-only.txt`). Bearpaw ships
+> `0..=3` in both layers. See Conflict 4 in
+> `docs/wire_captures/2026-05-21/audit-reconciliation.md`.
+>
+> Worth generalizing: two independent references agreeing on a range is not
+> evidence the range is *complete*. A probe that only exercises documented
+> values cannot discover this.
+
 ### 7.7 Key Beep (`KBP` `<beep>` field)
 
 | Display | Wire |
