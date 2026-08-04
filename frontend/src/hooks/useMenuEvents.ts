@@ -10,6 +10,7 @@ export interface MenuEventHandlers {
   onSyncMemory: () => void;
   onOpenDocs: () => void;
   onOpenIssues: () => void;
+  onCheckForUpdates: () => void;
 }
 
 const NAV_TABS: Record<string, Tab> = {
@@ -27,6 +28,7 @@ const EVENT_NAMES = [
   'bearpaw:cmd:sync-memory',
   'bearpaw:help:docs',
   'bearpaw:help:issues',
+  'bearpaw:help:check-updates',
 ] as const;
 
 export function useMenuEvents(handlers: MenuEventHandlers): void {
@@ -59,6 +61,9 @@ export function useMenuEvents(handlers: MenuEventHandlers): void {
               break;
             case 'bearpaw:help:issues':
               handlers.onOpenIssues();
+              break;
+            case 'bearpaw:help:check-updates':
+              handlers.onCheckForUpdates();
               break;
           }
         });

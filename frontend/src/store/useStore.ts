@@ -8,6 +8,8 @@ export interface Preferences {
   hitMinDuration: number;
   dataRetentionDays: number;
   audioOutputDevice: string;
+  /** #273: gates the automatic update check the desktop shell runs at launch. */
+  checkUpdatesOnLaunch: boolean;
 }
 
 /**
@@ -72,6 +74,7 @@ const defaultPreferences: Preferences = {
   hitMinDuration: 2,
   dataRetentionDays: 30,
   audioOutputDevice: 'default',
+  checkUpdatesOnLaunch: true,
 };
 
 const defaultLiveState: LiveState = {

@@ -15,6 +15,8 @@ use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
+mod updates;
+
 /// Menu-item IDs emitted as Tauri events when the user clicks them.
 ///
 /// The frontend subscribes to these via `@tauri-apps/api/event::listen`
@@ -35,6 +37,11 @@ mod menu_ids {
     // that opens the OS-native About panel, so it has no event ID.
     pub const HELP_DOCS: &str = "bearpaw:help:docs";
     pub const HELP_ISSUES: &str = "bearpaw:help:issues";
+    // Manual update check (#273). Emitted to the frontend, which calls the
+    // `check_for_updates` command and shows the banner — including a
+    // "you're up to date" confirmation, which the silent startup check
+    // deliberately does not show.
+    pub const HELP_CHECK_UPDATES: &str = "bearpaw:help:check-updates";
     // Reveals the current backend log file in the OS file manager. Handled
     // entirely in the Rust shell (see on_menu_event) — no frontend event.
     pub const HELP_SHOW_LOGS: &str = "bearpaw:help:show-logs";
@@ -242,6 +249,27 @@ fn reveal_logs_command(app: tauri::AppHandle) {
     reveal_logs(&app);
 }
 
+/// Ask GitHub whether a newer release exists (#273).
+///
+/// `ureq` is a blocking client and Tauri commands run on the main thread,
+/// so the request is pushed onto the blocking pool — otherwise a slow or
+/// hung socket would freeze the window for the full timeout.
+///
+/// Never fails: offline is the expected case for this app, so any error
+/// resolves to "no update available" and the UI stays silent.
+#[tauri::command]
+async fn check_for_updates(app: tauri::AppHandle) -> updates::UpdateCheck {
+    let current = app.package_info().version.to_string();
+    let fallback = updates::UpdateCheck {
+        current_version: current.clone(),
+        ..Default::default()
+    };
+
+    tauri::async_runtime::spawn_blocking(move || updates::check_for_updates(&current))
+        .await
+        .unwrap_or(fallback)
+}
+
 /// Build the native macOS menu bar. The first submenu (the "app" menu) is
 /// populated by Tauri with the standard `Bearpaw › About / Hide / Quit`
 /// entries. Then our three custom submenus: View, Scanner, Help.
@@ -331,6 +359,11 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
         .item(&MenuItemBuilder::with_id(menu_ids::HELP_DOCS, "Documentation").build(app)?)
         .item(&MenuItemBuilder::with_id(menu_ids::HELP_ISSUES, "GitHub Issues").build(app)?)
         .item(&MenuItemBuilder::with_id(menu_ids::HELP_SHOW_LOGS, "Show Log Files").build(app)?)
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id(menu_ids::HELP_CHECK_UPDATES, "Check for Updates…")
+                .build(app)?,
+        )
         .separator()
         .item(&PredefinedMenuItem::about(
             app,
@@ -535,7 +568,12 @@ fn main() {
                 eprintln!("failed to emit menu event {}: {}", id, err);
             }
         })
-        .invoke_handler(tauri::generate_handler![shell_info, backend_status, reveal_logs_command])
+        .invoke_handler(tauri::generate_handler![
+            shell_info,
+            backend_status,
+            reveal_logs_command,
+            check_for_updates
+        ])
         .build(tauri::generate_context!())
         .expect("error while building bearpaw application")
         .run(move |_app, event| {
