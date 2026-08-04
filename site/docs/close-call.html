@@ -65,13 +65,13 @@
         <figure class="docs-figure">
           <img
             src="assets/device-close-call.webp"
-            alt="The Close Call section: a Mode dropdown, Lockout Hits While Scanning toggle, Alert Beep and Alert Light toggles, and Enabled Bands switches for VHF Low, Air, VHF High, UHF, and 800 MHz."
+            alt="The Close Call section with the Mode dropdown open, listing Off, CC DND, CC Priority, and CC Only. Behind it: a Lockout Hits While Scanning toggle, Alert Beep and Alert Light toggles, and Enabled Bands switches for VHF Low, Air, VHF High, UHF, and 800 MHz."
           />
           <figcaption>Close Call — nearby-strong-signal detection.</figcaption>
         </figure>
 
         <h2 id="mode">Mode</h2>
-        <p><strong>Mode</strong> is the master switch, with three settings:</p>
+        <p><strong>Mode</strong> is the master switch, with four settings:</p>
         <ul>
           <li><strong>Off</strong>: Close Call disabled.</li>
           <li>
@@ -82,6 +82,12 @@
           <li>
             <strong>CC Priority</strong>: checks continuously, interrupting other
             activity to catch close calls the moment they happen.
+          </li>
+          <li>
+            <strong>CC Only</strong>: listens for close calls and nothing else —
+            normal scanning stops entirely. Useful when you only care about
+            nearby transmitters, but you won't hear your programmed channels
+            while it's on.
           </li>
         </ul>
         <div class="callout">

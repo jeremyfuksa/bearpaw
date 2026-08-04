@@ -351,8 +351,8 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 | `SSG` / `SSG,<mask>` | Service-search bank mask | Same 0=on / 1=off convention. Banks: Police, Fire/Emerg, Ham, Marine, Railroad, Civil Air, Mil Air, CB, FRS/GMRS/MURS, Racing. |
 | `CSG` / `CSG,<mask>` | Custom-search range mask | Same convention |
 | `CSP,n` | Get/set custom range `n` upper/lower limits | |
-| `CLC` | Close Call config (mode, alert, band mask, lockout) | **Band-bit layout differs between PDF v1.00 and v1.01** — verify empirically |
-| `PRI` / `PRI,n` | Priority mode | 0 off / 1 on / 2 plus / 3 DND |
+| `CLC` | Close Call config (mode, alert, band mask, lockout) | Mode digits **verified 2026-08-03**: `0` off / `1` priority / `2` DND / `3` **only**. Mode 3 (`CC Only`) is absent from `BC125AT_PROTOCOL.md` §7.6 — the reference is incomplete, not wrong. See Conflict 4. **Band-bit layout still differs between PDF v1.00 and v1.01** — that part remains unverified. |
+| `PRI` / `PRI,n` | Priority mode | 0 off / 1 on / 2 plus / 3 DND, all four **verified 2026-08-03**. Undocumented precondition (Conflict 5): the radio refuses to enter *any* priority mode while no channel carries the priority flag — it shows "Priority Scan: No Channel" and the selection does not stick. Mode reachability therefore depends on channel state outside the priority UI. |
 | `KBP` | Key beep & keypad lock | |
 | `BSV,n` | Battery save / charge time | 1–16 hours |
 | `WXS` | Weather alert priority | |

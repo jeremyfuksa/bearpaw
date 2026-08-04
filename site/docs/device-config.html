@@ -64,7 +64,7 @@
         <figure class="docs-figure">
           <img
             src="assets/device-config.webp"
-            alt="The Device Config section: Audio & Power (Volume, Squelch, Battery Saver), Display & System (Backlight, Contrast, Key Beep), Scanning Logic (Priority Mode, Weather Alert Priority), and a read-only Device Information card."
+            alt="The Device Config section with the Priority Mode dropdown open, listing Off, On, Plus, and DND. Around it: Audio & Power (Volume, Squelch, Battery Saver), Display & System (Backlight, Contrast, Key Beep), a Weather Alert Priority toggle, and a read-only Device Information card."
           />
           <figcaption>Device Config — the scanner's core settings.</figcaption>
         </figure>
@@ -108,11 +108,13 @@
         <ul>
           <li>
             <strong>Priority Mode</strong>: <strong>Off</strong>,
-            <strong>On</strong>, or <strong>Plus</strong>. Priority scan
-            periodically checks your
+            <strong>On</strong>, <strong>Plus</strong>, or
+            <strong>DND</strong>. Priority scan periodically checks your
             <a href="glossary.html#priority">priority channel</a> even while
             you're scanning or holding elsewhere, so you don't miss traffic on a
-            channel that matters.
+            channel that matters. <strong>DND</strong> ("Do Not Disturb") only
+            checks between transmissions, so it won't cut into a call you're
+            already listening to.
           </li>
           <li>
             <strong>Weather Alert Priority</strong>: on or off. Watches for the
@@ -120,6 +122,14 @@
             weather.
           </li>
         </ul>
+        <div class="callout">
+          <p>
+            Priority modes need a priority channel to watch. If no channel is
+            flagged as priority, the scanner won't engage any of these modes and
+            Bearpaw shows a warning under the dropdown — flag a channel on the
+            <a href="channels.html">Channels page</a> first.
+          </p>
+        </div>
 
         <h2 id="device-information">Device Information</h2>
         <p>
