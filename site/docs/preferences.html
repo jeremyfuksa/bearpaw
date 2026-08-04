@@ -55,7 +55,7 @@
         <figure class="docs-figure">
           <img
             src="assets/device-preferences.webp"
-            alt="The Preferences section: an About card with the app version and a GitHub link, a Buy me a coffee card, and Application Settings for Hit Minimum Duration and Data Retention."
+            alt="The Preferences section: an About card with the app version, a GitHub link and a Check for Updates button; a Support Dev card with a Buy me a coffee button; and Application Settings holding Hit Minimum Duration, a Show Log Files button, a Check for Updates on Launch toggle, and Data Retention."
           />
           <figcaption>Preferences — the app's own settings.</figcaption>
         </figure>
@@ -67,6 +67,12 @@
             <a href="scan.html#recent-hits">activity log</a>. Raise it to filter
             out brief static bursts; lower it to catch quick exchanges. It's an
             app-side logging filter, separate from how the scanner behaves.
+          </li>
+          <li>
+            <strong>Show Log Files</strong>: opens the folder holding this
+            session's backend log on your computer. Useful when
+            <a href="troubleshooting.html">troubleshooting</a> a connection
+            problem, or when attaching a log to a bug report.
           </li>
           <li>
             <strong>Data Retention</strong>: 30 Days, 90 Days, or 1 Year. How long
@@ -90,9 +96,12 @@
           </p>
         </div>
         <p>
-          The page also has an <strong>About</strong> card (the app version, and a
-          link to the project on GitHub) and a
-          <strong>Buy me a coffee</strong> link to support the developer.
+          The page also has an <strong>About</strong> card — the app version, a
+          link to the project on GitHub, and a
+          <strong>Check for Updates</strong> button that runs the same check as
+          the Help menu and always tells you the result, even when you're already
+          up to date. Below it, a <strong>Buy me a coffee</strong> link to support
+          the developer.
         </p>
         <nav class="docs-pagination" aria-label="Guide pages">
           <a class="page-prev" href="locked-channels.html"><span class="page-dir">← Previous</span><span class="page-title">Locked Channels</span></a>
