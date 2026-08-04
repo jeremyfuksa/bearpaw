@@ -106,6 +106,84 @@ describe('DeviceTab', () => {
 
       expect(mockApiClient.setPrioritySettings).toHaveBeenCalledWith(2);
     });
+
+    // #346: priority modes silently do nothing unless SOME channel carries the
+    // priority flag — the radio shows "Priority Scan: No Channel" and the mode
+    // does not stick. The dropdown stays live (the radio accepts the write);
+    // the hint is what tells the user why nothing happened.
+    describe('no-priority-channel hint (#346)', () => {
+      it('warns when memory is synced and no channel has priority', () => {
+        useStore.setState({
+          channels: [createTestChannel({ index: 1, priority: false })],
+          sync: { ...useStore.getState().sync, hasSyncedInitially: true },
+        });
+
+        renderDeviceTab();
+
+        expect(screen.getByText(/will not engage/i)).toBeInTheDocument();
+      });
+
+      it('stays silent once a channel carries priority', () => {
+        useStore.setState({
+          channels: [
+            createTestChannel({ index: 1, priority: false }),
+            createTestChannel({ index: 2, priority: true }),
+          ],
+          sync: { ...useStore.getState().sync, hasSyncedInitially: true },
+        });
+
+        renderDeviceTab();
+
+        expect(screen.queryByText(/will not engage/i)).not.toBeInTheDocument();
+      });
+
+      // The empty channel list before memory sync is indistinguishable from
+      // "synced, nothing flagged". Warning here would fire on every cold start,
+      // before the app could possibly know.
+      it('stays silent before memory sync, when channels are simply unknown', () => {
+        useStore.setState({
+          channels: [],
+          sync: { ...useStore.getState().sync, hasSyncedInitially: false },
+        });
+
+        renderDeviceTab();
+
+        expect(screen.queryByText(/will not engage/i)).not.toBeInTheDocument();
+      });
+
+      // The hint is only useful to a screen-reader user if it is associated
+      // with the control it explains; visual adjacency does not carry over.
+      it('associates the hint with the Priority Mode select', () => {
+        useStore.setState({
+          channels: [createTestChannel({ index: 1, priority: false })],
+          sync: { ...useStore.getState().sync, hasSyncedInitially: true },
+        });
+
+        renderDeviceTab();
+
+        const trigger = screen.getByRole('combobox', { name: /Priority Mode/i });
+        const describedBy = trigger.getAttribute('aria-describedby');
+        expect(describedBy).toBeTruthy();
+        expect(document.getElementById(describedBy!)).toHaveTextContent(/will not engage/i);
+      });
+
+      it('leaves the Priority Mode select usable while the hint shows', async () => {
+        mockApiClient.setPrioritySettings = vi.fn().mockResolvedValue(undefined);
+        useStore.setState({
+          channels: [createTestChannel({ index: 1, priority: false })],
+          sync: { ...useStore.getState().sync, hasSyncedInitially: true },
+        });
+
+        renderDeviceTab();
+
+        const trigger = screen.getByRole('combobox', { name: /Priority Mode/i });
+        expect(trigger).not.toBeDisabled();
+        await userEvent.click(trigger);
+        await userEvent.click(screen.getByRole('option', { name: /^Plus$/i }));
+
+        expect(mockApiClient.setPrioritySettings).toHaveBeenCalledWith(2);
+      });
+    });
   });
 
   describe('Locked Channels category', () => {
