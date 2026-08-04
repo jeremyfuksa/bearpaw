@@ -4,6 +4,54 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-beta.3] — 2026-08-03
+
+Third beta. Adds update notifications and keyboard-operable channel reordering,
+and corrects three scanner settings that were mapped wrong or missing outright —
+each confirmed against the radio rather than the reference docs.
+
+### Fixed
+
+- **Close Call mode was inverted.** The app mapped wire mode 1 to DND and 2 to
+  Priority; the hardware means the opposite. Selecting a Close Call mode set the
+  wrong one. Confirmed on firmware 1.06.06 by setting each mode from the radio's
+  own keypad and reading it back.
+- **Close Call `CC Only` was missing.** The radio has a fourth mode the protocol
+  reference omits entirely. It was rejected by the backend and unmapped in the
+  UI, so a radio already in `CC Only` displayed as "Off" — and the next save
+  wrote that "Off" back to the scanner.
+- **Priority DND read as Off.** The same silent-clobber shape: an unmodelled
+  priority mode fell back to "Off" on read, so opening the Device page and
+  saving would quietly switch the radio out of DND.
+- **Offline-first fonts.** A dependency pulled in a stylesheet that imported
+  fonts from Google's CDN, which survived bundling. The app is meant to render
+  fully offline; those imports are gone.
+- **Staged channel clears are now visible.** Clearing channels stages a zeroed
+  draft in place — the BC125AT has 500 fixed slots, so no row disappears.
+  Cleared rows previously looked identical to ordinary edits, and after a
+  successful upload they stayed marked as pending forever, re-uploading on every
+  subsequent save.
+
+### Added
+
+- **Update notifications.** Bearpaw checks GitHub Releases on launch and via
+  Help → Check for Updates, and tells you when a newer version exists. The
+  install stays manual — the Download button opens the release page in your
+  browser. The launch check is optional (Device → Preferences) and fails
+  silently when you're offline.
+- **Keyboard-accessible channel reordering.** Reordering was pointer-only, so a
+  keyboard or screen-reader user could edit channels but never reorder them
+  (WCAG 2.1.1, Level A). The drag grip is now a focusable control with a
+  grab/move/drop path.
+- **Priority DND mode.** All four priority modes (Off, On, Plus, DND) confirmed
+  present on firmware 1.06.06 and selectable in the UI.
+- **A hint when Priority modes can't engage.** Selecting a priority mode does
+  nothing unless some channel carries the priority flag — the radio shows
+  "Priority Scan: No Channel" on its own display and the mode doesn't stick.
+  Bearpaw now says so, and points at the Channels page.
+
+[1.0.0-beta.3]: https://github.com/jeremyfuksa/bearpaw/releases/tag/v1.0.0-beta.3
+
 ## [1.0.0-beta.2] — 2026-07-23
 
 Second beta. Fixes the macOS "damaged" install error, a USB connection wedge,
