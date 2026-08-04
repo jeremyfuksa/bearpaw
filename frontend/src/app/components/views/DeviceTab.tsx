@@ -11,6 +11,7 @@ import {
   Coffee,
   Heart,
   Code,
+  RefreshCw,
 } from 'lucide-react';
 
 import appIcon from '@/assets/app-icon.png';
@@ -47,6 +48,7 @@ interface SearchRange {
 export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   hitMinDuration: 'hit_min_duration',
   dataRetentionDays: 'data_retention_days',
+  checkUpdatesOnLaunch: 'check_updates_on_launch',
 };
 
 // Close Call (CLC) mode: UI value -> wire digit. Digits confirmed on hardware
@@ -131,7 +133,21 @@ export function priorityWireToMode(wire: number): string | null {
   return PRIORITY_WIRE_TO_MODE[wire] ?? null;
 }
 
-export function DeviceTab() {
+export interface DeviceTabProps {
+  /**
+   * Run a manual update check (#273). Owned by App.tsx rather than by a
+   * local `useUpdateCheck` call: the hook also runs the startup check, so a
+   * second instance here would fire an extra request every time this tab
+   * mounts and keep its own unrelated `checking` state.
+   *
+   * Optional so the component still renders bare in tests and outside Tauri.
+   */
+  onCheckForUpdates?: () => void;
+  /** True while a manual check is in flight; disables the button. */
+  checkingForUpdates?: boolean;
+}
+
+export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabProps = {}) {
   const api = getAPI();
   const connectionStatus = useConnectionStatus();
   const deviceInfo = useStore((state) => state.deviceInfo);
@@ -1488,6 +1504,22 @@ export function DeviceTab() {
                       <Code size={20} aria-hidden /> Github
                     </button>
                   </div>
+                  {/* #273: same action as Help → Check for Updates, surfaced
+                      next to the version number people actually look at. */}
+                  {isTauriRuntime() && onCheckForUpdates && (
+                    <button
+                      onClick={onCheckForUpdates}
+                      disabled={checkingForUpdates}
+                      className="w-full py-1.5 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw
+                        size={16}
+                        aria-hidden
+                        className={cn(checkingForUpdates && 'animate-spin')}
+                      />
+                      {checkingForUpdates ? 'Checking…' : 'Check for Updates'}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1567,6 +1599,30 @@ export function DeviceTab() {
                       >
                         Show Log Files
                       </button>
+                    </div>
+                  )}
+                  {/* #273: the app is otherwise fully offline, so the one
+                      network call it makes needs an opt-out. */}
+                  {isTauriRuntime() && (
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="space-y-0.5">
+                        <label
+                          htmlFor="check-updates-on-launch"
+                          className="text-base font-medium text-white"
+                        >
+                          Check for Updates on Launch
+                        </label>
+                        <p className="text-sm text-white/60">
+                          Ask GitHub for a newer release when Bearpaw starts
+                        </p>
+                      </div>
+                      <Switch
+                        id="check-updates-on-launch"
+                        checked={preferences.checkUpdatesOnLaunch}
+                        onCheckedChange={(checked) =>
+                          handlePreferenceChange('checkUpdatesOnLaunch', checked)
+                        }
+                      />
                     </div>
                   )}
                 </div>

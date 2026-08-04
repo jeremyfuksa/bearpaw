@@ -73,6 +73,10 @@ export default function App() {
   const channels = useStore((state) => state.channels);
   const fullActivityLog = useStore((state) => state.fullActivityLog);
   const preferences = useStore((state) => state.preferences);
+  // Whether the preferences fetch has settled (either way). The store holds
+  // defaults until then, so this is what distinguishes "checkUpdatesOnLaunch
+  // is true by default" from "the user stored true" — see the #273 gate below.
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const updateLiveState = useStore((state) => state.updateLiveState);
   const setDeviceInfo = useStore((state) => state.setDeviceInfo);
   const setChannels = useStore((state) => state.setChannels);
@@ -190,6 +194,10 @@ export default function App() {
             hitMinDuration: prefs.hit_min_duration || 2,
             dataRetentionDays: prefs.data_retention_days || 30,
             audioOutputDevice: prefs.audio_output_device || 'default',
+            // `??`, not `||`: this defaults to true, so `||` would coerce a
+            // stored `false` back to `true` and the toggle would silently
+            // revert on every launch. Only null/undefined mean "unset".
+            checkUpdatesOnLaunch: prefs.check_updates_on_launch ?? true,
           };
           console.log('[Preferences] Setting in store:', frontendPrefs);
           updatePreferences(frontendPrefs);
@@ -200,6 +208,13 @@ export default function App() {
         }
       } catch (error) {
         console.warn('Failed to load preferences from backend', error);
+      } finally {
+        // `finally`, not the success branch: this gates the #273 startup
+        // update check, and a failed load must still release that gate or
+        // the check would never run for anyone whose backend was slow or
+        // unreachable. On failure the store keeps its defaults, which is
+        // the same answer a fresh install gets.
+        setPreferencesLoaded(true);
       }
     };
     loadPreferences();
@@ -682,7 +697,12 @@ export default function App() {
     checking: checkingForUpdates,
     checkNow: checkForUpdatesNow,
     dismiss: dismissUpdate,
-  } = useUpdateCheck(handleUpToDate);
+  } = useUpdateCheck(
+    handleUpToDate,
+    // `undefined` until preferences settle, so the startup check waits
+    // rather than acting on a default that may be about to change.
+    preferencesLoaded ? preferences.checkUpdatesOnLaunch : undefined,
+  );
 
   const menuHandlers = useMemo(
     () => ({
@@ -1094,7 +1114,12 @@ export default function App() {
               />
             )}
 
-            {currentTab === 'Device' && <DeviceTab />}
+            {currentTab === 'Device' && (
+              <DeviceTab
+                onCheckForUpdates={checkForUpdatesNow}
+                checkingForUpdates={checkingForUpdates}
+              />
+            )}
             {currentTab === 'Channels' && <ChannelsTab />}
           </AnimatePresence>
         </main>

@@ -26,8 +26,16 @@ export interface UseUpdateCheck {
  *
  * No-ops entirely outside Tauri — there is no shell command to call from
  * a plain browser dev server, and `checkForUpdates` returns null there.
+ *
+ * @param checkOnLaunch the `checkUpdatesOnLaunch` preference. Pass
+ *   `undefined` while preferences are still loading — the startup check
+ *   waits rather than acting on a default that may be about to change.
+ *   Only the startup check is gated; the manual check always runs.
  */
-export function useUpdateCheck(onUpToDate?: (current: string) => void): UseUpdateCheck {
+export function useUpdateCheck(
+  onUpToDate?: (current: string) => void,
+  checkOnLaunch?: boolean,
+): UseUpdateCheck {
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -48,6 +56,12 @@ export function useUpdateCheck(onUpToDate?: (current: string) => void): UseUpdat
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
+    // `undefined` means preferences haven't loaded yet. Waiting is load-
+    // bearing: they arrive asynchronously from the backend, so acting on
+    // the store default here would fire the request before a stored
+    // `false` ever lands, and the toggle would appear to do nothing.
+    if (checkOnLaunch === undefined) return;
+    if (!checkOnLaunch) return;
     if (startupRan.current) return;
     startupRan.current = true;
 
@@ -62,7 +76,7 @@ export function useUpdateCheck(onUpToDate?: (current: string) => void): UseUpdat
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [checkOnLaunch]);
 
   const checkNow = useCallback(() => {
     if (!isTauriRuntime()) return;

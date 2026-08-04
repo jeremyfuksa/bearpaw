@@ -574,6 +574,11 @@ pub(crate) fn default_preferences() -> Map<String, Value> {
     );
     m.insert("reduced_motion".to_string(), Value::Bool(false));
     m.insert("hit_min_duration".to_string(), Value::from(2));
+    // #273: gates the automatic update check the desktop shell runs at
+    // launch. Defaults on — an existing install with no stored value keeps
+    // the behaviour it shipped with — but the app is offline-first, so a
+    // user who wants zero network traffic needs a way to turn it off.
+    m.insert("check_updates_on_launch".to_string(), Value::Bool(true));
     m.insert("start_dashboard_mode".to_string(), Value::Bool(true));
     m.insert("recording_buffer_size".to_string(), Value::from(30));
     m.insert("data_retention_days".to_string(), Value::from(30));

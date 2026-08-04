@@ -38,7 +38,7 @@ beforeEach(() => {
 describe('useUpdateCheck — startup', () => {
   it('surfaces an available update found at startup', async () => {
     mockCheck.mockResolvedValue(available());
-    const { result } = renderHook(() => useUpdateCheck());
+    const { result } = renderHook(() => useUpdateCheck(undefined, true));
 
     await waitFor(() => expect(result.current.update).not.toBeNull());
     expect(result.current.update?.latest_version).toBe('v1.0.0-beta.3');
@@ -47,7 +47,7 @@ describe('useUpdateCheck — startup', () => {
   it('stays silent when already up to date', async () => {
     mockCheck.mockResolvedValue(upToDate());
     const onUpToDate = vi.fn();
-    const { result } = renderHook(() => useUpdateCheck(onUpToDate));
+    const { result } = renderHook(() => useUpdateCheck(onUpToDate, true));
 
     await waitFor(() => expect(mockCheck).toHaveBeenCalled());
     expect(result.current.update).toBeNull();
@@ -59,7 +59,7 @@ describe('useUpdateCheck — startup', () => {
   it('stays silent when the check fails (offline)', async () => {
     mockCheck.mockResolvedValue(null);
     const onUpToDate = vi.fn();
-    const { result } = renderHook(() => useUpdateCheck(onUpToDate));
+    const { result } = renderHook(() => useUpdateCheck(onUpToDate, true));
 
     await waitFor(() => expect(mockCheck).toHaveBeenCalled());
     expect(result.current.update).toBeNull();
@@ -68,7 +68,7 @@ describe('useUpdateCheck — startup', () => {
 
   it('does not call the shell outside Tauri', async () => {
     mockIsTauri.mockReturnValue(false);
-    const { result } = renderHook(() => useUpdateCheck());
+    const { result } = renderHook(() => useUpdateCheck(undefined, true));
 
     await act(async () => {});
     expect(mockCheck).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe('useUpdateCheck — startup', () => {
 
   it('checks once per mount, not once per render', async () => {
     mockCheck.mockResolvedValue(upToDate());
-    const { rerender } = renderHook(() => useUpdateCheck());
+    const { rerender } = renderHook(() => useUpdateCheck(undefined, true));
 
     await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
     rerender();
@@ -86,11 +86,87 @@ describe('useUpdateCheck — startup', () => {
   });
 });
 
+describe('useUpdateCheck — checkUpdatesOnLaunch gate (#273)', () => {
+  it('waits while preferences are still loading', async () => {
+    mockCheck.mockResolvedValue(available());
+    renderHook(() => useUpdateCheck(undefined, undefined));
+
+    await act(async () => {});
+    // `undefined` means "not known yet". Acting on the store default here
+    // would fire the request before a stored `false` ever arrives, and the
+    // toggle would appear to do nothing.
+    expect(mockCheck).not.toHaveBeenCalled();
+  });
+
+  it('does not check at startup when the preference is off', async () => {
+    mockCheck.mockResolvedValue(available());
+    const { result } = renderHook(() => useUpdateCheck(undefined, false));
+
+    await act(async () => {});
+    expect(mockCheck).not.toHaveBeenCalled();
+    expect(result.current.update).toBeNull();
+  });
+
+  it('checks once the preference arrives as true', async () => {
+    mockCheck.mockResolvedValue(available());
+    const { rerender } = renderHook(({ gate }) => useUpdateCheck(undefined, gate), {
+      initialProps: { gate: undefined as boolean | undefined },
+    });
+
+    await act(async () => {});
+    expect(mockCheck).not.toHaveBeenCalled();
+
+    rerender({ gate: true });
+    await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
+  });
+
+  it('never checks when the preference arrives as false', async () => {
+    mockCheck.mockResolvedValue(available());
+    const { rerender } = renderHook(({ gate }) => useUpdateCheck(undefined, gate), {
+      initialProps: { gate: undefined as boolean | undefined },
+    });
+
+    rerender({ gate: false });
+    await act(async () => {});
+    expect(mockCheck).not.toHaveBeenCalled();
+  });
+
+  it('still allows a manual check when the startup preference is off', async () => {
+    mockCheck.mockResolvedValue(upToDate());
+    const onUpToDate = vi.fn();
+    const { result } = renderHook(() => useUpdateCheck(onUpToDate, false));
+
+    await act(async () => {
+      result.current.checkNow();
+    });
+
+    // Only the automatic check is gated. Turning off the launch check must
+    // not disable the button the user just pressed.
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+    expect(onUpToDate).toHaveBeenCalledWith('1.0.0-beta.2');
+  });
+
+  it('does not re-check when the preference toggles off and on again', async () => {
+    mockCheck.mockResolvedValue(upToDate());
+    const { rerender } = renderHook(({ gate }) => useUpdateCheck(undefined, gate), {
+      initialProps: { gate: true as boolean | undefined },
+    });
+    await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
+
+    rerender({ gate: false });
+    rerender({ gate: true });
+    await act(async () => {});
+
+    // The startup check is once per launch, not once per toggle flip.
+    expect(mockCheck).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useUpdateCheck — manual', () => {
   it('reports up to date so the menu item never looks broken', async () => {
     mockCheck.mockResolvedValue(upToDate());
     const onUpToDate = vi.fn();
-    const { result } = renderHook(() => useUpdateCheck(onUpToDate));
+    const { result } = renderHook(() => useUpdateCheck(onUpToDate, true));
     await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
 
     await act(async () => {
@@ -103,7 +179,7 @@ describe('useUpdateCheck — manual', () => {
   it('reports a failed manual check with an empty version', async () => {
     mockCheck.mockResolvedValue(null);
     const onUpToDate = vi.fn();
-    const { result } = renderHook(() => useUpdateCheck(onUpToDate));
+    const { result } = renderHook(() => useUpdateCheck(onUpToDate, true));
     await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
 
     await act(async () => {
@@ -116,7 +192,7 @@ describe('useUpdateCheck — manual', () => {
 
   it('surfaces an update found by a manual check', async () => {
     mockCheck.mockResolvedValueOnce(upToDate()).mockResolvedValueOnce(available());
-    const { result } = renderHook(() => useUpdateCheck());
+    const { result } = renderHook(() => useUpdateCheck(undefined, true));
     await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
 
     await act(async () => {
@@ -128,7 +204,7 @@ describe('useUpdateCheck — manual', () => {
 
   it('ignores a second manual check while one is in flight', async () => {
     mockCheck.mockResolvedValue(upToDate());
-    const { result } = renderHook(() => useUpdateCheck());
+    const { result } = renderHook(() => useUpdateCheck(undefined, true));
     await waitFor(() => expect(mockCheck).toHaveBeenCalledTimes(1));
 
     let release: (v: UpdateCheck | null) => void = () => {};
@@ -153,7 +229,7 @@ describe('useUpdateCheck — manual', () => {
 
   it('dismiss clears the banner', async () => {
     mockCheck.mockResolvedValue(available());
-    const { result } = renderHook(() => useUpdateCheck());
+    const { result } = renderHook(() => useUpdateCheck(undefined, true));
     await waitFor(() => expect(result.current.update).not.toBeNull());
 
     act(() => {
