@@ -585,6 +585,25 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     [applyKeyBeep],
   );
 
+  // Priority modes silently do nothing unless some channel carries the
+  // priority flag — the radio shows "Priority Scan: No Channel" on its own
+  // display and the mode does not stick (#346, fw 1.06.06; recorded as
+  // Conflict 5 in docs/wire_captures/2026-05-21/audit-reconciliation.md).
+  // Priority is bank-exclusive but not bank-scoped for this precondition: one
+  // flagged channel anywhere in memory satisfies the radio.
+  //
+  // Gated on `hasSyncedInitially`, not on `channels.length`: before memory
+  // sync the channel list is empty, which is indistinguishable from "synced,
+  // nothing flagged" — warning then would be a false alarm on every cold
+  // start. This is the one place `hasSyncedInitially` means what it says
+  // ("has memory ever been read?"); do NOT copy this gate to the sync overlay,
+  // where it is the known #102 regression.
+  const hasSyncedInitially = useStore((state) => state.sync.hasSyncedInitially);
+  const noPriorityChannel = useMemo(
+    () => hasSyncedInitially && !channels.some((c) => c.priority),
+    [hasSyncedInitially, channels],
+  );
+
   const handlePriorityModeChange = useCallback(
     async (value: string) => {
       setPriorityMode(value);
@@ -1109,22 +1128,34 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
               </div>
 
               <div className="grid grid-cols-2 gap-6">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-white/70">Priority Mode</span>
-                  <Select value={priorityMode} onValueChange={handlePriorityModeChange}>
-                    <SelectTrigger
-                      aria-label="Priority Mode"
-                      className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-white/70">Priority Mode</span>
+                    <Select value={priorityMode} onValueChange={handlePriorityModeChange}>
+                      <SelectTrigger
+                        aria-label="Priority Mode"
+                        aria-describedby={noPriorityChannel ? 'priority-no-channel' : undefined}
+                        className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="scanner-select-content">
+                        <SelectItem value="off">Off</SelectItem>
+                        <SelectItem value="on">On</SelectItem>
+                        <SelectItem value="plus">Plus</SelectItem>
+                        <SelectItem value="dnd">DND</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {noPriorityChannel && (
+                    <p
+                      id="priority-no-channel"
+                      className="rounded-md border border-amber-400/20 bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-100"
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="scanner-select-content">
-                      <SelectItem value="off">Off</SelectItem>
-                      <SelectItem value="on">On</SelectItem>
-                      <SelectItem value="plus">Plus</SelectItem>
-                      <SelectItem value="dnd">DND</SelectItem>
-                    </SelectContent>
-                  </Select>
+                      No channel is flagged as priority, so these modes will not engage. Flag one on
+                      the Channels page.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
