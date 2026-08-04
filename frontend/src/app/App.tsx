@@ -738,9 +738,7 @@ export default function App() {
   // Surface a pending update (#273). Persistent (duration: Infinity) because
   // this is the only notice the user gets — the install is manual, so a
   // toast that auto-dismisses would lose the release link. Download opens
-  // the GitHub release page in the default browser; the URL always points
-  // at github.com/jeremyfuksa/bearpaw/**, which is the only host the
-  // `shell:allow-open` capability permits.
+  // the GitHub release page in the default browser.
   useEffect(() => {
     if (!pendingUpdate?.available || !pendingUpdate.release_url) return;
     const releaseUrl = pendingUpdate.release_url;

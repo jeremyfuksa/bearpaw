@@ -34,8 +34,8 @@ pub struct UpdateCheck {
     /// Tag of the newer release, e.g. `v1.0.0-beta.3`. `None` when up to date.
     pub latest_version: Option<String>,
     /// Release page URL — opened in the default browser by the Download button.
-    /// Always a `github.com/jeremyfuksa/bearpaw/**` URL, which is what the
-    /// `shell:allow-open` capability scope permits.
+    /// Taken verbatim from the API's `html_url`, so it always points at this
+    /// repo's own release page rather than anywhere the payload chooses.
     pub release_url: Option<String>,
     /// The running version, echoed back so the banner can say "you're on X".
     pub current_version: String,
@@ -395,7 +395,7 @@ mod live_tests {
         let url = beta.release_url.expect("release url present");
         assert!(
             url.starts_with("https://github.com/jeremyfuksa/bearpaw/"),
-            "release URL must stay inside the shell:allow-open scope, got {url}"
+            "release URL must point at this repo, not wherever the payload says, got {url}"
         );
 
         // Nothing can supersede a version far beyond anything published.
