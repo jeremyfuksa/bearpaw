@@ -10,10 +10,13 @@ use tracing::{debug, warn};
 /// Known Uniden scanner USB IDs probed during plug-and-play autodetect.
 /// All current entries are Uniden America Corp. (`0x1965`).
 /// See docs/SCANNER_PROTOCOL_REFERENCE.md §1 for the list.
+pub const UNIDEN_VID: u16 = 0x1965;
+
 const KNOWN_SCANNER_USB_IDS: &[(u16, u16)] = &[
-    (0x1965, 0x0017), // BC125AT, BCT125AT (shared PID)
-                      // Other Uniden 125/126 family PIDs (0x0016–0x001A) can be added here
-                      // as they're confirmed.
+    (UNIDEN_VID, 0x0017), // BC125AT, BCT125AT (shared PID)
+    (UNIDEN_VID, 0x0018), // UBC125XLT (EU variant)
+                          // Other Uniden 125/126 family PIDs (0x0016–0x001A) can be added here
+                          // as they're confirmed.
 ];
 
 /// Model names returned by `MDL` that we accept as a real Uniden scanner.
