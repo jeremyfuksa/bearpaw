@@ -20,6 +20,21 @@ updates:
       prefix: "chore"
       include: "scope"
     groups:
+      # The TypeScript toolchain must move as a unit, majors included.
+      # typescript-eslint hard-caps its `typescript` peer range and throws at
+      # module load on an unsupported version, so a solo `typescript` major is
+      # un-mergeable in either order (see PR #367, which bumped TS 6 -> 7 alone
+      # and could not be installed, rebased, or merged). Listed FIRST so it
+      # claims these packages before npm-minor-patch does.
+      typescript:
+        patterns:
+          - "typescript"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       # Batch minor/patch bumps into one PR to cut review noise; majors still
       # come through individually so breaking changes get a dedicated review.
       npm-minor-patch:
