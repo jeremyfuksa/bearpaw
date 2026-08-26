@@ -2967,4 +2967,520 @@ mod tests {
             "expected a CIN write for channel 5: {transcript:?}"
         );
     }
+
+    // ---------------------------------------------------------------------
+    // Settings write paths
+    //
+    // One test per setting the Device tab can change, asserting the EXACT wire
+    // command that reaches the scanner. These are the writes where a wrong
+    // argument silently misconfigures the radio: the value is accepted, the
+    // API returns 200, and nothing looks wrong until you read the front panel.
+    //
+    // Every assertion spells the wire string out as a literal. Comparing
+    // against the handler's own format! would pass if the format changed.
+
+    /// POST a JSON body to `uri` and return (status, wire transcript).
+    async fn post_json_capture(uri: &str, body: &'static str) -> (StatusCode, Vec<String>) {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(uri)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        (response.status(), fake.transcript())
+    }
+
+    /// The wire commands a settings write issues, with the PRG/EPG bracket
+    /// stripped. Every settings write runs inside ProgramModeGuard, so the
+    /// bracket is asserted once (below) rather than in all eleven tests.
+    fn settings_payload(transcript: &[String]) -> Vec<String> {
+        transcript
+            .iter()
+            .filter(|c| *c != "PRG" && *c != "EPG")
+            .cloned()
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn settings_writes_run_inside_a_program_mode_bracket() {
+        let (status, transcript) =
+            post_json_capture("/api/v1/settings/backlight", r#"{"event":"AO"}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            transcript.first().map(String::as_str),
+            Some("PRG"),
+            "a settings write must open program mode first: {transcript:?}"
+        );
+        assert_eq!(
+            transcript.last().map(String::as_str),
+            Some("EPG"),
+            "a settings write must close program mode: {transcript:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_backlight_sends_blt() {
+        let (status, t) =
+            post_json_capture("/api/v1/settings/backlight", r#"{"event":"SQ"}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["BLT,SQ"]);
+    }
+
+    #[tokio::test]
+    async fn set_backlight_rejects_an_unknown_event_without_touching_the_wire() {
+        let (status, t) =
+            post_json_capture("/api/v1/settings/backlight", r#"{"event":"XX"}"#).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            settings_payload(&t).is_empty(),
+            "a rejected backlight event must not reach the scanner: {t:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_battery_sends_bsv() {
+        let (status, t) =
+            post_json_capture("/api/v1/settings/battery", r#"{"charge_time":10}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["BSV,10"]);
+    }
+
+    #[tokio::test]
+    async fn set_key_beep_encodes_level_and_lock() {
+        // KBP,<level>,<lock> — lock is 1/0, not true/false.
+        let (status, t) =
+            post_json_capture("/api/v1/settings/key-beep", r#"{"level":7,"lock":true}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["KBP,7,1"]);
+    }
+
+    #[tokio::test]
+    async fn set_key_beep_lock_false_is_zero() {
+        let (status, t) =
+            post_json_capture("/api/v1/settings/key-beep", r#"{"level":0,"lock":false}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["KBP,0,0"]);
+    }
+
+    #[tokio::test]
+    async fn set_key_beep_rejects_an_out_of_range_level() {
+        let (status, t) = post_json_capture("/api/v1/settings/key-beep", r#"{"level":42}"#).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(settings_payload(&t).is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_priority_sends_pri() {
+        let (status, t) = post_json_capture("/api/v1/settings/priority", r#"{"mode":2}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["PRI,2"]);
+    }
+
+    #[tokio::test]
+    async fn set_search_encodes_delay_and_code_search() {
+        let (status, t) = post_json_capture(
+            "/api/v1/settings/search",
+            r#"{"delay":3,"code_search":true}"#,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["SCO,3,1"]);
+    }
+
+    #[tokio::test]
+    async fn set_close_call_encodes_all_five_fields_in_order() {
+        // CLC,<mode>,<alert_beep>,<alert_light>,<band_mask>,<lockout>.
+        // Field order here is the whole contract — the band mask sitting in
+        // the wrong slot is invisible from the API's 200 response.
+        let (status, t) = post_json_capture(
+            "/api/v1/settings/close-call",
+            r#"{"mode":2,"alert_beep":true,"alert_light":false,"band":[true,false,true,false,true],"lockout":true}"#,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["CLC,2,1,0,10101,1"]);
+    }
+
+    #[tokio::test]
+    async fn set_close_call_rejects_a_band_mask_that_is_not_five_entries() {
+        let (status, t) = post_json_capture(
+            "/api/v1/settings/close-call",
+            r#"{"mode":1,"band":[true,false]}"#,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(settings_payload(&t).is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_service_search_sends_ssg() {
+        let (status, t) = post_json_capture(
+            "/api/v1/settings/service-search",
+            r#"{"groups":[true,false,true,false,true,false,true,false,true,false]}"#,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let payload = settings_payload(&t);
+        assert_eq!(payload.len(), 1, "expected one SSG write: {payload:?}");
+        assert!(
+            payload[0].starts_with("SSG,"),
+            "expected an SSG write: {payload:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_weather_sends_wxs() {
+        let (status, t) =
+            post_json_capture("/api/v1/settings/weather", r#"{"priority":true}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["WXS,1"]);
+    }
+
+    #[tokio::test]
+    async fn set_contrast_sends_cnt() {
+        let (status, t) = post_json_capture("/api/v1/settings/contrast", r#"{"level":12}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["CNT,12"]);
+    }
+
+    #[tokio::test]
+    async fn set_custom_range_sends_csp_with_index_and_bounds() {
+        let (status, t) = post_json_capture(
+            "/api/v1/settings/custom-search/ranges/3",
+            r#"{"lower":25.0,"upper":28.0}"#,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let payload = settings_payload(&t);
+        assert_eq!(payload.len(), 1, "expected one CSP write: {payload:?}");
+        assert!(
+            payload[0].starts_with("CSP,3,"),
+            "CSP must carry the range index it was addressed with: {payload:?}"
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Bank enable mask (SCG)
+    //
+    // The BC125AT inverts this: '1' means DISABLED, '0' means enabled. It is
+    // the single most-warned-about pitfall in CLAUDE.md, it is invisible from
+    // the API (both directions return plain booleans), and getting it backwards
+    // turns every bank toggle in the UI into its opposite. Both directions are
+    // pinned here with literal masks.
+
+    /// A fake that models the real SCG contract: a write stores the mask, and
+    /// the readback (#157 verifies the write by re-reading inside the same PRG
+    /// bracket) returns what was stored. A responder that answers "SCG,OK" to
+    /// the readback fails `banks_readback_invalid` — the handler is stricter
+    /// than a naive fake expects.
+    fn bank_responder() -> impl Fn(&str) -> Result<String, String> + Send + 'static {
+        let stored = Arc::new(Mutex::new(String::from("1111111111")));
+        move |cmd: &str| {
+            if let Some(mask) = cmd.strip_prefix("SCG,") {
+                *stored.lock().unwrap() = mask.to_string();
+                Ok("SCG,OK".to_string())
+            } else if cmd == "SCG" {
+                Ok(format!("SCG,{}", stored.lock().unwrap()))
+            } else {
+                Ok("OK".to_string())
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn set_banks_inverts_enabled_to_zero_on_the_wire() {
+        // Bank 1 enabled, rest disabled -> "0111111111".
+        let mut banks = [false; 10];
+        banks[0] = true;
+        let body = format!(
+            r#"{{"banks":[{}]}}"#,
+            banks
+                .iter()
+                .map(|b| b.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, bank_responder());
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/banks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            settings_payload(&fake.transcript()),
+            vec!["SCG,0111111111", "SCG"],
+            "enabled banks must be '0' on the wire — '1' is DISABLED"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_banks_all_enabled_is_all_zeroes() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, bank_responder());
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/banks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"banks":[true,true,true,true,true,true,true,true,true,true]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            settings_payload(&fake.transcript()),
+            vec!["SCG,0000000000", "SCG"]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_banks_decodes_zero_as_enabled() {
+        // The scanner reports "0111111111": bank 1 enabled, 2-10 disabled.
+        let state = default_state();
+        let _fake = FakeScanner::attach(&state, |cmd| {
+            if cmd == "SCG" {
+                Ok("SCG,0111111111".to_string())
+            } else {
+                Ok("OK".to_string())
+            }
+        });
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/banks")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(
+            body["banks"],
+            serde_json::json!([
+                true, false, false, false, false, false, false, false, false, false
+            ]),
+            "'0' is ENABLED — a decode that returns [false, true, ...] has the mask backwards"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_banks_rejects_a_mask_that_is_not_ten_banks() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("SCG,OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/banks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"banks":[true,false,true]}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            settings_payload(&fake.transcript()).is_empty(),
+            "a malformed bank mask must never reach the scanner"
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Volume / squelch / channel writes and their validation
+    //
+    // The remaining hardware-writing controls. Each pairs a "the right bytes
+    // go out" test with a "bad input never reaches the wire" test, because a
+    // rejected value that still hits the scanner is the failure mode that
+    // silently reprograms the radio.
+
+    #[tokio::test]
+    async fn set_volume_sends_vol() {
+        let (status, t) = post_json_capture("/api/v1/volume", r#"{"volume":9}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["VOL,9"]);
+    }
+
+    #[tokio::test]
+    async fn set_volume_rejects_out_of_range_without_touching_the_wire() {
+        let (status, t) = post_json_capture("/api/v1/volume", r#"{"volume":99}"#).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(settings_payload(&t).is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_squelch_rejects_a_malformed_body_without_touching_the_wire() {
+        // `SquelchRequest.level` is a u8, so 300 fails serde before the handler
+        // runs — axum answers 422, not the handler's 400. Either way the wire
+        // must stay clean, which is what this pins.
+        let (status, t) = post_json_capture("/api/v1/squelch", r#"{"level":300}"#).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(settings_payload(&t).is_empty());
+    }
+
+    #[tokio::test]
+    async fn set_squelch_sends_sql() {
+        let (status, t) = post_json_capture("/api/v1/squelch", r#"{"level":5}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings_payload(&t), vec!["SQL,5"]);
+    }
+
+    /// A fake that stores CIN writes and echoes them on read-back. The channel
+    /// write path verifies itself by re-reading the slot inside the same PRG
+    /// bracket (`channel_not_persisted` otherwise), so a fake that answers a
+    /// fixed CIN fails even when the write was correct.
+    fn channel_responder() -> impl Fn(&str) -> Result<String, String> + Send + 'static {
+        let stored: Arc<Mutex<std::collections::HashMap<String, String>>> =
+            Arc::new(Mutex::new(std::collections::HashMap::new()));
+        move |cmd: &str| {
+            if let Some(rest) = cmd.strip_prefix("CIN,") {
+                let mut parts = rest.splitn(2, ',');
+                let idx = parts.next().unwrap_or_default().to_string();
+                match parts.next() {
+                    // Write: `CIN,<idx>,<fields...>` — remember the payload.
+                    Some(fields) => {
+                        stored.lock().unwrap().insert(idx, fields.to_string());
+                        Ok("CIN,OK".to_string())
+                    }
+                    // Read: `CIN,<idx>` — echo whatever was written there.
+                    None => {
+                        let map = stored.lock().unwrap();
+                        let fields = map
+                            .get(&idx)
+                            .cloned()
+                            .unwrap_or_else(|| "Empty,00000000,FM,0,2,0,0".to_string());
+                        Ok(format!("CIN,{idx},{fields}"))
+                    }
+                }
+            } else {
+                Ok("OK".to_string())
+            }
+        }
+    }
+
+    /// PUT a channel body and return (status, wire transcript).
+    async fn put_channel_capture(index: u16, body: String) -> (StatusCode, Vec<String>) {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, channel_responder());
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri(format!("/api/v1/memory/channels/{index}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        (response.status(), fake.transcript())
+    }
+
+    fn channel_body(frequency: f64, tag: &str, delay: i64, bank: u8) -> String {
+        format!(
+            r#"{{"index":1,"frequency":{frequency},"modulation":"FM","alpha_tag":"{tag}","delay":{delay},"lockout":false,"priority":false,"bank":{bank},"tone_code":0}}"#
+        )
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_sends_a_cin_for_that_index_inside_a_bracket() {
+        let (status, t) = put_channel_capture(7, channel_body(146.52, "TEST CHAN", 2, 1)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(t.first().map(String::as_str), Some("PRG"));
+        assert_eq!(t.last().map(String::as_str), Some("EPG"));
+        // The full payload, not just the prefix: frequency is encoded as
+        // 100 Hz units, zero-padded to 8 digits (146.52 MHz -> 01465200). A
+        // scaling bug there writes a valid-looking but wrong frequency, which
+        // no status code would reveal.
+        assert!(
+            t.contains(&"CIN,7,TEST CHAN,01465200,FM,0,2,0,0".to_string()),
+            "unexpected CIN payload: {t:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_puts_the_alpha_tag_on_the_wire() {
+        let (status, t) = put_channel_capture(3, channel_body(146.52, "FIREGROUND", 2, 1)).await;
+        assert_eq!(status, StatusCode::OK);
+        let cin = t
+            .iter()
+            .find(|c| c.starts_with("CIN,3,"))
+            .unwrap_or_else(|| panic!("no CIN write in {t:?}"));
+        assert!(
+            cin.contains("FIREGROUND"),
+            "the alpha tag must reach the scanner: {cin}"
+        );
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_rejects_a_frequency_outside_coverage() {
+        // 800 MHz is outside the BC125AT's 25-512 MHz coverage (#143).
+        let (status, t) = put_channel_capture(1, channel_body(800.0, "TOO HIGH", 2, 1)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            !t.iter().any(|c| c.starts_with("CIN,1,")),
+            "an out-of-range frequency must never be written: {t:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_rejects_an_over_long_alpha_tag() {
+        // The BC125AT's alpha tag is 16 characters.
+        let (status, t) = put_channel_capture(
+            1,
+            channel_body(146.52, "THIS TAG IS FAR TOO LONG TO FIT", 2, 1),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(!t.iter().any(|c| c.starts_with("CIN,1,")), "{t:?}");
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_rejects_a_comma_in_the_alpha_tag() {
+        // A comma would split into an extra CIN field and corrupt the write.
+        let (status, t) = put_channel_capture(1, channel_body(146.52, "BAD,TAG", 2, 1)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(!t.iter().any(|c| c.starts_with("CIN,1,")), "{t:?}");
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_rejects_an_out_of_range_index() {
+        let (status, t) = put_channel_capture(501, channel_body(146.52, "OOB", 2, 1)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(t.is_empty(), "index 501 must not open a bracket: {t:?}");
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_rejects_an_invalid_delay() {
+        let (status, t) = put_channel_capture(1, channel_body(146.52, "OK TAG", 99, 1)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(!t.iter().any(|c| c.starts_with("CIN,1,")), "{t:?}");
+    }
+
+    #[tokio::test]
+    async fn writing_a_channel_rejects_an_out_of_range_bank() {
+        let (status, t) = put_channel_capture(1, channel_body(146.52, "OK TAG", 2, 99)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(!t.iter().any(|c| c.starts_with("CIN,1,")), "{t:?}");
+    }
 }
