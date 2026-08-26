@@ -109,7 +109,6 @@ jobs:
           name: bearpaw-${{ matrix.platform }}
           path: |
             target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            target/${{ matrix.target }}/release/bundle/macos/*.app
             target/${{ matrix.target }}/release/bundle/msi/*.msi
             target/${{ matrix.target }}/release/bundle/nsis/*.exe
             target/${{ matrix.target }}/release/bundle/deb/*.deb
@@ -149,7 +148,17 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
-          files: release-artifacts/**/*
+          # Only real installers. A recursive glob also matches the loose
+          # files inside an unpacked .app (Info.plist, CodeResources,
+          # Bearpaw.icns, bearpaw-desktop), and both macOS architectures
+          # produce identically-named copies — uploading the same asset name
+          # twice raced and failed the v1.0.0 release with a 404.
+          files: |
+            release-artifacts/**/*.dmg
+            release-artifacts/**/*.msi
+            release-artifacts/**/*.exe
+            release-artifacts/**/*.deb
+            release-artifacts/**/*.AppImage
           generate_release_notes: true
           draft: false
           prerelease: ${{ steps.prerelease.outputs.value }}
