@@ -187,7 +187,7 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
         for p in &available {
             if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
                 if info.serial_number.as_deref() == Some(cache.serial_number.as_str())
-                    && probe_mdl_on_port(&p.port_name, baud).is_some()
+                    && matches!(probe_mdl_on_port(&p.port_name, baud), MdlProbe::Supported)
                 {
                     debug!(
                         "resolved scanner via cached serial number {}: {}",
@@ -213,8 +213,12 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
         if *score <= 0 {
             break;
         }
-        if probe_mdl_on_port(name, baud).is_some() {
-            return Some(name.clone());
+        match probe_mdl_on_port(name, baud) {
+            MdlProbe::Supported => return Some(name.clone()),
+            // Keep scanning other candidates: the unsupported unit may not be
+            // the only Uniden on the bus. The warn! in probe_mdl_on_port has
+            // already told the user what we found and why we skipped it.
+            MdlProbe::Unsupported | MdlProbe::NoReply => continue,
         }
     }
 
@@ -295,32 +299,62 @@ fn score_port(p: &serialport::SerialPortInfo) -> Option<i32> {
     Some(score)
 }
 
-/// Briefly open a serial port, send `MDL\r`, and return the model name if
-/// the response is a known Uniden scanner. Used by the autodetect path to
-/// avoid committing to a port that scored well but isn't actually our
-/// hardware (e.g. an unrelated USB-serial device).
+/// Outcome of an `MDL` probe on a candidate port.
 ///
-/// Best-effort and tolerant: any open/read/parse failure returns None so
-/// the caller falls through to the next candidate. Does **not** assert DTR
+/// The `Unsupported` arm exists so the caller can tell "nothing answered" from
+/// "a real Uniden answered with a model we don't drive yet" — the two used to
+/// collapse into `None`, which is why an unsupported scanner reported the same
+/// generic "no scanner found" as an empty USB bus.
+enum MdlProbe {
+    Supported,
+    Unsupported,
+    NoReply,
+}
+
+/// Briefly open a serial port, send `MDL\r`, and classify what answered.
+/// Used by the autodetect path to avoid committing to a port that scored
+/// well but isn't actually our hardware (e.g. an unrelated USB-serial
+/// device).
+///
+/// Best-effort and tolerant: any open/read/parse failure yields
+/// `MdlProbe::NoReply` so the caller falls through to the next candidate.
+/// A scanner that answers with a model outside `ACCEPTED_MDL_MODELS` yields
+/// `MdlProbe::Unsupported` and logs a `warn!` naming the model — see the
+/// enum docs for why those two cases stay distinct. Does **not** assert DTR
 /// (per Phase 9b) and uses a 500 ms read timeout (default).
-fn probe_mdl_on_port(port_name: &str, baud: u32) -> Option<String> {
+fn probe_mdl_on_port(port_name: &str, baud: u32) -> MdlProbe {
     use crate::transport::SerialTransport;
     let transport = SerialTransport::new(port_name, baud);
-    let mut port = transport.open().ok()?;
-    let response = transport.send(port.as_mut(), "MDL").ok()?;
-    let model = crate::protocol::parse_mdl_response(&response)?;
+    let Ok(mut port) = transport.open() else {
+        return MdlProbe::NoReply;
+    };
+    let Ok(response) = transport.send(port.as_mut(), "MDL") else {
+        return MdlProbe::NoReply;
+    };
+    let Some(model) = crate::protocol::parse_mdl_response(&response) else {
+        return MdlProbe::NoReply;
+    };
     if ACCEPTED_MDL_MODELS
         .iter()
         .any(|known| model.eq_ignore_ascii_case(known))
     {
         debug!("MDL probe on {}: matched model {}", port_name, model);
-        Some(model)
+        MdlProbe::Supported
     } else {
-        debug!(
-            "MDL probe on {}: model {:?} not in accepted list",
-            port_name, model
+        // Surfaced at warn! rather than debug! so it lands in the log a user
+        // actually sends us. A responding-but-unsupported scanner is the one
+        // detection outcome where the user has done nothing wrong and the
+        // generic "no scanner found" is actively misleading.
+        warn!(
+            "Found a Uniden scanner on {} reporting model {:?}, but Bearpaw does not support it yet. \
+             Supported models: {}. Bearpaw targets the conventional analog 125/126 family; \
+             trunking scanners (TrunkTracker systems/sites/groups) use a different memory model. \
+             Please report this model at https://github.com/jeremyfuksa/bearpaw/issues so support can be considered.",
+            port_name,
+            model,
+            ACCEPTED_MDL_MODELS.join(", ")
         );
-        None
+        MdlProbe::Unsupported
     }
 }
 
@@ -443,5 +477,35 @@ mod tests {
         assert!(ACCEPTED_MDL_MODELS.contains(&"BC125AT"));
         assert!(ACCEPTED_MDL_MODELS.contains(&"BCT125AT"));
         assert!(ACCEPTED_MDL_MODELS.contains(&"UBC125XLT"));
+    }
+
+    #[test]
+    fn trunking_scanners_are_not_accepted_models() {
+        // BC346XT and friends are TrunkTracker units: systems/sites/groups and
+        // dynamic memory, not the flat CIN,1..500 bank the whole memory-sync
+        // path assumes. Accepting one here would let autodetect commit to a
+        // port it cannot actually drive, replacing a clean rejection with 500
+        // failing CIN round-trips. Adding a model here means the protocol
+        // work landed first.
+        for model in ["BC346XT", "BCD396XT", "BCD996XT", "BCT15X"] {
+            assert!(
+                !ACCEPTED_MDL_MODELS
+                    .iter()
+                    .any(|known| model.eq_ignore_ascii_case(known)),
+                "{model} is a trunking scanner and must not be in ACCEPTED_MDL_MODELS"
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_model_is_distinct_from_no_reply() {
+        // REGRESSION GUARD: probe_mdl_on_port used to return Option<String>,
+        // collapsing "a Uniden answered with a model we don't drive" into the
+        // same None as "nothing answered". That made an unsupported scanner
+        // report the generic "no scanner found", which reads as a broken cable
+        // rather than unsupported hardware. Keep the arms distinguishable.
+        assert!(matches!(MdlProbe::Unsupported, MdlProbe::Unsupported));
+        assert!(matches!(MdlProbe::NoReply, MdlProbe::NoReply));
+        assert!(!matches!(MdlProbe::Unsupported, MdlProbe::NoReply));
     }
 }
