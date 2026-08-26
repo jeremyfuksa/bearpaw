@@ -44,7 +44,7 @@ npm run type-check
 npm run format:check
 ```
 
-**Type-check scope:** `tsc` runs against `src/` only. Test files are excluded — Vitest transpiles them via Vite.
+**Type-check scope:** `tsc` covers `src/` plus `vite.config.ts` and `vitest.config.ts` (see `include` in [`frontend/tsconfig.json`](frontend/tsconfig.json)). Test files **are** type-checked — there is no test exclusion — so a type error in a `__tests__` file fails CI just like one in app code.
 
 ### Tauri (full desktop app)
 
