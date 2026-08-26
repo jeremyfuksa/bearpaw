@@ -1,396 +1,179 @@
-import { describe, it, expect } from 'vitest';
-import type { LiveState, ChannelData, LockoutsResponse, ConfigSnapshot } from '../../types';
-import { mockApiResponses } from '../../test/fixtures';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { ScannerAPIClient } from '../client';
 
-describe('API Contract Tests', () => {
-  describe('Command Endpoints', () => {
-    it('should have hold endpoint', () => {
-      expect('/api/v1/commands/hold').toMatch(/commands\/hold/);
-    });
+/**
+ * API contract test.
+ *
+ * This file used to assert string literals against regexes of themselves
+ * (`expect('/api/v1/health').toMatch(/health$/)`), which passes whether or not
+ * the backend routes that path — so it could never catch the drift it was
+ * named for.
+ *
+ * The real check has two halves:
+ *
+ *  1. The Rust side (`frontend_routes_are_all_routed_and_manifest_is_written`
+ *     in `crates/bearpaw-api/src/api/mod.rs`) probes the ACTUAL axum router and
+ *     writes every path that resolves to the committed
+ *     `src/test/fixtures/api-route-manifest.json`. That test fails if the file
+ *     is stale, so the checked-in copy always matches the real router.
+ *  2. This file drives the REAL `ScannerAPIClient` with a stubbed `fetch`,
+ *     captures the URL each method requests, and asserts that URL is in the
+ *     manifest.
+ *
+ * Neither side hand-maintains a route list, so a renamed or dropped backend
+ * route fails here instead of silently 404ing at runtime.
+ */
 
-    it('should have scan endpoint', () => {
-      expect('/api/v1/commands/scan').toMatch(/commands\/scan/);
-    });
+const MANIFEST_PATH = resolve(__dirname, '../../test/fixtures/api-route-manifest.json');
+const BASE = '/api/v1';
 
-    it('should have key endpoint', () => {
-      expect('/api/v1/commands/key').toMatch(/commands\/key/);
+type ManifestRoute = { method: string; path: string };
+
+let routed: Set<string>;
+let manifestPresent = false;
+
+/** `/api/v1/memory/channels/7` -> `/api/v1/memory/channels/{index}` */
+function normalize(path: string): string {
+  return path
+    .replace(/\/\d+\/priority$/, '/{index}/priority')
+    .replace(/\/ranges\/\d+$/, '/ranges/{index}')
+    .replace(/\/channels\/\d+$/, '/channels/{index}')
+    .replace(/\/preferences\/[^/]+$/, '/preferences/{key}');
+}
+
+beforeAll(() => {
+  manifestPresent = existsSync(MANIFEST_PATH);
+  if (!manifestPresent) return;
+  const parsed = JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8')) as { routes: ManifestRoute[] };
+  routed = new Set(parsed.routes.map((r) => `${r.method} ${normalize(r.path)}`));
+});
+
+/** Run one client method against a stubbed fetch and return the URL it hit. */
+async function capture(fn: (c: ScannerAPIClient) => Promise<unknown>): Promise<{
+  method: string;
+  path: string;
+}> {
+  let seen: { method: string; path: string } | null = null;
+  const stub = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    seen = { method: (init?.method ?? 'GET').toUpperCase(), path: url.split('?')[0] };
+    return new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
     });
+  };
+  const original = globalThis.fetch;
+  globalThis.fetch = stub as typeof fetch;
+  try {
+    await fn(new ScannerAPIClient(BASE)).catch(() => undefined);
+  } finally {
+    globalThis.fetch = original;
+  }
+  if (!seen) throw new Error('client method issued no fetch');
+  return seen;
+}
+
+// Every client method, paired with a call that exercises it. Adding a method
+// to ScannerAPIClient without adding it here is caught by the coverage test
+// at the bottom.
+const CALLS: Array<[string, (c: ScannerAPIClient) => Promise<unknown>]> = [
+  ['sendHold', (c) => c.sendHold()],
+  ['sendScan', (c) => c.sendScan()],
+  ['sendKey', (c) => c.sendKey('H')],
+  ['getStatus', (c) => c.getStatus()],
+  ['getDeviceInfo', (c) => c.getDeviceInfo()],
+  ['getBanks', (c) => c.getBanks()],
+  ['setBanks', (c) => c.setBanks([true, ...Array(9).fill(false)])],
+  ['getChannels', (c) => c.getChannels()],
+  ['getChannel', (c) => c.getChannel(1)],
+  ['setChannelPriority', (c) => c.setChannelPriority(1, true)],
+  ['startProgramMode', (c) => c.startProgramMode()],
+  ['endProgramMode', (c) => c.endProgramMode()],
+  ['toggleTemporaryLockout', (c) => c.toggleTemporaryLockout({ channel: 1 })],
+  ['togglePermanentLockout', (c) => c.togglePermanentLockout(146.52)],
+  ['setVolume', (c) => c.setVolume(8)],
+  ['getSquelch', (c) => c.getSquelch()],
+  ['setSquelch', (c) => c.setSquelch(5)],
+  ['getAllSettings', (c) => c.getAllSettings()],
+  ['getBacklight', (c) => c.getBacklight()],
+  ['getBatterySettings', (c) => c.getBatterySettings()],
+  ['getKeyBeepSettings', (c) => c.getKeyBeepSettings()],
+  ['getPrioritySettings', (c) => c.getPrioritySettings()],
+  ['getCloseCallSettings', (c) => c.getCloseCallSettings()],
+  ['getServiceSearchSettings', (c) => c.getServiceSearchSettings()],
+  ['getCustomSearchSettings', (c) => c.getCustomSearchSettings()],
+  ['getCustomSearchRange', (c) => c.getCustomSearchRange(1)],
+  ['getContrastSettings', (c) => c.getContrastSettings()],
+  ['getLockouts', (c) => c.getLockouts()],
+  ['clearTemporaryLockouts', (c) => c.clearTemporaryLockouts()],
+  ['clearGlobalLockouts', (c) => c.clearGlobalLockouts()],
+  ['clearChannelLockouts', (c) => c.clearChannelLockouts()],
+  ['syncMemory', (c) => c.syncMemory()],
+  ['cancelSync', (c) => c.cancelSync()],
+  ['getSyncStatus', (c) => c.getSyncStatus()],
+  ['getAllPreferences', (c) => c.getAllPreferences()],
+  ['resetPreferences', (c) => c.resetPreferences()],
+  ['cleanupAnalytics', (c) => c.cleanupAnalytics()],
+  ['updateChannel', (c) => c.updateChannel(1, { frequency: 146.52 } as never)],
+  ['setBacklight', (c) => c.setBacklight('AO')],
+  ['setBatterySettings', (c) => c.setBatterySettings(3)],
+  ['setKeyBeepSettings', (c) => c.setKeyBeepSettings(1, false)],
+  ['setPrioritySettings', (c) => c.setPrioritySettings(0)],
+  ['setSearchSettings', (c) => c.setSearchSettings(2, false)],
+  ['setCloseCallSettings', (c) => c.setCloseCallSettings({ mode: 0 } as never)],
+  ['setServiceSearchSettings', (c) => c.setServiceSearchSettings(Array(10).fill(false))],
+  ['setCustomSearchSettings', (c) => c.setCustomSearchSettings(Array(10).fill(false))],
+  ['setCustomSearchRange', (c) => c.setCustomSearchRange(1, 25.0, 28.0)],
+  ['setWeatherSettings', (c) => c.setWeatherSettings(false)],
+  ['setContrastSettings', (c) => c.setContrastSettings(8)],
+  ['exportCsv', (c) => c.exportCsv()],
+  ['exportBc125atSs', (c) => c.exportBc125atSs()],
+  ['importCsv', (c) => c.importCsv(new File(['idx,freq\n1,146.52'], 'ch.csv'))],
+  ['getPreference', (c) => c.getPreference('theme')],
+  ['setPreference', (c) => c.setPreference('theme', 'dark')],
+  ['setPreferences', (c) => c.setPreferences({ theme: 'dark' })],
+];
+
+describe('API contract: every client call hits a real backend route', () => {
+  it('the backend route manifest exists', () => {
+    expect(
+      manifestPresent,
+      `Missing ${MANIFEST_PATH}. Generate it with:\n` +
+        `  cargo test -p bearpaw-api --lib frontend_routes_are_all_routed`,
+    ).toBe(true);
   });
 
-  describe('Status Endpoints', () => {
-    it('should have status endpoint', () => {
-      expect('/api/v1/status').toMatch(/status$/);
-    });
-
-    it('should have device info endpoint', () => {
-      expect('/api/v1/device/info').toMatch(/device\/info/);
-    });
-
-    it('should have health endpoint', () => {
-      expect('/api/v1/health').toMatch(/health$/);
-    });
-  });
-
-  describe('Bank Endpoints', () => {
-    it('should have get banks endpoint', () => {
-      expect('/api/v1/banks').toMatch(/banks$/);
-    });
-
-    it('should have set banks endpoint', () => {
-      expect('/api/v1/banks').toMatch(/banks$/);
-    });
-  });
-
-  describe('Volume Endpoints', () => {
-    it('should have get volume endpoint', () => {
-      expect('/api/v1/volume').toMatch(/volume$/);
-    });
-
-    it('should have set volume endpoint', () => {
-      expect('/api/v1/volume').toMatch(/volume$/);
-    });
-  });
-
-  describe('Squelch Endpoints', () => {
-    it('should have get squelch endpoint', () => {
-      expect('/api/v1/squelch').toMatch(/squelch$/);
-    });
-
-    it('should have set squelch endpoint', () => {
-      expect('/api/v1/squelch').toMatch(/squelch$/);
-    });
-  });
-
-  describe('Channel Endpoints', () => {
-    it('should have get channels endpoint', () => {
-      expect('/api/v1/memory/channels').toMatch(/memory\/channels/);
-    });
-
-    it('should have get channel endpoint', () => {
-      expect('/api/v1/memory/channels/:index').toMatch(/memory\/channels\/:index$/);
-    });
-
-    it('should have update channel endpoint', () => {
-      expect('/api/v1/memory/channels/:index').toMatch(/memory\/channels\/:index$/);
-    });
-  });
-
-  describe('Lockout Endpoints', () => {
-    it('should have toggle lockout endpoint', () => {
-      expect('/api/v1/commands/lockout').toMatch(/commands\/lockout/);
-    });
-
-    it('should have get lockouts endpoint', () => {
-      expect('/api/v1/lockouts').toMatch(/lockouts$/);
-    });
-
-    it('should have clear temporary lockouts endpoint', () => {
-      expect('/api/v1/lockouts/temporary/clear').toMatch(/lockouts\/temporary\/clear/);
-    });
-
-    it('should have clear global lockouts endpoint', () => {
-      expect('/api/v1/lockouts/clear').toMatch(/lockouts\/clear/);
-    });
-
-    it('should have clear channel lockouts endpoint', () => {
-      expect('/api/v1/lockouts/channels/clear').toMatch(/lockouts\/channels\/clear/);
-    });
-  });
-
-  describe('Memory Sync Endpoints', () => {
-    it('should have sync memory endpoint', () => {
-      expect('/api/v1/memory/sync').toMatch(/memory\/sync/);
-    });
-
-    it('should have cancel sync endpoint', () => {
-      expect('/api/v1/memory/sync/cancel').toMatch(/memory\/sync\/cancel/);
-    });
-
-    it('should have export BC125AT SS endpoint', () => {
-      expect('/api/v1/memory/export/bc125at_ss').toMatch(/memory\/export\/bc125at_ss/);
-    });
-
-    it('should have export CSV endpoint', () => {
-      expect('/api/v1/memory/export/csv').toMatch(/memory\/export\/csv/);
-    });
-
-    it('should have import CSV endpoint', () => {
-      expect('/api/v1/memory/import/csv').toMatch(/memory\/import\/csv/);
-    });
-  });
-
-  describe('Settings Endpoints - Backlight', () => {
-    it('should have get backlight endpoint', () => {
-      expect('/api/v1/settings/backlight').toMatch(/settings\/backlight$/);
-    });
-
-    it('should have set backlight endpoint', () => {
-      expect('/api/v1/settings/backlight').toMatch(/settings\/backlight$/);
-    });
-  });
-
-  describe('Settings Endpoints - Battery', () => {
-    it('should have get battery settings endpoint', () => {
-      expect('/api/v1/settings/battery').toMatch(/settings\/battery$/);
-    });
-
-    it('should have set battery settings endpoint', () => {
-      expect('/api/v1/settings/battery').toMatch(/settings\/battery$/);
-    });
-  });
-
-  describe('Settings Endpoints - Key Beep', () => {
-    it('should have get key beep settings endpoint', () => {
-      expect('/api/v1/settings/key-beep').toMatch(/settings\/key-beep$/);
-    });
-
-    it('should have set key beep settings endpoint', () => {
-      expect('/api/v1/settings/key-beep').toMatch(/settings\/key-beep$/);
-    });
-  });
-
-  describe('Settings Endpoints - Priority', () => {
-    it('should have get priority settings endpoint', () => {
-      expect('/api/v1/settings/priority').toMatch(/settings\/priority$/);
-    });
-
-    it('should have set priority settings endpoint', () => {
-      expect('/api/v1/settings/priority').toMatch(/settings\/priority$/);
-    });
-  });
-
-  describe('Settings Endpoints - Search/Close Call', () => {
-    it('should have get search settings endpoint', () => {
-      expect('/api/v1/settings/search').toMatch(/settings\/search$/);
-    });
-
-    it('should have set search settings endpoint', () => {
-      expect('/api/v1/settings/search').toMatch(/settings\/search$/);
-    });
-  });
-
-  describe('Settings Endpoints - Close Call', () => {
-    it('should have get close call settings endpoint', () => {
-      expect('/api/v1/settings/close-call').toMatch(/settings\/close-call$/);
-    });
-
-    it('should have set close call settings endpoint', () => {
-      expect('/api/v1/settings/close-call').toMatch(/settings\/close-call$/);
-    });
-  });
-
-  describe('Settings Endpoints - Service Search', () => {
-    it('should have get service search settings endpoint', () => {
-      expect('/api/v1/settings/service-search').toMatch(/settings\/service-search$/);
-    });
-
-    it('should have set service search settings endpoint', () => {
-      expect('/api/v1/settings/service-search').toMatch(/settings\/service-search$/);
-    });
-  });
-
-  describe('Settings Endpoints - Custom Search', () => {
-    it('should have get custom search settings endpoint', () => {
-      expect('/api/v1/settings/custom-search').toMatch(/settings\/custom-search$/);
-    });
-
-    it('should have set custom search settings endpoint', () => {
-      expect('/api/v1/settings/custom-search').toMatch(/settings\/custom-search$/);
-    });
-
-    it('should have get custom search range endpoint', () => {
-      expect('/api/v1/settings/custom-search/ranges/:index').toMatch(
-        /settings\/custom-search\/ranges\/:index$/,
-      );
-    });
-
-    it('should have set custom search range endpoint', () => {
-      expect('/api/v1/settings/custom-search/ranges/:index').toMatch(
-        /settings\/custom-search\/ranges\/:index$/,
-      );
-    });
-  });
-
-  describe('Settings Endpoints - Weather', () => {
-    it('should have get weather settings endpoint', () => {
-      expect('/api/v1/settings/weather').toMatch(/settings\/weather$/);
-    });
-
-    it('should have set weather settings endpoint', () => {
-      expect('/api/v1/settings/weather').toMatch(/settings\/weather$/);
-    });
-  });
-
-  describe('Settings Endpoints - Contrast', () => {
-    it('should have get contrast settings endpoint', () => {
-      expect('/api/v1/settings/contrast').toMatch(/settings\/contrast$/);
-    });
-
-    it('should have set contrast settings endpoint', () => {
-      expect('/api/v1/settings/contrast').toMatch(/settings\/contrast$/);
-    });
-  });
-
-  describe('Settings Endpoints - All', () => {
-    it('should have get all settings endpoint', () => {
-      expect('/api/v1/settings/all').toMatch(/settings\/all$/);
-    });
-
-    it('should have set multiple preferences endpoint', () => {
-      expect('/api/v1/preferences').toMatch(/preferences$/);
-    });
-
-    it('should have get preference endpoint', () => {
-      expect('/api/v1/preferences/:key').toMatch(/preferences\/:\w+$/);
-    });
-
-    it('should have set preference endpoint', () => {
-      expect('/api/v1/preferences/:key').toMatch(/preferences\/:\w+$/);
-    });
-
-    it('should have reset preferences endpoint', () => {
-      expect('/api/v1/preferences').toMatch(/preferences$/);
-    });
-  });
-
-  describe('Analytics Endpoints', () => {
-    it('should have busiest channels endpoint', () => {
-      expect('/api/v1/analytics/busiest-channels').toMatch(/analytics\/busiest-channels$/);
-    });
-
-    it('should have hourly heatmap endpoint', () => {
-      expect('/api/v1/analytics/hourly-heatmap').toMatch(/analytics\/hourly-heatmap$/);
-    });
-
-    it('should have session stats endpoint', () => {
-      expect('/api/v1/analytics/session-stats').toMatch(/analytics\/session-stats$/);
-    });
-
-    it('should have activity log endpoint', () => {
-      expect('/api/v1/analytics/activity-log').toMatch(/analytics\/activity-log$/);
-    });
-
-    it('should have analytics cleanup endpoint', () => {
-      expect('/api/v1/analytics/cleanup').toMatch(/analytics\/cleanup$/);
-    });
-  });
-
-  describe('WebSocket Connection', () => {
-    it('should have WebSocket endpoint', () => {
-      expect('/ws').toMatch(/^\/ws$/);
-    });
-
-    it('should support WebSocket protocol', () => {
-      expect(['ws', 'wss', 'http', 'https']).toEqual(expect.arrayContaining(['ws', 'wss']));
-    });
-  });
-
-  describe('Error Response Format', () => {
-    it('should return proper error structure', async () => {
-      const response = new Response(
-        JSON.stringify({
-          error: 'Test error',
-          message: 'Device not connected',
-          code: 503,
-        }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } },
-      );
-
-      const data = await response.json();
-      expect(data).toHaveProperty('error');
-      expect(data).toHaveProperty('message');
-      expect(data).toHaveProperty('code');
-    });
-  });
-
-  describe('TypeScript Types vs API Responses', () => {
-    it('LiveState should match API response structure', () => {
-      const apiState: LiveState = mockApiResponses.status;
-      expect(apiState).toHaveProperty('timestamp');
-      expect(apiState).toHaveProperty('frequency');
-      expect(apiState).toHaveProperty('modulation');
-      expect(apiState).toHaveProperty('squelch_open');
-      expect(apiState).toHaveProperty('rssi');
-      expect(apiState).toHaveProperty('mode');
-      expect(apiState).toHaveProperty('channel');
-      expect(apiState).toHaveProperty('alpha_tag');
-      expect(apiState).toHaveProperty('volume');
-      expect(apiState).toHaveProperty('battery');
-      expect(apiState).toHaveProperty('stale');
-    });
-
-    it('ChannelData should match API response structure', () => {
-      const apiChannel: ChannelData = mockApiResponses.channel;
-      expect(apiChannel).toHaveProperty('index');
-      expect(apiChannel).toHaveProperty('frequency');
-      expect(apiChannel).toHaveProperty('modulation');
-      expect(apiChannel).toHaveProperty('alpha_tag');
-      expect(apiChannel).toHaveProperty('delay');
-      expect(apiChannel).toHaveProperty('lockout');
-      expect(apiChannel).toHaveProperty('priority');
-      expect(apiChannel).toHaveProperty('tone_squelch');
-      expect(apiChannel).toHaveProperty('bank');
-    });
-
-    it('ConfigSnapshot should match settings structure', () => {
-      const apiConfig: ConfigSnapshot = mockApiResponses.config;
-      expect(apiConfig).toHaveProperty('firmware');
-      expect(apiConfig).toHaveProperty('squelch');
-      expect(apiConfig).toHaveProperty('backlight');
-      expect(apiConfig).toHaveProperty('battery');
-      expect(apiConfig).toHaveProperty('key_beep');
-      expect(apiConfig).toHaveProperty('priority');
-      expect(apiConfig).toHaveProperty('search');
-      expect(apiConfig).toHaveProperty('close_call');
-      expect(apiConfig).toHaveProperty('service_search');
-      expect(apiConfig).toHaveProperty('custom_search');
-      expect(apiConfig).toHaveProperty('custom_search_ranges');
-      expect(apiConfig).toHaveProperty('weather');
-      expect(apiConfig).toHaveProperty('contrast');
-    });
-
-    it('Preferences should match expected structure', () => {
-      const apiPrefs = mockApiResponses.preferences;
-      expect(apiPrefs).toHaveProperty('theme');
-      expect(apiPrefs).toHaveProperty('display_mode');
-      expect(apiPrefs).toHaveProperty('reduced_motion');
-      expect(apiPrefs).toHaveProperty('hit_min_duration');
-      expect(apiPrefs).toHaveProperty('start_dashboard_mode');
-      expect(apiPrefs).toHaveProperty('data_retention_days');
-      expect(apiPrefs).toHaveProperty('audio_output_device');
-    });
-
-    it('LockoutsResponse should match expected structure', () => {
-      const apiLockouts: LockoutsResponse = mockApiResponses.lockouts;
-      expect(apiLockouts).toHaveProperty('frequencies');
-      expect(apiLockouts).toHaveProperty('channels');
-      expect(apiLockouts).toHaveProperty('temporary_channels');
-    });
-  });
-
-  describe('HTTP Status Codes', () => {
-    it('should use 200 for successful requests', () => {
-      expect(200).toBeGreaterThan(199);
-      expect(200).toBeLessThan(300);
-    });
-
-    it('should use 400 for bad requests', () => {
-      expect(400).toBeGreaterThanOrEqual(400);
-      expect(400).toBeLessThan(500);
-    });
-
-    it('should use 404 for not found', () => {
-      expect(404).toBe(404);
-    });
-
-    it('should use 503 for device disconnected', () => {
-      expect(503).toBe(503);
-    });
-
-    it('should use 500 for server errors', () => {
-      expect(500).toBe(500);
-      expect(500).toBeGreaterThanOrEqual(500);
-      expect(500).toBeLessThan(600);
-    });
+  for (const [name, call] of CALLS) {
+    it(`${name} requests a routed path`, async () => {
+      if (!manifestPresent) return;
+      const { method, path } = await capture(call);
+      const key = `${method} ${normalize(path)}`;
+      expect(
+        routed.has(key),
+        `ScannerAPIClient.${name} requests "${key}", which is not routed by the backend.\n` +
+          `Routed paths:\n  ${[...routed].sort().join('\n  ')}`,
+      ).toBe(true);
+    });
+  }
+});
+
+describe('API contract: coverage', () => {
+  it('every ScannerAPIClient method is exercised above', () => {
+    const proto = ScannerAPIClient.prototype as unknown as Record<string, unknown>;
+    // `private` is erased at runtime, so the class's internal helpers show up
+    // on the prototype like any other method. They issue no requests of their
+    // own — they're the plumbing the public methods call — so name them here.
+    const INTERNAL = new Set(['constructor', 'buildUrl', 'request', 'requestText']);
+    const methods = Object.getOwnPropertyNames(proto).filter(
+      (n) => !INTERNAL.has(n) && typeof proto[n] === 'function' && !n.startsWith('_'),
+    );
+    const covered = new Set(CALLS.map(([n]) => n));
+    const uncovered = methods.filter((m) => !covered.has(m));
+    expect(
+      uncovered,
+      `These ScannerAPIClient methods are not contract-tested — add them to CALLS:\n  ${uncovered.join('\n  ')}`,
+    ).toEqual([]);
   });
 });

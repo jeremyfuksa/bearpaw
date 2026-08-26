@@ -1,0 +1,260 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/device/info"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/banks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/banks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commands/hold"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commands/scan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commands/key"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commands/lockout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/volume"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/volume"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/squelch"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/squelch"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/all"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/backlight"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/backlight"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/battery"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/battery"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/key-beep"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/key-beep"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/priority"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/priority"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/close-call"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/close-call"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/service-search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/service-search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/custom-search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/custom-search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/weather"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/contrast"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/contrast"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lockouts/temporary/clear"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lockouts/clear"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/lockouts/channels/clear"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/lockouts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/memory/channels"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/sync/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/memory/sync/status"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/program-mode/start"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/program-mode/end"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/memory/export/csv"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/memory/export/bc125at_ss"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/preferences"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/preferences"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/preferences/reset"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/analytics/cleanup"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analytics/activity-log"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analytics/busiest-channels"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analytics/hourly-heatmap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analytics/session-stats"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/memory/channels/1"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/channels/1/priority"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/custom-search/ranges/1"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/custom-search/defaults"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/custom-search/ranges/1"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/memory/channels/1"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/weather"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/import/csv"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/preferences/theme"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/preferences/theme"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/preferences"
+    }
+  ]
+}

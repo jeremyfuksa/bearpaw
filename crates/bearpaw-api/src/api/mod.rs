@@ -2646,4 +2646,142 @@ mod tests {
             "response should report CH9 as cleared: {body}"
         );
     }
+
+    // ---------------------------------------------------------------------
+    // Route manifest (frontend contract, part A)
+    //
+    // The frontend's contract test used to assert string literals against
+    // regexes of themselves (`expect('/api/v1/health').toMatch(/health$/)`),
+    // which passes whether or not the route exists. This test is the real
+    // half: it probes the actual router and writes the surviving paths to
+    // `target/api-route-manifest.json`, which the TS contract test reads.
+    //
+    // A path is "routed" if it answers anything but a *routing* 404. We
+    // cannot assert 200 — most handlers need a connected scanner and
+    // correctly return 503. We also cannot treat every 404 as missing:
+    // `GET /memory/channels/1` legitimately 404s with `{"error":"not_found"}`
+    // when the channel isn't cached. Axum's routing 404 has an empty body,
+    // a handler's has a JSON error — so the body is what separates "no such
+    // route" (the drift this guards: renames, axum 0.8 `{param}` migrations,
+    // a handler dropped from the router) from "route ran, found nothing".
+    const FRONTEND_ROUTES: &[(&str, &str)] = &[
+        ("GET", "/api/v1/health"),
+        ("GET", "/api/v1/status"),
+        ("GET", "/api/v1/device/info"),
+        ("GET", "/api/v1/banks"),
+        ("POST", "/api/v1/banks"),
+        ("POST", "/api/v1/commands/hold"),
+        ("POST", "/api/v1/commands/scan"),
+        ("POST", "/api/v1/commands/key"),
+        ("POST", "/api/v1/commands/lockout"),
+        ("GET", "/api/v1/volume"),
+        ("POST", "/api/v1/volume"),
+        ("GET", "/api/v1/squelch"),
+        ("POST", "/api/v1/squelch"),
+        ("GET", "/api/v1/settings/all"),
+        ("GET", "/api/v1/settings/backlight"),
+        ("POST", "/api/v1/settings/backlight"),
+        ("GET", "/api/v1/settings/battery"),
+        ("POST", "/api/v1/settings/battery"),
+        ("GET", "/api/v1/settings/key-beep"),
+        ("POST", "/api/v1/settings/key-beep"),
+        ("GET", "/api/v1/settings/priority"),
+        ("POST", "/api/v1/settings/priority"),
+        ("GET", "/api/v1/settings/search"),
+        ("GET", "/api/v1/settings/close-call"),
+        ("POST", "/api/v1/settings/close-call"),
+        ("GET", "/api/v1/settings/service-search"),
+        ("POST", "/api/v1/settings/service-search"),
+        ("GET", "/api/v1/settings/custom-search"),
+        ("POST", "/api/v1/settings/custom-search"),
+        ("GET", "/api/v1/settings/weather"),
+        ("GET", "/api/v1/settings/contrast"),
+        ("POST", "/api/v1/settings/contrast"),
+        ("POST", "/api/v1/lockouts/temporary/clear"),
+        ("POST", "/api/v1/lockouts/clear"),
+        ("POST", "/api/v1/lockouts/channels/clear"),
+        ("GET", "/api/v1/lockouts"),
+        ("GET", "/api/v1/memory/channels"),
+        ("POST", "/api/v1/memory/sync"),
+        ("POST", "/api/v1/memory/sync/cancel"),
+        ("GET", "/api/v1/memory/sync/status"),
+        ("POST", "/api/v1/memory/program-mode/start"),
+        ("POST", "/api/v1/memory/program-mode/end"),
+        ("GET", "/api/v1/memory/export/csv"),
+        ("GET", "/api/v1/memory/export/bc125at_ss"),
+        ("GET", "/api/v1/preferences"),
+        ("POST", "/api/v1/preferences"),
+        ("POST", "/api/v1/preferences/reset"),
+        ("POST", "/api/v1/analytics/cleanup"),
+        ("GET", "/api/v1/analytics/activity-log"),
+        ("GET", "/api/v1/analytics/busiest-channels"),
+        ("GET", "/api/v1/analytics/hourly-heatmap"),
+        ("GET", "/api/v1/analytics/session-stats"),
+        // Path-param routes, probed with a concrete value.
+        ("GET", "/api/v1/memory/channels/1"),
+        ("POST", "/api/v1/memory/channels/1/priority"),
+        ("GET", "/api/v1/settings/custom-search/ranges/1"),
+        ("GET", "/api/v1/settings/custom-search/defaults"),
+        ("POST", "/api/v1/settings/custom-search/ranges/1"),
+        ("PUT", "/api/v1/memory/channels/1"),
+        ("POST", "/api/v1/settings/search"),
+        ("POST", "/api/v1/settings/weather"),
+        ("POST", "/api/v1/memory/import/csv"),
+        ("GET", "/api/v1/preferences/theme"),
+        ("PUT", "/api/v1/preferences/theme"),
+        ("PUT", "/api/v1/preferences"),
+    ];
+
+    #[tokio::test]
+    async fn frontend_routes_are_all_routed_and_manifest_is_written() {
+        let mut missing = Vec::new();
+        let mut manifest = Vec::new();
+
+        for (method, path) in FRONTEND_ROUTES {
+            let app = router(default_state());
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .method(*method)
+                        .uri(*path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            if status == StatusCode::NOT_FOUND && body.is_empty() {
+                missing.push(format!("{method} {path}"));
+            } else {
+                manifest.push(serde_json::json!({ "method": method, "path": path }));
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "these paths are called by the frontend but 404 on the real router: {missing:#?}"
+        );
+
+        // The manifest is COMMITTED (not written to gitignored target/) so the
+        // frontend CI job can read it without a Rust toolchain — the two jobs
+        // are independent and the frontend one has no cargo. Committing it also
+        // makes drift visible: this test rewrites the file, so a route change
+        // that isn't reflected in the checked-in manifest shows up as a dirty
+        // working tree in CI rather than passing silently.
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../frontend/src/test/fixtures/api-route-manifest.json");
+        let rendered =
+            serde_json::to_string_pretty(&serde_json::json!({ "routes": manifest })).unwrap()
+                + "\n";
+        let existing = std::fs::read_to_string(&out).unwrap_or_default();
+        if existing != rendered {
+            std::fs::write(&out, &rendered).expect("write route manifest");
+            panic!(
+                "api-route-manifest.json was stale and has been regenerated. \
+                 Commit the updated file: {}",
+                out.display()
+            );
+        }
+    }
 }
