@@ -4,6 +4,44 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-08-26
+
+First stable release. Every major feature has been exercised against the
+physical scanner, and the test suite now pins the exact wire command behind each
+one rather than trusting that the HTTP layer got it right.
+
+### Added
+
+- **European hardware support.** The UBC125XLT's USB PID is now probed, so the
+  EU variant autodetects the way the BC125AT does. Contributed and confirmed on
+  real hardware by [@dan-r](https://github.com/dan-r).
+
+### Changed
+
+- **A scanner Bearpaw can't drive now says so.** A Uniden that answers the model
+  probe with something outside the supported family used to report the same
+  "no scanner found" as an empty USB port — which reads as a bad cable. It now
+  names the model it saw, lists what is supported, and points at the issue
+  tracker so unsupported hardware turns into a report rather than a dead end.
+- **Smaller install.** 37 unused UI components and 29 npm dependencies removed.
+
+### Fixed
+
+- **The Windows `.msi` was never actually built.** The download table offered it
+  anyway. Only `.exe` ships on Windows; the docs now say so.
+- **Release builds no longer ship stray files.** The macOS `.app` bundle was
+  being uploaded as loose `Info.plist` / `CodeResources` / `bearpaw-desktop`
+  files, which collided between the two Mac architectures. Releases now carry
+  only the five installers.
+
+### Internal
+
+- Backend tests grew from 92 to 171. The API contract test previously asserted
+  string literals against regexes of themselves — it could never catch the drift
+  it was named for. It now probes the real router, and the exact wire command
+  behind every control, setting, bank, and channel write is pinned and
+  verified by mutation.
+
 ## [1.0.0-beta.3] — 2026-08-03
 
 Third beta. Adds update notifications and keyboard-operable channel reordering,
@@ -50,6 +88,7 @@ each confirmed against the radio rather than the reference docs.
   "Priority Scan: No Channel" on its own display and the mode doesn't stick.
   Bearpaw now says so, and points at the Channels page.
 
+[1.0.0]: https://github.com/jeremyfuksa/bearpaw/releases/tag/v1.0.0
 [1.0.0-beta.3]: https://github.com/jeremyfuksa/bearpaw/releases/tag/v1.0.0-beta.3
 
 ## [1.0.0-beta.2] — 2026-07-23

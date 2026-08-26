@@ -21,9 +21,35 @@ raw data as CSV whenever you want it.
 It talks to the scanner the same way Uniden's Sentinel software does, over the
 USB cable, and runs live while you're listening, on macOS, Windows, and Linux.
 
-> **This is a beta.** It's been tested against real hardware, but
-> you may hit rough edges. Found one?
-> [Open an issue](https://github.com/jeremyfuksa/bearpaw/issues).
+> **Hit a problem?** [Open an issue](https://github.com/jeremyfuksa/bearpaw/issues) —
+> especially if you're running a scanner other than a BC125AT (see
+> [Supported scanners](#supported-scanners)).
+
+---
+
+## Supported scanners
+
+Bearpaw drives the Uniden 125/126 family — conventional analog scanners with
+500 flat channel slots that speak Uniden's ASCII serial protocol.
+
+| Scanner       | Region       | Status                                        |
+| ------------- | ------------ | --------------------------------------------- |
+| **BC125AT**   | US           | **Verified** — developed and tested against it |
+| **UBC125XLT** | EU           | **Verified** — confirmed by a contributor      |
+| **BCT125AT**  | US           | Expected — same USB ID and command set as the BC125AT |
+| **UBC126AT**  | EU           | Expected — accepted by the model probe, untested |
+| **AE125H**    | EU (Albrecht) | Expected — accepted by the model probe, untested |
+
+"Expected" means the scanner is in the same family and Bearpaw accepts it, but
+nobody has run it against real hardware yet. If you have one,
+[tell us how it went](https://github.com/jeremyfuksa/bearpaw/issues) — that's
+how the UBC125XLT moved to Verified.
+
+**Not supported:** trunking scanners (BC346XT, BCD396XT, BCD996XT, and the rest
+of the TrunkTracker line). They organize memory as systems, sites, and groups
+rather than 500 flat channels, which is a different program-mode protocol —
+not something a model-ID addition can reach. A scanner Bearpaw doesn't
+recognize says so by name rather than failing silently.
 
 ---
 
@@ -37,10 +63,10 @@ file for your system:
 | ------------------------------------- | ----------------------------------------------------- |
 | **Mac** (Apple Silicon, M1 and newer) | `Bearpaw_…_aarch64.dmg`                               |
 | **Mac** (older Intel)                 | `Bearpaw_…_x64.dmg`                                   |
-| **Windows**                           | `Bearpaw_…_x64-setup.exe` or `.msi`                   |
+| **Windows**                           | `Bearpaw_…_x64-setup.exe`                             |
 | **Linux**                             | `.AppImage` (runs anywhere) or `.deb` (Debian/Ubuntu) |
 
-These beta builds aren't code-signed yet, so your computer flags them the first
+These builds aren't code-signed yet, so your computer flags them the first
 time you open the app.
 
 - **macOS**: open the `.dmg`, drag **Bearpaw** to Applications, then right-click

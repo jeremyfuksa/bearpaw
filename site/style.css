@@ -635,3 +635,73 @@ code {
     padding: 1.25rem;
   }
 }
+
+/* Scanner compatibility list. Reuses .features/.card; the rows are a grid so
+   model / region / status line up as columns on desktop and stack on narrow
+   screens. Status is a text badge, not colour alone — the label carries the
+   meaning for anyone who can't distinguish the two. */
+.compat-lede {
+  color: var(--text-muted);
+  max-width: 44rem;
+  margin: 0 0 1.5rem;
+}
+
+.compat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.compat-row {
+  display: grid;
+  grid-template-columns: 10rem 9rem 7rem 1fr;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.compat-model {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.compat-region,
+.compat-note {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.compat-status {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  justify-self: start;
+}
+
+.compat-status.is-verified {
+  color: var(--led-green);
+}
+
+.compat-status.is-expected {
+  color: var(--steel-border);
+}
+
+.compat-foot {
+  color: var(--text-muted);
+  max-width: 46rem;
+  margin: 1.5rem 0 0;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 40rem) {
+  .compat-row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+}

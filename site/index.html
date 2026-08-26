@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bearpaw: desktop control for the Uniden BC125AT</title>
+    <title>Bearpaw: desktop control for the Uniden BC125AT and UBC125XLT</title>
     <meta
       name="description"
-      content="Your Uniden BC125AT, live on any computer. As it scans, Bearpaw keeps track of everything the radio picks up, and shows you the patterns as they build. Mac, Windows, Linux."
+      content="Your Uniden scanner, live on any computer. Bearpaw controls the BC125AT, UBC125XLT, and BCT125AT — keeping track of everything the radio picks up and showing you the patterns as they build. Free and open source for Mac, Windows, and Linux."
     />
     <link
       rel="icon"
@@ -33,7 +33,7 @@
     />
     <meta
       property="og:description"
-      content="Your Uniden BC125AT, live on any computer. Bearpaw tracks what the radio picks up, and shows you the patterns. Mac, Windows, Linux."
+      content="Your Uniden scanner, live on any computer. Controls the BC125AT, UBC125XLT, and BCT125AT. Free and open source for Mac, Windows, and Linux."
     />
     <meta property="og:image" content="https://bearpaw.app/assets/hero.png" />
     <link rel="stylesheet" href="style.css" />
@@ -69,6 +69,7 @@
         <span class="brand-name">Bearpaw</span>
       </a>
       <nav class="site-nav" aria-label="Primary">
+        <a href="#scanners">Scanners</a>
         <a href="docs/index.html">Docs</a>
         <a href="#download">Download</a>
         <a href="https://github.com/jeremyfuksa/bearpaw">GitHub</a>
@@ -87,7 +88,7 @@
           </p>
           <div class="hero-actions">
             <a class="btn btn-primary" href="#download" id="hero-download"
-              >Download the beta</a
+              >Download for free</a
             >
             <a
               class="btn btn-secondary"
@@ -183,6 +184,68 @@
         </div>
       </section>
 
+      <section class="features compat" id="scanners">
+        <h2 class="section-title">Does it work with my scanner?</h2>
+        <p class="compat-lede">
+          Bearpaw drives the Uniden 125/126 family &mdash; conventional analog
+          scanners with 500 channel slots.
+        </p>
+        <ul class="compat-list">
+          <li class="card compat-row">
+            <span class="compat-model">BC125AT</span>
+            <span class="compat-region">US</span>
+            <span class="compat-status is-verified">Verified</span>
+            <span class="compat-note"
+              >Bearpaw is developed and tested against this radio.</span
+            >
+          </li>
+          <li class="card compat-row">
+            <span class="compat-model">UBC125XLT</span>
+            <span class="compat-region">Europe</span>
+            <span class="compat-status is-verified">Verified</span>
+            <span class="compat-note"
+              >Confirmed on real hardware by a contributor.</span
+            >
+          </li>
+          <li class="card compat-row">
+            <span class="compat-model">BCT125AT</span>
+            <span class="compat-region">US</span>
+            <span class="compat-status is-expected">Expected</span>
+            <span class="compat-note"
+              >Same USB ID and command set as the BC125AT.</span
+            >
+          </li>
+          <li class="card compat-row">
+            <span class="compat-model">UBC126AT</span>
+            <span class="compat-region">Europe</span>
+            <span class="compat-status is-expected">Expected</span>
+            <span class="compat-note">Recognized, but not yet tested.</span>
+          </li>
+          <li class="card compat-row">
+            <span class="compat-model">AE125H</span>
+            <span class="compat-region">Europe (Albrecht)</span>
+            <span class="compat-status is-expected">Expected</span>
+            <span class="compat-note">Recognized, but not yet tested.</span>
+          </li>
+        </ul>
+        <p class="compat-foot">
+          <strong>Expected</strong> means the scanner is in the same family and
+          Bearpaw recognizes it, but nobody has run it against the real radio
+          yet. Have one?
+          <a href="https://github.com/jeremyfuksa/bearpaw/issues"
+            >Tell us how it went</a
+          >
+          &mdash; that&rsquo;s how the UBC125XLT became Verified.
+        </p>
+        <p class="compat-foot">
+          <strong>Trunking scanners aren&rsquo;t supported.</strong> The
+          BC346XT, BCD396XT, BCD996XT and the rest of the TrunkTracker line
+          organize memory as systems and sites rather than 500 flat channels
+          &mdash; a different protocol, not a small addition. Bearpaw tells you
+          by name when it meets a scanner it can&rsquo;t drive.
+        </p>
+      </section>
+
       <section class="download" id="download">
         <div class="download-panel">
           <h2 class="section-title">Download</h2>
@@ -199,15 +262,8 @@
           </div>
           <ul class="asset-list" id="asset-list"></ul>
           <div class="install-notes">
-            <p class="install-beta">
-              <strong>This is a beta.</strong> You may hit rough edges. Found
-              one?
-              <a href="https://github.com/jeremyfuksa/bearpaw/issues"
-                >Open an issue</a
-              >.
-            </p>
             <p>
-              Beta builds aren't code-signed yet, so your computer flags them
+              These builds aren't code-signed yet, so your computer flags them
               the first time you open the app:
             </p>
             <ul>
