@@ -1919,17 +1919,42 @@ mod tests {
 
             let thread = std::thread::spawn(move || {
                 while let Ok(cmd) = rx.recv() {
-                    // Only `Raw` carries a command string; the typed variants
-                    // (Hold/Scan/StartSync) aren't used by these tests.
-                    if let ControlCommand::Raw {
-                        command, reply, ..
-                    } = cmd
-                    {
-                        recorded.lock().unwrap().push(command.clone());
-                        // Ignore send errors: `send_raw_command` gives up after
-                        // 3 s and drops the receiver, which is a legitimate
-                        // (if slow) outcome rather than a fake-scanner bug.
-                        let _ = reply.send(responder(&command));
+                    // `Raw` carries its command string directly. The typed
+                    // variants don't: the poll loop is what turns
+                    // `ControlCommand::Hold` into the `KEY_HOLD` wire bytes, and
+                    // the loop owns the serial handle so it can't run here. We
+                    // record the same constant the loop would send, which keeps
+                    // the transcript in wire terms for every command path.
+                    match cmd {
+                        ControlCommand::Raw {
+                            command, reply, ..
+                        } => {
+                            recorded.lock().unwrap().push(command.clone());
+                            // Ignore send errors: `send_raw_command` gives up
+                            // after 3 s and drops the receiver, which is a
+                            // legitimate (if slow) outcome rather than a
+                            // fake-scanner bug.
+                            let _ = reply.send(responder(&command));
+                        }
+                        ControlCommand::Hold { reply, .. } => {
+                            recorded
+                                .lock()
+                                .unwrap()
+                                .push(super::poll::KEY_HOLD.to_string());
+                            if let Some(r) = reply {
+                                let _ = r.send(responder(super::poll::KEY_HOLD));
+                            }
+                        }
+                        ControlCommand::Scan { reply, .. } => {
+                            recorded
+                                .lock()
+                                .unwrap()
+                                .push(super::poll::KEY_SCAN.to_string());
+                            if let Some(r) = reply {
+                                let _ = r.send(responder(super::poll::KEY_SCAN));
+                            }
+                        }
+                        _ => {}
                     }
                 }
             });
@@ -2644,6 +2669,302 @@ mod tests {
         assert!(
             changed.iter().any(|c| c["index"] == 9 && c["priority"] == false),
             "response should report CH9 as cleared: {body}"
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Route manifest (frontend contract, part A)
+    //
+    // The frontend's contract test used to assert string literals against
+    // regexes of themselves (`expect('/api/v1/health').toMatch(/health$/)`),
+    // which passes whether or not the route exists. This test is the real
+    // half: it probes the actual router and writes the surviving paths to
+    // `target/api-route-manifest.json`, which the TS contract test reads.
+    //
+    // A path is "routed" if it answers anything but a *routing* 404. We
+    // cannot assert 200 — most handlers need a connected scanner and
+    // correctly return 503. We also cannot treat every 404 as missing:
+    // `GET /memory/channels/1` legitimately 404s with `{"error":"not_found"}`
+    // when the channel isn't cached. Axum's routing 404 has an empty body,
+    // a handler's has a JSON error — so the body is what separates "no such
+    // route" (the drift this guards: renames, axum 0.8 `{param}` migrations,
+    // a handler dropped from the router) from "route ran, found nothing".
+    const FRONTEND_ROUTES: &[(&str, &str)] = &[
+        ("GET", "/api/v1/health"),
+        ("GET", "/api/v1/status"),
+        ("GET", "/api/v1/device/info"),
+        ("GET", "/api/v1/banks"),
+        ("POST", "/api/v1/banks"),
+        ("POST", "/api/v1/commands/hold"),
+        ("POST", "/api/v1/commands/scan"),
+        ("POST", "/api/v1/commands/key"),
+        ("POST", "/api/v1/commands/lockout"),
+        ("GET", "/api/v1/volume"),
+        ("POST", "/api/v1/volume"),
+        ("GET", "/api/v1/squelch"),
+        ("POST", "/api/v1/squelch"),
+        ("GET", "/api/v1/settings/all"),
+        ("GET", "/api/v1/settings/backlight"),
+        ("POST", "/api/v1/settings/backlight"),
+        ("GET", "/api/v1/settings/battery"),
+        ("POST", "/api/v1/settings/battery"),
+        ("GET", "/api/v1/settings/key-beep"),
+        ("POST", "/api/v1/settings/key-beep"),
+        ("GET", "/api/v1/settings/priority"),
+        ("POST", "/api/v1/settings/priority"),
+        ("GET", "/api/v1/settings/search"),
+        ("GET", "/api/v1/settings/close-call"),
+        ("POST", "/api/v1/settings/close-call"),
+        ("GET", "/api/v1/settings/service-search"),
+        ("POST", "/api/v1/settings/service-search"),
+        ("GET", "/api/v1/settings/custom-search"),
+        ("POST", "/api/v1/settings/custom-search"),
+        ("GET", "/api/v1/settings/weather"),
+        ("GET", "/api/v1/settings/contrast"),
+        ("POST", "/api/v1/settings/contrast"),
+        ("POST", "/api/v1/lockouts/temporary/clear"),
+        ("POST", "/api/v1/lockouts/clear"),
+        ("POST", "/api/v1/lockouts/channels/clear"),
+        ("GET", "/api/v1/lockouts"),
+        ("GET", "/api/v1/memory/channels"),
+        ("POST", "/api/v1/memory/sync"),
+        ("POST", "/api/v1/memory/sync/cancel"),
+        ("GET", "/api/v1/memory/sync/status"),
+        ("POST", "/api/v1/memory/program-mode/start"),
+        ("POST", "/api/v1/memory/program-mode/end"),
+        ("GET", "/api/v1/memory/export/csv"),
+        ("GET", "/api/v1/memory/export/bc125at_ss"),
+        ("GET", "/api/v1/preferences"),
+        ("POST", "/api/v1/preferences"),
+        ("POST", "/api/v1/preferences/reset"),
+        ("POST", "/api/v1/analytics/cleanup"),
+        ("GET", "/api/v1/analytics/activity-log"),
+        ("GET", "/api/v1/analytics/busiest-channels"),
+        ("GET", "/api/v1/analytics/hourly-heatmap"),
+        ("GET", "/api/v1/analytics/session-stats"),
+        // Path-param routes, probed with a concrete value.
+        ("GET", "/api/v1/memory/channels/1"),
+        ("POST", "/api/v1/memory/channels/1/priority"),
+        ("GET", "/api/v1/settings/custom-search/ranges/1"),
+        ("GET", "/api/v1/settings/custom-search/defaults"),
+        ("POST", "/api/v1/settings/custom-search/ranges/1"),
+        ("PUT", "/api/v1/memory/channels/1"),
+        ("POST", "/api/v1/settings/search"),
+        ("POST", "/api/v1/settings/weather"),
+        ("POST", "/api/v1/memory/import/csv"),
+        ("GET", "/api/v1/preferences/theme"),
+        ("PUT", "/api/v1/preferences/theme"),
+        ("PUT", "/api/v1/preferences"),
+    ];
+
+    #[tokio::test]
+    async fn frontend_routes_are_all_routed_and_manifest_is_written() {
+        let mut missing = Vec::new();
+        let mut manifest = Vec::new();
+
+        for (method, path) in FRONTEND_ROUTES {
+            let app = router(default_state());
+            let response = app
+                .oneshot(
+                    Request::builder()
+                        .method(*method)
+                        .uri(*path)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let status = response.status();
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            if status == StatusCode::NOT_FOUND && body.is_empty() {
+                missing.push(format!("{method} {path}"));
+            } else {
+                manifest.push(serde_json::json!({ "method": method, "path": path }));
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "these paths are called by the frontend but 404 on the real router: {missing:#?}"
+        );
+
+        // The manifest is COMMITTED (not written to gitignored target/) so the
+        // frontend CI job can read it without a Rust toolchain — the two jobs
+        // are independent and the frontend one has no cargo. Committing it also
+        // makes drift visible: this test rewrites the file, so a route change
+        // that isn't reflected in the checked-in manifest shows up as a dirty
+        // working tree in CI rather than passing silently.
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../frontend/src/test/fixtures/api-route-manifest.json");
+        let rendered = serde_json::to_string_pretty(&serde_json::json!({ "routes": manifest }))
+            .unwrap()
+            + "\n";
+        let existing = std::fs::read_to_string(&out).unwrap_or_default();
+        if existing != rendered {
+            std::fs::write(&out, &rendered).expect("write route manifest");
+            panic!(
+                "api-route-manifest.json was stale and has been regenerated. \
+                 Commit the updated file: {}",
+                out.display()
+            );
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Command path (frontend contract, part B)
+    //
+    // These answer "does clicking HOLD actually hold the scanner?" at the
+    // highest fidelity available without hardware: an HTTP request goes into
+    // the real router, and we assert the exact wire command that reaches the
+    // scanner. The frontend component tests stop at "the button called its
+    // prop"; these pick up at the HTTP boundary the client posts to.
+    //
+    // What this does NOT prove: that the physical BC125AT honors KEY,H,P.
+    // FakeScanner believes whatever the responder says. Per the repo's
+    // captures-win rule, only a wire capture or manual testing settles that.
+
+    async fn post_empty(app: Router, uri: &str) -> StatusCode {
+        app.oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(uri)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status()
+    }
+
+    // The wire strings the poll loop sends, pinned against
+    // docs/SCANNER_PROTOCOL_REFERENCE.md. The command-path tests below assert
+    // literals; this is where the constants themselves are checked, so a
+    // rename shows up here as one obvious failure instead of silently moving
+    // both sides of every other assertion.
+    #[test]
+    fn key_constants_match_the_documented_wire_commands() {
+        assert_eq!(poll::KEY_HOLD, "KEY,H,P");
+        assert_eq!(poll::KEY_SCAN, "KEY,S,P");
+    }
+
+    #[tokio::test]
+    async fn post_hold_sends_key_hold_to_the_scanner() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let status = post_empty(router(state), "/api/v1/commands/hold").await;
+        assert_eq!(status, StatusCode::OK);
+        // Asserted as a LITERAL, not against poll::KEY_HOLD. Comparing the
+        // constant to itself would pass even if the constant changed — the
+        // wire string is the contract with the hardware, so it's spelled out.
+        assert_eq!(
+            fake.transcript(),
+            vec!["KEY,H,P".to_string()],
+            "POST /commands/hold must put exactly one KEY,H,P on the wire"
+        );
+    }
+
+    #[tokio::test]
+    async fn post_scan_sends_key_scan_to_the_scanner() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let status = post_empty(router(state), "/api/v1/commands/scan").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(fake.transcript(), vec!["KEY,S,P".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn post_key_h_routes_through_the_same_hold_path() {
+        // The UI's keypad sends POST /commands/key {"key":"H"} while the HOLD
+        // button sends POST /commands/hold. Both must reach the same wire
+        // command, or the two controls silently diverge.
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/key")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"key":"H"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        // post_key is fire-and-forget (reply: None), so the command lands on
+        // the channel without the handler awaiting it.
+        for _ in 0..50 {
+            if !fake.transcript().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(fake.transcript(), vec!["KEY,H,P".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn hold_without_a_scanner_is_503_and_sends_nothing() {
+        // No FakeScanner attached: command_tx is None. The handler must refuse
+        // rather than hang or claim success.
+        let state = default_state();
+        *state.command_tx.lock().unwrap() = None;
+        let status = post_empty(router(state), "/api/v1/commands/hold").await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn post_key_rejects_a_key_outside_the_allowlist() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/key")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"key":"; rm -rf /"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            fake.transcript().is_empty(),
+            "a rejected key must never reach the wire"
+        );
+    }
+
+    #[tokio::test]
+    async fn setting_a_channel_priority_writes_it_to_the_scanner() {
+        // The channel-edit path the UI's priority toggle drives. Asserts the
+        // PRG bracket and that a CIN write for the target channel happens
+        // inside it — the ordering the priority-swap guard depends on.
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, scanner_responder(None, |_| false));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/channels/5/priority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"priority":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let transcript = fake.transcript();
+        assert!(
+            transcript.iter().any(|c| c == "PRG"),
+            "priority write must open a program-mode bracket: {transcript:?}"
+        );
+        assert!(
+            transcript.iter().any(|c| c == "EPG"),
+            "priority write must close the program-mode bracket: {transcript:?}"
+        );
+        assert!(
+            transcript.iter().any(|c| c.starts_with("CIN,5,")),
+            "expected a CIN write for channel 5: {transcript:?}"
         );
     }
 }
