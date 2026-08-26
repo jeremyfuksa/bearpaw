@@ -1919,17 +1919,42 @@ mod tests {
 
             let thread = std::thread::spawn(move || {
                 while let Ok(cmd) = rx.recv() {
-                    // Only `Raw` carries a command string; the typed variants
-                    // (Hold/Scan/StartSync) aren't used by these tests.
-                    if let ControlCommand::Raw {
-                        command, reply, ..
-                    } = cmd
-                    {
-                        recorded.lock().unwrap().push(command.clone());
-                        // Ignore send errors: `send_raw_command` gives up after
-                        // 3 s and drops the receiver, which is a legitimate
-                        // (if slow) outcome rather than a fake-scanner bug.
-                        let _ = reply.send(responder(&command));
+                    // `Raw` carries its command string directly. The typed
+                    // variants don't: the poll loop is what turns
+                    // `ControlCommand::Hold` into the `KEY_HOLD` wire bytes, and
+                    // the loop owns the serial handle so it can't run here. We
+                    // record the same constant the loop would send, which keeps
+                    // the transcript in wire terms for every command path.
+                    match cmd {
+                        ControlCommand::Raw {
+                            command, reply, ..
+                        } => {
+                            recorded.lock().unwrap().push(command.clone());
+                            // Ignore send errors: `send_raw_command` gives up
+                            // after 3 s and drops the receiver, which is a
+                            // legitimate (if slow) outcome rather than a
+                            // fake-scanner bug.
+                            let _ = reply.send(responder(&command));
+                        }
+                        ControlCommand::Hold { reply, .. } => {
+                            recorded
+                                .lock()
+                                .unwrap()
+                                .push(super::poll::KEY_HOLD.to_string());
+                            if let Some(r) = reply {
+                                let _ = r.send(responder(super::poll::KEY_HOLD));
+                            }
+                        }
+                        ControlCommand::Scan { reply, .. } => {
+                            recorded
+                                .lock()
+                                .unwrap()
+                                .push(super::poll::KEY_SCAN.to_string());
+                            if let Some(r) = reply {
+                                let _ = r.send(responder(super::poll::KEY_SCAN));
+                            }
+                        }
+                        _ => {}
                     }
                 }
             });
@@ -2771,9 +2796,9 @@ mod tests {
         // working tree in CI rather than passing silently.
         let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../frontend/src/test/fixtures/api-route-manifest.json");
-        let rendered =
-            serde_json::to_string_pretty(&serde_json::json!({ "routes": manifest })).unwrap()
-                + "\n";
+        let rendered = serde_json::to_string_pretty(&serde_json::json!({ "routes": manifest }))
+            .unwrap()
+            + "\n";
         let existing = std::fs::read_to_string(&out).unwrap_or_default();
         if existing != rendered {
             std::fs::write(&out, &rendered).expect("write route manifest");
@@ -2783,5 +2808,163 @@ mod tests {
                 out.display()
             );
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Command path (frontend contract, part B)
+    //
+    // These answer "does clicking HOLD actually hold the scanner?" at the
+    // highest fidelity available without hardware: an HTTP request goes into
+    // the real router, and we assert the exact wire command that reaches the
+    // scanner. The frontend component tests stop at "the button called its
+    // prop"; these pick up at the HTTP boundary the client posts to.
+    //
+    // What this does NOT prove: that the physical BC125AT honors KEY,H,P.
+    // FakeScanner believes whatever the responder says. Per the repo's
+    // captures-win rule, only a wire capture or manual testing settles that.
+
+    async fn post_empty(app: Router, uri: &str) -> StatusCode {
+        app.oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(uri)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status()
+    }
+
+    // The wire strings the poll loop sends, pinned against
+    // docs/SCANNER_PROTOCOL_REFERENCE.md. The command-path tests below assert
+    // literals; this is where the constants themselves are checked, so a
+    // rename shows up here as one obvious failure instead of silently moving
+    // both sides of every other assertion.
+    #[test]
+    fn key_constants_match_the_documented_wire_commands() {
+        assert_eq!(poll::KEY_HOLD, "KEY,H,P");
+        assert_eq!(poll::KEY_SCAN, "KEY,S,P");
+    }
+
+    #[tokio::test]
+    async fn post_hold_sends_key_hold_to_the_scanner() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let status = post_empty(router(state), "/api/v1/commands/hold").await;
+        assert_eq!(status, StatusCode::OK);
+        // Asserted as a LITERAL, not against poll::KEY_HOLD. Comparing the
+        // constant to itself would pass even if the constant changed — the
+        // wire string is the contract with the hardware, so it's spelled out.
+        assert_eq!(
+            fake.transcript(),
+            vec!["KEY,H,P".to_string()],
+            "POST /commands/hold must put exactly one KEY,H,P on the wire"
+        );
+    }
+
+    #[tokio::test]
+    async fn post_scan_sends_key_scan_to_the_scanner() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let status = post_empty(router(state), "/api/v1/commands/scan").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(fake.transcript(), vec!["KEY,S,P".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn post_key_h_routes_through_the_same_hold_path() {
+        // The UI's keypad sends POST /commands/key {"key":"H"} while the HOLD
+        // button sends POST /commands/hold. Both must reach the same wire
+        // command, or the two controls silently diverge.
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/key")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"key":"H"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        // post_key is fire-and-forget (reply: None), so the command lands on
+        // the channel without the handler awaiting it.
+        for _ in 0..50 {
+            if !fake.transcript().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(fake.transcript(), vec!["KEY,H,P".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn hold_without_a_scanner_is_503_and_sends_nothing() {
+        // No FakeScanner attached: command_tx is None. The handler must refuse
+        // rather than hang or claim success.
+        let state = default_state();
+        *state.command_tx.lock().unwrap() = None;
+        let status = post_empty(router(state), "/api/v1/commands/hold").await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn post_key_rejects_a_key_outside_the_allowlist() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("KEY,OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/key")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"key":"; rm -rf /"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            fake.transcript().is_empty(),
+            "a rejected key must never reach the wire"
+        );
+    }
+
+    #[tokio::test]
+    async fn setting_a_channel_priority_writes_it_to_the_scanner() {
+        // The channel-edit path the UI's priority toggle drives. Asserts the
+        // PRG bracket and that a CIN write for the target channel happens
+        // inside it — the ordering the priority-swap guard depends on.
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, scanner_responder(None, |_| false));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/channels/5/priority")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"priority":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let transcript = fake.transcript();
+        assert!(
+            transcript.iter().any(|c| c == "PRG"),
+            "priority write must open a program-mode bracket: {transcript:?}"
+        );
+        assert!(
+            transcript.iter().any(|c| c == "EPG"),
+            "priority write must close the program-mode bracket: {transcript:?}"
+        );
+        assert!(
+            transcript.iter().any(|c| c.starts_with("CIN,5,")),
+            "expected a CIN write for channel 5: {transcript:?}"
+        );
     }
 }

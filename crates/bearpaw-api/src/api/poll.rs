@@ -33,8 +33,11 @@ const STS_CMD: &str = "STS";
 const GLG_CMD: &str = "GLG";
 const PWR_CMD: &str = "PWR";
 const MDL_CMD: &str = "MDL";
-const KEY_HOLD: &str = "KEY,H,P";
-const KEY_SCAN: &str = "KEY,S,P";
+// pub(crate) so the command-path tests assert against the SAME constants the
+// poll loop sends. A test that hardcoded "KEY,H,P" would keep passing if the
+// loop started sending something else.
+pub(crate) const KEY_HOLD: &str = "KEY,H,P";
+pub(crate) const KEY_SCAN: &str = "KEY,S,P";
 
 /// Spawn a blocking thread: open serial, process command channel + STS poll, broadcast state.
 pub fn spawn_poll_loop(
