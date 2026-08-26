@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn is_device_gone_classifies_unplug_errors() {
-        assert!(UsbTransportError::NotFound(0x1965, 0x0017).is_device_gone());
+        assert!(UsbTransportError::NotFound(crate::config::UNIDEN_VID, 0x0017).is_device_gone());
         assert!(UsbTransportError::Usb(rusb::Error::NoDevice).is_device_gone());
         assert!(UsbTransportError::Usb(rusb::Error::Io).is_device_gone());
         assert!(UsbTransportError::Usb(rusb::Error::Pipe).is_device_gone());
@@ -253,7 +253,7 @@ mod tests {
         // must clear — the same ones every read/write uses. If these addresses
         // change, or an endpoint is added, the clear_halt calls in `open()`
         // must be revisited to match. See the guard comment at the call site.
-        let t = UsbTransport::new(0x1965, 0x0017);
+        let t = UsbTransport::new(crate::config::UNIDEN_VID, 0x0017);
         assert_eq!(t.ep_in, 0x81, "IN endpoint changed — update open()'s clear_halt");
         assert_eq!(t.ep_out, 0x02, "OUT endpoint changed — update open()'s clear_halt");
     }
