@@ -210,4 +210,137 @@ describe('useStore', () => {
       });
     });
   });
+
+  describe('sync state (drives the memory-sync overlay)', () => {
+    beforeEach(() => {
+      useStore.setState({
+        sync: {
+          inProgress: false,
+          hasSyncedInitially: false,
+          taskId: null,
+          message: '',
+          percent: 0,
+        },
+      });
+    });
+
+    it('merges a partial patch instead of replacing the whole sync object', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.updateSync({ inProgress: true, taskId: 'task-1' });
+      });
+      act(() => {
+        result.current.updateSync({ percent: 50 });
+      });
+
+      // A replace-instead-of-merge would drop inProgress/taskId here and the
+      // blocking overlay would vanish mid-sync.
+      expect(result.current.sync.inProgress).toBe(true);
+      expect(result.current.sync.taskId).toBe('task-1');
+      expect(result.current.sync.percent).toBe(50);
+    });
+
+    it('can clear inProgress without losing the final progress', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.updateSync({ inProgress: true, percent: 100, message: 'Done' });
+      });
+      act(() => {
+        result.current.updateSync({ inProgress: false });
+      });
+
+      expect(result.current.sync.inProgress).toBe(false);
+      expect(result.current.sync.percent).toBe(100);
+      expect(result.current.sync.message).toBe('Done');
+    });
+  });
+
+  describe('memory drafts (unsaved channel edits)', () => {
+    beforeEach(() => {
+      useStore.setState({ memoryDrafts: {}, memoryEditingIndex: null });
+    });
+
+    it('keeps drafts for different channels independent', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.setMemoryDraft(1, { alpha_tag: 'ONE' } as never);
+        result.current.setMemoryDraft(2, { alpha_tag: 'TWO' } as never);
+      });
+
+      expect(result.current.memoryDrafts[1]).toMatchObject({ alpha_tag: 'ONE' });
+      expect(result.current.memoryDrafts[2]).toMatchObject({ alpha_tag: 'TWO' });
+    });
+
+    it('overwrites the draft for a channel that is edited twice', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.setMemoryDraft(1, { alpha_tag: 'FIRST' } as never);
+        result.current.setMemoryDraft(1, { alpha_tag: 'SECOND' } as never);
+      });
+
+      expect(result.current.memoryDrafts[1]).toMatchObject({ alpha_tag: 'SECOND' });
+    });
+
+    it('clearMemoryDrafts drops every pending edit', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.setMemoryDraft(1, { alpha_tag: 'ONE' } as never);
+        result.current.setMemoryDraft(2, { alpha_tag: 'TWO' } as never);
+      });
+      act(() => {
+        result.current.clearMemoryDrafts();
+      });
+
+      expect(result.current.memoryDrafts).toEqual({});
+    });
+
+    it('tracks which channel is being edited, and clears back to null', () => {
+      const { result } = renderHook(() => useStore());
+
+      act(() => {
+        result.current.setMemoryEditingIndex(42);
+      });
+      expect(result.current.memoryEditingIndex).toBe(42);
+
+      act(() => {
+        result.current.setMemoryEditingIndex(null);
+      });
+      expect(result.current.memoryEditingIndex).toBeNull();
+    });
+  });
+
+  describe('banks', () => {
+    it('mirrors the bank mask the server reports', () => {
+      const { result } = renderHook(() => useStore());
+      const mask = [true, false, false, false, false, false, false, false, false, false];
+
+      act(() => {
+        result.current.setBanks(mask);
+      });
+
+      expect(result.current.banks).toEqual(mask);
+    });
+  });
+
+  describe('preferences', () => {
+    it('merges a partial update instead of replacing all preferences', () => {
+      const { result } = renderHook(() => useStore());
+      const before = result.current.preferences;
+
+      act(() => {
+        result.current.updatePreferences({ theme: 'day' } as never);
+      });
+
+      expect(result.current.preferences.theme).toBe('day');
+      // Everything else must survive — a replace would reset the user's
+      // hit threshold, retention window, and display mode.
+      expect(result.current.preferences.hitMinDuration).toBe(before.hitMinDuration);
+      expect(result.current.preferences.displayMode).toBe(before.displayMode);
+    });
+  });
 });
