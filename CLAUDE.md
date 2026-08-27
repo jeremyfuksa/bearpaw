@@ -259,7 +259,7 @@ The BC125AT enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0
 
 ## Testing and CI
 
-- **Backend:** `cargo test -p bearpaw-api --lib`. Fixtures driven by captures in `docs/wire_captures/`.
+- **Backend:** `cargo test -p bearpaw-api --lib` and `cargo fmt --all -- --check`. Fixtures driven by captures in `docs/wire_captures/`.
 - **Frontend:** `npm test -- --run` (vitest), `npm run lint`, `npm run type-check`, `npm run format:check`. All four run on every PR via [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 - **CI also runs `cargo check --workspace --all-targets`** in the backend job — a deliberate guard against silent drift in the Tauri crate (see the comment in `tests.yml` citing PR #80). Run it locally if your change touches anything the Tauri shell links against.
 - [`.github/workflows/build.yml`](.github/workflows/build.yml) is the release pipeline: tag-triggered (`v*`), multi-platform Tauri bundles (macOS aarch64/x86_64, Windows, Linux). It does not run on PRs.
@@ -270,7 +270,9 @@ Every change lands via a PR to `main` — never push to `main` directly, even fo
 
 1. **Branch off `main`** with a semantic prefix: `phase/`, `feat/`, `fix/`, `cleanup/`, `chore/`, `docs/`.
 2. **Tiny, single-purpose PRs.** One concern per PR, independently revertible, reviewable in under 10 minutes. If it's growing past ~250 LOC, split it.
-3. **All CI checks green locally before push.** Backend: `cargo test -p bearpaw-api --lib`. Frontend, from `frontend/`: `npm test -- --run`, `npm run lint`, `npm run type-check`, `npm run format:check`. The Prettier check is the one that historically got skipped and failed CI (PR #44, #45) — don't skip it.
+3. **All CI checks green locally before push.** Backend: `cargo test -p bearpaw-api --lib`, `cargo fmt --all -- --check`. Frontend, from `frontend/`: `npm test -- --run`, `npm run lint`, `npm run type-check`, `npm run format:check`. Both format checks are the ones that historically got skipped and failed CI (PR #44, #45) — don't skip them.
+
+   Run `cargo fmt --all` (no `--check`) to fix Rust formatting. It is safe to run repo-wide: the drift that made it produce unreviewable diffs was cleared in #394, and CI now keeps it clean.
 4. **Never push to retry CI.** If a check fails, reproduce and fix locally first.
 
 ## Third-rail flows
