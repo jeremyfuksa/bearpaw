@@ -5,6 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Only run on changes that can actually break a check. A docs-only PR has
+    # no Rust to compile and no TypeScript to lint, so the ~9 minutes of build
+    # this workflow costs buys nothing. Inclusive allowlist rather than
+    # `paths-ignore` so a new top-level directory doesn't silently re-enable
+    # full CI. `main` has no branch protection, so a PR reporting zero checks
+    # is still mergeable.
+    paths:
+      - "crates/**"
+      - "frontend/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/tests.yml"
 
 jobs:
   test-backend:
