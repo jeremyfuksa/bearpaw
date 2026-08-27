@@ -19,6 +19,7 @@ import {
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
+import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import { confirmDialog, saveExport, pickAndReadFile } from '../../../tauri-shell';
 import type { ChannelData, ChannelDraft } from '../../../types';
 import { ChannelEditSheet } from './ChannelEditSheet';
@@ -250,9 +251,20 @@ function ChannelRow({
   );
 }
 
-function deriveBankFromIndex(index: number) {
+/**
+ * Bank holding a channel index, for a scanner with the given layout.
+ *
+ * Bank width is model-dependent: 50 channels on the BC125AT family, 30 on the
+ * BC75XLT. This used to hardcode 50, which misfiled every BC75XLT channel above
+ * 30 — measured on hardware, channel 31 showed in bank 1 when it belongs in
+ * bank 2, and channel 300 in bank 6 rather than 10.
+ *
+ * Exported for tests (#401): the guard must assert the real function, matching
+ * the reasoning already recorded for `buildEmptyDraft` above.
+ */
+export function deriveBankFromIndex(index: number, channelsPerBank: number, bankCount: number) {
   const normalized = Math.max(1, index);
-  return Math.min(10, Math.ceil(normalized / 50));
+  return Math.min(bankCount, Math.ceil(normalized / channelsPerBank));
 }
 
 // Exported for tests only (#272). The guard on buildEmptyDraft has to assert
@@ -320,6 +332,7 @@ export function ChannelsTab() {
   const setChannels = useStore((state) => state.setChannels);
   const setImportProgress = useStore((state) => state.setImportProgress);
 
+  const { channels_per_bank: channelsPerBank, bank_count: bankCount } = useScannerCapabilities();
   const [activeBank, setActiveBank] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
@@ -334,7 +347,8 @@ export function ChannelsTab() {
   const filteredChannels = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return channels.filter((channel) => {
-      const matchesBank = deriveBankFromIndex(channel.index) === activeBank;
+      const matchesBank =
+        deriveBankFromIndex(channel.index, channelsPerBank, bankCount) === activeBank;
       const draft = memoryDrafts[channel.index];
       const draftFrequency = draft ? Number.parseFloat(draft.frequency) : channel.frequency;
       const isCleared = Number.isFinite(draftFrequency) && draftFrequency === 0;
@@ -346,14 +360,16 @@ export function ChannelsTab() {
         query === '' || displayTag.includes(query) || displayFrequency.toString().includes(query);
       return matchesBank && matchesSearch;
     });
-  }, [activeBank, channels, memoryDrafts, searchTerm]);
+  }, [activeBank, bankCount, channels, channelsPerBank, memoryDrafts, searchTerm]);
 
   const bankChannels = useMemo(() => {
     return channels
-      .filter((channel) => deriveBankFromIndex(channel.index) === activeBank)
+      .filter(
+        (channel) => deriveBankFromIndex(channel.index, channelsPerBank, bankCount) === activeBank,
+      )
       .map((channel) => channel.index)
       .sort((a, b) => a - b);
-  }, [activeBank, channels]);
+  }, [activeBank, bankCount, channels, channelsPerBank]);
 
   useEffect(() => {
     // Reconcile the cached order with reality instead of freezing at first
@@ -519,7 +535,10 @@ export function ChannelsTab() {
 
         if (!hasChanges) return acc;
 
-        const bankValue = channel.bank > 0 ? channel.bank : deriveBankFromIndex(channelIndex);
+        const bankValue =
+          channel.bank > 0
+            ? channel.bank
+            : deriveBankFromIndex(channelIndex, channelsPerBank, bankCount);
 
         acc.push({
           channelIndex,
@@ -544,7 +563,7 @@ export function ChannelsTab() {
         targetIndex: number;
       }>,
     );
-  }, [channels, memoryDrafts, reorderTargets]);
+  }, [bankCount, channels, channelsPerBank, memoryDrafts, reorderTargets]);
 
   // Rows that have REAL pending changes. isPending (the row's "modified"
   // highlight) is derived from this, not from Boolean(draft): a draft object
@@ -595,10 +614,13 @@ export function ChannelsTab() {
   // the priority endpoint right away rather than waiting for Upload Changes.
   const handlePriorityChange = useCallback(
     async (channelIndex: number, next: boolean) => {
-      const bank = deriveBankFromIndex(channelIndex);
+      const bank = deriveBankFromIndex(channelIndex, channelsPerBank, bankCount);
       if (next) {
         const existing = channels.find(
-          (c) => c.priority && deriveBankFromIndex(c.index) === bank && c.index !== channelIndex,
+          (c) =>
+            c.priority &&
+            deriveBankFromIndex(c.index, channelsPerBank, bankCount) === bank &&
+            c.index !== channelIndex,
         );
         if (existing) {
           const ok = await confirmDialog(
@@ -622,7 +644,7 @@ export function ChannelsTab() {
         toast.error(`Failed to ${next ? 'set' : 'clear'} priority on CH${channelIndex}`);
       }
     },
-    [channels, setChannels],
+    [bankCount, channels, channelsPerBank, setChannels],
   );
 
   const handleToggleSelectAll = useCallback(() => {
@@ -665,7 +687,7 @@ export function ChannelsTab() {
         try {
           let payload = change.payload;
           const targetIndex = change.targetIndex ?? change.channelIndex;
-          const targetBank = deriveBankFromIndex(targetIndex);
+          const targetBank = deriveBankFromIndex(targetIndex, channelsPerBank, bankCount);
           payload = {
             ...payload,
             bank: targetBank,
@@ -793,7 +815,7 @@ export function ChannelsTab() {
         `Failed to upload ${failed.length} channel edits. First failure: CH ${firstFailure.index}${detailText}`,
       );
     }
-  }, [api, draftChanges, isUploading, setChannels, setMemoryDraft]);
+  }, [api, bankCount, channelsPerBank, draftChanges, isUploading, setChannels, setMemoryDraft]);
 
   const handleDiscardDrafts = useCallback(async () => {
     if (draftChanges.length === 0 || isUploading) return;

@@ -67,6 +67,57 @@ pub struct AppState {
     pub program_mode_active: Arc<AtomicBool>,
 }
 
+impl AppState {
+    /// Capabilities of the connected scanner, or the BC125AT-family defaults.
+    ///
+    /// Defaults rather than `None` so callers never handle a third state that
+    /// exists only between process start and the first `MDL` reply. Matches
+    /// the frontend's `useScannerCapabilities()` fallback for the same reason.
+    pub fn capabilities(&self) -> crate::protocol::capabilities::ScannerCapabilities {
+        self.device
+            .read()
+            .ok()
+            .and_then(|d| d.capabilities)
+            .unwrap_or_default()
+    }
+
+    /// Channel memory with `bank` filled in for the connected scanner.
+    ///
+    /// `parse_cin_response` leaves `bank` at 0 because it is a pure function
+    /// with no access to the capability descriptor, and the wire carries no
+    /// bank field to begin with. This is where the derivation belongs: banks
+    /// are 50 channels wide on the BC125AT family and 30 on the BC75XLT, so a
+    /// fixed divisor misfiles every BC75XLT channel above 30.
+    ///
+    /// Measured on hardware before the fix: 7 of 11 sampled BC75XLT channels
+    /// were in the wrong bank, and channel 300 reported bank 6 instead of 10.
+    /// See #401.
+    pub fn channels_with_banks(&self) -> Vec<ChannelData> {
+        let caps = self.capabilities();
+        let mut channels: Vec<ChannelData> = match self.shadow.read() {
+            Ok(shadow) => shadow.channels.values().cloned().collect(),
+            Err(_) => return Vec::new(),
+        };
+        for c in &mut channels {
+            c.bank = caps.index_to_bank(c.index);
+        }
+        channels.sort_by_key(|c| c.index);
+        channels
+    }
+
+    /// One channel with `bank` filled in. See `channels_with_banks`.
+    pub fn channel_with_bank(&self, index: u16) -> Option<ChannelData> {
+        let caps = self.capabilities();
+        let mut c = self
+            .shadow
+            .read()
+            .ok()
+            .and_then(|s| s.channels.get(&index).cloned())?;
+        c.bank = caps.index_to_bank(c.index);
+        Some(c)
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ActivityHit {
     pub id: String,
@@ -2839,6 +2890,85 @@ mod tests {
                 out.display()
             );
         }
+    }
+
+    /// REGRESSION GUARD (#401): banks follow the connected scanner's memory
+    /// model, not a fixed divisor.
+    ///
+    /// Paired with `cin_does_not_derive_bank` in protocol/mod.rs. That one
+    /// asserts the parser leaves `bank` unset; this one asserts it gets set
+    /// correctly afterwards. Either alone would pass while banks were broken.
+    ///
+    /// The numbers come from hardware. Before the fix, 7 of 11 sampled BC75XLT
+    /// channels were misfiled and channel 300 reported bank 6 instead of 10.
+    /// Note channel 60 lands in bank 2 under BOTH models -- roughly a third of
+    /// channels are correct by coincidence, which is why a spot check misses
+    /// this.
+    #[test]
+    fn channels_with_banks_derives_per_model() {
+        use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
+
+        fn state_with(caps: crate::protocol::capabilities::ScannerCapabilities) -> AppState {
+            let state = default_state();
+            state.device.write().unwrap().capabilities = Some(caps);
+            {
+                let mut shadow = state.shadow.write().unwrap();
+                for index in [1u16, 30, 31, 60, 61, 300] {
+                    shadow.channels.insert(
+                        index,
+                        ChannelData {
+                            index,
+                            frequency: 146.52,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            state
+        }
+
+        let bc125 = state_with(BC125AT_FAMILY);
+        let banks: Vec<(u16, u8)> = bc125
+            .channels_with_banks()
+            .iter()
+            .map(|c| (c.index, c.bank))
+            .collect();
+        assert_eq!(
+            banks,
+            vec![(1, 1), (30, 1), (31, 1), (60, 2), (61, 2), (300, 6)],
+            "BC125AT family: banks of 50 -- unchanged from before #401"
+        );
+
+        let bc75 = state_with(BC75XLT);
+        let banks: Vec<(u16, u8)> = bc75
+            .channels_with_banks()
+            .iter()
+            .map(|c| (c.index, c.bank))
+            .collect();
+        assert_eq!(
+            banks,
+            vec![(1, 1), (30, 1), (31, 2), (60, 2), (61, 3), (300, 10)],
+            "BC75XLT: banks of 30 -- channel 31 is bank 2, not 1; 300 is bank 10, not 6"
+        );
+    }
+
+    /// Channel-index bounds follow the model too. A BC75XLT has no channel
+    /// 301, so accepting one means a guaranteed `CIN,ERR` round-trip.
+    #[test]
+    fn channel_bounds_follow_the_model() {
+        use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        assert_eq!(state.capabilities().channel_count, 300);
+
+        state.device.write().unwrap().capabilities = Some(BC125AT_FAMILY);
+        assert_eq!(state.capabilities().channel_count, 500);
+
+        // No scanner connected: BC125AT-family defaults preserve today's
+        // behaviour rather than leaving callers with a third state to handle.
+        let fresh = default_state();
+        assert_eq!(fresh.capabilities().channel_count, 500);
     }
 
     /// Serialize every capability descriptor to a committed fixture the
