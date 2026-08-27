@@ -458,9 +458,12 @@ fn legacy_app_data_dir() -> Option<PathBuf> {
         if let Ok(xdg) = env::var("XDG_DATA_HOME") {
             return Some(PathBuf::from(xdg).join(LEGACY_ID));
         }
-        env::var("HOME")
-            .ok()
-            .map(|h| PathBuf::from(h).join(".local").join("share").join(LEGACY_ID))
+        env::var("HOME").ok().map(|h| {
+            PathBuf::from(h)
+                .join(".local")
+                .join("share")
+                .join(LEGACY_ID)
+        })
     }
 }
 

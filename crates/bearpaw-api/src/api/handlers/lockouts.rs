@@ -123,10 +123,7 @@ pub(crate) async fn clear_global_lockouts(
         // Classify the reply instead of ignoring it: a refused ULF must show
         // up in `failed`, not be reported as cleared.
         let reply = send_raw_command(&state, &format!("ULF,{:08}", frequency), false).await;
-        let ok = matches!(
-            reply.map(|r| classify_response(&r)),
-            Ok(ScannerReply::Ok)
-        );
+        let ok = matches!(reply.map(|r| classify_response(&r)), Ok(ScannerReply::Ok));
         if ok {
             cleared.push(*frequency as f64 / 10000.0);
         } else {

@@ -56,7 +56,8 @@ const PID: u16 = 0x0017;
 /// (docs/wire_captures/2026-08-03/clc-mode-probe.txt). Not guesswork — but the
 /// menu wording can differ across firmware, so trust the radio's display over
 /// this text if they disagree.
-const KEYPAD_STEPS: &str = "      1. Press [Func] then [Close Call] (the .../CC key) to open the CC menu.
+const KEYPAD_STEPS: &str =
+    "      1. Press [Func] then [Close Call] (the .../CC key) to open the CC menu.
       2. Select `CC Mode` and press [E].
       3. Choose the mode named below, press [E] to confirm.
       4. Back out with [Scan/Srch] until the radio is scanning again.";

@@ -239,8 +239,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/preferences",
-            get(handlers::preferences::get_preferences)
-                .put(handlers::preferences::put_preferences),
+            get(handlers::preferences::get_preferences).put(handlers::preferences::put_preferences),
         )
         .route(
             "/api/v1/preferences/reset",
@@ -1273,10 +1272,12 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
         fn group_mask(resp: &str, cmd: &str) -> Value {
             let parts = parse_command_parts(resp, cmd);
             match parts.first() {
-                Some(flags)
-                    if flags.len() >= 10 && flags.chars().all(|c| c == '0' || c == '1') =>
-                {
-                    let groups = flags.chars().take(10).map(|c| c == '0').collect::<Vec<bool>>();
+                Some(flags) if flags.len() >= 10 && flags.chars().all(|c| c == '0' || c == '1') => {
+                    let groups = flags
+                        .chars()
+                        .take(10)
+                        .map(|c| c == '0')
+                        .collect::<Vec<bool>>();
                     json!({ "groups": groups })
                 }
                 _ => Value::Null,
@@ -1507,8 +1508,7 @@ fn readback_matches(wrote: &ChannelData, readback: &ChannelData, wrote_alpha: &s
     if wrote.frequency.abs() < 0.00005 {
         return is_factory_empty(readback);
     }
-    let priority_ok = readback.priority == wrote.priority
-        || (!wrote.priority && readback.priority); // refused clear — see guard above
+    let priority_ok = readback.priority == wrote.priority || (!wrote.priority && readback.priority); // refused clear — see guard above
     (readback.frequency - wrote.frequency).abs() < 0.00005
         && readback.alpha_tag.trim() == wrote_alpha
         && readback.delay == wrote.delay
@@ -1674,14 +1674,22 @@ async fn clear_channel_priority_locked(
     // 4. DCH — wipe to factory-empty.
     match classify_response(&send_raw_command(state, &format!("DCH,{index}"), false).await?) {
         ScannerReply::Ok => {}
-        _ => return Err(ApiError::BadRequest("priority_clear_dch_failed".to_string())),
+        _ => {
+            return Err(ApiError::BadRequest(
+                "priority_clear_dch_failed".to_string(),
+            ))
+        }
     }
 
     // 5. Rewrite with priority=0.
     let write_cmd = format!("CIN,{index},{payload}");
     match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
         ScannerReply::Ok => {}
-        _ => return Err(ApiError::BadRequest("priority_clear_rewrite_failed".to_string())),
+        _ => {
+            return Err(ApiError::BadRequest(
+                "priority_clear_rewrite_failed".to_string(),
+            ))
+        }
     }
 
     // 6. Read-back-verify the rewrite.
@@ -1702,7 +1710,9 @@ async fn clear_channel_priority_locked(
             read_back = %read_response.trim(),
             "priority clear rewrite not persisted as sent"
         );
-        return Err(ApiError::BadRequest("priority_clear_not_persisted".to_string()));
+        return Err(ApiError::BadRequest(
+            "priority_clear_not_persisted".to_string(),
+        ));
     }
     Ok(readback)
 }
@@ -1731,14 +1741,21 @@ pub(crate) async fn set_channel_priority(
     // DCH-deleted channel, or an interleaved command mid-swap. See the priority spec.
     if let Some(old) = old_to_clear {
         let cleared = clear_channel_priority_locked(state, old).await?; // locked: no inner guard
-        state.shadow.write().unwrap().channels.insert(old, cleared.clone());
+        state
+            .shadow
+            .write()
+            .unwrap()
+            .channels
+            .insert(old, cleared.clone());
         changed.push(cleared);
     }
 
     // Set the new priority channel with a plain CIN write (SET works in place).
     let current = read_channel_from_scanner(state, new_to_set).await?;
     if current.frequency.abs() < 0.00005 {
-        return Err(ApiError::BadRequest("priority_set_empty_channel".to_string()));
+        return Err(ApiError::BadRequest(
+            "priority_set_empty_channel".to_string(),
+        ));
     }
     let mut wrote = current.clone();
     wrote.priority = true;
@@ -1752,7 +1769,9 @@ pub(crate) async fn set_channel_priority(
     let readback = parse_cin_response(new_to_set, &read_response)
         .ok_or_else(|| ApiError::BadRequest("priority_set_readback_failed".to_string()))?;
     if !readback.priority {
-        return Err(ApiError::BadRequest("priority_set_not_persisted".to_string()));
+        return Err(ApiError::BadRequest(
+            "priority_set_not_persisted".to_string(),
+        ));
     }
     state
         .shadow
@@ -1926,9 +1945,7 @@ mod tests {
                     // record the same constant the loop would send, which keeps
                     // the transcript in wire terms for every command path.
                     match cmd {
-                        ControlCommand::Raw {
-                            command, reply, ..
-                        } => {
+                        ControlCommand::Raw { command, reply, .. } => {
                             recorded.lock().unwrap().push(command.clone());
                             // Ignore send errors: `send_raw_command` gives up
                             // after 3 s and drops the receiver, which is a
@@ -2164,7 +2181,11 @@ mod tests {
 
         let mut readback = rewritten.clone();
         readback.priority = true; // stuck bit
-        assert!(!priority_clear_persisted(&rewritten, &readback, &wrote_alpha));
+        assert!(!priority_clear_persisted(
+            &rewritten,
+            &readback,
+            &wrote_alpha
+        ));
 
         // Sanity: a genuinely persisted clear (readback.priority == false,
         // everything else matching) must still pass.
@@ -2608,8 +2629,14 @@ mod tests {
         let transcript = scanner.transcript();
         let dch_at = transcript.iter().position(|c| c.starts_with("DCH,2"));
         let set_at = transcript.iter().position(|c| c.starts_with("CIN,9,"));
-        assert!(dch_at.is_some(), "expected a DCH clearing CH2: {transcript:?}");
-        assert!(set_at.is_some(), "expected a CIN write setting CH9: {transcript:?}");
+        assert!(
+            dch_at.is_some(),
+            "expected a DCH clearing CH2: {transcript:?}"
+        );
+        assert!(
+            set_at.is_some(),
+            "expected a CIN write setting CH9: {transcript:?}"
+        );
         assert!(
             dch_at < set_at,
             "clear must precede set, got transcript: {transcript:?}"
@@ -2646,7 +2673,9 @@ mod tests {
         let body = json_body(response).await;
         let changed = body["changed"].as_array().expect("changed array");
         assert!(
-            changed.iter().any(|c| c["index"] == 9 && c["priority"] == true),
+            changed
+                .iter()
+                .any(|c| c["index"] == 9 && c["priority"] == true),
             "response should report CH9 as the new priority channel: {body}"
         );
 
@@ -2667,7 +2696,9 @@ mod tests {
         let body = json_body(response).await;
         let changed = body["changed"].as_array().expect("changed array");
         assert!(
-            changed.iter().any(|c| c["index"] == 9 && c["priority"] == false),
+            changed
+                .iter()
+                .any(|c| c["index"] == 9 && c["priority"] == false),
             "response should report CH9 as cleared: {body}"
         );
     }

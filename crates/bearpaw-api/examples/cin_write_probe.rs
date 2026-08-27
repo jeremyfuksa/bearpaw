@@ -100,7 +100,9 @@ fn main() {
         let (tone, delay, lockout) = (fields[5], fields[6], fields[7]);
         println!("tone-slot={tone} delay-slot={delay} lockout-slot={lockout}");
         match (delay, lockout) {
-            ("1", "0") => println!("VERDICT: write order == read order (tone, delay, lockout, priority)"),
+            ("1", "0") => {
+                println!("VERDICT: write order == read order (tone, delay, lockout, priority)")
+            }
             ("0", "1") => println!("VERDICT: write order SWAPS delay/lockout vs read order"),
             _ => println!("VERDICT: inconclusive — inspect raw lines above"),
         }
@@ -109,5 +111,8 @@ fn main() {
             tone
         );
     }
-    assert_eq!(restored, original, "RESTORE FAILED — channel {idx} altered!");
+    assert_eq!(
+        restored, original,
+        "RESTORE FAILED — channel {idx} altered!"
+    );
 }

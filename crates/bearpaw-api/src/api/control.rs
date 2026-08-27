@@ -18,10 +18,7 @@ pub enum ControlCommand {
         deadline: std::time::Instant,
     },
     /// Run full memory sync (PRG -> CIN 1..max_channels -> EPG); progress via WebSocket.
-    StartSync {
-        task_id: String,
-        max_channels: u16,
-    },
+    StartSync { task_id: String, max_channels: u16 },
     /// Send a raw scanner command and return raw response to API caller.
     Raw {
         command: String,

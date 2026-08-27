@@ -78,8 +78,7 @@ pub(crate) async fn put_memory_channel(
     body.index = index;
     // Frequency must be 0 (clear the slot) or inside the BC125AT's coverage
     // (#143 — validate_frequency existed but was never called on this path).
-    if body.frequency != 0.0 && super::super::control::validate_frequency(body.frequency).is_err()
-    {
+    if body.frequency != 0.0 && super::super::control::validate_frequency(body.frequency).is_err() {
         return Err(ApiError::BadRequest("frequency_out_of_range".to_string()));
     }
     // Valid CIN delay values per docs/BC125AT_PROTOCOL.md §5.3.
@@ -101,7 +100,10 @@ pub(crate) async fn put_memory_channel(
     // spaces.
     if !body.alpha_tag.is_empty() {
         if let Err(reason) = crate::protocol::validate_channel_name(&body.alpha_tag) {
-            return Err(ApiError::BadRequest(format!("alpha_tag_invalid: {}", reason)));
+            return Err(ApiError::BadRequest(format!(
+                "alpha_tag_invalid: {}",
+                reason
+            )));
         }
     }
     if validate_wire_field(&body.modulation).is_err() {
@@ -300,10 +302,7 @@ mod tests {
         let seen_thread = seen.clone();
         std::thread::spawn(move || {
             while let Ok(cmd) = rx.recv() {
-                if let ControlCommand::Raw {
-                    command, reply, ..
-                } = cmd
-                {
+                if let ControlCommand::Raw { command, reply, .. } = cmd {
                     seen_thread.lock().unwrap().push(command.clone());
                     let response = if command.eq_ignore_ascii_case("PRG") {
                         prg_reply.to_string()

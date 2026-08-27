@@ -431,7 +431,12 @@ pub(crate) async fn import_csv(
             }
             if total > 0 && (n + 1) % 10 == 0 {
                 let percent = ((n + 1) * 99 / total) as u8;
-                import_progress(&state, "import-csv", percent, &format!("Importing {}/{}", n + 1, total));
+                import_progress(
+                    &state,
+                    "import-csv",
+                    percent,
+                    &format!("Importing {}/{}", n + 1, total),
+                );
             }
         }
     }
@@ -573,7 +578,10 @@ mod tests {
         let decode = |s: &str| s.chars().map(|c| c == '1').collect::<Vec<bool>>();
         assert_eq!(decode("01001"), vec![false, true, false, false, true]);
         // flags_to_bools (the mask decoder) would give the inverted result:
-        assert_eq!(flags_to_bools("01001"), vec![true, false, true, true, false]);
+        assert_eq!(
+            flags_to_bools("01001"),
+            vec![true, false, true, true, false]
+        );
     }
 
     #[test]
