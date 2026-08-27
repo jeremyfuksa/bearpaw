@@ -137,6 +137,16 @@ pub struct ActivityHit {
     pub bank: Option<u8>,
     pub session_id: String,
     pub ended_at: f64,
+    /// Model of the scanner that heard this hit, or `None` for rows recorded
+    /// before Bearpaw tracked which radio was attached.
+    ///
+    /// Model, not a per-unit identifier: a BC125AT reports a hardcoded USB
+    /// serial of "0001", and on macOS it has no serial node at all (the
+    /// direct-USB path), so there is no reliable per-unit key to record. This
+    /// separates a BC125AT from a BC75XLT, which is the distinction that makes
+    /// channel numbers comparable. Telling two units of the SAME model apart
+    /// needs the identity work in #414.
+    pub scanner_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -152,7 +162,7 @@ pub struct ActiveHit {
 }
 
 const PREFERENCES_SCHEMA_VERSION: i32 = 1;
-const ANALYTICS_SCHEMA_VERSION: i32 = 1;
+const ANALYTICS_SCHEMA_VERSION: i32 = 2;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -753,6 +763,11 @@ pub(crate) fn track_analytics_transition(
                     bank: open_hit.bank,
                     session_id: (*state.session_id).clone(),
                     ended_at: live.timestamp,
+                    // Read at hit-close rather than stored on ActiveHit: the
+                    // model cannot change mid-hit (a swap drops the port and
+                    // ends the hit), and reading here keeps the one source of
+                    // truth -- DeviceInfo -- as the only place a model lives.
+                    scanner_id: state.device.read().ok().and_then(|d| d.model.clone()),
                 };
                 {
                     state.analytics_log.lock().unwrap().push(entry.clone());
@@ -882,7 +897,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
             ",
         );
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT id, timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at
+            "SELECT id, timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id
              FROM scan_hits ORDER BY timestamp DESC LIMIT 5000",
         ) {
             let rows = stmt.query_map([], |row| {
@@ -898,6 +913,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
                 let bank: Option<u8> = row.get(9)?;
                 let session_id: String = row.get(10)?;
                 let ended_at: Option<f64> = row.get(11)?;
+                let scanner_id: Option<String> = row.get(12)?;
                 Ok(ActivityHit {
                     id: id.to_string(),
                     timestamp,
@@ -911,6 +927,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
                     bank,
                     session_id,
                     ended_at: ended_at.unwrap_or(timestamp),
+                    scanner_id,
                 })
             });
             if let Ok(rows) = rows {
@@ -929,8 +946,8 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
 fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
     if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
-            "INSERT INTO scan_hits (timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO scan_hits (timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 hit.timestamp,
                 hit.frequency,
@@ -942,7 +959,8 @@ fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
                 hit.mode.as_str(),
                 hit.bank,
                 hit.session_id,
-                hit.ended_at
+                hit.ended_at,
+                hit.scanner_id
             ],
         );
     }
@@ -1265,6 +1283,31 @@ fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) -> Result<(), M
             CREATE INDEX IF NOT EXISTS idx_hits_channel ON scan_hits(channel);
             CREATE INDEX IF NOT EXISTS idx_hits_frequency ON scan_hits(frequency);
             CREATE INDEX IF NOT EXISTS idx_hits_session ON scan_hits(session_id);
+            ",
+        )?;
+    }
+    if current < 2 {
+        // Attribute each hit to the scanner that heard it. Without this, two
+        // radios' activity pools into one table and `analytics_busiest` groups
+        // by (frequency, channel) across both -- but a channel number means
+        // something different on each radio, so the same frequency splits into
+        // two rows when the two hold it in different slots, and two different
+        // channels merge when slot numbers happen to coincide.
+        //
+        // Existing rows are left NULL rather than guessed. The tempting
+        // heuristic -- "it has an alpha tag, so it came from an alpha-tag
+        // scanner" -- is true but not specific enough to be useful: it
+        // identifies the FAMILY, and writing "BC125AT" would mislabel the four
+        // other members (BCT125AT, UBC125XLT, UBC126AT, AE125H). Their owners
+        // would then connect a UBC125XLT, fail to match "BC125AT", and watch
+        // their whole history vanish from scoped views. NULL means "recorded
+        // before Bearpaw tracked this", which is exactly what is known.
+        run_migration_step(
+            conn,
+            2,
+            "
+            ALTER TABLE scan_hits ADD COLUMN scanner_id TEXT;
+            CREATE INDEX IF NOT EXISTS idx_hits_scanner ON scan_hits(scanner_id);
             ",
         )?;
     }
@@ -3130,6 +3173,148 @@ mod tests {
             )
             .expect("query table");
         assert_eq!(table_exists, 1);
+    }
+
+    /// Build a v1 analytics database with rows in it, exactly as a user
+    /// upgrading from a pre-scanner_id build would have.
+    #[cfg(test)]
+    fn seed_v1_analytics_db(path: &std::path::Path, rows: &[(f64, Option<&str>)]) {
+        let conn = rusqlite::Connection::open(path).expect("create v1 analytics db");
+        conn.execute_batch(
+            "
+            CREATE TABLE scan_hits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp REAL NOT NULL,
+                frequency REAL NOT NULL,
+                channel INTEGER,
+                alpha_tag TEXT,
+                modulation TEXT NOT NULL,
+                rssi INTEGER NOT NULL,
+                duration REAL,
+                mode TEXT NOT NULL,
+                bank INTEGER,
+                session_id TEXT NOT NULL,
+                ended_at REAL
+            );
+            PRAGMA user_version = 1;
+            ",
+        )
+        .expect("seed v1 schema");
+        for (freq, tag) in rows {
+            conn.execute(
+                "INSERT INTO scan_hits (timestamp, frequency, alpha_tag, modulation, rssi, duration, mode, session_id, ended_at)
+                 VALUES (1.0, ?1, ?2, 'NFM', 30, 5.0, 'SCAN', 'seed', 6.0)",
+                rusqlite::params![freq, tag],
+            )
+            .expect("seed row");
+        }
+    }
+
+    /// A v1 database carrying real hits must reach v2 with every row intact.
+    ///
+    /// Migrations are forward-only (#418), so a step that drops rows on the way
+    /// up is unrecoverable except from the pre-migration `.bak`.
+    #[test]
+    fn analytics_v1_upgrades_to_v2_without_losing_hits() {
+        let path = temp_db_file("analytics-v1-to-v2");
+        seed_v1_analytics_db(&path, &[(146.7, Some("KC FIRE 1")), (154.1, None)]);
+
+        init_analytics_db(path.to_str().expect("path to string")).expect("migrate");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, 2, "the step must bump the version");
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM scan_hits", [], |row| row.get(0))
+            .expect("count rows");
+        assert_eq!(rows, 2, "no hit may be lost on the way to v2");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// REGRESSION GUARD: the v2 step must NOT guess at which scanner recorded
+    /// an existing hit.
+    ///
+    /// The tempting heuristic is "it carries an alpha tag, so it came from an
+    /// alpha-tag scanner" -- true, but it identifies the FAMILY, not the model.
+    /// Writing "BC125AT" would mislabel the four other members (BCT125AT,
+    /// UBC125XLT, UBC126AT, AE125H); their owners would connect a UBC125XLT,
+    /// fail to match, and watch their whole history drop out of scoped views.
+    /// NULL is the honest answer and the only one that cannot be wrong.
+    #[test]
+    fn the_v2_step_does_not_guess_a_scanner_for_existing_hits() {
+        let path = temp_db_file("analytics-no-guess");
+        seed_v1_analytics_db(&path, &[(146.7, Some("KC FIRE 1")), (154.1, None)]);
+
+        init_analytics_db(path.to_str().expect("path to string")).expect("migrate");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        let attributed: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM scan_hits WHERE scanner_id IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count attributed");
+        assert_eq!(
+            attributed, 0,
+            "a tagged hit proves the family, not the model -- leave it NULL"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Migrating twice must be a no-op, not a duplicate-column failure.
+    ///
+    /// `ALTER TABLE ... ADD COLUMN` errors if the column already exists, and
+    /// `run_migration_step` correctly refuses to bump the version on a failed
+    /// step -- so an unguarded re-run would wedge the database at v1 forever,
+    /// reporting a migration error on every launch.
+    #[test]
+    fn migrating_an_already_v2_analytics_db_is_a_no_op() {
+        let path = temp_db_file("analytics-v2-twice");
+        seed_v1_analytics_db(&path, &[(146.7, Some("KC FIRE 1"))]);
+
+        let p = path.to_str().expect("path to string");
+        init_analytics_db(p).expect("first migrate");
+        init_analytics_db(p).expect("second migrate must be a no-op");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, ANALYTICS_SCHEMA_VERSION);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A hit round-trips through SQLite carrying the model that heard it.
+    #[test]
+    fn a_hit_persists_and_reloads_its_scanner_id() {
+        let path = temp_db_file("analytics-scanner-id");
+        let p = path.to_str().expect("path to string").to_string();
+        init_analytics_db(&p).expect("migrate");
+
+        let hit = ActivityHit {
+            id: "1".to_string(),
+            timestamp: 100.0,
+            frequency: 146.7,
+            channel: Some(12),
+            alpha_tag: None,
+            rssi: 36,
+            duration: 5.0,
+            modulation: "NFM".to_string(),
+            mode: ScannerMode::Scan,
+            bank: Some(1),
+            session_id: "s".to_string(),
+            ended_at: 105.0,
+            scanner_id: Some("BC75XLT".to_string()),
+        };
+        insert_analytics_hit(&p, &hit);
+
+        let loaded = load_analytics_hits_from_db(&p);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].scanner_id.as_deref(), Some("BC75XLT"));
+        let _ = std::fs::remove_file(&path);
     }
 
     /// REGRESSION GUARD: a failed backup aborts the migration.
