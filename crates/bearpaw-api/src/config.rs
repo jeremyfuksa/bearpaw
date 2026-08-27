@@ -351,13 +351,21 @@ fn usb_candidate_rank(vid: u16, pid: u16) -> Option<u8> {
     if KNOWN_SCANNER_USB_IDS.contains(&(vid, pid)) {
         return Some(0);
     }
-    // Tier 2: a CP210x bridge. Asserts nothing about what is behind it -- these
-    // bridges are in countless unrelated devices -- so it ranks below any
-    // Uniden VID and is confirmed only by the MDL reply. Without this tier the
-    // BC75XLT is undetectable: it carries no Uniden identifiers at all.
-    if vid == SILICON_LABS_VID {
-        return Some(2);
-    }
+    // NO CP210x TIER HERE, deliberately. #419 added one, reasoning that the
+    // BC75XLT carries no Uniden identifiers -- but this function feeds ONLY
+    // `probe_known_scanner_via_usb`, whose result becomes a `usb:vid:pid`
+    // pseudo-target handed to `UsbTransport`. That transport hardcodes the
+    // Uniden CDC-ACM layout (interface 1, endpoints 0x81/0x02) and issues none
+    // of the CP210x vendor control requests a bridge needs, so it cannot drive
+    // one -- and on the way to failing it detaches the kernel driver, which on
+    // Linux strips `cp210x` off the bridge and takes the `ttyUSB` node with it
+    // until the user replugs. That would hit any CP210x on the bus, including
+    // devices with nothing to do with Bearpaw.
+    //
+    // The tier bought nothing anyway: `score_port` already ranks the BC75XLT's
+    // serial node at 60 and the multi-baud MDL probe confirms it, so the serial
+    // path wins whenever the node is openable. The USB fallback exists for the
+    // macOS no-CDC-bind case, which is a Uniden-only problem.
     if vid == UNIDEN_VID {
         return Some(1);
     }
@@ -463,6 +471,15 @@ fn score_port(p: &serialport::SerialPortInfo) -> Option<i32> {
                 .to_lowercase();
             if product.contains("uniden") || manufacturer.contains("uniden") {
                 score += 100;
+            }
+            // A CP210x bridge is how the BC75XLT reaches the host, and the
+            // SERIAL path is the only one that can drive it -- see the note in
+            // `usb_candidate_rank`. Scoring it explicitly makes that the stated
+            // intent rather than something it happens to earn from the generic
+            // rules below. Ranked well under Uniden: the bridge says nothing
+            // about what is behind it, so the MDL probe still decides.
+            if info.vid == SILICON_LABS_VID {
+                score += 25;
             }
             if product.contains("usb") {
                 score += 10;
@@ -765,19 +782,49 @@ mod tests {
         }
     }
 
-    /// The BC75XLT carries no Uniden identifiers -- it sits behind a CP2104
-    /// bridge and enumerates as Silicon Labs. Without the CP210x tier it is
-    /// undetectable. Ranked below Uniden so a real Uniden always wins.
+    /// REGRESSION GUARD: a CP210x bridge must NEVER become a direct-USB target.
+    ///
+    /// `usb_candidate_rank` feeds only `probe_known_scanner_via_usb`, whose
+    /// result becomes a `usb:vid:pid` pseudo-target handed to `UsbTransport` --
+    /// which hardcodes the Uniden CDC-ACM layout and cannot drive a bridge. On
+    /// the way to failing, `UsbTransport::open` detaches the kernel driver,
+    /// which on Linux strips `cp210x` and takes the `ttyUSB` node with it until
+    /// the user replugs. That would hit ANY CP210x on the bus -- ESP32 boards,
+    /// radio programming cables -- on a machine with no scanner attached.
+    ///
+    /// #419 added a CP210x tier here and it was wrong: the BC75XLT is found on
+    /// the SERIAL path, where `score_port` ranks its node at 60 and the
+    /// multi-baud MDL probe confirms it. The USB fallback exists for the macOS
+    /// no-CDC-bind case, which is Uniden-only.
     #[test]
-    fn cp210x_is_a_candidate_ranked_below_uniden() {
-        assert_eq!(usb_candidate_rank(SILICON_LABS_VID, 0xEA60), Some(2));
+    fn a_cp210x_bridge_is_never_a_direct_usb_target() {
+        assert_eq!(
+            usb_candidate_rank(SILICON_LABS_VID, 0xEA60),
+            None,
+            "UsbTransport cannot drive a CP210x, and reaching it detaches the \
+             kernel driver on the way to failing"
+        );
         assert_eq!(usb_candidate_rank(UNIDEN_VID, 0x0017), Some(0));
         assert_eq!(usb_candidate_rank(UNIDEN_VID, 0x9999), Some(1));
-        assert!(
-            usb_candidate_rank(UNIDEN_VID, 0x9999) < usb_candidate_rank(SILICON_LABS_VID, 0xEA60),
-            "a Uniden device must outrank a generic bridge"
-        );
         assert_eq!(usb_candidate_rank(0x1234, 0x5678), None);
+    }
+
+    /// The paired half: removing the tier must not break BC75XLT detection,
+    /// which happens on the serial path. Its node still has to outscore noise.
+    #[test]
+    fn the_cp210x_serial_node_is_still_a_strong_candidate() {
+        let cp = usb_port(
+            "/dev/cu.usbserial-020D43D8",
+            SILICON_LABS_VID,
+            0xEA60,
+            Some("X"),
+        );
+        let score = score_port(&cp).expect("a CP210x serial node must be scored");
+        assert!(
+            score >= 60,
+            "the BC75XLT is detected on the serial path, so its node must score \
+             well above zero: got {score}"
+        );
     }
 
     /// REGRESSION GUARD: one scanner can present as four serial nodes. The
