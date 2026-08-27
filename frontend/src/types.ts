@@ -53,6 +53,44 @@ export interface ChannelDraft {
   comments: string;
 }
 
+/**
+ * Memory model and feature set of the connected scanner, resolved by the
+ * backend from the `MDL` reply and sent with every `DeviceInfo`.
+ *
+ * Components must branch on these flags, never on `DeviceInfo.model`. Model
+ * strings scatter hardware knowledge across the UI and break the moment a new
+ * model lands; the backend is the single place that maps model to behaviour.
+ *
+ * Backend source of truth: `crates/bearpaw-api/src/protocol/capabilities.rs`.
+ */
+export interface ScannerCapabilities {
+  /** Highest valid channel index, and therefore the channel count. */
+  channel_count: number;
+  /** Channels per bank. 50 on the BC125AT family, 30 on the BC75XLT. */
+  channels_per_bank: number;
+  /** Number of banks. 10 on both families. */
+  bank_count: number;
+  /** False on the BC75XLT, where the CIN alpha-tag field is reserved. */
+  has_alpha_tags: boolean;
+  /** False on the BC75XLT, where modulation is a global band-plan setting. */
+  has_per_channel_modulation: boolean;
+  /** False on the BC75XLT, where the CIN tone field is reserved. */
+  has_tone_squelch: boolean;
+  /** False on the BC75XLT, which has no `BLT` command at all. */
+  has_backlight: boolean;
+  /** Accepted CIN delay values. `[-10,-5,0,1,2,3,4,5]` vs `[0,1]`. */
+  valid_delays: number[];
+  /**
+   * Delay a *cleared* channel slot reports. Not a sentinel — it is what the
+   * hardware actually returns for an empty slot, and `buildEmptyDraft` must
+   * match it exactly or cleared channels stay permanently pending.
+   * See the third-rail table in CLAUDE.md.
+   */
+  cleared_delay: number;
+  /** Serial baud rate this model speaks. */
+  default_baud: number;
+}
+
 export interface DeviceInfo {
   model?: string | null;
   port?: string | null;
@@ -64,6 +102,13 @@ export interface DeviceInfo {
   connection_status: 'connected' | 'disconnected' | 'connecting';
   diagnostic_code?: string | null;
   diagnostic_message?: string | null;
+  /**
+   * Absent until a scanner identifies itself. Consumers should use
+   * `useScannerCapabilities()` rather than reading this directly — it supplies
+   * the BC125AT-family defaults that preserve existing behaviour before a
+   * scanner connects.
+   */
+  capabilities?: ScannerCapabilities | null;
 }
 
 export type WSMessage =

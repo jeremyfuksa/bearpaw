@@ -2841,6 +2841,44 @@ mod tests {
         }
     }
 
+    /// Serialize every capability descriptor to a committed fixture the
+    /// frontend asserts against.
+    ///
+    /// Same mechanism as the route manifest above and for the same reason: a
+    /// hand-written TypeScript fixture passes whether or not it matches what
+    /// Rust actually emits, so it cannot catch the drift it exists to catch.
+    /// Renaming a field or changing `valid_delays` from a list to a range
+    /// fails here (stale fixture, dirty tree in CI) instead of silently
+    /// producing `undefined` in the UI.
+    #[test]
+    fn capability_manifest_is_written_for_the_frontend() {
+        use crate::protocol::capabilities::ScannerCapabilities;
+
+        let mut manifest = serde_json::Map::new();
+        for model in crate::config::ACCEPTED_MDL_MODELS {
+            let caps = ScannerCapabilities::for_model(model)
+                .unwrap_or_else(|| panic!("{model} is allowlisted but has no descriptor"));
+            manifest.insert(
+                model.to_string(),
+                serde_json::to_value(caps).expect("capabilities serialize"),
+            );
+        }
+
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../frontend/src/test/fixtures/scanner-capabilities.json");
+        let rendered =
+            serde_json::to_string_pretty(&serde_json::Value::Object(manifest)).unwrap() + "\n";
+        let existing = std::fs::read_to_string(&out).unwrap_or_default();
+        if existing != rendered {
+            std::fs::write(&out, &rendered).expect("write capability manifest");
+            panic!(
+                "scanner-capabilities.json was stale and has been regenerated. \
+                 Commit the updated file: {}",
+                out.display()
+            );
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Command path (frontend contract, part B)
     //

@@ -1,0 +1,122 @@
+{
+  "AE125H": {
+    "bank_count": 10,
+    "channel_count": 500,
+    "channels_per_bank": 50,
+    "cleared_delay": 2,
+    "default_baud": 115200,
+    "has_alpha_tags": true,
+    "has_backlight": true,
+    "has_per_channel_modulation": true,
+    "has_tone_squelch": true,
+    "valid_delays": [
+      -10,
+      -5,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "BC125AT": {
+    "bank_count": 10,
+    "channel_count": 500,
+    "channels_per_bank": 50,
+    "cleared_delay": 2,
+    "default_baud": 115200,
+    "has_alpha_tags": true,
+    "has_backlight": true,
+    "has_per_channel_modulation": true,
+    "has_tone_squelch": true,
+    "valid_delays": [
+      -10,
+      -5,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "BC75XLT": {
+    "bank_count": 10,
+    "channel_count": 300,
+    "channels_per_bank": 30,
+    "cleared_delay": 0,
+    "default_baud": 57600,
+    "has_alpha_tags": false,
+    "has_backlight": false,
+    "has_per_channel_modulation": false,
+    "has_tone_squelch": false,
+    "valid_delays": [
+      0,
+      1
+    ]
+  },
+  "BCT125AT": {
+    "bank_count": 10,
+    "channel_count": 500,
+    "channels_per_bank": 50,
+    "cleared_delay": 2,
+    "default_baud": 115200,
+    "has_alpha_tags": true,
+    "has_backlight": true,
+    "has_per_channel_modulation": true,
+    "has_tone_squelch": true,
+    "valid_delays": [
+      -10,
+      -5,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "UBC125XLT": {
+    "bank_count": 10,
+    "channel_count": 500,
+    "channels_per_bank": 50,
+    "cleared_delay": 2,
+    "default_baud": 115200,
+    "has_alpha_tags": true,
+    "has_backlight": true,
+    "has_per_channel_modulation": true,
+    "has_tone_squelch": true,
+    "valid_delays": [
+      -10,
+      -5,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "UBC126AT": {
+    "bank_count": 10,
+    "channel_count": 500,
+    "channels_per_bank": 50,
+    "cleared_delay": 2,
+    "default_baud": 115200,
+    "has_alpha_tags": true,
+    "has_backlight": true,
+    "has_per_channel_modulation": true,
+    "has_tone_squelch": true,
+    "valid_delays": [
+      -10,
+      -5,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  }
+}
