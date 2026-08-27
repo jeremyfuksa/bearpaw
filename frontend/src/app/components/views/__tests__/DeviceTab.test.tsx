@@ -402,6 +402,7 @@ describe('DeviceTab', () => {
       channels_per_bank: 30,
       bank_count: 10,
       has_alpha_tags: false,
+      reports_live_channel: false,
       has_per_channel_modulation: false,
       has_tone_squelch: false,
       has_backlight_control: false,

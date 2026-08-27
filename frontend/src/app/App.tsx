@@ -21,6 +21,7 @@ import type { BanksUpdateMessage, LiveState, ProgressMessage, StateUpdateMessage
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ScanView } from './components/views/ScanView';
+import { useScannerCapabilities } from '../hooks/useScannerCapabilities';
 import { DataDiagnosticBanner } from './components/DataDiagnosticBanner';
 import { TabBar } from './components/TabBar';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
@@ -100,6 +101,9 @@ export default function App() {
 
   const liveState = useStore((state) => state.liveState);
   const deviceInfo = useStore((state) => state.deviceInfo);
+  // Falls back to the BC125AT-family defaults until device_info arrives, so
+  // the status bar does not flash a differently-shaped stat row on connect.
+  const capabilities = useScannerCapabilities();
   const channels = useStore((state) => state.channels);
   const fullActivityLog = useStore((state) => state.fullActivityLog);
   const preferences = useStore((state) => state.preferences);
@@ -1155,6 +1159,7 @@ export default function App() {
           shellStatusText={shellStatusText}
           currentTab={currentTab}
           sessionStats={currentTab === 'Scan' ? sessionStats : null}
+          showChannelCount={capabilities.reports_live_channel}
         />
 
         {/* Announces scan-hit / scanning / connection transitions to screen

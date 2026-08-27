@@ -31,6 +31,7 @@
     "has_tone_squelch": true,
     "has_weather_alert": true,
     "key_beep_needs_program_mode": false,
+    "reports_live_channel": true,
     "valid_delays": [
       -10,
       -5,
@@ -74,6 +75,7 @@
     "has_tone_squelch": true,
     "has_weather_alert": true,
     "key_beep_needs_program_mode": false,
+    "reports_live_channel": true,
     "valid_delays": [
       -10,
       -5,
@@ -113,6 +115,7 @@
     "has_tone_squelch": false,
     "has_weather_alert": false,
     "key_beep_needs_program_mode": true,
+    "reports_live_channel": false,
     "valid_delays": [
       0,
       1
@@ -150,6 +153,7 @@
     "has_tone_squelch": true,
     "has_weather_alert": true,
     "key_beep_needs_program_mode": false,
+    "reports_live_channel": true,
     "valid_delays": [
       -10,
       -5,
@@ -193,6 +197,7 @@
     "has_tone_squelch": true,
     "has_weather_alert": true,
     "key_beep_needs_program_mode": false,
+    "reports_live_channel": true,
     "valid_delays": [
       -10,
       -5,
@@ -236,6 +241,7 @@
     "has_tone_squelch": true,
     "has_weather_alert": true,
     "key_beep_needs_program_mode": false,
+    "reports_live_channel": true,
     "valid_delays": [
       -10,
       -5,

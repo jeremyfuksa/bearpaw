@@ -43,6 +43,23 @@ pub struct ScannerCapabilities {
     /// Whether `CIN` carries a channel name. False on the BC75XLT, where the
     /// field is present but reserved.
     pub has_alpha_tags: bool,
+    /// Whether the live `GLG` frame reports which channel is being received.
+    ///
+    /// A separate flag from `has_alpha_tags` even though the two agree on both
+    /// families today: one describes stored channel MEMORY (`CIN` field), the
+    /// other describes the LIVE frame (`GLG` field 11). Measured on hardware
+    /// 2026-08-27 --
+    ///
+    /// ```text
+    /// BC125AT  GLG,04626125,NFM,,0,,,GMRS CH 03,1,0,,75,   <- field 11 = 75
+    /// BC75XLT  GLG,145.1300,NFM,,,,,,0,1,,,                <- field 11 empty
+    /// ```
+    ///
+    /// Consumers use it to hide channel-derived readouts rather than print a
+    /// value that can never be anything but zero -- the status bar's "unique
+    /// channels" counter read `0` forever on a BC75XLT, which looks like the
+    /// scanner is finding nothing while it is actively scanning.
+    pub reports_live_channel: bool,
     /// Whether `CIN` carries per-channel modulation. False on the BC75XLT,
     /// where modulation is a global band-plan (`BPL`) property.
     pub has_per_channel_modulation: bool,
@@ -114,6 +131,7 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     channels_per_bank: 50,
     bank_count: 10,
     has_alpha_tags: true,
+    reports_live_channel: true,
     has_per_channel_modulation: true,
     has_tone_squelch: true,
     has_backlight_control: true,
@@ -139,6 +157,7 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     channels_per_bank: 30,
     bank_count: 10,
     has_alpha_tags: false,
+    reports_live_channel: false,
     has_per_channel_modulation: false,
     has_tone_squelch: false,
     has_backlight_control: false,
@@ -281,6 +300,7 @@ mod tests {
         assert_eq!(c.cleared_delay, 2, "parse_cin_response defaults to 2");
         assert_eq!(c.default_baud, 115_200);
         assert!(c.has_alpha_tags);
+        assert!(c.reports_live_channel, "GLG field 11 carries the channel");
         assert!(c.has_per_channel_modulation);
         assert!(c.has_tone_squelch);
         assert!(c.has_backlight_control);
@@ -309,6 +329,10 @@ mod tests {
         assert_eq!(c.default_baud, 57_600);
         // CIN fields 2, 4, 5 are [RSV].
         assert!(!c.has_alpha_tags);
+        assert!(
+            !c.reports_live_channel,
+            "GLG field 11 is empty on this model -- measured on hardware 2026-08-27"
+        );
         assert!(!c.has_per_channel_modulation);
         assert!(!c.has_tone_squelch);
         // BLT is absent from the command table; replies bare ERR. The scanner

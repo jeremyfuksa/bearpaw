@@ -1,9 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { render, screen } from '@testing-library/react';
 import { rollUpHits, ScanView } from '../ScanView';
 import { useStore } from '../../../../store/useStore';
 import { createTestLiveState, createTestActivityLogEntry } from '../../../../test/fixtures';
-import type { ActivityLogEntry } from '../../../../types';
+import type { ActivityLogEntry, ScannerCapabilities } from '../../../../types';
+
+// Read the REAL descriptor a backend test writes from the Rust allowlist, not
+// a hand-built literal. CLAUDE.md records two earlier guards that rebuilt the
+// shape they meant to check and passed while the bug was live.
+const CAPS: Record<string, ScannerCapabilities> = JSON.parse(
+  readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../../test/fixtures/scanner-capabilities.json',
+    ),
+    'utf-8',
+  ),
+);
 
 // Minimal entry factory. Tests pass entries newest-first, the same order
 // `fullActivityLog` is kept in the store.
@@ -35,7 +51,13 @@ describe('rollUpHits', () => {
     expect(rolled.map((r) => r.count)).toEqual([1, 1, 1]);
   });
 
-  it('collapses a run of same-channel hits into one row with a count suffix', () => {
+  // The `(N)` suffix used to be baked into `tag` by this helper. It moved to
+  // the renderer because a scanner with no alpha tags has no tag column to
+  // carry it -- a bare "(3)" alone in an empty column reads as a glitch, and
+  // the count now sits beside the frequency instead. These tests assert the
+  // GROUPING contract (`count`, run boundaries), which is what they were
+  // really pinning; presentation is asserted where it is now decided.
+  it('collapses a run of same-channel hits into one row', () => {
     const entries = Array.from({ length: 6 }, (_, i) =>
       hit({
         id: `h${i}`,
@@ -50,7 +72,7 @@ describe('rollUpHits', () => {
     const rolled = rollUpHits(entries);
     expect(rolled).toHaveLength(1);
     expect(rolled[0].count).toBe(6);
-    expect(rolled[0].tag).toBe('WOF Rides (6)');
+    expect(rolled[0].tag).toBe('WOF Rides');
     // time is the most recent (newest) hit in the group
     expect(rolled[0].time).toBe(60);
     // id is the most recent hit's id (stable React key)
@@ -65,7 +87,7 @@ describe('rollUpHits', () => {
       hit({ id: 'b1', timestamp: 20, channel: 2, alpha_tag: 'Police' }),
       hit({ id: 'a3', timestamp: 10, channel: 1, alpha_tag: 'WOF Rides' }),
     ]);
-    expect(rolled.map((r) => r.tag)).toEqual(['WOF Rides (2)', 'Police', 'WOF Rides']);
+    expect(rolled.map((r) => r.tag)).toEqual(['WOF Rides', 'Police', 'WOF Rides']);
     expect(rolled.map((r) => r.count)).toEqual([2, 1, 1]);
   });
 
@@ -100,7 +122,7 @@ describe('rollUpHits', () => {
     const rolled = rollUpHits(entries);
     expect(rolled).toHaveLength(1);
     expect(rolled[0].count).toBe(8);
-    expect(rolled[0].tag).toBe('Repeater (8)');
+    expect(rolled[0].tag).toBe('Repeater');
   });
 
   it('rolls up every group (the 5-row display cap is the caller’s concern)', () => {
@@ -122,19 +144,24 @@ describe('rollUpHits', () => {
     expect(rolled[0].strength).toBe(4);
   });
 
-  it('renders an em dash for a null tag', () => {
+  // The em dash is applied by the renderer, and ONLY when the tag column is
+  // shown. Baking it in here produced a full column of dashes on a BC75XLT,
+  // which has no alpha tags at all -- roughly a third of every row saying
+  // nothing. The helper reports the absence; the view decides how to show it.
+  it('leaves a null tag empty rather than substituting a placeholder', () => {
     const rolled = rollUpHits([
       hit({ id: 'n1', timestamp: 10, channel: 9, alpha_tag: null, frequency: 146.85 }),
     ]);
-    expect(rolled[0].tag).toBe('—');
+    expect(rolled[0].tag).toBe('');
   });
 
-  it('appends the count to an em-dash tag when a null-tag run repeats', () => {
+  it('still counts a repeated null-tag run', () => {
     const rolled = rollUpHits([
       hit({ id: 'n1', timestamp: 20, channel: 9, alpha_tag: null }),
       hit({ id: 'n2', timestamp: 10, channel: 9, alpha_tag: null }),
     ]);
-    expect(rolled[0].tag).toBe('— (2)');
+    expect(rolled[0].tag).toBe('');
+    expect(rolled[0].count).toBe(2);
   });
 });
 
@@ -193,5 +220,69 @@ describe('ScanView Recent Hits rendering', () => {
     expect(screen.getByText('Ch4')).toBeInTheDocument();
     expect(screen.queryByText('Ch5')).not.toBeInTheDocument();
     expect(screen.queryByText('Ch6')).not.toBeInTheDocument();
+  });
+
+  // A BC75XLT has no alpha tags at all, so the tag column rendered an em dash
+  // on every row -- about a third of each row saying nothing. The column is
+  // removed rather than blanked (CLAUDE.md: hide unsupported surfaces), and
+  // the roll-up count moves beside the frequency, which becomes the row's
+  // identity.
+  describe('on a scanner with no alpha tags', () => {
+    beforeEach(() => {
+      useStore.setState({
+        deviceInfo: {
+          model: 'BC75XLT',
+          connection_status: 'connected',
+          capabilities: CAPS.BC75XLT,
+        },
+        fullActivityLog: [
+          createTestActivityLogEntry({
+            id: 'n1',
+            timestamp: 100,
+            channel: null,
+            alpha_tag: null,
+            frequency: 146.85,
+          }),
+          createTestActivityLogEntry({
+            id: 'n2',
+            timestamp: 99,
+            channel: null,
+            alpha_tag: null,
+            frequency: 146.85,
+          }),
+        ],
+      });
+    });
+
+    it('renders no em-dash placeholder column', () => {
+      render(<ScanView {...baseProps} />);
+      expect(screen.queryByText('—')).not.toBeInTheDocument();
+      expect(screen.queryByText(/^— \(\d+\)$/)).not.toBeInTheDocument();
+    });
+
+    it('shows the roll-up count beside the frequency instead', () => {
+      render(<ScanView {...baseProps} />);
+      expect(screen.getByText('146.850 (2)')).toBeInTheDocument();
+    });
+  });
+
+  it('keeps the tag column on a scanner that has alpha tags', () => {
+    useStore.setState({
+      deviceInfo: {
+        model: 'BC125AT',
+        connection_status: 'connected',
+        capabilities: CAPS.BC125AT,
+      },
+      fullActivityLog: [
+        createTestActivityLogEntry({
+          id: 't1',
+          timestamp: 100,
+          channel: 7,
+          alpha_tag: 'WOF Rides',
+        }),
+      ],
+    });
+    render(<ScanView {...baseProps} />);
+    expect(screen.getByText('WOF Rides')).toBeInTheDocument();
   });
 });
