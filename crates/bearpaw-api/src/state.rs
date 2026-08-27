@@ -104,6 +104,22 @@ pub struct DeviceInfo {
     pub diagnostic_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic_message: Option<String>,
+    /// Memory model and feature set of the connected scanner, resolved from the
+    /// `MDL` reply at connect. Lives on `DeviceInfo` rather than as a sibling
+    /// `AppState` field so `model` and `capabilities` are always read under one
+    /// lock -- a separate lock would let a reader observe a BC75XLT model with
+    /// BC125AT capabilities in the window between two writes.
+    ///
+    /// `None` until a scanner identifies itself. Consumers that need a value
+    /// before connect use `ScannerCapabilities::default()` (the BC125AT
+    /// family), which preserves today's behavior.
+    ///
+    /// `skip_deserializing` because `ScannerCapabilities` is deliberately
+    /// Serialize-only -- see the note on that type. `DeviceInfo` is only ever
+    /// serialized outward (`Json<DeviceInfo>` is a response body, never a
+    /// request body), so nothing is lost.
+    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing)]
+    pub capabilities: Option<crate::protocol::capabilities::ScannerCapabilities>,
 }
 
 /// Kind of tone squelch carried on a channel. The BC125AT wire field is an
