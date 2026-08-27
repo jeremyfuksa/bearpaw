@@ -50,6 +50,7 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   hitMinDuration: 'hit_min_duration',
   dataRetentionDays: 'data_retention_days',
   checkUpdatesOnLaunch: 'check_updates_on_launch',
+  analyticsScope: 'analytics_scope',
 };
 
 // Close Call (CLC) mode: UI value -> wire digit. Digits confirmed on hardware
@@ -1685,6 +1686,29 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                       />
                     </div>
                   )}
+
+                  {/* Not gated on capabilities: the choice is about the stored
+                    history, which can contain hits from a scanner that is not
+                    the one attached right now. Hiding it when only one scanner
+                    has ever been used would hide it exactly when a user is
+                    trying to work out why their old hits disappeared. */}
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <label htmlFor="analytics-scope" className="text-base font-medium text-white">
+                        Combine Scanner Analytics
+                      </label>
+                      <p className="text-sm text-white/60">
+                        Count hits from every scanner you have used, not just the connected one
+                      </p>
+                    </div>
+                    <Switch
+                      id="analytics-scope"
+                      checked={preferences.analyticsScope === 'all'}
+                      onCheckedChange={(checked) =>
+                        handlePreferenceChange('analyticsScope', checked ? 'all' : 'scanner')
+                      }
+                    />
+                  </div>
                 </div>
               </section>
 

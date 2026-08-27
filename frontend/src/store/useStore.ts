@@ -10,6 +10,15 @@ export interface Preferences {
   audioOutputDevice: string;
   /** #273: gates the automatic update check the desktop shell runs at launch. */
   checkUpdatesOnLaunch: boolean;
+  /**
+   * Whether the Scan page's analytics count only the connected scanner
+   * ('scanner') or every scanner ever attached ('all').
+   *
+   * Governs Busiest Channels, the Activity Heatmap and Recent Hits together:
+   * a heatmap showing both radios beside a chart showing one reads as a bug
+   * rather than a choice.
+   */
+  analyticsScope: 'scanner' | 'all';
 }
 
 /**
@@ -75,6 +84,7 @@ const defaultPreferences: Preferences = {
   dataRetentionDays: 30,
   audioOutputDevice: 'default',
   checkUpdatesOnLaunch: true,
+  analyticsScope: 'scanner',
 };
 
 const defaultLiveState: LiveState = {

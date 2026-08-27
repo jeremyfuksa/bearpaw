@@ -10,10 +10,24 @@ use super::super::{
 
 /// Which scanner's hits the analytics views should count.
 ///
-/// `None` while nothing is connected, which means "count everything" -- an
-/// empty dashboard on a disconnected app would look broken rather than
-/// scoped.
-fn connected_scanner(state: &AppState) -> Option<String> {
+/// `None` means "count everything", and there are two ways to get there:
+/// nothing is connected (an empty dashboard on a disconnected app would look
+/// broken rather than scoped), or the user set `analytics_scope` to `"all"`.
+/// Both collapse to the same answer, so the callers need no extra branch.
+fn analytics_scanner_filter(state: &AppState) -> Option<String> {
+    let sum_across_scanners = state
+        .preferences
+        .lock()
+        .ok()
+        .and_then(|p| {
+            p.get("analytics_scope")
+                .and_then(Value::as_str)
+                .map(|scope| scope == "all")
+        })
+        .unwrap_or(false);
+    if sum_across_scanners {
+        return None;
+    }
     state.device.read().ok().and_then(|d| d.model.clone())
 }
 
@@ -56,7 +70,7 @@ pub(crate) async fn analytics_busiest(
     let cutoff = query.hours.map(|h| epoch_now() - h.max(0.1) * 3600.0);
     let min_duration = min_hit_duration(&state);
 
-    let scanner = connected_scanner(&state);
+    let scanner = analytics_scanner_filter(&state);
     let log = state.analytics_log.lock().unwrap();
     let mut grouped: HashMap<String, (f64, Option<String>, Option<u16>, usize, f64, f64)> =
         HashMap::new();
@@ -156,7 +170,7 @@ pub(crate) async fn analytics_hourly_heatmap(
     let tz_shift_secs = f64::from(query.tz_offset_minutes.unwrap_or(0).clamp(-840, 840)) * 60.0;
     let cutoff = epoch_now() - (days as f64 * 24.0 * 3600.0);
     let min_duration = min_hit_duration(&state);
-    let scanner = connected_scanner(&state);
+    let scanner = analytics_scanner_filter(&state);
     let log = state.analytics_log.lock().unwrap();
     let mut bins: HashMap<(u32, u32), u64> = HashMap::new();
     for hit in log.iter().filter(|h| {
@@ -214,7 +228,7 @@ pub(crate) async fn analytics_activity_log(
     let start = query.start_time.unwrap_or(0.0);
     let end = query.end_time.unwrap_or(f64::MAX);
     let channel_filter = query.channel;
-    let scanner = connected_scanner(&state);
+    let scanner = analytics_scanner_filter(&state);
     let mut rows = state
         .analytics_log
         .lock()
@@ -307,6 +321,56 @@ mod tests {
 
     /// With nothing connected the views must not filter themselves empty --
     /// a blank dashboard reads as broken, not as scoped.
+    /// The `analytics_scope` preference turns the per-scanner filter off.
+    ///
+    /// "All scanners" is expressed as `None` -- the same value a disconnected
+    /// app produces -- so every call site keeps one code path. A second flag
+    /// threaded through three handlers would be the obvious alternative and is
+    /// strictly more to get wrong.
+    #[test]
+    fn the_all_scanners_preference_disables_scoping() {
+        let state = crate::api::default_state();
+        {
+            let mut d = state.device.write().unwrap();
+            d.model = Some("BC75XLT".to_string());
+        }
+        assert_eq!(
+            analytics_scanner_filter(&state).as_deref(),
+            Some("BC75XLT"),
+            "the default preference scopes to the connected scanner"
+        );
+
+        state
+            .preferences
+            .lock()
+            .unwrap()
+            .insert("analytics_scope".to_string(), json!("all"));
+
+        assert_eq!(
+            analytics_scanner_filter(&state),
+            None,
+            "\"all\" must collapse to the same None that means count everything"
+        );
+    }
+
+    /// An unrecognised value must scope rather than sum. A typo in a stored
+    /// preference should not silently widen what the dashboard counts.
+    #[test]
+    fn an_unknown_scope_value_falls_back_to_per_scanner() {
+        let state = crate::api::default_state();
+        {
+            let mut d = state.device.write().unwrap();
+            d.model = Some("BC75XLT".to_string());
+        }
+        state
+            .preferences
+            .lock()
+            .unwrap()
+            .insert("analytics_scope".to_string(), json!("everything"));
+
+        assert_eq!(analytics_scanner_filter(&state).as_deref(), Some("BC75XLT"));
+    }
+
     #[test]
     fn nothing_connected_counts_everything() {
         assert!(hit_matches_scanner(&hit(Some("BC125AT")), None));
