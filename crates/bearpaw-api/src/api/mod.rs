@@ -2324,6 +2324,50 @@ mod tests {
             self.transcript.lock().unwrap().clone()
         }
 
+        /// The transcript, with the program-mode bracket guaranteed complete.
+        ///
+        /// `PRG` is sent through `send_raw_command`, which awaits its reply, so
+        /// it is always recorded by the time a response returns. `EPG` is not:
+        /// `ProgramModeGuard::drop` fires it down the command channel without
+        /// awaiting, because Drop cannot await. Reading the transcript the
+        /// instant the response returns therefore races the fake scanner's
+        /// thread -- invisible on a fast idle machine, an unreproducible
+        /// failure on a loaded CI runner.
+        ///
+        /// Waits only when a bracket was actually opened. Commands valid in any
+        /// mode (`VOL`, `SQL`) never open one, so waiting for their EPG would
+        /// burn the whole timeout on every such test.
+        fn transcript_with_closed_bracket(&self) -> Vec<String> {
+            let t = self.transcript();
+            if !t.iter().any(|c| c == "PRG") {
+                return t;
+            }
+            self.transcript_once_seen("EPG")
+        }
+
+        /// The transcript, once `command` appears in it.
+        ///
+        /// `EPG` is sent fire-and-forget from `ProgramModeGuard::drop` -- it
+        /// goes down the command channel without awaiting a reply, by design,
+        /// because Drop cannot await. So a test that reads the transcript the
+        /// instant the HTTP response returns is racing the fake scanner's
+        /// thread. That race is invisible on a fast idle machine and shows up
+        /// on a loaded CI runner as an unreproducible failure, which is the
+        /// worst shape a test failure can take.
+        ///
+        /// Waits rather than sleeping a fixed amount: the assertion is "EPG
+        /// eventually arrives", so the test should express exactly that.
+        fn transcript_once_seen(&self, command: &str) -> Vec<String> {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                let t = self.transcript();
+                if t.iter().any(|c| c == command) || std::time::Instant::now() > deadline {
+                    return t;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+
         /// Commands the fake saw, keeping only those starting with `prefix`.
         fn commands_starting_with(&self, prefix: &str) -> Vec<String> {
             self.transcript()
@@ -3953,7 +3997,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
-        let transcript = fake.transcript();
+        let transcript = fake.transcript_with_closed_bracket();
         assert!(
             transcript.iter().any(|c| c == "PRG"),
             "priority write must open a program-mode bracket: {transcript:?}"
@@ -3994,7 +4038,12 @@ mod tests {
             )
             .await
             .unwrap();
-        (response.status(), fake.transcript())
+        // Wait for the bracket to close before reading. EPG is fire-and-forget
+        // from ProgramModeGuard::drop, so reading immediately races the fake
+        // scanner's thread -- invisible locally, an unreproducible CI failure
+        // under load. Only wait when the request succeeded: a rejected body
+        // never opens a bracket, and those tests assert an EMPTY transcript.
+        (response.status(), fake.transcript_with_closed_bracket())
     }
 
     /// The wire commands a settings write issues, with the PRG/EPG bracket
@@ -4452,7 +4501,7 @@ mod tests {
             )
             .await
             .unwrap();
-        (response.status(), fake.transcript())
+        (response.status(), fake.transcript_with_closed_bracket())
     }
 
     fn channel_body(frequency: f64, tag: &str, delay: i64, bank: u8) -> String {
