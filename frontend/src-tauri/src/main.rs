@@ -146,10 +146,19 @@ fn start_backend_runtime(
     let cfg = bearpaw_api::load_config(config_path.as_deref());
     let api_state = bearpaw_api::default_state();
     let bind = format!("{}:{}", cfg.api.host, cfg.api.port);
-    let resolved_serial = bearpaw_api::resolve_serial_port(&cfg);
-    let baud = cfg.device.baud.unwrap_or(115200);
+    // Detection returns the rate that actually produced an MDL reply, which can
+    // differ from `device.baud` -- the BC75XLT speaks 57600 where the BC125AT
+    // family speaks 115200, and `device.baud` is unset in a default install.
+    // Substituting the configured rate here reopens the port at a rate
+    // detection just proved wrong, so the scanner answers framing garbage and
+    // the app sits at "disconnected" with the port resolved. `bearpaw`'s own
+    // binary has always done this correctly; the shell drifted because
+    // `resolve_scanner_port` was not re-exported from the crate root, leaving
+    // the baud-discarding wrapper as the only reachable option.
+    let resolved = bearpaw_api::resolve_scanner_port(&cfg);
+    let resolved_serial = resolved.as_ref().map(|r| r.port_name.clone());
     let assert_dtr = cfg.device.assert_dtr_on_open;
-    let serial_port = resolved_serial.clone().map(|p| (p, baud, assert_dtr));
+    let serial_port = resolved.map(|r| (r.port_name, r.baud, assert_dtr));
 
     // `last_error` drives the status-bar "(error)" badge in the UI, so it
     // must only hold real failures. "No config file found" is benign —
