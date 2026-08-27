@@ -1,0 +1,23 @@
+=== Phase 1: identity + live state (no program mode) ===
+MDL          -> 'MDL,BC75XLT<CR>'
+VER          -> 'VER,Version 1.02.04<CR>'
+STS          -> 'STS,1, 145.1300      ,,0,1<CR>'
+GLG          -> 'GLG,145.1300,NFM,,,,,,0,1,,,<CR>'
+PWR          -> 'PWR,278,01451300<CR>'
+VOL          -> 'VOL,0<CR>'
+SQL          -> 'SQL,2<CR>'
+
+=== Phase 2: PRG bracket (read-only) ===
+PRG          -> 'PRG,OK<CR>'
+CIN,1        -> 'CIN,1,,01451300,,,1,0,1<CR>'
+CIN,2        -> 'CIN,2,,01469550,,,1,0,0<CR>'
+CIN,30       -> 'CIN,30,,01473750,,,1,0,0<CR>'
+CIN,31       -> 'CIN,31,,04422000,,,1,0,1<CR>'
+CIN,299      -> 'CIN,299,,00000000,,,0,1,0<CR>'
+CIN,300      -> 'CIN,300,,00000000,,,0,1,0<CR>'
+CIN,301      -> 'CIN,ERR<CR>'
+CIN,500      -> 'CIN,ERR<CR>'
+SCG          -> 'SCG,0000000111<CR>'
+BLT          -> 'ERR<CR>'
+PRI          -> 'PRI,0<CR>'
+EPG          -> 'EPG,OK<CR>'
