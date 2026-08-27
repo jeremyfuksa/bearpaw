@@ -51,13 +51,27 @@ pub(crate) async fn get_memory_channel(
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
     if command_sender(&state).is_ok() {
-        if let Ok(channel) = read_channel_from_scanner(&state, index).await {
+        if let Ok(mut channel) = read_channel_from_scanner(&state, index).await {
             state
                 .shadow
                 .write()
                 .unwrap()
                 .channels
                 .insert(index, channel.clone());
+            // Derive the bank before returning. `parse_cin_response` leaves
+            // `bank: 0` deliberately -- it is pure, has no capability
+            // descriptor, and the wire carries no bank field at all
+            // (membership comes from SCG). Every boundary that hands a channel
+            // outward therefore has to derive it, which is what
+            // `channels_with_banks` does for the list endpoint. This one did
+            // not, so a single-channel read returned bank 0 while the list
+            // returned the real bank for the same channel.
+            //
+            // Not cosmetic: the bulk-upload loop calls this per channel and,
+            // on a write mismatch, feeds the result straight into the
+            // frontend's channel list -- writing bank 0 over a correct value.
+            // See the third-rail note on bank derivation in CLAUDE.md.
+            channel.bank = state.capabilities().index_to_bank(channel.index);
             return Ok(Json(channel));
         }
     }

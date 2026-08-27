@@ -1912,7 +1912,28 @@ fn readback_matches(
     caps: &ScannerCapabilities,
 ) -> bool {
     if wrote.frequency.abs() < 0.00005 {
-        return is_factory_empty(readback, caps);
+        // A cleared slot must match the factory-empty signature EXCEPT for a
+        // priority bit the firmware would not let us clear.
+        //
+        // REGRESSION GUARD (`clearing_a_priority_channel_is_not_a_failure`):
+        // the firmware refuses an in-place priority 1->0 CIN write -- see
+        // `clear_channel_priority`, which exists because DCH+rewrite is the
+        // only mechanism. So clearing a channel that IS the bank's priority
+        // channel writes priority=1, reads back priority=1, and used to fail
+        // `is_factory_empty`'s `!priority` term: a 400 `channel_not_persisted`
+        // AFTER the write had already landed, with the shadow-cache update
+        // skipped so the backend's view went stale too. Observed on hardware
+        // 2026-08-27 clearing channel 271 -- the wrote and read_back strings
+        // in the warning were byte-identical.
+        //
+        // The non-clear path below already carries exactly this tolerance
+        // (`priority_ok`). This branch short-circuited before reaching it.
+        // `is_factory_empty` itself stays strict: it describes what the
+        // scanner stamps on a slot, and `clear_channel_priority` depends on
+        // that strictness to detect a stuck priority bit.
+        let stuck_priority = wrote.priority && readback.priority;
+        return is_factory_empty(readback, caps)
+            || (stuck_priority && is_factory_empty_ignoring_priority(readback, caps));
     }
     let priority_ok = readback.priority == wrote.priority || (!wrote.priority && readback.priority); // refused clear — see guard above
     (readback.frequency - wrote.frequency).abs() < 0.00005
@@ -1954,6 +1975,16 @@ fn priority_clear_persisted(
 /// those aren't part of the forced-empty invariant — what matters is that the
 /// scanner ignored the delay/lockout/priority we sent and forced these values.
 fn is_factory_empty(ch: &ChannelData, caps: &ScannerCapabilities) -> bool {
+    is_factory_empty_ignoring_priority(ch, caps) && !ch.priority
+}
+
+/// `is_factory_empty` without the priority term.
+///
+/// Split out for the one caller that must tolerate a priority bit the
+/// firmware refused to clear (see `readback_matches`). Everything else --
+/// including `clear_channel_priority`, whose whole purpose is to force
+/// priority to 0 -- keeps the strict predicate.
+fn is_factory_empty_ignoring_priority(ch: &ChannelData, caps: &ScannerCapabilities) -> bool {
     ch.frequency.abs() < 0.00005
         // Model-dependent: the BC125AT family reports 2 for a cleared slot, a
         // BC75XLT reports 0 (`CIN,299 -> CIN,299,,00000000,,,0,1,0`, hardware
@@ -1966,7 +1997,6 @@ fn is_factory_empty(ch: &ChannelData, caps: &ScannerCapabilities) -> bool {
         // slot. See #402 and the third-rail note on `buildEmptyDraft`.
         && ch.delay == caps.cleared_delay
         && ch.lockout
-        && !ch.priority
         && ch.tone_squelch_kind == crate::state::ToneSquelchKind::None
 }
 
@@ -3569,6 +3599,142 @@ mod tests {
     /// handler skipped its shadow-cache update so the backend's own view went
     /// stale. That hit not just an explicit clear but any bulk upload or
     /// reorder whose write-set included an empty slot.
+    /// REGRESSION GUARD: clearing a channel that IS the bank's priority
+    /// channel must not report failure.
+    ///
+    /// The firmware refuses an in-place priority 1->0 CIN write (see
+    /// `clear_channel_priority`, which exists because DCH+rewrite is the only
+    /// mechanism). So the clear writes priority=1 and reads back priority=1,
+    /// which `is_factory_empty`'s `!priority` term rejected -- returning 400
+    /// `channel_not_persisted` AFTER the write had already landed on the wire,
+    /// and skipping the shadow-cache update so the backend went stale too.
+    ///
+    /// Observed on hardware 2026-08-27 clearing channel 271 on a BC75XLT:
+    /// `wrote=CIN,271,,00000000,,,0,1,1 read_back=CIN,271,,00000000,,,0,1,1`
+    /// -- byte-identical, and still reported as not persisted. Not
+    /// model-specific: a BC125AT clearing its priority channel hits it too.
+    /// REGRESSION GUARD: a single-channel read must derive the bank.
+    ///
+    /// `parse_cin_response` leaves `bank: 0` deliberately -- it is pure, has no
+    /// capability descriptor, and the wire carries no bank field (membership
+    /// comes from SCG). So every boundary that hands a channel outward has to
+    /// derive it. `channels_with_banks` does that for the list endpoint;
+    /// `get_memory_channel`'s wire path did not, so the same channel reported
+    /// bank 10 from the list and bank 0 from a direct read.
+    ///
+    /// Not cosmetic: the bulk-upload loop calls this per channel and, on a
+    /// write mismatch, feeds the result straight into the frontend's channel
+    /// list -- writing bank 0 over a correct value. CLAUDE.md notes that a
+    /// frontend/backend bank disagreement "is how a priority swap clears the
+    /// wrong bank".
+    #[tokio::test]
+    async fn a_single_channel_read_derives_its_bank() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        let _scanner = FakeScanner::attach(&state, |cmd: &str| {
+            if cmd == "CIN,271" {
+                // A cleared slot as this hardware reports it (2026-08-27).
+                Ok("CIN,271,,00000000,,,0,1,1".to_string())
+            } else {
+                Ok("OK".to_string())
+            }
+        });
+
+        let channel = super::handlers::memory::get_memory_channel(
+            axum::extract::State(state.clone()),
+            axum::extract::Path(271u16),
+        )
+        .await
+        .expect("read should succeed")
+        .0;
+
+        // 30 channels per bank on a BC75XLT: 271 -> bank 10, never 0.
+        assert_eq!(
+            channel.bank,
+            BC75XLT.index_to_bank(271),
+            "the wire read must derive the bank, like the list endpoint does"
+        );
+        assert_ne!(channel.bank, 0, "bank 0 is the parser's placeholder");
+    }
+
+    #[test]
+    fn clearing_a_priority_channel_is_not_a_failure() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        // What the upload sends for a clear of a priority channel...
+        let mut wrote = test_channel();
+        wrote.frequency = 0.0;
+        wrote.priority = true;
+
+        // ...and what the radio reports back: cleared, but priority stuck on.
+        let mut readback = test_channel();
+        readback.frequency = 0.0;
+        readback.delay = BC75XLT.cleared_delay;
+        readback.lockout = true;
+        readback.priority = true;
+        readback.tone_squelch_kind = crate::state::ToneSquelchKind::None;
+
+        assert!(
+            readback_matches(&wrote, &readback, "", &BC75XLT),
+            "the write landed exactly as sent; a priority bit the firmware \
+             refuses to clear must not be reported as a failed write"
+        );
+
+        // The strict predicate must stay strict -- clear_channel_priority
+        // depends on it to detect exactly this stuck bit.
+        assert!(
+            !is_factory_empty(&readback, &BC75XLT),
+            "is_factory_empty itself must still require priority to be clear"
+        );
+    }
+
+    /// The tolerance is narrow: it applies only when we DELIBERATELY wrote
+    /// priority=1. A clear that asked for priority=0 and read back 1 is a
+    /// genuine failure and must still be reported.
+    #[test]
+    fn a_clear_that_did_not_ask_for_priority_still_fails_on_a_stuck_bit() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let mut wrote = test_channel();
+        wrote.frequency = 0.0;
+        wrote.priority = false;
+
+        let mut readback = test_channel();
+        readback.frequency = 0.0;
+        readback.delay = BC75XLT.cleared_delay;
+        readback.lockout = true;
+        readback.priority = true;
+        readback.tone_squelch_kind = crate::state::ToneSquelchKind::None;
+
+        assert!(
+            !readback_matches(&wrote, &readback, "", &BC75XLT),
+            "we did not write the priority bit, so its being set is a real \
+             mismatch, not a firmware refusal"
+        );
+    }
+
+    /// The other fields still have to match. Tolerating the priority bit must
+    /// not turn the clear check into "anything with frequency 0 passes".
+    #[test]
+    fn a_clear_with_the_wrong_delay_still_fails() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let mut wrote = test_channel();
+        wrote.frequency = 0.0;
+        wrote.priority = true;
+
+        let mut readback = test_channel();
+        readback.frequency = 0.0;
+        readback.delay = 2; // a BC125AT value, wrong for this model
+        readback.lockout = true;
+        readback.priority = true;
+        readback.tone_squelch_kind = crate::state::ToneSquelchKind::None;
+
+        assert!(!readback_matches(&wrote, &readback, "", &BC75XLT));
+    }
+
     #[test]
     fn factory_empty_signature_follows_the_model() {
         use crate::protocol::capabilities::BC75XLT;
