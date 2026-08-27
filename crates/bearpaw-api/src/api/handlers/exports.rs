@@ -292,7 +292,7 @@ pub(crate) async fn export_bc125at_ss_file(
             ));
         }
 
-        Ok::<String, ApiError>(format!("{}\n", lines.join("\n")))
+        Ok::<String, ApiError>(join_ss_lines(&lines))
     }
     .await;
     let payload = result?;
@@ -463,6 +463,21 @@ pub(crate) fn import_progress(state: &AppState, task_id: &str, percent: u8, mess
 /// the CSV export writes every one of the 500 slots including empties, so a
 /// re-import must treat freq-0 as "skip", not an error. `Ok(Some(_))` is a
 /// channel to write; `Err` is a genuinely malformed row.
+/// Join settings-file lines the way Uniden's own tool writes them.
+///
+/// REGRESSION GUARD (`ss_export_uses_crlf`): CRLF, including a trailing one
+/// after the last line. Verified against real `.bc125at_ss` and
+/// `.bc75xlt_ss` files (2026-08-27) -- every line in both ends `\r\n`.
+///
+/// Bearpaw emitted bare LF, so the files it produced did not match the format
+/// it claimed to write. It went unnoticed because the IMPORT side is immune:
+/// Rust's `str::lines()` strips a trailing `\r`, so a Bearpaw-exported file
+/// round-tripped through Bearpaw perfectly. Only Uniden's software would have
+/// noticed, and nothing here ever fed it one.
+fn join_ss_lines(lines: &[String]) -> String {
+    format!("{}\r\n", lines.join("\r\n"))
+}
+
 fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<Option<ChannelData>, String> {
     let parse_bool = |v: &str| -> bool { v.trim().eq_ignore_ascii_case("true") };
 
@@ -639,5 +654,21 @@ mod tests {
     fn parse_bad_index_is_error() {
         let r = row(&[("Index", "501"), ("Frequency", "145.13")]);
         assert!(parse_import_csv_row(&r).is_err());
+    }
+
+    /// REGRESSION GUARD: the settings file uses CRLF, including after the last
+    /// line. Confirmed against real files written by Uniden's own tool
+    /// (`kf0nui_042525.bc125at_ss`, `kf0nui_042525.bc75xlt_ss`, 2026-08-27):
+    /// 537 and 336 CRLF respectively, zero bare LF in either.
+    #[test]
+    fn ss_export_uses_crlf() {
+        let out = join_ss_lines(&["Misc\tK+S".to_string(), "Priority\tOff".to_string()]);
+        assert_eq!(out, "Misc\tK+S\r\nPriority\tOff\r\n");
+        assert_eq!(out.matches("\r\n").count(), 2, "including a trailing one");
+        assert_eq!(
+            out.matches('\n').count(),
+            out.matches("\r\n").count(),
+            "no bare LF may survive -- the real files contain none"
+        );
     }
 }
