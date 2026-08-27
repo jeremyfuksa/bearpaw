@@ -47,6 +47,35 @@ export function formatLiveTone(live: LiveState): string | null {
   }
 }
 
+/**
+ * Compose the Scan display's sub-line for a hit (or a held channel).
+ *
+ * The frequency appears here ONLY when an alpha tag is carrying the headline.
+ * With no tag the headline falls back to the frequency itself, so repeating it
+ * below reads as a stutter: "146.700 / 146.700 • NFM". That is every hit on a
+ * BC75XLT, which has no alpha tags at all — but it is deliberately NOT a
+ * `has_alpha_tags` branch, because an untagged channel on a BC125AT produces
+ * the identical stutter. The rule is "never repeat the headline", which covers
+ * both without the display needing to know which scanner is attached.
+ *
+ * Exported for its test: asserting the real function is the point (see
+ * CLAUDE.md "Third-rail flows" on guards that hand-rebuilt the shape they
+ * meant to check and passed while the bug was live).
+ */
+export function buildHitSubText(live: LiveState): string {
+  const parts: string[] = [];
+  if (live.frequency && live.alpha_tag) parts.push(live.frequency.toFixed(3));
+  if (live.modulation) parts.push(live.modulation);
+  if (live.channel !== undefined && live.channel !== null) {
+    parts.push(`CH ${live.channel}`);
+  }
+  if (live.squelch_open) {
+    const tone = formatLiveTone(live);
+    if (tone) parts.push(tone);
+  }
+  return parts.join(' • ');
+}
+
 export default function App() {
   useKeyboardShortcuts({
     openActivityLog: () => setIsExportSheetOpen(true),
@@ -823,17 +852,7 @@ export default function App() {
     // "0.000" (#144). The subText already skips 0 via its truthiness check.
     const main =
       liveState.alpha_tag || (liveState.frequency ? liveState.frequency.toFixed(3) : '—');
-    const parts = [];
-    if (liveState.frequency) parts.push(liveState.frequency.toFixed(3));
-    if (liveState.modulation) parts.push(liveState.modulation);
-    if (liveState.channel !== undefined && liveState.channel !== null) {
-      parts.push(`CH ${liveState.channel}`);
-    }
-    if (liveState.squelch_open) {
-      const tone = formatLiveTone(liveState);
-      if (tone) parts.push(tone);
-    }
-    return { mainText: main, subText: parts.join(' • ') };
+    return { mainText: main, subText: buildHitSubText(liveState) };
   }, [deviceInfo, hasFreshLiveFrame, isInitialSyncing, liveState, syncProgressMessage]);
 
   // REGRESSION GUARD (#330, react-hooks/preserve-manual-memoization): the three
