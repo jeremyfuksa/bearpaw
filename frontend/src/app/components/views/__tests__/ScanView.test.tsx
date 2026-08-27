@@ -390,7 +390,7 @@ describe('Recent Hits export control', () => {
     dashboardLoading: false,
     busiestChannels: [],
     hourlyHeatmap: [],
-    heatmapStats: { min: 0, max: 0, avg: 0 },
+    heatmapStats: { max: 0 },
     onHoldToggle: () => {},
     onLockout: () => {},
     onVolumeChange: () => {},
