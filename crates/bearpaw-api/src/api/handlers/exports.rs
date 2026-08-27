@@ -3,6 +3,7 @@ use axum::response::{IntoResponse, Json};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+use crate::protocol::capabilities::ScannerCapabilities;
 use crate::protocol::tones::dcs_code_to_label;
 use crate::state::{ChannelData, ToneSquelchKind};
 
@@ -19,17 +20,16 @@ pub(crate) async fn export_bc125at_ss_file(
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
-    let model = state
-        .device
-        .read()
-        .ok()
-        .and_then(|d| d.model.clone())
-        .unwrap_or_default()
-        .to_uppercase();
-    if !model.contains("BC125AT") && !model.contains("UBC125") {
+    // Capability, not a substring match on the model name. The old gate --
+    // `model.contains("BC125AT")` -- worked only by luck: "BC125AT" is a
+    // substring of "BCT125AT". The BC75XLT has its own settings-file layout
+    // that Bearpaw has no spec for, so it is refused here rather than handed
+    // a BC125AT-shaped file its own software would reject.
+    let caps = state.capabilities();
+    if !caps.has_bc125at_ss_format {
         return Err(ApiError::BadRequest("unsupported_model".to_string()));
     }
-    let region = if model.contains("UBC") { "EUR" } else { "USA" };
+    let region = caps.ss_region;
 
     let result = async {
         let _prg = ProgramModeGuard::enter(&state).await?;
@@ -375,6 +375,9 @@ pub(crate) async fn import_csv(
     let mut imported = 0;
     let mut errors: Vec<Value> = Vec::new();
 
+    // Validate every row against the CONNECTED scanner's memory model.
+    let caps = state.capabilities();
+
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(true)
         .from_reader(bytes.as_slice());
@@ -385,7 +388,7 @@ pub(crate) async fn import_csv(
     let mut writes: Vec<(HashMap<String, String>, ChannelData)> = Vec::new();
     for result in rdr.deserialize::<HashMap<String, String>>() {
         match result {
-            Ok(row) => match parse_import_csv_row(&row) {
+            Ok(row) => match parse_import_csv_row(&row, &caps) {
                 Ok(Some(payload)) => writes.push((row, payload)),
                 Ok(None) => {} // empty slot (frequency 0) — skip, not an error
                 Err(err) => errors.push(json!({ "row": row, "error": err })),
@@ -460,7 +463,7 @@ pub(crate) fn import_progress(state: &AppState, task_id: &str, percent: u8, mess
 }
 
 /// Parse one CSV row. `Ok(None)` means an empty channel slot (frequency 0) —
-/// the CSV export writes every one of the 500 slots including empties, so a
+/// the CSV export writes every one of the scanner's slots including empties, so a
 /// re-import must treat freq-0 as "skip", not an error. `Ok(Some(_))` is a
 /// channel to write; `Err` is a genuinely malformed row.
 /// Join settings-file lines the way Uniden's own tool writes them.
@@ -478,7 +481,10 @@ fn join_ss_lines(lines: &[String]) -> String {
     format!("{}\r\n", lines.join("\r\n"))
 }
 
-fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<Option<ChannelData>, String> {
+fn parse_import_csv_row(
+    row: &HashMap<String, String>,
+    caps: &ScannerCapabilities,
+) -> Result<Option<ChannelData>, String> {
     let parse_bool = |v: &str| -> bool { v.trim().eq_ignore_ascii_case("true") };
 
     let index: u16 = row
@@ -486,8 +492,14 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<Option<ChannelD
         .ok_or_else(|| "Missing Index".to_string())?
         .parse()
         .map_err(|_| "Invalid channel index".to_string())?;
-    if !(1..=500).contains(&index) {
-        return Err(format!("Invalid channel index: {} (must be 1-500)", index));
+    // Bound by the CONNECTED scanner, not a hardcoded 500. A BC75XLT holds
+    // 300 channels; accepting a row for 301-500 queues a write that cannot
+    // land, and the old message named a limit that model does not have.
+    if !(1..=caps.channel_count).contains(&index) {
+        return Err(format!(
+            "Invalid channel index: {} (must be 1-{})",
+            index, caps.channel_count
+        ));
     }
 
     let frequency: f64 = row
@@ -513,9 +525,14 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<Option<ChannelD
         .unwrap_or("2")
         .parse()
         .map_err(|_| "Invalid delay".to_string())?;
-    // Valid CIN delay values per docs/BC125AT_PROTOCOL.md §5.3.
-    if !matches!(delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
-        return Err(format!("Invalid delay: {}", delay));
+    // From the descriptor, not a third hardcoded copy of the BC125AT list.
+    // A BC75XLT takes a boolean (0/1); sending it 2 is a CIN format error,
+    // and the vendor spec aborts the ENTIRE set command on one.
+    if !caps.valid_delays.contains(&delay) {
+        return Err(format!(
+            "Invalid delay: {} (must be one of {:?})",
+            delay, caps.valid_delays
+        ));
     }
 
     let bank: u8 = row
@@ -575,6 +592,7 @@ fn parse_import_csv_row(row: &HashMap<String, String>) -> Result<Option<ChannelD
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
 
     fn row(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs
@@ -611,7 +629,9 @@ mod tests {
             ("Priority", "false"),
             ("Bank", "1"),
         ]);
-        let ch = parse_import_csv_row(&r).unwrap().expect("should be Some");
+        let ch = parse_import_csv_row(&r, &BC125AT_FAMILY)
+            .unwrap()
+            .expect("should be Some");
         assert_eq!(ch.index, 5);
         assert!((ch.frequency - 145.13).abs() < 0.00005);
         assert_eq!(ch.alpha_tag, "Test");
@@ -623,14 +643,14 @@ mod tests {
         // NOT an error. Regression guard for the "hundreds of import errors"
         // bug where re-importing an exported file failed on every empty channel.
         let r = row(&[("Index", "6"), ("Frequency", "0")]);
-        assert!(parse_import_csv_row(&r).unwrap().is_none());
+        assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).unwrap().is_none());
     }
 
     #[test]
     fn parse_out_of_band_frequency_is_error() {
         // A non-zero frequency outside 25–512 MHz is genuinely malformed.
         let r = row(&[("Index", "6"), ("Frequency", "9999")]);
-        assert!(parse_import_csv_row(&r).is_err());
+        assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).is_err());
     }
 
     #[test]
@@ -640,20 +660,69 @@ mod tests {
         // 900 MHz — inside the old, wrong 25–1300 import bound but outside the
         // scanner's tunable range — must be rejected, not silently programmed.
         let r = row(&[("Index", "6"), ("Frequency", "900")]);
-        assert!(parse_import_csv_row(&r).is_err());
+        assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).is_err());
     }
 
     #[test]
     fn parse_frequency_at_512_is_accepted() {
         // The upper bound is inclusive (FREQ_MAX = 512.0).
         let r = row(&[("Index", "7"), ("Frequency", "512")]);
-        assert!(parse_import_csv_row(&r).unwrap().is_some());
+        assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).unwrap().is_some());
     }
 
     #[test]
     fn parse_bad_index_is_error() {
         let r = row(&[("Index", "501"), ("Frequency", "145.13")]);
-        assert!(parse_import_csv_row(&r).is_err());
+        assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).is_err());
+    }
+
+    /// REGRESSION GUARD (#433): the CSV index bound follows the CONNECTED
+    /// scanner, not a hardcoded 500. A BC75XLT holds 300 channels; accepting a
+    /// row for 301 queues a write that cannot land, and the old error named a
+    /// limit that model does not have.
+    #[test]
+    fn csv_import_bounds_the_index_by_the_connected_model() {
+        let r = row(&[("Index", "301"), ("Frequency", "146.7000"), ("Delay", "0")]);
+        assert!(
+            parse_import_csv_row(&r, &BC125AT_FAMILY).is_ok(),
+            "301 is a real channel on a 500-channel scanner"
+        );
+
+        let err = parse_import_csv_row(&r, &BC75XLT).expect_err("301 does not exist on a BC75XLT");
+        assert!(
+            err.contains("1-300"),
+            "the message must name THIS model's limit, got: {err}"
+        );
+    }
+
+    /// REGRESSION GUARD (#433): the delay allowlist comes from the descriptor,
+    /// not a third hardcoded copy of the BC125AT list. A BC75XLT takes a
+    /// boolean (0/1); sending it 2 is a CIN format error, and the vendor spec
+    /// aborts the ENTIRE set command on one -- so a single bad delay in an
+    /// imported row would silently discard that row's frequency and lockout.
+    #[test]
+    fn csv_import_takes_the_delay_allowlist_from_capabilities() {
+        let r = row(&[("Index", "1"), ("Frequency", "146.7000"), ("Delay", "2")]);
+        assert!(
+            parse_import_csv_row(&r, &BC125AT_FAMILY).is_ok(),
+            "2 seconds is a legal BC125AT delay"
+        );
+        assert!(
+            parse_import_csv_row(&r, &BC75XLT).is_err(),
+            "2 is not a legal delay on a scanner whose delay is a boolean"
+        );
+
+        let boolean = row(&[("Index", "1"), ("Frequency", "146.7000"), ("Delay", "1")]);
+        assert!(parse_import_csv_row(&boolean, &BC75XLT).is_ok());
+    }
+
+    /// A negative pre-delay is legal on the BC125AT family and not on a
+    /// BC75XLT — the same rule from the other direction.
+    #[test]
+    fn csv_import_still_accepts_bc125at_pre_delays() {
+        let r = row(&[("Index", "1"), ("Frequency", "146.7000"), ("Delay", "-10")]);
+        assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).is_ok());
+        assert!(parse_import_csv_row(&r, &BC75XLT).is_err());
     }
 
     /// REGRESSION GUARD: the settings file uses CRLF, including after the last

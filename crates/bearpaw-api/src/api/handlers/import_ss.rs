@@ -260,6 +260,17 @@ pub(crate) async fn import_bc125at_ss(
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
+    // The EXPORT side has always gated on model; this side had no gate at all,
+    // so a BC125AT settings file could be pushed into a BC75XLT. That file
+    // carries 500 channels, per-channel modulation and tone codes, and
+    // BC125AT-family delay values -- none of which that scanner accepts. Its
+    // delays alone are CIN format errors, and the vendor spec aborts the
+    // ENTIRE set command on one, so the import would write partial channels
+    // over real memory before anything surfaced as an error.
+    let caps = state.capabilities();
+    if !caps.has_bc125at_ss_format {
+        return Err(ApiError::BadRequest("unsupported_model".to_string()));
+    }
 
     let mut bytes: Option<Vec<u8>> = None;
     while let Some(field) = multipart

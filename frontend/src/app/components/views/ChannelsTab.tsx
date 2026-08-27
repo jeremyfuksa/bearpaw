@@ -1170,7 +1170,14 @@ export function ChannelsTab() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={handleExportCSV}>CSV</DropdownMenuItem>
-                <DropdownMenuItem onSelect={handleExportBc125atSs}>BC125AT</DropdownMenuItem>
+                {/* Hidden, not disabled, when the scanner has no `.bc125at_ss`
+                  format — the same rule the channel columns follow. The
+                  BC75XLT has its own settings-file layout that Bearpaw has no
+                  spec for, so offering the item would produce a file its own
+                  software would reject. The backend refuses it too. */}
+                {capabilities.has_bc125at_ss_format && (
+                  <DropdownMenuItem onSelect={handleExportBc125atSs}>BC125AT</DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

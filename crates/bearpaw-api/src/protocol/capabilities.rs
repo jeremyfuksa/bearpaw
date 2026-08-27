@@ -43,6 +43,24 @@ pub struct ScannerCapabilities {
     /// Whether `CIN` carries a channel name. False on the BC75XLT, where the
     /// field is present but reserved.
     pub has_alpha_tags: bool,
+    /// Whether this model exchanges settings as a Uniden `.bc125at_ss` file.
+    ///
+    /// Named for the FORMAT, not "has a settings file": the BC75XLT has one
+    /// too, in its own layout, which Bearpaw does not implement because we
+    /// have never seen its spec. Writing a guessed file is worse than
+    /// offering none -- Uniden's own software would reject it, and the user
+    /// would not find out until they tried to load it.
+    ///
+    /// Replaces a substring match on the model name
+    /// (`model.contains("BC125AT")`), which worked only by luck: "BC125AT" is
+    /// a substring of "BCT125AT".
+    pub has_bc125at_ss_format: bool,
+    /// Region stamped into the `.bc125at_ss` file: "USA" or "EUR".
+    ///
+    /// A real per-model fact -- the UBC-prefixed units are the European
+    /// variants -- rather than something to re-derive from the model string
+    /// at each call site.
+    pub ss_region: &'static str,
     /// Whether the live `GLG` frame reports which channel is being received.
     ///
     /// A separate flag from `has_alpha_tags` even though the two agree on both
@@ -131,6 +149,8 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     channels_per_bank: 50,
     bank_count: 10,
     has_alpha_tags: true,
+    has_bc125at_ss_format: true,
+    ss_region: "USA",
     reports_live_channel: true,
     has_per_channel_modulation: true,
     has_tone_squelch: true,
@@ -157,6 +177,10 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     channels_per_bank: 30,
     bank_count: 10,
     has_alpha_tags: false,
+    // The BC75XLT has its own settings-file layout. We have no spec for it, so
+    // Bearpaw exchanges CSV with this model and nothing else.
+    has_bc125at_ss_format: false,
+    ss_region: "USA",
     reports_live_channel: false,
     has_per_channel_modulation: false,
     has_tone_squelch: false,
@@ -183,8 +207,16 @@ impl ScannerCapabilities {
     /// match.
     pub fn for_model(model: &str) -> Option<Self> {
         const BC125AT_MODELS: &[&str] = &["BC125AT", "BCT125AT", "UBC125XLT", "UBC126AT", "AE125H"];
+        // The European variants. An explicit allowlist rather than
+        // `model.contains("UBC")`: substring tests on model names are how the
+        // export gate ended up matching "BC125AT" inside "BCT125AT".
+        const EUR_MODELS: &[&str] = &["UBC125XLT", "UBC126AT"];
         if BC125AT_MODELS.iter().any(|m| model.eq_ignore_ascii_case(m)) {
-            return Some(BC125AT_FAMILY);
+            let mut caps = BC125AT_FAMILY;
+            if EUR_MODELS.iter().any(|m| model.eq_ignore_ascii_case(m)) {
+                caps.ss_region = "EUR";
+            }
+            return Some(caps);
         }
         if model.eq_ignore_ascii_case("BC75XLT") {
             return Some(BC75XLT);
