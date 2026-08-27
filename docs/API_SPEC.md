@@ -119,7 +119,19 @@ Scanner hardware and connection information.
   "connection_status": "connected",
   "port": "/dev/ttyACM0",
   "diagnostic_code": null,
-  "diagnostic_message": null
+  "diagnostic_message": null,
+  "capabilities": {
+    "channel_count": 500,
+    "channels_per_bank": 50,
+    "bank_count": 10,
+    "has_alpha_tags": true,
+    "has_per_channel_modulation": true,
+    "has_tone_squelch": true,
+    "has_backlight": true,
+    "valid_delays": [-10, -5, 0, 1, 2, 3, 4, 5],
+    "cleared_delay": 2,
+    "default_baud": 115200
+  }
 }
 ```
 
@@ -132,6 +144,28 @@ Scanner hardware and connection information.
 | `port` | string or null | Serial or USB port path |
 | `diagnostic_code` | string or null | Machine-readable disconnect reason, when disconnected |
 | `diagnostic_message` | string or null | Human-readable disconnect detail, when disconnected |
+| `capabilities` | object or null | Memory model and feature set of the connected scanner; absent until a scanner identifies itself |
+
+#### ScannerCapabilities
+
+Resolved by the backend from the `MDL` reply. Clients branch on these flags,
+never on `model` — the backend owns the model-to-behaviour mapping.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel_count` | number | Highest valid channel index (500 BC125AT family, 300 BC75XLT) |
+| `channels_per_bank` | number | Channels per bank (50 / 30) |
+| `bank_count` | number | Number of banks (10 on both) |
+| `has_alpha_tags` | boolean | Whether `CIN` carries a channel name |
+| `has_per_channel_modulation` | boolean | False on BC75XLT, where modulation is the global band plan |
+| `has_tone_squelch` | boolean | Whether `CIN` carries a CTCSS/DCS code |
+| `has_backlight` | boolean | Whether the scanner implements `BLT` |
+| `valid_delays` | number[] | Accepted `CIN` delay values |
+| `cleared_delay` | number | Delay a cleared slot reports — not a sentinel, the real hardware value |
+| `default_baud` | number | Serial rate this model speaks |
+
+Serialize-only: the API never accepts capabilities as input. A client asserting
+its own memory model is authority the backend must keep.
 
 Optional fields `vid`, `pid`, and `description` may also appear (USB transport metadata) and are omitted when unset.
 

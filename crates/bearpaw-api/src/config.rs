@@ -39,7 +39,10 @@ const PROBE_BAUD_RATES: &[u32] = &[115_200, 57_600];
 /// Used by the autodetect MDL-probe step to confirm a candidate serial
 /// port is the scanner before committing to it. See
 /// `docs/BC125AT_PROTOCOL.md` §5.1.
-const ACCEPTED_MDL_MODELS: &[&str] = &[
+/// `pub(crate)` so the capability-manifest test iterates the REAL allowlist.
+/// A parallel list in the test would drift from this one, which is the exact
+/// failure the manifest exists to catch.
+pub(crate) const ACCEPTED_MDL_MODELS: &[&str] = &[
     "BC125AT",
     "BCT125AT",
     "UBC125XLT",

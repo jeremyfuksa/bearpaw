@@ -106,10 +106,26 @@ through any `error` message.
     "model": "BC125AT",
     "firmware": "1.00.05",
     "connection_status": "connected",
-    "port": "/dev/ttyACM0"
+    "port": "/dev/ttyACM0",
+    "capabilities": {
+      "channel_count": 500,
+      "channels_per_bank": 50,
+      "bank_count": 10,
+      "has_alpha_tags": true,
+      "has_per_channel_modulation": true,
+      "has_tone_squelch": true,
+      "has_backlight": true,
+      "valid_delays": [-10, -5, 0, 1, 2, 3, 4, 5],
+      "cleared_delay": 2,
+      "default_baud": 115200
+    }
   }
 }
 ```
+
+`capabilities` describes the connected scanner's memory model and feature set.
+It arrives with the first `device_info` at connect, ahead of memory sync, so
+capability-dependent UI can render correctly on first paint.
 
 See `DeviceInfo` in [`API_SPEC.md`](API_SPEC.md#23-deviceinfo) for the full field
 set.
