@@ -718,6 +718,11 @@ fn next_backoff(current: Duration) -> Duration {
 fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &str) {
     if let Some(model) = parse_mdl_response(mdl_resp) {
         let supported = crate::config::is_supported_model(&model);
+        // Resolve the memory model here, at the one function every connection
+        // path funnels through (see #396). Falls back to the BC125AT family for
+        // an unrecognised model, matching the "connect with a diagnostic rather
+        // than refuse" posture -- see ScannerCapabilities::for_model_or_default.
+        let caps = crate::protocol::capabilities::ScannerCapabilities::for_model_or_default(&model);
         if !supported {
             // warn! rather than debug!: this is the one outcome where the user
             // has done nothing wrong and needs to know why memory operations
@@ -726,12 +731,13 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             warn!(
                 "Scanner on {} reports model {:?}, which Bearpaw does not support. \
                  Supported models: {}. Bearpaw targets the conventional analog 125/126 \
-                 family; channel-memory operations assume 500 channels across 10 banks \
+                 family; channel-memory operations assume {} \
                  and may misbehave on other hardware. Please report this model at \
                  https://github.com/jeremyfuksa/bearpaw/issues so support can be considered.",
                 port_label,
                 model,
-                crate::config::supported_models_list()
+                crate::config::supported_models_list(),
+                caps.capacity_summary()
             );
         }
         let mut transitioned_to_connected = false;
@@ -740,6 +746,7 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
                 transitioned_to_connected = true;
             }
             d.model = Some(model.clone());
+            d.capabilities = Some(caps);
             d.port = Some(port_label.to_string());
             d.connection_status = "connected".to_string();
             if supported {
@@ -749,10 +756,11 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
                 d.diagnostic_code = Some("unsupported_model".to_string());
                 d.diagnostic_message = Some(format!(
                     "This scanner reports model {}, which Bearpaw does not support yet. \
-                     Supported models: {}. Channel memory operations assume 500 channels \
-                     across 10 banks and may not work correctly on this hardware.",
+                     Supported models: {}. Channel memory operations assume {} \
+                     and may not work correctly on this hardware.",
                     model,
-                    crate::config::supported_models_list()
+                    crate::config::supported_models_list(),
+                    caps.capacity_summary()
                 ));
             }
         }
@@ -1021,6 +1029,97 @@ mod tests {
                 .unwrap_or_default()
                 .contains("BC75XLT"),
             "the message must name the offending model, not just say 'unsupported'"
+        );
+    }
+
+    /// The capability descriptor must be resolved at the same chokepoint that
+    /// records the model, and stored on the same struct under the same lock.
+    ///
+    /// Storing capabilities as a sibling `AppState` field would let a reader
+    /// observe a BC75XLT model alongside BC125AT capabilities in the window
+    /// between two writes -- a race that is rare, non-deterministic, and
+    /// produces exactly the silent bank misfiling this descriptor exists to
+    /// prevent. Reading them under one lock makes that state unrepresentable.
+    /// State for the capability tests below.
+    ///
+    /// These exercise `DeviceInfo` alone, but `AppState` has no lighter
+    /// constructor and `..default_state()` would still run the full one. Left
+    /// as a named helper so a future lighter constructor has one call site to
+    /// change rather than three.
+    ///
+    /// Note `default_state()` opens two SQLite databases at process-wide paths.
+    /// That is a pre-existing source of parallel-test contention -- the suite
+    /// passes with `--test-threads=1` and can fail without it -- and is out of
+    /// scope here. Tracked separately rather than worked around in this PR.
+    fn device_only_state() -> AppState {
+        crate::api::default_state()
+    }
+
+    #[test]
+    fn connect_resolves_capabilities_alongside_the_model() {
+        use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
+
+        let state = device_only_state();
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+        {
+            let d = state.device.read().unwrap();
+            assert_eq!(d.model.as_deref(), Some("BC125AT"));
+            assert_eq!(d.capabilities, Some(BC125AT_FAMILY));
+        }
+
+        // Reconnecting as a different model must REPLACE the descriptor, not
+        // leave the previous scanner's memory model in place.
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        {
+            let d = state.device.read().unwrap();
+            assert_eq!(d.model.as_deref(), Some("BC75XLT"));
+            assert_eq!(
+                d.capabilities,
+                Some(BC75XLT),
+                "capabilities must follow the currently-connected scanner"
+            );
+        }
+    }
+
+    /// An unrecognised model still gets a usable descriptor rather than `None`.
+    ///
+    /// #396 lets an unsupported scanner connect with a diagnostic instead of
+    /// refusing it. That escape hatch only works if the memory model is
+    /// populated -- consumers would otherwise have to handle `None` everywhere,
+    /// and the natural handling (skip the operation) would break the very
+    /// override the diagnostic posture exists to preserve.
+    #[test]
+    fn unknown_model_still_gets_a_capability_descriptor() {
+        use crate::protocol::capabilities::BC125AT_FAMILY;
+
+        let state = device_only_state();
+        update_device_info_from_mdl(&state, "MDL,SDS100", "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(d.diagnostic_code.as_deref(), Some("unsupported_model"));
+        assert_eq!(
+            d.capabilities,
+            Some(BC125AT_FAMILY),
+            "unknown hardware falls back to the larger memory model: a scanner \
+             with fewer channels returns ERR past its end, which parsers already \
+             reject, whereas guessing too small would silently hide channels"
+        );
+    }
+
+    /// The unsupported-model diagnostic quotes the memory model it assumes.
+    /// That number used to be hardcoded prose ("500 channels across 10 banks")
+    /// in two places; it is now derived, so it cannot drift from the descriptor
+    /// actually in force.
+    #[test]
+    fn unsupported_diagnostic_quotes_the_assumed_memory_model() {
+        let state = device_only_state();
+        update_device_info_from_mdl(&state, "MDL,SDS100", "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        let msg = d.diagnostic_message.as_deref().unwrap_or_default();
+        assert!(
+            msg.contains("500 channels across 10 banks of 50"),
+            "diagnostic must state the assumed capacity, got: {msg}"
         );
     }
 
