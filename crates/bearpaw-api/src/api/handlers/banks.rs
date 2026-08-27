@@ -47,6 +47,13 @@ pub(crate) async fn set_banks(
     if body.banks.len() != 10 {
         return Err(ApiError::BadRequest("banks_length_invalid".to_string()));
     }
+    // The scanner refuses an all-disabled mask -- vendor spec, SCG: "*It can
+    // not set all channel strage banks to '1'." Rejected here with a specific
+    // error rather than surfacing a bare ERR the UI cannot explain. Note the
+    // wire inversion: '1' means DISABLED, so all-disabled is `banks` all false.
+    if body.banks.iter().all(|enabled| !*enabled) {
+        return Err(ApiError::BadRequest("banks_all_disabled".to_string()));
+    }
     let _ = command_sender(&state)?;
     let flags = body
         .banks

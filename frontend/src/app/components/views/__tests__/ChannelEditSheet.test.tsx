@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { ChannelEditSheet } from '../ChannelEditSheet';
 import { createTestChannel, createTestChannelDraft } from '../../../../test/fixtures';
 import type { ChannelDraft, ChannelData } from '../../../../types';
+import { useStore } from '../../../../store/useStore';
 
 /**
  * The sheet keeps a LOCAL working copy of the draft (#146): edits only reach
@@ -278,6 +279,108 @@ describe('ChannelEditSheet', () => {
       const error = screen.getByRole('alert');
       expect(error).toHaveTextContent(/covered band/i);
       expect(freq).toHaveAttribute('aria-describedby', error.id);
+    });
+  });
+
+  describe('capability-driven fields (#402/#404)', () => {
+    const BC75XLT_CAPS = {
+      channel_count: 300,
+      channels_per_bank: 30,
+      bank_count: 10,
+      has_alpha_tags: false,
+      has_per_channel_modulation: false,
+      has_tone_squelch: false,
+      has_backlight_control: false,
+      has_battery_save: false,
+      has_contrast: false,
+      has_weather_alert: false,
+      key_beep_needs_program_mode: true,
+      valid_delays: [0, 1],
+      cleared_delay: 0,
+      default_baud: 57600,
+      coverage_bands: [
+        [25, 54],
+        [108, 174],
+        [406, 512],
+      ] as Array<[number, number]>,
+    };
+
+    const connectBc75xlt = () =>
+      useStore.setState({
+        deviceInfo: {
+          model: 'BC75XLT',
+          connection_status: 'connected',
+          capabilities: BC75XLT_CAPS,
+        } as never,
+      });
+
+    // These three CIN fields are [RSV] on a BC75XLT. Offering an editor for a
+    // reserved field is worse than useless: the vendor spec aborts the ENTIRE
+    // set command on a format error, so a value typed here could silently
+    // discard the frequency in the same write.
+    it('hides alpha tag, modulation, and tone on a BC75XLT', () => {
+      connectBc75xlt();
+      renderSheet();
+
+      expect(screen.queryByLabelText('Alpha Tag')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Modulation')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Tone Squelch')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Delay')).toBeInTheDocument();
+    });
+
+    // The paired half — a gate that hid everything would pass the test above.
+    it('keeps all three for a BC125AT-family scanner', () => {
+      useStore.setState({ deviceInfo: null });
+      renderSheet();
+
+      expect(screen.getByLabelText('Alpha Tag')).toBeInTheDocument();
+      expect(screen.getByLabelText('Modulation')).toBeInTheDocument();
+      expect(screen.getByLabelText('Tone Squelch')).toBeInTheDocument();
+    });
+
+    // Seconds is a unit the BC75XLT does not have — its delay is a boolean per
+    // the vendor spec.
+    it('labels delay without a unit when the model uses a boolean', () => {
+      connectBc75xlt();
+      renderSheet();
+      expect(screen.getByText('Delay')).toBeInTheDocument();
+      expect(screen.queryByText('Delay (seconds)')).not.toBeInTheDocument();
+    });
+
+    it('labels delay in seconds on a BC125AT-family scanner', () => {
+      useStore.setState({ deviceInfo: null });
+      renderSheet();
+      expect(screen.getByText('Delay (seconds)')).toBeInTheDocument();
+    });
+
+    // The BC75XLT has NO 225-380 band and its UHF range starts at 406, not
+    // 400 (owner's manual, "FREQUENCY RANGE"). Validating against the BC125AT
+    // bands would accept a frequency this scanner cannot tune, and the user
+    // would get a bare wire error instead of a message naming the problem.
+    it('rejects a frequency the connected model cannot tune', async () => {
+      connectBc75xlt();
+      renderSheet();
+
+      const freq = screen.getByLabelText('Frequency (MHz)');
+      await userEvent.clear(freq);
+      await userEvent.type(freq, '300.0000');
+
+      const error = await screen.findByRole('alert');
+      expect(error).toHaveTextContent(/covered band/i);
+      // The message must quote THIS scanner's bands, not the BC125AT's.
+      expect(error).toHaveTextContent(/406/);
+      expect(error).not.toHaveTextContent(/225/);
+    });
+
+    it('accepts a frequency inside the model coverage', async () => {
+      connectBc75xlt();
+      renderSheet();
+
+      const freq = screen.getByLabelText('Frequency (MHz)');
+      await userEvent.clear(freq);
+      await userEvent.type(freq, '462.5625');
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
   });
 });

@@ -19,6 +19,11 @@ const BC75XLT: ScannerCapabilities = {
   valid_delays: [0, 1],
   cleared_delay: 0,
   default_baud: 57600,
+  coverage_bands: [
+    [25, 54],
+    [108, 174],
+    [406, 512],
+  ],
 };
 
 function connect(overrides: Partial<DeviceInfo> = {}) {
@@ -61,6 +66,12 @@ describe('useScannerCapabilities', () => {
       valid_delays: [-10, -5, 0, 1, 2, 3, 4, 5],
       cleared_delay: 2,
       default_baud: 115200,
+      coverage_bands: [
+        [25, 54],
+        [108, 174],
+        [225, 380],
+        [400, 512],
+      ],
     });
   });
 

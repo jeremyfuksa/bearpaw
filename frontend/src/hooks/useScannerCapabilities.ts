@@ -30,6 +30,12 @@ export const DEFAULT_CAPABILITIES: ScannerCapabilities = {
   valid_delays: [-10, -5, 0, 1, 2, 3, 4, 5],
   cleared_delay: 2,
   default_baud: 115200,
+  coverage_bands: [
+    [25, 54],
+    [108, 174],
+    [225, 380],
+    [400, 512],
+  ],
 };
 
 /**

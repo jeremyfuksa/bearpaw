@@ -3,7 +3,8 @@ import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { cn } from '../../../lib/utils';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import type { ChannelData, ChannelDraft } from '../../../types';
+import type { ChannelData, ChannelDraft, ScannerCapabilities } from '../../../types';
+import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 
 interface ChannelEditSheetProps {
   channel: ChannelData;
@@ -19,9 +20,14 @@ interface ChannelEditSheetProps {
   onPriorityChange: (next: boolean) => void | Promise<void>;
 }
 
-/** Valid CIN delay values (docs/BC125AT_PROTOCOL.md §5.3). Negatives are
+/** Fallback CIN delay values (docs/BC125AT_PROTOCOL.md §5.3). Negatives are
  * pre-delays. The sheet used to accept 0-30, which either rejected legal
- * pre-delays or passed values the scanner 400s on (#146). */
+ * pre-delays or passed values the scanner 400s on (#146).
+ *
+ * #402: the real set comes from ScannerCapabilities.valid_delays — a BC75XLT
+ * takes a boolean (0/1), and sending it 2 is a format error that aborts the
+ * ENTIRE CIN write, silently discarding frequency, lockout, and priority in
+ * the same command. This constant is only the pre-connect default. */
 const DELAY_OPTIONS = ['-10', '-5', '0', '1', '2', '3', '4', '5'];
 
 /** BC125AT coverage bands in MHz (docs/SCANNER_PROTOCOL_REFERENCE.md §6).
@@ -44,18 +50,28 @@ const CTCSS_TONES = [
   218.1, 225.7, 229.1, 233.6, 241.8, 250.3, 254.1,
 ];
 
-function validateField(field: keyof ChannelDraft, value: string | boolean): string | null {
+function validateField(
+  field: keyof ChannelDraft,
+  value: string | boolean,
+  caps?: ScannerCapabilities,
+): string | null {
   if (field === 'frequency' && typeof value === 'string') {
     const freq = parseFloat(value);
     if (isNaN(freq)) return 'Invalid frequency';
     if (freq === 0) return null;
-    if (!FREQUENCY_BANDS.some(([lo, hi]) => freq >= lo && freq <= hi)) {
-      return 'Frequency must be in a covered band: 25–54, 108–174, 225–380, or 400–512 MHz';
+    // #402: the families do not cover the same spectrum. A BC75XLT has no
+    // 225–380 band at all and its UHF range starts at 406, not 400, so the
+    // BC125AT bands would accept frequencies it cannot tune.
+    const bands = caps?.coverage_bands ?? FREQUENCY_BANDS;
+    if (!bands.some(([lo, hi]) => freq >= lo && freq <= hi)) {
+      const rendered = bands.map(([lo, hi]) => `${lo}–${hi}`).join(', ');
+      return `Frequency must be in a covered band: ${rendered} MHz`;
     }
   }
   if (field === 'delay' && typeof value === 'string') {
-    if (!DELAY_OPTIONS.includes(value.trim())) {
-      return 'Delay must be one of -10, -5, 0, 1, 2, 3, 4, 5';
+    const allowed = caps ? caps.valid_delays.map(String) : DELAY_OPTIONS;
+    if (!allowed.includes(value.trim())) {
+      return `Delay must be one of ${allowed.join(', ')}`;
     }
   }
   if (field === 'tone_squelch' && typeof value === 'string' && value.trim() !== '') {
@@ -76,6 +92,19 @@ export function ChannelEditSheet({
   priorityChecked,
   onPriorityChange,
 }: ChannelEditSheetProps) {
+  // Fields for CIN slots this scanner reserves are hidden, not disabled — the
+  // same rule the channel table follows. Delay options and the frequency bands
+  // come from here too: both are model-dependent, and a value the scanner
+  // rejects aborts the whole CIN write rather than just that field (#402).
+  const capabilities = useScannerCapabilities();
+  const delayOptions = capabilities.valid_delays.map(String);
+  // The BC75XLT's delay is a boolean per the vendor spec, not seconds —
+  // labelling its two values "0" and "1" under a "(seconds)" heading states a
+  // unit that scanner does not have.
+  const delayIsBoolean =
+    capabilities.valid_delays.length === 2 &&
+    capabilities.valid_delays[0] === 0 &&
+    capabilities.valid_delays[1] === 1;
   // Local working copy (#146): edits live here until Save commits them via
   // onSave. Cancel/Close simply discards — previously every keystroke wrote
   // straight into the store draft, so a "cancelled" edit still uploaded with
@@ -104,7 +133,7 @@ export function ChannelEditSheet({
   }, [isOpen, channel.index]);
 
   const handleFieldChange = (field: keyof ChannelDraft, value: string | boolean) => {
-    const error = validateField(field, value);
+    const error = validateField(field, value, capabilities);
     setErrors((prev) => {
       const newErrors = { ...prev };
       if (error) {
@@ -135,7 +164,7 @@ export function ChannelEditSheet({
     let hasErrors = false;
 
     for (const [field, value] of Object.entries(localDraft)) {
-      const error = validateField(field as keyof ChannelDraft, value);
+      const error = validateField(field as keyof ChannelDraft, value, capabilities);
       if (error) {
         validationErrors[field] = error;
         hasErrors = true;
@@ -201,79 +230,88 @@ export function ChannelEditSheet({
             )}
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="channel-edit-alpha-tag" className="text-xs font-medium text-white/70">
-              Alpha Tag
-            </label>
-            <input
-              id="channel-edit-alpha-tag"
-              type="text"
-              aria-label="Alpha Tag"
-              value={localDraft.alpha_tag}
-              onChange={(e) => handleFieldChange('alpha_tag', e.target.value)}
-              maxLength={16}
-              className="scanner-input w-full px-3 py-2 text-sm"
-            />
-          </div>
+          {capabilities.has_alpha_tags && (
+            <div className="space-y-2">
+              <label htmlFor="channel-edit-alpha-tag" className="text-xs font-medium text-white/70">
+                Alpha Tag
+              </label>
+              <input
+                id="channel-edit-alpha-tag"
+                type="text"
+                aria-label="Alpha Tag"
+                value={localDraft.alpha_tag}
+                onChange={(e) => handleFieldChange('alpha_tag', e.target.value)}
+                maxLength={16}
+                className="scanner-input w-full px-3 py-2 text-sm"
+              />
+            </div>
+          )}
 
-          <div className="space-y-2">
-            <label htmlFor="channel-edit-modulation" className="text-xs font-medium text-white/70">
-              Modulation
-            </label>
-            <Select
-              value={localDraft.modulation}
-              onValueChange={(value) => handleFieldChange('modulation', value)}
-            >
-              {/* Radix Select is a non-native control: htmlFor gives the label a
-                  click target, but aria-label is the authoritative name. */}
-              <SelectTrigger
-                id="channel-edit-modulation"
-                aria-label="Modulation"
-                className="scanner-input h-10 w-full text-sm"
+          {capabilities.has_per_channel_modulation && (
+            <div className="space-y-2">
+              <label
+                htmlFor="channel-edit-modulation"
+                className="text-xs font-medium text-white/70"
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="scanner-select-content">
-                {['AUTO', 'FM', 'AM', 'NFM'].map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+                Modulation
+              </label>
+              <Select
+                value={localDraft.modulation}
+                onValueChange={(value) => handleFieldChange('modulation', value)}
+              >
+                {/* Radix Select is a non-native control: htmlFor gives the label a
+                  click target, but aria-label is the authoritative name. */}
+                <SelectTrigger
+                  id="channel-edit-modulation"
+                  aria-label="Modulation"
+                  className="scanner-input h-10 w-full text-sm"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="scanner-select-content">
+                  {['AUTO', 'FM', 'AM', 'NFM'].map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-          <div className="space-y-2">
-            <label htmlFor="channel-edit-tone" className="text-xs font-medium text-white/70">
-              Tone Squelch (CTCSS Hz)
-            </label>
-            <input
-              id="channel-edit-tone"
-              type="text"
-              inputMode="decimal"
-              aria-label="Tone Squelch"
-              aria-invalid={errors.tone_squelch ? true : undefined}
-              aria-describedby={errors.tone_squelch ? 'channel-edit-tone-error' : undefined}
-              value={localDraft.tone_squelch}
-              onChange={(e) => handleFieldChange('tone_squelch', e.target.value)}
-              placeholder="—"
-              className={cn(
-                'scanner-input w-full px-3 py-2 text-sm',
-                errors.tone_squelch
-                  ? 'border-red-500'
-                  : 'border-white/10 focus:border-brand-primary',
+          {capabilities.has_tone_squelch && (
+            <div className="space-y-2">
+              <label htmlFor="channel-edit-tone" className="text-xs font-medium text-white/70">
+                Tone Squelch (CTCSS Hz)
+              </label>
+              <input
+                id="channel-edit-tone"
+                type="text"
+                inputMode="decimal"
+                aria-label="Tone Squelch"
+                aria-invalid={errors.tone_squelch ? true : undefined}
+                aria-describedby={errors.tone_squelch ? 'channel-edit-tone-error' : undefined}
+                value={localDraft.tone_squelch}
+                onChange={(e) => handleFieldChange('tone_squelch', e.target.value)}
+                placeholder="—"
+                className={cn(
+                  'scanner-input w-full px-3 py-2 text-sm',
+                  errors.tone_squelch
+                    ? 'border-red-500'
+                    : 'border-white/10 focus:border-brand-primary',
+                )}
+              />
+              {errors.tone_squelch && (
+                <p id="channel-edit-tone-error" role="alert" className="text-xs text-red-400">
+                  {errors.tone_squelch}
+                </p>
               )}
-            />
-            {errors.tone_squelch && (
-              <p id="channel-edit-tone-error" role="alert" className="text-xs text-red-400">
-                {errors.tone_squelch}
-              </p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <label htmlFor="channel-edit-delay" className="text-xs font-medium text-white/70">
-              Delay (seconds)
+              {delayIsBoolean ? 'Delay' : 'Delay (seconds)'}
             </label>
             <Select
               value={localDraft.delay}
@@ -287,9 +325,9 @@ export function ChannelEditSheet({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="scanner-select-content">
-                {DELAY_OPTIONS.map((option) => (
+                {delayOptions.map((option) => (
                   <SelectItem key={option} value={option}>
-                    {option}
+                    {delayIsBoolean ? (option === '1' ? 'On' : 'Off') : option}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -40,6 +40,7 @@ const EXPECTED_KEYS = [
   'valid_delays',
   'cleared_delay',
   'default_baud',
+  'coverage_bands',
 ] as const;
 
 describe('ScannerCapabilities contract', () => {
@@ -71,6 +72,11 @@ describe('ScannerCapabilities contract', () => {
     expect(Array.isArray(caps.valid_delays)).toBe(true);
     expect(typeof caps.cleared_delay).toBe('number');
     expect(typeof caps.default_baud).toBe('number');
+    expect(Array.isArray(caps.coverage_bands)).toBe(true);
+    for (const band of caps.coverage_bands) {
+      expect(band).toHaveLength(2);
+      expect(band[0]).toBeLessThan(band[1]);
+    }
   });
 
   it('banks tile the channel space exactly for every model', () => {

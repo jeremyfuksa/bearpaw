@@ -78,13 +78,23 @@ pub(crate) async fn put_memory_channel(
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
     body.index = index;
-    // Frequency must be 0 (clear the slot) or inside the BC125AT's coverage
-    // (#143 — validate_frequency existed but was never called on this path).
-    if body.frequency != 0.0 && super::super::control::validate_frequency(body.frequency).is_err() {
+    // Frequency must be 0 (clear the slot) or inside the CONNECTED scanner's
+    // coverage (#143 — validate_frequency existed but was never called on this
+    // path; #402 — the two families do not cover the same spectrum).
+    //
+    // The BC75XLT has no 225–380 MHz band at all and its UHF range starts at
+    // 406, not 400, so the BC125AT-family bands would accept frequencies this
+    // scanner cannot tune. `covers_frequency` treats 0.0 as the clear sentinel.
+    if !caps.covers_frequency(body.frequency) {
         return Err(ApiError::BadRequest("frequency_out_of_range".to_string()));
     }
-    // Valid CIN delay values per docs/BC125AT_PROTOCOL.md §5.3.
-    if !matches!(body.delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
+    // Valid CIN delay values are model-dependent: signed seconds on the
+    // BC125AT family (docs/BC125AT_PROTOCOL.md §5.3), a boolean on the BC75XLT
+    // (vendor spec: `[DLY] : Delay Time (0:OFF / 1:ON)`). Rejected here rather
+    // than at the wire because the vendor spec aborts the ENTIRE set command on
+    // a format error — a bad delay would silently discard the frequency,
+    // lockout, and priority in the same write. See #402.
+    if !caps.accepts_delay(body.delay) {
         return Err(ApiError::BadRequest("delay_out_of_range".to_string()));
     }
     if body.bank > caps.bank_count {

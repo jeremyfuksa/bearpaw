@@ -26,7 +26,10 @@
 // only ever flow outward to the frontend. Accepting them as input would mean a
 // client could assert its own memory model, which is exactly the authority the
 // backend must keep.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+// No `Eq`: `coverage_bands` holds f64 band edges, and f64 is only PartialEq.
+// Nothing needs total equality here — the comparisons are all assert_eq! in
+// tests and `Option<ScannerCapabilities>` equality at the connect chokepoint.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct ScannerCapabilities {
     /// Highest valid channel index. Channel indices are 1-based, so this is
     /// also the channel count. `CIN,<n>` above this returns `ERR`.
@@ -88,6 +91,18 @@ pub struct ScannerCapabilities {
     pub cleared_delay: i8,
     /// Serial baud rate this model speaks.
     pub default_baud: u32,
+    /// Receive coverage, as inclusive `(low_mhz, high_mhz)` bands.
+    ///
+    /// The two families do NOT cover the same spectrum. The BC125AT family
+    /// tunes 25–54, 108–174, 225–380, and 400–512 MHz. The BC75XLT has no
+    /// 225–380 band at all and its UHF range starts at 406, not 400 (owner's
+    /// manual, "FREQUENCY RANGE", USA and Canada band plans agree on the
+    /// edges).
+    ///
+    /// Validating against the wrong set means the UI accepts a frequency the
+    /// scanner cannot tune, and the user gets a bare wire error instead of a
+    /// message naming the problem.
+    pub coverage_bands: &'static [(f64, f64)],
 }
 
 /// BC125AT family: BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H.
@@ -110,6 +125,8 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     valid_delays: &[-10, -5, 0, 1, 2, 3, 4, 5],
     cleared_delay: 2,
     default_baud: 115_200,
+    // docs/SCANNER_PROTOCOL_REFERENCE.md §6.
+    coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (225.0, 380.0), (400.0, 512.0)],
 };
 
 /// BC75XLT: 300 channels in 10 banks of 30, no alpha tags, no per-channel
@@ -134,6 +151,8 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     // Observed: `CIN,299 -> CIN,299,,00000000,,,0,1,0`.
     cleared_delay: 0,
     default_baud: 57_600,
+    // Owner's manual, "FREQUENCY RANGE". No 225-380 band; UHF starts at 406.
+    coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (406.0, 512.0)],
 };
 
 impl ScannerCapabilities {
@@ -176,6 +195,31 @@ impl ScannerCapabilities {
             return 0;
         }
         ((index - 1) / self.channels_per_bank + 1) as u8
+    }
+
+    /// Whether this model can tune `mhz`.
+    ///
+    /// 0.0 is accepted as the "clear this channel" sentinel, matching the
+    /// `CIN` write path where frequency 0 empties a slot.
+    pub fn covers_frequency(&self, mhz: f64) -> bool {
+        if mhz == 0.0 {
+            return true;
+        }
+        self.coverage_bands
+            .iter()
+            .any(|(lo, hi)| mhz >= *lo && mhz <= *hi)
+    }
+
+    /// Coverage bands rendered for a user-facing message:
+    /// "25–54, 108–174, 406–512 MHz".
+    pub fn coverage_summary(&self) -> String {
+        let bands = self
+            .coverage_bands
+            .iter()
+            .map(|(lo, hi)| format!("{}–{}", lo, hi))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{} MHz", bands)
     }
 
     /// Whether `delay` is a value this model accepts in a `CIN` write.

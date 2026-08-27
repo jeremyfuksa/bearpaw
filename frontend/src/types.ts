@@ -105,6 +105,13 @@ export interface ScannerCapabilities {
   cleared_delay: number;
   /** Serial baud rate this model speaks. */
   default_baud: number;
+  /**
+   * Receive coverage as inclusive `[low, high]` MHz bands.
+   *
+   * The families do not cover the same spectrum: the BC75XLT has no 225–380
+   * band and its UHF range starts at 406, not 400.
+   */
+  coverage_bands: Array<[number, number]>;
 }
 
 export interface DeviceInfo {
