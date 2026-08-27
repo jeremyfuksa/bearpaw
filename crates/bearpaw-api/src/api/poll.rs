@@ -696,8 +696,44 @@ fn next_backoff(current: Duration) -> Duration {
     Duration::from_millis(doubled_ms)
 }
 
+/// Record the model reported by `MDL` and flip the device to `connected`.
+///
+/// REGRESSION GUARD (unsupported-model gate): this is the single chokepoint
+/// where every connection path -- autodetect, explicit `device.port`, and
+/// explicit `usb_vid`/`usb_pid` -- records a model. The allowlist check lives
+/// HERE rather than in `config::resolve_serial_port` because the two explicit
+/// config paths short-circuit discovery entirely and never run an `MDL` probe
+/// (#389). Moving this check back to discovery-time reopens that hole, and the
+/// macOS setup documented in `CLAUDE.md` *is* the explicit-config path, so the
+/// hole would be the default posture rather than an edge case.
+///
+/// An unsupported scanner is allowed to connect but is flagged with the
+/// `unsupported_model` diagnostic. It is deliberately not refused: an explicit
+/// `device.port` is the user overriding detection on purpose, and a hard
+/// refusal would remove the only escape hatch for a compatible-but-unlisted
+/// model. The diagnostic is what the UI surfaces instead.
+///
+/// Tests: `unsupported_model_sets_diagnostic_and_keeps_connection`,
+/// `supported_model_clears_diagnostic`.
 fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &str) {
     if let Some(model) = parse_mdl_response(mdl_resp) {
+        let supported = crate::config::is_supported_model(&model);
+        if !supported {
+            // warn! rather than debug!: this is the one outcome where the user
+            // has done nothing wrong and needs to know why memory operations
+            // may behave oddly. Mirrors config::probe_mdl_on_port's warning on
+            // the autodetect path.
+            warn!(
+                "Scanner on {} reports model {:?}, which Bearpaw does not support. \
+                 Supported models: {}. Bearpaw targets the conventional analog 125/126 \
+                 family; channel-memory operations assume 500 channels across 10 banks \
+                 and may misbehave on other hardware. Please report this model at \
+                 https://github.com/jeremyfuksa/bearpaw/issues so support can be considered.",
+                port_label,
+                model,
+                crate::config::supported_models_list()
+            );
+        }
         let mut transitioned_to_connected = false;
         if let Ok(mut d) = state.device.write() {
             if d.connection_status != "connected" {
@@ -706,8 +742,19 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             d.model = Some(model.clone());
             d.port = Some(port_label.to_string());
             d.connection_status = "connected".to_string();
-            d.diagnostic_code = None;
-            d.diagnostic_message = None;
+            if supported {
+                d.diagnostic_code = None;
+                d.diagnostic_message = None;
+            } else {
+                d.diagnostic_code = Some("unsupported_model".to_string());
+                d.diagnostic_message = Some(format!(
+                    "This scanner reports model {}, which Bearpaw does not support yet. \
+                     Supported models: {}. Channel memory operations assume 500 channels \
+                     across 10 banks and may not work correctly on this hardware.",
+                    model,
+                    crate::config::supported_models_list()
+                ));
+            }
         }
         // Cache the USB serial number so autodetect can prefer this
         // physical unit on reconnect. Best-effort: skipped silently for
@@ -930,6 +977,96 @@ fn parse_vol_response(resp: &str) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// REGRESSION GUARD (#389): an unsupported scanner must be flagged with a
+    /// diagnostic at the point of CONNECTION, not the point of discovery.
+    ///
+    /// The allowlist used to be enforced only in `config::probe_mdl_on_port`,
+    /// which runs during autodetect. Both explicit-config paths — `device.port`
+    /// and `usb_vid`/`usb_pid` — short-circuit before any probe, so an
+    /// unsupported scanner configured explicitly reported plain `connected`
+    /// with no warning and no diagnostic. That is the documented macOS setup,
+    /// so it was the default posture rather than an edge case.
+    ///
+    /// This drives `update_device_info_from_mdl` directly because that is the
+    /// one function every connection path funnels through.
+    #[test]
+    fn unsupported_model_sets_diagnostic_and_keeps_connection() {
+        let state = crate::api::default_state();
+        // BC75XLT is the concrete hazard from #389: same wire protocol, 300
+        // channels instead of 500, so the fixed 1-500/10-bank memory model
+        // would drive it wrong.
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(
+            d.model.as_deref(),
+            Some("BC75XLT"),
+            "the reported model must still be recorded so the UI can name it"
+        );
+        assert_eq!(
+            d.connection_status, "connected",
+            "an unsupported scanner is allowed to connect: an explicit device.port \
+             is the user overriding detection on purpose, and refusing removes the \
+             only escape hatch for a compatible-but-unlisted model"
+        );
+        assert_eq!(
+            d.diagnostic_code.as_deref(),
+            Some("unsupported_model"),
+            "the diagnostic is what the UI surfaces in place of a hard refusal"
+        );
+        assert!(
+            d.diagnostic_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("BC75XLT"),
+            "the message must name the offending model, not just say 'unsupported'"
+        );
+    }
+
+    /// Paired with the guard above: a supported model must CLEAR the
+    /// diagnostic. Without this, a scanner that reconnects after an
+    /// unsupported one would inherit a stale `unsupported_model` flag,
+    /// because the connect path only ever cleared diagnostics before the
+    /// MDL probe ran.
+    #[test]
+    fn supported_model_clears_diagnostic() {
+        let state = crate::api::default_state();
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        assert_eq!(
+            state.device.read().unwrap().diagnostic_code.as_deref(),
+            Some("unsupported_model"),
+            "precondition: the unsupported flag is set"
+        );
+
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(d.model.as_deref(), Some("BC125AT"));
+        assert_eq!(d.connection_status, "connected");
+        assert_eq!(
+            d.diagnostic_code, None,
+            "a supported model must clear the stale unsupported_model diagnostic"
+        );
+        assert_eq!(d.diagnostic_message, None);
+    }
+
+    /// The allowlist comparison is case-insensitive (`eq_ignore_ascii_case`).
+    /// This pins that the gate at the connect chokepoint uses the same
+    /// comparison as the autodetect probe — an exact-match `.contains()` here
+    /// would reject a valid lowercase reply and flag a supported scanner as
+    /// unsupported.
+    #[test]
+    fn model_match_is_case_insensitive_at_connect() {
+        let state = crate::api::default_state();
+        update_device_info_from_mdl(&state, "MDL,bc125at", "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(
+            d.diagnostic_code, None,
+            "a lowercase but supported model must not be flagged unsupported"
+        );
+    }
 
     #[test]
     fn next_backoff_doubles_until_cap() {
