@@ -107,9 +107,9 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
   return groups;
 }
 
-function HitSignalBars({ strength }: { strength: number }) {
+function HitSignalBars({ strength, className }: { strength: number; className?: string }) {
   return (
-    <div className="flex shrink-0 items-end gap-[clamp(1px,0.8cqmin,8px)]">
+    <div className={cn('flex shrink-0 items-end gap-[clamp(1px,0.8cqmin,8px)]', className)}>
       {[1, 2, 3, 4, 5].map((bar) => (
         <span
           key={bar}
@@ -286,7 +286,13 @@ export function ScanView({
                 'grid flex-1 min-h-0 grid-rows-[repeat(5,auto)] content-between gap-x-[clamp(12px,3.5cqmin,60px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]',
                 showTagColumn
                   ? 'grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto]'
-                  : 'grid-cols-[minmax(14ch,max-content)_minmax(0,1fr)_auto]',
+                  : // The frequency column stays `auto` so it hugs its content and
+                    // sits right after the timestamp, exactly as it does beside a
+                    // tag column. Handing it the `1fr` instead made `text-right`
+                    // fling it to the far edge -- the same rows read left-aligned
+                    // on a BC125AT and right-aligned on a BC75XLT. The slack goes
+                    // to the trailing bars column instead.
+                    'grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)]',
               )}
             >
               {Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
@@ -324,7 +330,10 @@ export function ScanView({
                         {hit.tag ? `${hit.tag}${countSuffix}` : `—${countSuffix}`}
                       </span>
                     ) : null}
-                    <HitSignalBars strength={hit.strength} />
+                    <HitSignalBars
+                      strength={hit.strength}
+                      className={showTagColumn ? undefined : 'justify-end'}
+                    />
                   </div>
                 );
               })}
