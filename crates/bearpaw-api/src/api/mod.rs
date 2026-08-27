@@ -614,10 +614,14 @@ pub fn default_state() -> AppState {
         live: Arc::new(std::sync::RwLock::new(LiveState::default())),
         device: Arc::new(std::sync::RwLock::new(DeviceInfo {
             connection_status: "disconnected".to_string(),
-            diagnostic_code: migration_error
+            // `data_diagnostic_*`, NOT `diagnostic_*`: a failed migration is
+            // not resolved by connecting a scanner, and the connect path in
+            // `api::poll` blanks the connection pair on every successful open.
+            // See the field docs on DeviceInfo.
+            data_diagnostic_code: migration_error
                 .as_ref()
                 .map(|_| "migration_failed".to_string()),
-            diagnostic_message: migration_error.as_ref().map(|e| e.to_string()),
+            data_diagnostic_message: migration_error.as_ref().map(|e| e.to_string()),
             ..Default::default()
         })),
         shadow: Arc::new(std::sync::RwLock::new(ShadowState::default())),

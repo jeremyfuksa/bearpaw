@@ -114,8 +114,7 @@ fn run_poll_loop(
         if let Ok(mut d) = state.device.write() {
             d.port = Some(port_name.to_string());
             d.connection_status = "connected".to_string();
-            d.diagnostic_code = None;
-            d.diagnostic_message = None;
+            d.clear_connection_diagnostic();
         }
 
         // Device info: model from MDL (with retry because some scanners can return
@@ -391,8 +390,7 @@ fn run_poll_loop_usb(
         if let Ok(mut d) = state.device.write() {
             d.port = Some(port_label.clone());
             d.connection_status = "connected".to_string();
-            d.diagnostic_code = None;
-            d.diagnostic_message = None;
+            d.clear_connection_diagnostic();
         }
 
         let mut mdl_set = false;
@@ -750,8 +748,7 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             d.port = Some(port_label.to_string());
             d.connection_status = "connected".to_string();
             if supported {
-                d.diagnostic_code = None;
-                d.diagnostic_message = None;
+                d.clear_connection_diagnostic();
             } else {
                 d.diagnostic_code = Some("unsupported_model".to_string());
                 d.diagnostic_message = Some(format!(
@@ -1150,6 +1147,72 @@ mod tests {
             "a supported model must clear the stale unsupported_model diagnostic"
         );
         assert_eq!(d.diagnostic_message, None);
+    }
+
+    /// REGRESSION GUARD: a data diagnostic must survive a successful connect.
+    ///
+    /// A failed migration used to be written into `diagnostic_code`, which
+    /// every connect path blanks on a successful open -- so the channel #418
+    /// chose specifically to carry it was wiped before any user could see it.
+    /// It stayed visible only for someone whose scanner was ALSO unplugged,
+    /// which inverts the intent: the warning survived exactly when it mattered
+    /// least. Two further gates compounded it -- `App.tsx` renders
+    /// `diagnostic_message` only while disconnected, and `DeviceTab` only if
+    /// you visit that tab, which nothing prompts you to do when the scanner is
+    /// working.
+    ///
+    /// Observed 2026-08-27 by running a v1 build against a v2 database: the
+    /// error logged correctly and `GET /device/info` reported
+    /// `diagnostic_code: null` the whole time.
+    #[test]
+    fn migration_diagnostic_survives_a_connect() {
+        let state = crate::api::default_state();
+        {
+            let mut d = state.device.write().unwrap();
+            d.data_diagnostic_code = Some("migration_failed".to_string());
+            d.data_diagnostic_message = Some("schema v2; this build supports v1".to_string());
+            d.diagnostic_code = Some("unsupported_model".to_string());
+            d.diagnostic_message = Some("some connection problem".to_string());
+        }
+
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(
+            d.diagnostic_code, None,
+            "connecting DOES resolve a connection diagnostic -- that half must still clear"
+        );
+        assert_eq!(
+            d.data_diagnostic_code.as_deref(),
+            Some("migration_failed"),
+            "connecting a scanner does not fix a database, so the data diagnostic must persist"
+        );
+        assert_eq!(
+            d.data_diagnostic_message.as_deref(),
+            Some("schema v2; this build supports v1")
+        );
+    }
+
+    /// The clear method must be incapable of touching the data pair. This is
+    /// the structural half of the guard above: three separate sites in this
+    /// file used to blank the fields inline, and an inline assignment is what
+    /// makes a future persistent diagnostic unsafe by default.
+    #[test]
+    fn clearing_a_connection_diagnostic_leaves_the_data_one() {
+        let mut d = crate::state::DeviceInfo {
+            diagnostic_code: Some("unsupported_model".to_string()),
+            diagnostic_message: Some("connection".to_string()),
+            data_diagnostic_code: Some("migration_failed".to_string()),
+            data_diagnostic_message: Some("data".to_string()),
+            ..Default::default()
+        };
+
+        d.clear_connection_diagnostic();
+
+        assert_eq!(d.diagnostic_code, None);
+        assert_eq!(d.diagnostic_message, None);
+        assert_eq!(d.data_diagnostic_code.as_deref(), Some("migration_failed"));
+        assert_eq!(d.data_diagnostic_message.as_deref(), Some("data"));
     }
 
     /// The allowlist comparison is case-insensitive (`eq_ignore_ascii_case`).

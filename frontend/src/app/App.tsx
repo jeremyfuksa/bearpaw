@@ -21,6 +21,7 @@ import type { BanksUpdateMessage, LiveState, ProgressMessage, StateUpdateMessage
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ScanView } from './components/views/ScanView';
+import { DataDiagnosticBanner } from './components/DataDiagnosticBanner';
 import { TabBar } from './components/TabBar';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
 
@@ -1069,6 +1070,11 @@ export default function App() {
     <MotionConfig reducedMotion={preferences.reducedMotion ? 'always' : 'user'}>
       <div className="scanner-app-shell">
         <h1 className="sr-only">Bearpaw</h1>
+        {/* Above the tab bar and NOT gated on connection_status: a data
+          problem is still true while the scanner is connected and everything
+          else looks fine, which is exactly how the migration failure it
+          exists for stayed invisible. */}
+        <DataDiagnosticBanner message={deviceInfo?.data_diagnostic_message} />
         {/* `expand` + `gap` make stacked toasts spread vertically instead of
           piling. Colors come from sonner's own CSS variables (not `unstyled`)
           so its stacking/expand layout stays intact — a darker `--normal-bg`
