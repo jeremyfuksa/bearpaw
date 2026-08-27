@@ -450,10 +450,6 @@ export class ScannerAPIClient {
     });
   }
 
-  async cleanupAnalytics(): Promise<void> {
-    await this.request('/analytics/cleanup', { method: 'POST' });
-  }
-
   preferencesApi = {
     getAll: () => this.getAllPreferences(),
     get: (key: string) => this.getPreference(key),

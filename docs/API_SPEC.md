@@ -910,7 +910,6 @@ request/response shapes.
 | GET | `/api/v1/analytics/busiest-channels` | Busiest channels; `limit` (default 10), `hours` scopes the window (default: all history). |
 | GET | `/api/v1/analytics/session-stats` | Hit count / avg RSSI / active seconds / unique channels for the current backend session. |
 | GET | `/api/v1/analytics/hourly-heatmap` | 7×24 hit bins; `days` (default 7), `tz_offset_minutes` (minutes east of UTC, e.g. -300 for CDT) for local-time bucketing — default is UTC. |
-| POST | `/api/v1/analytics/cleanup` | Delete hits older than `retention_days` (default 30). |
 
 > Note: `POST /api/v1/preferences` was previously a destructive alias for
 > `reset_preferences` — POSTing a preferences object to the collection URL (a

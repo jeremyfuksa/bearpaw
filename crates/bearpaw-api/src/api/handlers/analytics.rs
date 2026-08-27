@@ -4,9 +4,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
-use super::super::{
-    cleanup_analytics_db, day_hour, epoch_now, min_hit_duration, ActivityHit, AppState,
-};
+use super::super::{day_hour, epoch_now, min_hit_duration, ActivityHit, AppState};
 
 /// Which scanner's hits the analytics views should count.
 ///
@@ -250,26 +248,6 @@ pub(crate) async fn analytics_activity_log(
         .take(limit)
         .collect::<Vec<ActivityHit>>();
     Json(json!(slice))
-}
-
-#[derive(Deserialize)]
-pub(crate) struct AnalyticsCleanupQuery {
-    retention_days: Option<u32>,
-}
-
-pub(crate) async fn analytics_cleanup(
-    State(state): State<AppState>,
-    Query(query): Query<AnalyticsCleanupQuery>,
-) -> Json<Value> {
-    let days = query.retention_days.unwrap_or(30) as f64;
-    let cutoff = epoch_now() - (days * 24.0 * 3600.0);
-    let mut log = state.analytics_log.lock().unwrap();
-    let before = log.len();
-    log.retain(|h| h.timestamp >= cutoff);
-    let deleted_mem = before - log.len();
-    let deleted_db =
-        cleanup_analytics_db(&state.analytics_db_path, query.retention_days.unwrap_or(30));
-    Json(json!({ "deleted_records": deleted_mem.max(deleted_db) }))
 }
 
 #[cfg(test)]
