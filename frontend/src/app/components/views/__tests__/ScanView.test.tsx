@@ -177,7 +177,7 @@ describe('ScanView Recent Hits rendering', () => {
     dashboardLoading: false,
     busiestChannels: [],
     hourlyHeatmap: [],
-    heatmapStats: { min: 0, max: 0, avg: 0 },
+    heatmapStats: { max: 0 },
     onHoldToggle: () => {},
     onLockout: () => {},
     onVolumeChange: () => {},
@@ -342,7 +342,7 @@ describe('Activity Heatmap accessibility', () => {
         g[1][18] = 9;
         return g;
       })(),
-      heatmapStats: { min: 0, max: 9, avg: 9 },
+      heatmapStats: { max: 9 },
       onHoldToggle: () => {},
       onLockout: () => {},
       onVolumeChange: () => {},

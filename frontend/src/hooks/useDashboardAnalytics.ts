@@ -46,9 +46,14 @@ export interface SessionStats {
 }
 
 export interface HeatmapStats {
-  min: number;
+  /**
+   * Busiest cell count, used to normalise every cell's colour intensity.
+   *
+   * `min` and `avg` used to sit alongside it and were never read by any
+   * consumer -- the reduce ran on every recompute for nothing. Add a field
+   * back only when something renders it.
+   */
   max: number;
-  avg: number;
 }
 
 export interface DashboardAnalytics {
@@ -59,7 +64,7 @@ export interface DashboardAnalytics {
   loading: boolean;
 }
 
-const EMPTY_HEATMAP_STATS: HeatmapStats = { min: 0, max: 0, avg: 0 };
+const EMPTY_HEATMAP_STATS: HeatmapStats = { max: 0 };
 const POLL_INTERVAL_MS = 5000;
 const HEATMAP_DAYS = 7;
 const SECONDS_PER_DAY = 24 * 60 * 60;
@@ -101,10 +106,8 @@ function computeLocalHeatmap(
 
   const counts = grid.flat().filter((c) => c > 0);
   const max = counts.length ? Math.max(...counts) : 0;
-  const min = counts.length ? Math.min(...counts) : 0;
-  const avg = counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0;
 
-  return { hourlyHeatmap: grid, heatmapStats: { min, max, avg } };
+  return { hourlyHeatmap: grid, heatmapStats: { max } };
 }
 
 /**
