@@ -20,6 +20,7 @@ import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore, type Preferences } from '../../../store/useStore';
 import { openExternalUrl, revealLogs, isTauriRuntime } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
+import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -190,6 +191,11 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
 
   // Device Config Settings
   const [squelch, setSquelch] = useState(2);
+  // Controls for commands the scanner does not implement are hidden, not
+  // disabled: on a BC75XLT, BLT / BSV / CNT / WXS all reply ERR (settings probe
+  // 2026-08-26, docs/wire_captures/2026-08-26/). A visible control that cannot
+  // work is worse than an absent one -- it invites a click that silently fails.
+  const capabilities = useScannerCapabilities();
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState('AO');
   const [contrast, setContrast] = useState(7);
@@ -1042,20 +1048,22 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   />
                 </div>
 
-                <div className="space-y-3 pt-2 border-t border-white/5">
-                  <div className="flex justify-between text-sm font-medium text-white/70">
-                    <span>Battery Saver</span>
-                    <span className="text-white">{`${batterySaver}h`}</span>
+                {capabilities.has_battery_save && (
+                  <div className="space-y-3 pt-2 border-t border-white/5">
+                    <div className="flex justify-between text-sm font-medium text-white/70">
+                      <span>Battery Saver</span>
+                      <span className="text-white">{`${batterySaver}h`}</span>
+                    </div>
+                    <Slider
+                      aria-label="Battery Saver"
+                      value={[batterySaver]}
+                      min={1}
+                      max={16}
+                      step={1}
+                      onValueChange={handleBatterySaverChange}
+                    />
                   </div>
-                  <Slider
-                    aria-label="Battery Saver"
-                    value={[batterySaver]}
-                    min={1}
-                    max={16}
-                    step={1}
-                    onValueChange={handleBatterySaverChange}
-                  />
-                </div>
+                )}
               </div>
 
               {/* Display Settings */}
@@ -1068,37 +1076,41 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-white/70">Backlight</span>
-                    <Select value={backlight} onValueChange={handleBacklightChange}>
-                      <SelectTrigger
-                        aria-label="Backlight"
-                        className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="scanner-select-content">
-                        <SelectItem value="AO">Always On</SelectItem>
-                        <SelectItem value="AF">Always Off</SelectItem>
-                        <SelectItem value="KY">Keypress</SelectItem>
-                        <SelectItem value="SQ">Squelch</SelectItem>
-                        <SelectItem value="KS">Key + Squelch</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {capabilities.has_backlight_control && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-white/70">Backlight</span>
+                      <Select value={backlight} onValueChange={handleBacklightChange}>
+                        <SelectTrigger
+                          aria-label="Backlight"
+                          className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="scanner-select-content">
+                          <SelectItem value="AO">Always On</SelectItem>
+                          <SelectItem value="AF">Always Off</SelectItem>
+                          <SelectItem value="KY">Keypress</SelectItem>
+                          <SelectItem value="SQ">Squelch</SelectItem>
+                          <SelectItem value="KS">Key + Squelch</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-white/70">Contrast</span>
-                    <Slider
-                      aria-label="Contrast"
-                      value={[contrast]}
-                      min={1}
-                      max={15}
-                      step={1}
-                      className="w-[var(--size-select-medium)]"
-                      onValueChange={handleContrastChange}
-                    />
-                  </div>
+                  {capabilities.has_contrast && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-white/70">Contrast</span>
+                      <Slider
+                        aria-label="Contrast"
+                        value={[contrast]}
+                        min={1}
+                        max={15}
+                        step={1}
+                        className="w-[var(--size-select-medium)]"
+                        onValueChange={handleContrastChange}
+                      />
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between pt-2 border-t border-white/5">
                     <label
@@ -1158,20 +1170,22 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   )}
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <Switch
-                    id="weather-alert"
-                    className="scale-75 data-[state=checked]:bg-brand-primary"
-                    checked={weatherAlert}
-                    onCheckedChange={handleWeatherAlertChange}
-                  />
-                  <label
-                    htmlFor="weather-alert"
-                    className="text-sm font-medium text-white/70 cursor-pointer"
-                  >
-                    Weather Alert Priority
-                  </label>
-                </div>
+                {capabilities.has_weather_alert && (
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      id="weather-alert"
+                      className="scale-75 data-[state=checked]:bg-brand-primary"
+                      checked={weatherAlert}
+                      onCheckedChange={handleWeatherAlertChange}
+                    />
+                    <label
+                      htmlFor="weather-alert"
+                      className="text-sm font-medium text-white/70 cursor-pointer"
+                    >
+                      Weather Alert Priority
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
 

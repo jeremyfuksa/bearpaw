@@ -127,7 +127,7 @@ Scanner hardware and connection information.
     "has_alpha_tags": true,
     "has_per_channel_modulation": true,
     "has_tone_squelch": true,
-    "has_backlight": true,
+    "has_backlight_control": true,
     "valid_delays": [-10, -5, 0, 1, 2, 3, 4, 5],
     "cleared_delay": 2,
     "default_baud": 115200
@@ -159,7 +159,7 @@ never on `model` — the backend owns the model-to-behaviour mapping.
 | `has_alpha_tags` | boolean | Whether `CIN` carries a channel name |
 | `has_per_channel_modulation` | boolean | False on BC75XLT, where modulation is the global band plan |
 | `has_tone_squelch` | boolean | Whether `CIN` carries a CTCSS/DCS code |
-| `has_backlight` | boolean | Whether the scanner implements `BLT` |
+| `has_backlight_control` | boolean | Whether the scanner exposes a settable backlight *mode* via `BLT`. Not "has a backlight" — the BC75XLT has one (a 15-second button) but no `BLT` command |
 | `valid_delays` | number[] | Accepted `CIN` delay values |
 | `cleared_delay` | number | Delay a cleared slot reports — not a sentinel, the real hardware value |
 | `default_baud` | number | Serial rate this model speaks |

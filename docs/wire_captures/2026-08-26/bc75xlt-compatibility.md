@@ -125,3 +125,48 @@ modulation is a band-plan property, not channel memory.
   not treat these as two candidate scanners.
 - **Untested commands:** `BPL`, `CLC`, `SSP`, `CSG`, `CSP`, `KBP`, `CLR`, and
   all `CIN` writes. `CLR` is destructive and was deliberately not sent.
+
+---
+
+## Settings probe (added same day)
+
+Which global-settings commands the BC75XLT actually answers. Read-only — every
+command below is a GET with no value argument.
+
+```
+--- outside program mode ---
+VOL   -> VOL,0
+SQL   -> SQL,2
+BLT   -> ERR
+BSV   -> ERR
+CNT   -> ERR
+KBP   -> KBP,NG
+WXS   -> ERR
+
+--- inside program mode ---
+BLT   -> ERR
+BSV   -> ERR
+CNT   -> ERR
+KBP   -> KBP,,0
+WXS   -> ERR
+PRI   -> PRI,0
+BPL   -> BPL,0
+SCO   -> SCO,1,,0
+CLC   -> CLC,2,1,1,11101,
+```
+
+| Command | BC75XLT | Note |
+|---|---|---|
+| `VOL` `SQL` | works, any mode | |
+| `PRI` | works, program mode | |
+| `KBP` | **program mode only** | `KBP,NG` outside — "invalid at this time" per the vendor spec. The BC125AT accepts it in either mode. |
+| `BLT` | **absent** | Not in the command table. The scanner still HAS a backlight — the owner's manual documents a 15-second button — but no settable mode. |
+| `BSV` `CNT` `WXS` | **absent** | Not in the command table; `ERR` in both modes. `CNT` matches the manual, which has no contrast setting. |
+| `BPL` | works | Band plan, `BPL,0`. This is where modulation lives on this model — confirms why `CIN` carries none. |
+| `SCO` `CLC` | works | Search/Close Call settings, untested for writes. |
+
+`has_backlight_control` is named for what Bearpaw can control, not what the
+hardware has: the BC75XLT has a backlight, just no `BLT` command.
+
+**Still untested:** all writes (`BLT,<v>`-style SET forms), `CLR`, `CSG`, `CSP`,
+`SSP`, and `GLF`/`LOF`/`ULF`.

@@ -32,7 +32,11 @@ const EXPECTED_KEYS = [
   'has_alpha_tags',
   'has_per_channel_modulation',
   'has_tone_squelch',
-  'has_backlight',
+  'has_backlight_control',
+  'has_battery_save',
+  'has_contrast',
+  'has_weather_alert',
+  'key_beep_needs_program_mode',
   'valid_delays',
   'cleared_delay',
   'default_baud',
@@ -59,7 +63,11 @@ describe('ScannerCapabilities contract', () => {
     expect(typeof caps.has_alpha_tags).toBe('boolean');
     expect(typeof caps.has_per_channel_modulation).toBe('boolean');
     expect(typeof caps.has_tone_squelch).toBe('boolean');
-    expect(typeof caps.has_backlight).toBe('boolean');
+    expect(typeof caps.has_backlight_control).toBe('boolean');
+    expect(typeof caps.has_battery_save).toBe('boolean');
+    expect(typeof caps.has_contrast).toBe('boolean');
+    expect(typeof caps.has_weather_alert).toBe('boolean');
+    expect(typeof caps.key_beep_needs_program_mode).toBe('boolean');
     expect(Array.isArray(caps.valid_delays)).toBe(true);
     expect(typeof caps.cleared_delay).toBe('number');
     expect(typeof caps.default_baud).toBe('number');

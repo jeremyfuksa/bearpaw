@@ -76,8 +76,24 @@ export interface ScannerCapabilities {
   has_per_channel_modulation: boolean;
   /** False on the BC75XLT, where the CIN tone field is reserved. */
   has_tone_squelch: boolean;
-  /** False on the BC75XLT, which has no `BLT` command at all. */
-  has_backlight: boolean;
+  /**
+   * Whether the scanner exposes a settable backlight *mode* via `BLT`.
+   *
+   * Not `has_backlight`: the BC75XLT has a backlight (a 15-second button, per
+   * its owner's manual) but no `BLT` command and no persistent mode to set.
+   */
+  has_backlight_control: boolean;
+  /** False on the BC75XLT: `BSV` replies ERR in both modes. */
+  has_battery_save: boolean;
+  /** False on the BC75XLT, which has no contrast setting at all. */
+  has_contrast: boolean;
+  /** False on the BC75XLT: `WXS` replies ERR in both modes. */
+  has_weather_alert: boolean;
+  /**
+   * True on the BC75XLT, where `KBP` replies `KBP,NG` outside program mode.
+   * The BC125AT accepts it in either mode.
+   */
+  key_beep_needs_program_mode: boolean;
   /** Accepted CIN delay values. `[-10,-5,0,1,2,3,4,5]` vs `[0,1]`. */
   valid_delays: number[];
   /**

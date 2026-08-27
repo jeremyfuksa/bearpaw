@@ -114,7 +114,7 @@ through any `error` message.
       "has_alpha_tags": true,
       "has_per_channel_modulation": true,
       "has_tone_squelch": true,
-      "has_backlight": true,
+      "has_backlight_control": true,
       "valid_delays": [-10, -5, 0, 1, 2, 3, 4, 5],
       "cleared_delay": 2,
       "default_baud": 115200
