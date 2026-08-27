@@ -957,6 +957,29 @@ pub(crate) fn cleanup_analytics_db(path: &str, retention_days: u32) -> usize {
     0
 }
 
+/// Per-call unique database path, for tests only.
+///
+/// `resolve_db_path` falls back to a fixed filesystem path when its env var is
+/// unset, so every `default_state()` in the suite shared the same two SQLite
+/// files. Rust runs tests in parallel threads, so 29 constructors contended on
+/// those handles — and `preferences_reset_alias_matches` deletes every
+/// preference row, which another test could observe mid-run. The suite passed
+/// with `--test-threads=1` and failed intermittently without it.
+///
+/// Files land under one PID-scoped directory so a run's leftovers are
+/// identifiable; the OS temp cleaner reclaims them. See #410.
+#[cfg(test)]
+fn unique_test_db_path(default_file: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("bearpaw-test-dbs-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join(format!("{n}-{default_file}"))
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn resolve_db_path(env_key: &str, default_file: &str) -> String {
     if let Ok(raw) = std::env::var(env_key) {
         if !raw.trim().is_empty() {
@@ -970,10 +993,26 @@ fn resolve_db_path(env_key: &str, default_file: &str) -> String {
                 .into_owned();
         }
     }
+    // An explicit env var still wins above, so a test that wants a specific
+    // file (the migration tests do) keeps getting it.
+    fallback_db_path(default_file)
+}
+
+/// Where a database lives when no env var names one.
+///
+/// Split by cfg rather than branched inside `resolve_db_path` so neither build
+/// carries the other's path logic.
+#[cfg(not(test))]
+fn fallback_db_path(default_file: &str) -> String {
     default_data_dir()
         .join(default_file)
         .to_string_lossy()
         .into_owned()
+}
+
+#[cfg(test)]
+fn fallback_db_path(default_file: &str) -> String {
+    unique_test_db_path(default_file)
 }
 
 /// Why a migration could not run. Carried to the caller so a failure surfaces
@@ -2718,6 +2757,51 @@ mod tests {
             .unwrap_or_default()
             .as_nanos();
         std::env::temp_dir().join(format!("bearpaw-test-{}-{}.db", name, ts))
+    }
+
+    /// REGRESSION GUARD (#410): every `default_state()` gets its own databases.
+    ///
+    /// They used to share one fixed path, so 29 constructors contended on two
+    /// SQLite files under parallel test execution — and
+    /// `preferences_reset_alias_matches` deletes every preference row, which a
+    /// concurrently-running test could observe mid-assertion. The suite passed
+    /// with `--test-threads=1` and failed intermittently without it, which is
+    /// the worst shape a CI failure can take: it trains people to rerun.
+    ///
+    /// Adding tests made it MORE likely to fire, which punished exactly the
+    /// behaviour we want.
+    #[test]
+    fn each_state_gets_its_own_databases() {
+        let a = default_state();
+        let b = default_state();
+
+        assert_ne!(
+            *a.preferences_db_path, *b.preferences_db_path,
+            "two states must not share a preferences database"
+        );
+        assert_ne!(
+            *a.analytics_db_path, *b.analytics_db_path,
+            "two states must not share an analytics database"
+        );
+
+        // And writes must not cross over. A deliberately non-default value, so
+        // the assertion cannot pass by matching what a fresh database returns.
+        let sentinel = Value::from("only-in-a");
+        save_preference_to_db(&a.preferences_db_path, "theme", &sentinel);
+        assert_eq!(
+            load_preferences_from_db(&a.preferences_db_path)
+                .get("theme")
+                .and_then(Value::as_str),
+            Some("only-in-a"),
+            "precondition: the write landed in a"
+        );
+        assert_ne!(
+            load_preferences_from_db(&b.preferences_db_path)
+                .get("theme")
+                .and_then(Value::as_str),
+            Some("only-in-a"),
+            "a write to one state's database must not appear in another's"
+        );
     }
 
     // ---------------------------------------------------------------------
