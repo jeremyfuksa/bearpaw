@@ -8,6 +8,37 @@ use super::super::{
     cleanup_analytics_db, day_hour, epoch_now, min_hit_duration, ActivityHit, AppState,
 };
 
+/// Which scanner's hits the analytics views should count.
+///
+/// `None` while nothing is connected, which means "count everything" -- an
+/// empty dashboard on a disconnected app would look broken rather than
+/// scoped.
+fn connected_scanner(state: &AppState) -> Option<String> {
+    state.device.read().ok().and_then(|d| d.model.clone())
+}
+
+/// Does this hit belong in a view scoped to `scanner`?
+///
+/// Unattributed hits (`scanner_id IS NULL`) COUNT. They were recorded before
+/// #440 added the column, so every existing user's whole history is NULL --
+/// and a strict equality filter would empty their dashboard the first time
+/// they launch an upgraded build. Nothing was deleted, but "my history
+/// vanished after an update" is indistinguishable from data loss to the person
+/// it happens to.
+///
+/// The cost is that a user with two scanners sees pre-upgrade hits under both
+/// until the NULLs age out of the retention window. That is the right trade:
+/// the ambiguity is confined to history that predates attribution, it decays
+/// on its own as attributed hits accumulate, and owning two scanners is the
+/// rare case while upgrading is the universal one.
+fn hit_matches_scanner(hit: &ActivityHit, scanner: Option<&str>) -> bool {
+    match (scanner, hit.scanner_id.as_deref()) {
+        (None, _) => true,
+        (Some(_), None) => true,
+        (Some(want), Some(got)) => want == got,
+    }
+}
+
 #[derive(Deserialize)]
 pub(crate) struct AnalyticsBusiestQuery {
     limit: Option<usize>,
@@ -25,13 +56,15 @@ pub(crate) async fn analytics_busiest(
     let cutoff = query.hours.map(|h| epoch_now() - h.max(0.1) * 3600.0);
     let min_duration = min_hit_duration(&state);
 
+    let scanner = connected_scanner(&state);
     let log = state.analytics_log.lock().unwrap();
     let mut grouped: HashMap<String, (f64, Option<String>, Option<u16>, usize, f64, f64)> =
         HashMap::new();
-    for hit in log
-        .iter()
-        .filter(|h| cutoff.is_none_or(|c| h.timestamp >= c) && h.duration >= min_duration)
-    {
+    for hit in log.iter().filter(|h| {
+        cutoff.is_none_or(|c| h.timestamp >= c)
+            && h.duration >= min_duration
+            && hit_matches_scanner(h, scanner.as_deref())
+    }) {
         let key = format!("{}|{}", hit.frequency, hit.channel.unwrap_or(0));
         let entry = grouped.entry(key).or_insert((
             hit.frequency,
@@ -123,12 +156,14 @@ pub(crate) async fn analytics_hourly_heatmap(
     let tz_shift_secs = f64::from(query.tz_offset_minutes.unwrap_or(0).clamp(-840, 840)) * 60.0;
     let cutoff = epoch_now() - (days as f64 * 24.0 * 3600.0);
     let min_duration = min_hit_duration(&state);
+    let scanner = connected_scanner(&state);
     let log = state.analytics_log.lock().unwrap();
     let mut bins: HashMap<(u32, u32), u64> = HashMap::new();
-    for hit in log
-        .iter()
-        .filter(|h| h.timestamp >= cutoff && h.duration >= min_duration)
-    {
+    for hit in log.iter().filter(|h| {
+        h.timestamp >= cutoff
+            && h.duration >= min_duration
+            && hit_matches_scanner(h, scanner.as_deref())
+    }) {
         let (day, hour) = day_hour(hit.timestamp + tz_shift_secs);
         *bins.entry((day, hour)).or_insert(0) += 1;
     }
@@ -179,6 +214,7 @@ pub(crate) async fn analytics_activity_log(
     let start = query.start_time.unwrap_or(0.0);
     let end = query.end_time.unwrap_or(f64::MAX);
     let channel_filter = query.channel;
+    let scanner = connected_scanner(&state);
     let mut rows = state
         .analytics_log
         .lock()
@@ -186,6 +222,7 @@ pub(crate) async fn analytics_activity_log(
         .iter()
         .filter(|h| h.timestamp >= start && h.timestamp <= end)
         .filter(|h| channel_filter.map(|c| h.channel == Some(c)).unwrap_or(true))
+        .filter(|h| hit_matches_scanner(h, scanner.as_deref()))
         .cloned()
         .collect::<Vec<ActivityHit>>();
     rows.sort_by(|a, b| {
@@ -219,4 +256,60 @@ pub(crate) async fn analytics_cleanup(
     let deleted_db =
         cleanup_analytics_db(&state.analytics_db_path, query.retention_days.unwrap_or(30));
     Json(json!({ "deleted_records": deleted_mem.max(deleted_db) }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::ScannerMode;
+
+    fn hit(scanner_id: Option<&str>) -> ActivityHit {
+        ActivityHit {
+            id: "1".to_string(),
+            timestamp: 100.0,
+            frequency: 146.7,
+            channel: Some(12),
+            alpha_tag: None,
+            rssi: 30,
+            duration: 5.0,
+            modulation: "NFM".to_string(),
+            mode: ScannerMode::Scan,
+            bank: Some(1),
+            session_id: "s".to_string(),
+            ended_at: 105.0,
+            scanner_id: scanner_id.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_scoped_view_counts_only_the_connected_scanner() {
+        assert!(hit_matches_scanner(&hit(Some("BC75XLT")), Some("BC75XLT")));
+        assert!(!hit_matches_scanner(&hit(Some("BC125AT")), Some("BC75XLT")));
+    }
+
+    /// REGRESSION GUARD: unattributed history must keep counting.
+    ///
+    /// #440 added `scanner_id`, so every hit recorded before it is NULL --
+    /// which is every existing user's ENTIRE history. A strict equality filter
+    /// would empty their dashboard the first time they launch an upgraded
+    /// build. Nothing is deleted, but "my history vanished after an update" is
+    /// indistinguishable from data loss to the person it happens to.
+    ///
+    /// The cost is that a two-scanner user sees pre-upgrade hits under both
+    /// radios until those NULLs age out of the retention window. That
+    /// ambiguity is confined to history predating attribution and decays on
+    /// its own; upgrading is universal, owning two scanners is rare.
+    #[test]
+    fn unattributed_history_still_counts_after_an_upgrade() {
+        assert!(hit_matches_scanner(&hit(None), Some("BC75XLT")));
+        assert!(hit_matches_scanner(&hit(None), Some("BC125AT")));
+    }
+
+    /// With nothing connected the views must not filter themselves empty --
+    /// a blank dashboard reads as broken, not as scoped.
+    #[test]
+    fn nothing_connected_counts_everything() {
+        assert!(hit_matches_scanner(&hit(Some("BC125AT")), None));
+        assert!(hit_matches_scanner(&hit(None), None));
+    }
 }
