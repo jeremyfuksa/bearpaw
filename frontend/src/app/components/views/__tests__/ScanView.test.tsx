@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { render, screen } from '@testing-library/react';
-import { rollUpHits, ScanView } from '../ScanView';
+import { render, screen, within } from '@testing-library/react';
+import { rollUpHits, ScanView, summarizeHeatmap, HEATMAP_DAY_LABELS } from '../ScanView';
 import { useStore } from '../../../../store/useStore';
 import { createTestLiveState, createTestActivityLogEntry } from '../../../../test/fixtures';
 import type { ActivityLogEntry, ScannerCapabilities } from '../../../../types';
@@ -293,5 +293,87 @@ describe('ScanView Recent Hits rendering', () => {
     });
     render(<ScanView {...baseProps} />);
     expect(screen.getByText('WOF Rides')).toBeInTheDocument();
+  });
+});
+
+/**
+ * The heatmap grid is 168 unlabelled <div>s whose only description was a
+ * `title` attribute. `title` is not announced on a non-focusable element, so
+ * to assistive tech the whole widget was empty — a WCAG 1.1.1 failure.
+ */
+describe('Activity Heatmap accessibility', () => {
+  const emptyGrid = () => Array.from({ length: 7 }, () => Array(24).fill(0));
+
+  describe('summarizeHeatmap', () => {
+    it('says so plainly when there is nothing to report', () => {
+      expect(summarizeHeatmap(emptyGrid())).toMatch(/no hits recorded/i);
+    });
+
+    it('names the busiest day and hour, which is what the chart is for', () => {
+      const grid = emptyGrid();
+      grid[1][18] = 9; // Tue 18:00
+      grid[3][2] = 4;
+      const summary = summarizeHeatmap(grid);
+      expect(summary).toContain('13 hits');
+      expect(summary).toContain('Tue');
+      expect(summary).toContain('18:00');
+      expect(summary).toContain('9');
+    });
+
+    it('tolerates a ragged or empty grid rather than throwing', () => {
+      expect(() => summarizeHeatmap([])).not.toThrow();
+      expect(() => summarizeHeatmap([[1]])).not.toThrow();
+    });
+  });
+
+  describe('rendering', () => {
+    const baseProps = {
+      mainText: 'Scanning...',
+      subText: '',
+      scannerMode: 'SCAN' as const,
+      connectionStatus: 'connected' as const,
+      isHolding: false,
+      isInitialSyncing: false,
+      chartAnimate: false,
+      dashboardLoading: false,
+      busiestChannels: [],
+      hourlyHeatmap: (() => {
+        const g = Array.from({ length: 7 }, () => Array(24).fill(0));
+        g[1][18] = 9;
+        return g;
+      })(),
+      heatmapStats: { min: 0, max: 9, avg: 9 },
+      onHoldToggle: () => {},
+      onLockout: () => {},
+      onVolumeChange: () => {},
+      onBankToggle: () => {},
+      onOpenActivityExport: () => {},
+    };
+
+    beforeEach(() => {
+      useStore.setState({
+        liveState: createTestLiveState({ mode: 'SCAN', squelch_open: false }),
+        banks: Array(10).fill(true),
+        fullActivityLog: [],
+      });
+    });
+
+    it('exposes the heatmap as a table with day and hour headers', () => {
+      render(<ScanView {...baseProps} />);
+      const table = screen.getByRole('table', { name: /activity heatmap/i });
+      expect(table).toBeInTheDocument();
+      // Row headers let a screen reader announce "Tue, 18:00, 9" while moving
+      // through cells, rather than reading 168 bare numbers.
+      expect(within(table).getByRole('rowheader', { name: 'Tue' })).toBeInTheDocument();
+      expect(within(table).getByRole('columnheader', { name: '18:00' })).toBeInTheDocument();
+    });
+
+    it('carries every day label as a row', () => {
+      render(<ScanView {...baseProps} />);
+      const table = screen.getByRole('table', { name: /activity heatmap/i });
+      for (const day of HEATMAP_DAY_LABELS) {
+        expect(within(table).getByRole('rowheader', { name: day })).toBeInTheDocument();
+      }
+    });
   });
 });

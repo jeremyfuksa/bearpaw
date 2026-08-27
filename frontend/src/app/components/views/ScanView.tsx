@@ -12,6 +12,32 @@ import { ScannerDisplay } from '../ScannerUI';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import type { ScannerMode } from '../../App';
 
+/** Row order for the heatmap: Monday first, matching `computeLocalHeatmap`. */
+export const HEATMAP_DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/**
+ * One sentence describing the heatmap, for its `<caption>`.
+ *
+ * The grid itself is 168 coloured squares with no text, so without this a
+ * screen-reader user gets a table of numbers and no idea what the shape of it
+ * is. Names the busiest hour, which is the question the chart exists to answer.
+ */
+export function summarizeHeatmap(grid: number[][]): string {
+  let total = 0;
+  let peak = { day: -1, hour: -1, count: 0 };
+  for (let day = 0; day < grid.length; day++) {
+    for (let hour = 0; hour < (grid[day]?.length ?? 0); hour++) {
+      const count = grid[day][hour] ?? 0;
+      total += count;
+      if (count > peak.count) peak = { day, hour, count };
+    }
+  }
+  if (total === 0) return 'Activity heatmap: no hits recorded in the last 7 days.';
+  const label = HEATMAP_DAY_LABELS[peak.day] ?? '';
+  const hour = String(peak.hour).padStart(2, '0');
+  return `Activity heatmap: ${total} hits over the last 7 days by day and hour. Busiest is ${label} at ${hour}:00 with ${peak.count}.`;
+}
+
 const HEATMAP_INTENSITY_CLASSES = [
   'bg-heatmap-0',
   'bg-heatmap-1',
@@ -380,8 +406,16 @@ export function ScanView({
             <Clock aria-hidden className="size-[clamp(14px,3cqmin,52px)] text-green-400" /> Activity
             Heatmap
           </h3>
-          <div className="flex flex-1 flex-col justify-center gap-[var(--layout-heatmap-cell-gap)]">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, row) => (
+          {/* The grid is 168 unlabelled <div>s. `title` is not announced on a
+            non-focusable element, so to assistive tech this widget was
+            entirely empty -- a WCAG 1.1.1 failure. It is marked decorative
+            here and the equivalent data is exposed as a real table below,
+            which AT can navigate cell by cell with day/hour context. */}
+          <div
+            aria-hidden="true"
+            className="flex flex-1 flex-col justify-center gap-[var(--layout-heatmap-cell-gap)]"
+          >
+            {HEATMAP_DAY_LABELS.map((day, row) => (
               <div key={day} className="flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
                 <span className="text-[clamp(10px,2.4cqmin,40px)] text-white/60 w-[clamp(20px,4cqmin,72px)] text-right font-mono uppercase">
                   {day}
@@ -399,7 +433,9 @@ export function ScanView({
                       <div
                         key={col}
                         className={cn(
-                          'aspect-square w-full cursor-pointer rounded-scanner-xs ring-white/50 transition-all hover:ring-1',
+                          // No `cursor-pointer`: nothing here is clickable, and a
+                          // pointer cursor promises an interaction that does not exist.
+                          'aspect-square w-full rounded-scanner-xs ring-white/50 transition-all hover:ring-1',
                           HEATMAP_INTENSITY_CLASSES[intensity],
                         )}
                         title={`${day} ${col}:00 - ${heatmapData} hits`}
@@ -410,13 +446,41 @@ export function ScanView({
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-[clamp(10px,2.4cqmin,40px)] text-white/60 mt-1 pl-[clamp(20px,4.5cqmin,80px)]">
+          <div
+            aria-hidden="true"
+            className="flex justify-between text-[clamp(10px,2.4cqmin,40px)] text-white/60 mt-1 pl-[clamp(20px,4.5cqmin,80px)]"
+          >
             <span>00</span>
             <span>06</span>
             <span>12</span>
             <span>18</span>
             <span>23</span>
           </div>
+          {/* Visually hidden, not display:none -- `sr-only` keeps it in the
+            accessibility tree. A table rather than a paragraph so a screen
+            reader announces "Tue, 18:00, 4 hits" as it moves, instead of
+            reading 168 bare numbers in a row. */}
+          <table className="sr-only">
+            <caption>{summarizeHeatmap(hourlyHeatmap ?? [])}</caption>
+            <thead>
+              <tr>
+                <th scope="col">Day</th>
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <th key={hour} scope="col">{`${String(hour).padStart(2, '0')}:00`}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {HEATMAP_DAY_LABELS.map((day, row) => (
+                <tr key={day}>
+                  <th scope="row">{day}</th>
+                  {Array.from({ length: 24 }, (_, col) => (
+                    <td key={col}>{hourlyHeatmap?.[row]?.[col] ?? 0}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </motion.div>
     </motion.div>
