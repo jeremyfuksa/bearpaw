@@ -1812,9 +1812,14 @@ pub(crate) async fn write_channel_no_readback(
 /// So on a programmed channel, accept a read-back priority=1 when we wrote 0.
 /// Removing priority is a separate, unimplemented mechanism (radio-side / a
 /// dedicated command); the UI is being reworked to model one-per-bank.
-fn readback_matches(wrote: &ChannelData, readback: &ChannelData, wrote_alpha: &str) -> bool {
+fn readback_matches(
+    wrote: &ChannelData,
+    readback: &ChannelData,
+    wrote_alpha: &str,
+    caps: &ScannerCapabilities,
+) -> bool {
     if wrote.frequency.abs() < 0.00005 {
-        return is_factory_empty(readback);
+        return is_factory_empty(readback, caps);
     }
     let priority_ok = readback.priority == wrote.priority || (!wrote.priority && readback.priority); // refused clear — see guard above
     (readback.frequency - wrote.frequency).abs() < 0.00005
@@ -1843,8 +1848,9 @@ fn priority_clear_persisted(
     rewritten: &ChannelData,
     readback: &ChannelData,
     wrote_alpha: &str,
+    caps: &ScannerCapabilities,
 ) -> bool {
-    readback_matches(rewritten, readback, wrote_alpha) && !readback.priority
+    readback_matches(rewritten, readback, wrote_alpha, caps) && !readback.priority
 }
 
 /// The fixed tail the scanner stamps on any channel with no frequency:
@@ -1854,9 +1860,18 @@ fn priority_clear_persisted(
 /// firmware (parse_cin_response fills alpha_tag="AUTO", modulation="AUTO"), but
 /// those aren't part of the forced-empty invariant — what matters is that the
 /// scanner ignored the delay/lockout/priority we sent and forced these values.
-fn is_factory_empty(ch: &ChannelData) -> bool {
+fn is_factory_empty(ch: &ChannelData, caps: &ScannerCapabilities) -> bool {
     ch.frequency.abs() < 0.00005
-        && ch.delay == 2
+        // Model-dependent: the BC125AT family reports 2 for a cleared slot, a
+        // BC75XLT reports 0 (`CIN,299 -> CIN,299,,00000000,,,0,1,0`, hardware
+        // 2026-08-26). Hardcoding 2 made this predicate un-satisfiable on a
+        // BC75XLT, so `readback_matches` failed every zero-frequency write --
+        // returning 400 `channel_not_persisted` AFTER the write had already
+        // succeeded on the wire, and skipping the shadow-cache update so the
+        // backend's view went stale too. That hit not just an explicit clear
+        // but any bulk upload or reorder whose write-set included an empty
+        // slot. See #402 and the third-rail note on `buildEmptyDraft`.
+        && ch.delay == caps.cleared_delay
         && ch.lockout
         && !ch.priority
         && ch.tone_squelch_kind == crate::state::ToneSquelchKind::None
@@ -1867,10 +1882,11 @@ fn is_factory_empty(ch: &ChannelData) -> bool {
 fn bank_priority_index(
     channels: &std::collections::HashMap<u16, ChannelData>,
     bank: u8,
+    caps: &ScannerCapabilities,
 ) -> Option<u16> {
     channels
         .values()
-        .filter(|c| c.priority && crate::protocol::index_to_bank(c.index) == bank)
+        .filter(|c| c.priority && caps.index_to_bank(c.index) == bank)
         .map(|c| c.index)
         .min()
 }
@@ -1881,9 +1897,21 @@ fn bank_priority_index(
 fn plan_priority_swap(
     channels: &std::collections::HashMap<u16, ChannelData>,
     index: u16,
+    caps: &ScannerCapabilities,
 ) -> (Option<u16>, u16) {
-    let bank = crate::protocol::index_to_bank(index);
-    let old = bank_priority_index(channels, bank).filter(|&old| old != index);
+    // Bank width is model-dependent. With the BC125AT's fixed /50 this
+    // collapsed a BC75XLT's 300 channels into six 50-wide windows straddling
+    // the real 30-channel boundaries -- so setting priority on CH31 (real bank
+    // 2) would look up the holder of window 1-50 and clear CH5, a channel in a
+    // DIFFERENT bank that the user never touched. That clear is a destructive
+    // DCH-plus-rewrite (see the DATA-LOSS SAFETY note below), and the real
+    // bank-2 conflict was never planned for at all.
+    //
+    // The frontend already derived this correctly via `deriveBankFromIndex`
+    // (#401), so the confirmation dialog named the right channel while the
+    // backend modified a different one.
+    let bank = caps.index_to_bank(index);
+    let old = bank_priority_index(channels, bank, caps).filter(|&old| old != index);
     (old, index)
 }
 
@@ -1930,7 +1958,7 @@ pub(crate) async fn write_channel_to_scanner(
         .chars()
         .take(16)
         .collect::<String>();
-    let persisted = readback_matches(channel, &readback, &wrote_alpha);
+    let persisted = readback_matches(channel, &readback, &wrote_alpha, &state.capabilities());
     if !persisted {
         warn!(
             index = channel.index,
@@ -2011,7 +2039,7 @@ async fn clear_channel_priority_locked(
         .chars()
         .take(16)
         .collect::<String>();
-    if !priority_clear_persisted(&rewritten, &readback, &wrote_alpha) {
+    if !priority_clear_persisted(&rewritten, &readback, &wrote_alpha, &state.capabilities()) {
         warn!(
             index = index,
             wrote = %write_cmd,
@@ -2033,9 +2061,10 @@ pub(crate) async fn set_channel_priority(
     state: &AppState,
     index: u16,
 ) -> Result<Vec<ChannelData>, ApiError> {
+    let caps = state.capabilities();
     let (old_to_clear, new_to_set) = {
         let shadow = state.shadow.read().unwrap();
-        plan_priority_swap(&shadow.channels, index)
+        plan_priority_swap(&shadow.channels, index, &caps)
     };
 
     let _guard = ProgramModeGuard::enter(state).await?; // ONE bracket for the whole swap
@@ -2179,6 +2208,7 @@ pub(crate) fn uuid_simple() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::capabilities::BC125AT_FAMILY;
     use axum::body::{to_bytes, Body};
     use axum::http::{Method, Request};
     use std::path::PathBuf;
@@ -2493,7 +2523,8 @@ mod tests {
         assert!(!priority_clear_persisted(
             &rewritten,
             &readback,
-            &wrote_alpha
+            &wrote_alpha,
+            &BC125AT_FAMILY
         ));
 
         // Sanity: a genuinely persisted clear (readback.priority == false,
@@ -2503,7 +2534,8 @@ mod tests {
         assert!(priority_clear_persisted(
             &rewritten,
             &readback_ok,
-            &wrote_alpha
+            &wrote_alpha,
+            &BC125AT_FAMILY
         ));
     }
 
@@ -2522,7 +2554,7 @@ mod tests {
         wrote.delay = 0;
         wrote.lockout = false;
         let readback = factory_empty_readback(); // delay=2, lockout=1
-        assert!(readback_matches(&wrote, &readback, "AUTO"));
+        assert!(readback_matches(&wrote, &readback, "AUTO", &BC125AT_FAMILY));
     }
 
     #[test]
@@ -2533,7 +2565,12 @@ mod tests {
         readback.lockout = true;
         let mut wrote = test_channel();
         wrote.lockout = false;
-        assert!(!readback_matches(&wrote, &readback, "Test Chan"));
+        assert!(!readback_matches(
+            &wrote,
+            &readback,
+            "Test Chan",
+            &BC125AT_FAMILY
+        ));
     }
 
     #[test]
@@ -2544,7 +2581,12 @@ mod tests {
         wrote.delay = 0;
         let mut readback = factory_empty_readback();
         readback.delay = 5;
-        assert!(!readback_matches(&wrote, &readback, "AUTO"));
+        assert!(!readback_matches(
+            &wrote,
+            &readback,
+            "AUTO",
+            &BC125AT_FAMILY
+        ));
     }
 
     // REGRESSION GUARD (#198): priority is bank-exclusive — a programmed
@@ -2556,7 +2598,12 @@ mod tests {
         wrote.priority = false; // we tried to clear
         let mut readback = test_channel();
         readback.priority = true; // scanner refused, kept it on
-        assert!(readback_matches(&wrote, &readback, "Test Chan"));
+        assert!(readback_matches(
+            &wrote,
+            &readback,
+            "Test Chan",
+            &BC125AT_FAMILY
+        ));
     }
 
     #[test]
@@ -2567,7 +2614,12 @@ mod tests {
         wrote.priority = true;
         let mut readback = test_channel();
         readback.priority = false;
-        assert!(!readback_matches(&wrote, &readback, "Test Chan"));
+        assert!(!readback_matches(
+            &wrote,
+            &readback,
+            "Test Chan",
+            &BC125AT_FAMILY
+        ));
     }
 
     #[test]
@@ -2580,7 +2632,12 @@ mod tests {
         let mut readback = test_channel();
         readback.priority = true; // refused clear (tolerated)
         readback.delay = 5; // real mismatch (must fail)
-        assert!(!readback_matches(&wrote, &readback, "Test Chan"));
+        assert!(!readback_matches(
+            &wrote,
+            &readback,
+            "Test Chan",
+            &BC125AT_FAMILY
+        ));
     }
 
     // REGRESSION GUARD (#150): /health is documented and referenced by the
@@ -3154,8 +3211,8 @@ mod tests {
         c9.priority = false;
         ch.insert(2, c2);
         ch.insert(9, c9);
-        assert_eq!(bank_priority_index(&ch, 1), Some(2));
-        assert_eq!(bank_priority_index(&ch, 2), None); // bank 2 empty
+        assert_eq!(bank_priority_index(&ch, 1, &BC125AT_FAMILY), Some(2));
+        assert_eq!(bank_priority_index(&ch, 2, &BC125AT_FAMILY), None); // bank 2 empty
     }
 
     #[test]
@@ -3167,12 +3224,98 @@ mod tests {
         c2.priority = true; // current bank-1 priority
         ch.insert(2, c2);
         // Setting CH9 (also bank 1) must clear CH2 and set CH9.
-        assert_eq!(plan_priority_swap(&ch, 9), (Some(2), 9));
+        assert_eq!(plan_priority_swap(&ch, 9, &BC125AT_FAMILY), (Some(2), 9));
         // Setting the channel that is ALREADY priority: no clear needed.
-        assert_eq!(plan_priority_swap(&ch, 2), (None, 2));
+        assert_eq!(plan_priority_swap(&ch, 2, &BC125AT_FAMILY), (None, 2));
         // Bank with no current priority: nothing to clear.
         let empty = HashMap::new();
-        assert_eq!(plan_priority_swap(&empty, 9), (None, 9));
+        assert_eq!(plan_priority_swap(&empty, 9, &BC125AT_FAMILY), (None, 9));
+    }
+
+    /// REGRESSION GUARD: the priority swap must use the CONNECTED scanner's
+    /// bank width.
+    ///
+    /// The existing planner tests use channels 2 and 9, which are bank 1 under
+    /// BOTH a /50 and a /30 divisor — so they pass whether or not the math is
+    /// model-aware and guarded nothing. This one picks indices where the two
+    /// models DISAGREE.
+    ///
+    /// With the BC125AT's fixed /50, a BC75XLT's 300 channels collapsed into
+    /// six 50-wide windows straddling the real 30-channel boundaries. Setting
+    /// priority on CH31 (real bank 2) looked up the holder of window 1–50 and
+    /// planned to clear CH5 — a channel in a DIFFERENT bank the user never
+    /// touched — and that clear is a destructive DCH-plus-rewrite.
+    ///
+    /// The frontend already derived this correctly (#401), so the confirmation
+    /// dialog named the right channel while the backend modified another one.
+    #[test]
+    fn priority_swap_uses_the_connected_scanner_bank_width() {
+        use crate::protocol::capabilities::BC75XLT;
+        use std::collections::HashMap;
+
+        let mut ch = HashMap::new();
+        // CH5 is bank 1 on both models. CH55 is bank 2 on a BC75XLT and bank 2
+        // on a BC125AT — but only CH5 shares a /50 window with CH31.
+        for (index, priority) in [(5u16, true), (55u16, true)] {
+            let mut c = test_channel();
+            c.index = index;
+            c.priority = priority;
+            ch.insert(index, c);
+        }
+
+        // CH31: bank 1 on a BC125AT (1–50), bank 2 on a BC75XLT (31–60).
+        let (old, new) = plan_priority_swap(&ch, 31, &BC125AT_FAMILY);
+        assert_eq!(
+            (old, new),
+            (Some(5), 31),
+            "BC125AT: CH31 is in bank 1 with CH5 — unchanged behaviour"
+        );
+
+        let (old, new) = plan_priority_swap(&ch, 31, &BC75XLT);
+        assert_eq!(
+            (old, new),
+            (Some(55), 31),
+            "BC75XLT: CH31 is in bank 2 with CH55. Clearing CH5 would wipe \
+             priority on a channel in a different bank via a destructive \
+             DCH-plus-rewrite."
+        );
+    }
+
+    /// REGRESSION GUARD: the empty-slot signature is model-dependent.
+    ///
+    /// `readback_matches` short-circuits to `is_factory_empty` for ANY write
+    /// whose frequency is 0. With `delay == 2` hardcoded, that predicate was
+    /// un-satisfiable on a BC75XLT — so every zero-frequency write returned
+    /// 400 `channel_not_persisted` AFTER succeeding on the wire, and the
+    /// handler skipped its shadow-cache update so the backend's own view went
+    /// stale. That hit not just an explicit clear but any bulk upload or
+    /// reorder whose write-set included an empty slot.
+    #[test]
+    fn factory_empty_signature_follows_the_model() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let mut cleared = test_channel();
+        cleared.frequency = 0.0;
+        cleared.lockout = true;
+        cleared.priority = false;
+        cleared.tone_squelch_kind = crate::state::ToneSquelchKind::None;
+
+        // As a BC125AT reports a cleared slot.
+        cleared.delay = 2;
+        assert!(is_factory_empty(&cleared, &BC125AT_FAMILY));
+        assert!(
+            !is_factory_empty(&cleared, &BC75XLT),
+            "delay 2 is not what a BC75XLT reports for an empty slot"
+        );
+
+        // As a BC75XLT reports one: CIN,299 -> CIN,299,,00000000,,,0,1,0
+        cleared.delay = 0;
+        assert!(is_factory_empty(&cleared, &BC75XLT));
+        assert!(
+            !is_factory_empty(&cleared, &BC125AT_FAMILY),
+            "delay 0 is not what a BC125AT reports either — this is not a \
+             sentinel, it is a real per-model value"
+        );
     }
 
     #[test]
@@ -3188,7 +3331,7 @@ mod tests {
         c2.index = 2;
         c2.priority = true;
         ch.insert(2, c2);
-        let (old, new) = plan_priority_swap(&ch, 9);
+        let (old, new) = plan_priority_swap(&ch, 9, &BC125AT_FAMILY);
         assert_eq!(
             old,
             Some(2),
