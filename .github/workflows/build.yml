@@ -145,6 +145,34 @@ jobs:
             echo "value=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Pull this version's CHANGELOG section into the release body. The
+      # auto-generated "What's Changed" list is a flat dump of every merged PR
+      # — mostly dependency bumps — so a visitor deciding whether to download
+      # has to hunt for the parts that affect them. The CHANGELOG says the same
+      # thing in prose, ordered by what a user cares about. Both are kept:
+      # generate_release_notes still appends New Contributors and the compare
+      # link below the prose.
+      #
+      # A tag with no matching CHANGELOG heading yields an empty string and the
+      # release falls back to the generated notes alone.
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            echo "::warning::No CHANGELOG section found for $VERSION — falling back to generated notes only"
+          fi
+          {
+            echo "notes<<CHANGELOG_EOF"
+            echo "$NOTES"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
@@ -155,7 +183,6 @@ jobs:
           # twice raced and failed the v1.0.0 release with a 404.
           files: |
             release-artifacts/**/*.dmg
-            release-artifacts/**/*.msi
             release-artifacts/**/*.exe
             release-artifacts/**/*.deb
             release-artifacts/**/*.AppImage
@@ -166,6 +193,10 @@ jobs:
           # instructions for getting past Gatekeeper/SmartScreen above the
           # auto-generated changelog.
           body: |
+            ${{ steps.changelog.outputs.notes }}
+
+            ---
+
             ## Installing this build
 
             Bearpaw is a control interface for the Uniden BC125AT scanner. These
@@ -179,7 +210,7 @@ jobs:
             double-click was your first attempt, open System Settings → Privacy &
             Security and click **Open Anyway**.
 
-            **Windows** (`.msi` / `.exe`): if SmartScreen shows "Windows
+            **Windows** (`.exe`): if SmartScreen shows "Windows
             protected your PC", click **More info** → **Run anyway**.
 
             **Linux** (`.AppImage`): `chmod +x` it and run; or install the `.deb`.
