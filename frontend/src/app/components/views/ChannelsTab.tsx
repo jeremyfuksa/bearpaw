@@ -1390,6 +1390,7 @@ export function ChannelsTab() {
             onSave={(draft) => handleSaveDraft(editingChannelIndex, draft)}
             priorityChecked={editingChannel.priority}
             onPriorityChange={(next) => handlePriorityChange(editingChannelIndex, next)}
+            emptyDraft={buildEmptyDraft(capabilities.cleared_delay)}
           />
         )}
       </div>

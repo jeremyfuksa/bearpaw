@@ -18,6 +18,20 @@ interface ChannelEditSheetProps {
    * `localDraft`. */
   priorityChecked: boolean;
   onPriorityChange: (next: boolean) => void | Promise<void>;
+  /**
+   * A cleared channel exactly as `buildEmptyDraft` describes it, supplied by
+   * the parent so this sheet does not carry a second copy of that shape.
+   *
+   * REGRESSION GUARD (`clearing_uses_the_capability_derived_empty_draft`):
+   * `handleClear` used to hand-build the draft with `delay: '2'` and
+   * `lockout: false` -- BC125AT-family literals. `buildEmptyDraft` was fixed
+   * for both in #272/#404 (the delay is model-dependent: 2 on a BC125AT, 0 on
+   * a BC75XLT, and the hardware reports lockout TRUE for a cleared slot), but
+   * this copy was never updated. On a BC75XLT `valid_delays` is [0, 1], so
+   * clearing produced "Delay must be one of 0, 1" against a value the sheet
+   * had just written itself.
+   */
+  emptyDraft: ChannelDraft;
 }
 
 /** Fallback CIN delay values (docs/BC125AT_PROTOCOL.md §5.3). Negatives are
@@ -91,6 +105,7 @@ export function ChannelEditSheet({
   onSave,
   priorityChecked,
   onPriorityChange,
+  emptyDraft,
 }: ChannelEditSheetProps) {
   // Fields for CIN slots this scanner reserves are hidden, not disabled — the
   // same rule the channel table follows. Delay options and the frequency bands
@@ -147,15 +162,9 @@ export function ChannelEditSheet({
   };
 
   const handleClear = () => {
-    setLocalDraft({
-      frequency: '0',
-      alpha_tag: '',
-      modulation: 'AUTO',
-      tone_squelch: '',
-      delay: '2',
-      lockout: false,
-      comments: '',
-    });
+    // One source of truth for "cleared", shared with the table's bulk clear.
+    // See the `emptyDraft` prop docs for why this must not be rebuilt here.
+    setLocalDraft(emptyDraft);
     setErrors({});
   };
 
