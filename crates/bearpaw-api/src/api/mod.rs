@@ -1662,10 +1662,6 @@ pub(crate) async fn read_channel_from_scanner(
 ///   confirmed by the 2026-07-08 probe).
 /// - Modulation is whitelisted (comma injection through this field reached
 ///   the wire before).
-pub(crate) fn build_cin_write_payload(channel: &ChannelData) -> Result<String, ApiError> {
-    build_cin_write_payload_for(channel, &ScannerCapabilities::default())
-}
-
 /// Build a `CIN` write payload for a scanner with the given capabilities.
 ///
 /// The BC75XLT keeps the BC125AT's field POSITIONS and marks three of them
@@ -2378,7 +2374,8 @@ mod tests {
     // channels, putting bank in the scanner's priority field.
     #[test]
     fn cin_payload_uses_verified_field_order_for_tone_0() {
-        let payload = build_cin_write_payload(&test_channel()).unwrap();
+        let payload =
+            build_cin_write_payload_for(&test_channel(), &ScannerCapabilities::default()).unwrap();
         assert_eq!(payload, "Test Chan,01451300,FM,0,2,0,1");
     }
 
@@ -2387,7 +2384,7 @@ mod tests {
         let mut ch = test_channel();
         ch.tone_squelch_kind = crate::state::ToneSquelchKind::Ctcss;
         ch.tone_squelch = Some(100.0);
-        let payload = build_cin_write_payload(&ch).unwrap();
+        let payload = build_cin_write_payload_for(&ch, &ScannerCapabilities::default()).unwrap();
         // 100.0 Hz is wire code 76. Writing "100" would be 189.9 Hz.
         assert_eq!(payload, "Test Chan,01451300,FM,76,2,0,1");
     }
@@ -2397,7 +2394,7 @@ mod tests {
         let mut ch = test_channel();
         ch.tone_squelch_kind = crate::state::ToneSquelchKind::Dcs;
         ch.tone_dcs_code = Some(151);
-        let payload = build_cin_write_payload(&ch).unwrap();
+        let payload = build_cin_write_payload_for(&ch, &ScannerCapabilities::default()).unwrap();
         assert_eq!(payload, "Test Chan,01451300,FM,151,2,0,1");
     }
 
@@ -2406,14 +2403,14 @@ mod tests {
         let mut ch = test_channel();
         ch.tone_squelch_kind = crate::state::ToneSquelchKind::Ctcss;
         ch.tone_squelch = Some(100.5);
-        assert!(build_cin_write_payload(&ch).is_err());
+        assert!(build_cin_write_payload_for(&ch, &ScannerCapabilities::default()).is_err());
     }
 
     #[test]
     fn cin_payload_rejects_modulation_injection() {
         let mut ch = test_channel();
         ch.modulation = "FM,0,0,1,0".to_string();
-        assert!(build_cin_write_payload(&ch).is_err());
+        assert!(build_cin_write_payload_for(&ch, &ScannerCapabilities::default()).is_err());
     }
 
     #[test]
@@ -2422,7 +2419,7 @@ mod tests {
         // cleared name must go out as 16 spaces or the old name survives.
         let mut ch = test_channel();
         ch.alpha_tag = String::new();
-        let payload = build_cin_write_payload(&ch).unwrap();
+        let payload = build_cin_write_payload_for(&ch, &ScannerCapabilities::default()).unwrap();
         assert_eq!(payload, "                ,01451300,FM,0,2,0,1");
     }
 
@@ -2430,7 +2427,7 @@ mod tests {
     fn cin_payload_sanitizes_alpha_commas_and_length() {
         let mut ch = test_channel();
         ch.alpha_tag = "A,B,C this name is way too long".to_string();
-        let payload = build_cin_write_payload(&ch).unwrap();
+        let payload = build_cin_write_payload_for(&ch, &ScannerCapabilities::default()).unwrap();
         assert!(payload.starts_with("A B C this name "));
         assert_eq!(payload.split(',').count(), 7);
     }
@@ -2439,7 +2436,7 @@ mod tests {
     fn cin_payload_preserves_negative_predelay() {
         let mut ch = test_channel();
         ch.delay = -10;
-        let payload = build_cin_write_payload(&ch).unwrap();
+        let payload = build_cin_write_payload_for(&ch, &ScannerCapabilities::default()).unwrap();
         assert_eq!(payload, "Test Chan,01451300,FM,0,-10,0,1");
     }
 
