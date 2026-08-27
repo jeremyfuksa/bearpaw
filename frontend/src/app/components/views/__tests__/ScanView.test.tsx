@@ -377,3 +377,64 @@ describe('Activity Heatmap accessibility', () => {
     });
   });
 });
+
+describe('Recent Hits export control', () => {
+  const baseProps = {
+    mainText: 'Scanning...',
+    subText: '',
+    scannerMode: 'SCAN' as const,
+    connectionStatus: 'connected' as const,
+    isHolding: false,
+    isInitialSyncing: false,
+    chartAnimate: false,
+    dashboardLoading: false,
+    busiestChannels: [],
+    hourlyHeatmap: [],
+    heatmapStats: { max: 0 },
+    onHoldToggle: () => {},
+    onLockout: () => {},
+    onVolumeChange: () => {},
+    onBankToggle: () => {},
+    onOpenActivityExport: () => {},
+  };
+
+  beforeEach(() => {
+    useStore.setState({
+      liveState: createTestLiveState({ mode: 'SCAN', squelch_open: false }),
+      banks: Array(10).fill(true),
+      fullActivityLog: [createTestActivityLogEntry({ id: 'e1', timestamp: 100 })],
+    });
+  });
+
+  /**
+   * The control used to be an icon with its purpose in a hover tooltip, which
+   * is unreachable by touch and invisible to anyone scanning the page. The
+   * visible text is the label now.
+   */
+  it('carries a visible text label, not just an icon', () => {
+    render(<ScanView {...baseProps} />);
+    expect(screen.getByRole('button', { name: /export activity log/i })).toHaveTextContent(
+      /export/i,
+    );
+  });
+
+  /**
+   * WCAG 2.5.3 (Label in Name): the accessible name must contain the visible
+   * text, so speech-input users can activate the control by saying what they
+   * see. `aria-label` overrides the text as the name, so the two must agree.
+   */
+  it('keeps the accessible name a superset of the visible text', () => {
+    render(<ScanView {...baseProps} />);
+    const button = screen.getByRole('button', { name: /export activity log/i });
+    const visible = (button.textContent ?? '').trim().toLowerCase();
+    const accessibleName = (button.getAttribute('aria-label') ?? '').toLowerCase();
+    expect(visible).not.toBe('');
+    expect(accessibleName).toContain(visible);
+  });
+
+  it('is disabled while there is nothing to export', () => {
+    useStore.setState({ fullActivityLog: [] });
+    render(<ScanView {...baseProps} />);
+    expect(screen.getByRole('button', { name: /export activity log/i })).toBeDisabled();
+  });
+});

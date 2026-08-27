@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Clock, FileText, Radio, Signal } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { useMemo } from 'react';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { cn } from '../../../lib/utils';
@@ -9,7 +9,6 @@ import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAn
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import type { ActivityLogEntry } from '../../../types';
 import { ScannerDisplay } from '../ScannerUI';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import type { ScannerMode } from '../../App';
 
 /** Row order for the heatmap: Monday first, matching `computeLocalHeatmap`. */
@@ -254,37 +253,28 @@ export function ScanView({
         {/* Recent Hits */}
         <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-[clamp(32px,3cqmin,60px)] self-stretch py-[10px]">
           <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-[clamp(6px,1.8cqmin,28px)]">
-            <div className="flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
-              <Radio aria-hidden className="size-[clamp(14px,3cqmin,52px)] text-brand-primary" />
-              <h3 className="font-display font-bold text-[clamp(13px,3.5cqmin,56px)] text-scanner-text-light">
-                Recent Hits
-              </h3>
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={onOpenActivityExport}
-                  disabled={fullActivityLog.length === 0}
-                  className={cn(
-                    'inline-flex items-center justify-center rounded-scanner-xs border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:border-white/20 hover:text-white',
-                    'h-[clamp(28px,4.5cqmin,72px)] w-[clamp(28px,5cqmin,84px)]',
-                    fullActivityLog.length === 0 && 'opacity-50 cursor-not-allowed',
-                  )}
-                  aria-label="Export activity log"
-                >
-                  <FileText aria-hidden className="size-[clamp(20px,2.5cqmin,40px)]" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                align="center"
-                className="scanner-select-content"
-                arrowClassName="bg-background fill-background"
-              >
-                Export
-              </TooltipContent>
-            </Tooltip>
+            <h3 className="font-display font-bold text-[clamp(13px,3.5cqmin,56px)] text-scanner-text-light">
+              Recent Hits
+            </h3>
+            {/* A visible text label, not an icon plus a hover tooltip. The
+              tooltip read "Export" and was reachable only by pointer, so the
+              control's purpose was hidden from touch users and from anyone
+              scanning the page. `aria-label` stays because it is more specific
+              than the visible text and contains it, which is what WCAG 2.5.3
+              (Label in Name) requires. */}
+            <button
+              type="button"
+              onClick={onOpenActivityExport}
+              disabled={fullActivityLog.length === 0}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-[clamp(4px,1.2cqmin,16px)] rounded-scanner-xs border border-white/10 bg-white/5 px-[clamp(8px,1.8cqmin,28px)] py-[clamp(4px,1cqmin,16px)] text-[clamp(11px,2.6cqmin,44px)] text-white/80 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white',
+                fullActivityLog.length === 0 && 'cursor-not-allowed opacity-50',
+              )}
+              aria-label="Export activity log"
+            >
+              <FileText aria-hidden className="size-[clamp(14px,2.2cqmin,36px)]" />
+              Export
+            </button>
           </div>
           {recentHits.length === 0 ? (
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 pr-2 text-white/60 text-[clamp(11px,3cqmin,52px)] italic">
@@ -358,9 +348,8 @@ export function ScanView({
       >
         {/* Busiest Channels */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
-          <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)] flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
-            <Signal aria-hidden className="size-[clamp(14px,3cqmin,52px)] text-blue-400" /> Busiest
-            Channels
+          <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)]">
+            Busiest Channels
           </h3>
           {dashboardLoading ? (
             <div className="flex-1 flex items-center justify-center text-white/60 text-xs">
@@ -402,9 +391,8 @@ export function ScanView({
 
         {/* Activity Heatmap */}
         <div className="flex-1 min-h-0 bg-black/20 rounded-lg border border-white/5 p-4 flex flex-col">
-          <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)] flex items-center gap-[clamp(6px,1.8cqmin,24px)]">
-            <Clock aria-hidden className="size-[clamp(14px,3cqmin,52px)] text-green-400" /> Activity
-            Heatmap
+          <h3 className="font-display font-bold text-[clamp(14px,3cqmin,56px)] mb-[clamp(8px,2cqmin,32px)]">
+            Activity Heatmap
           </h3>
           {/* The grid is 168 unlabelled <div>s. `title` is not announced on a
             non-focusable element, so to assistive tech this widget was
