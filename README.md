@@ -29,25 +29,34 @@ USB cable, and runs live while you're listening, on macOS, Windows, and Linux.
 
 ## Supported scanners
 
-Bearpaw drives the Uniden 125/126 family — conventional analog scanners with
-500 flat channel slots that speak Uniden's ASCII serial protocol.
+Bearpaw drives conventional analog Uniden handhelds — scanners with a flat
+list of channel slots that speak Uniden's ASCII serial protocol. Two families,
+same protocol, different memory:
 
-| Scanner       | Region       | Status                                        |
-| ------------- | ------------ | --------------------------------------------- |
-| **BC125AT**   | US           | **Verified** — developed and tested against it |
-| **UBC125XLT** | EU           | **Verified** — confirmed by a contributor      |
-| **BCT125AT**  | US           | Expected — same USB ID and command set as the BC125AT |
-| **UBC126AT**  | EU           | Expected — accepted by the model probe, untested |
-| **AE125H**    | EU (Albrecht) | Expected — accepted by the model probe, untested |
+| Scanner       | Region        | Channels | Status                                        |
+| ------------- | ------------- | -------- | --------------------------------------------- |
+| **BC125AT**   | US            | 500      | **Verified** — developed and tested against it |
+| **BC75XLT**   | US            | 300      | **Verified** — tested against real hardware    |
+| **UBC125XLT** | EU            | 500      | **Verified** — confirmed by a contributor      |
+| **BCT125AT**  | US            | 500      | Expected — same USB ID and command set as the BC125AT |
+| **UBC126AT**  | EU            | 500      | Expected — accepted by the model probe, untested |
+| **AE125H**    | EU (Albrecht) | 500      | Expected — accepted by the model probe, untested |
 
 "Expected" means the scanner is in the same family and Bearpaw accepts it, but
 nobody has run it against real hardware yet. If you have one,
 [tell us how it went](https://github.com/jeremyfuksa/bearpaw/issues) — that's
 how the UBC125XLT moved to Verified.
 
+Bearpaw adapts to whichever is plugged in. On a **BC75XLT** it shows 300
+channels in banks of 30, and hides the controls that scanner doesn't have —
+alpha tags, per-channel modulation and tone, backlight, battery save, contrast,
+and weather alert are all absent from its hardware, so they're absent from the
+interface too. Nothing to configure: it's detected automatically, including its
+different serial speed.
+
 **Not supported:** trunking scanners (BC346XT, BCD396XT, BCD996XT, and the rest
 of the TrunkTracker line). They organize memory as systems, sites, and groups
-rather than 500 flat channels, which is a different program-mode protocol —
+rather than a flat channel list, which is a different program-mode protocol —
 not something a model-ID addition can reach. A scanner Bearpaw doesn't
 recognize says so by name rather than failing silently.
 

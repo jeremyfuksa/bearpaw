@@ -63,7 +63,7 @@ Current scanner receiver state.
 | `squelch_open` | boolean | True if signal present | true, false |
 | `rssi` | number | Signal strength percentage | 0 - 100 |
 | `mode` | string | Receiver mode | "SCAN", "HOLD", "DIRECT" |
-| `channel` | number or null | Current channel number | 1-500 or null |
+| `channel` | number or null | Current channel number | 1..`capabilities.channel_count`, or null |
 | `volume` | number | Volume level | 0-15 |
 | `battery` | number or null | Battery percentage | 0-100 or null (if AC) |
 | `tone_squelch_kind` | string | Tone discriminator for live signal | "none", "ctcss", "dcs", "search" |
@@ -95,11 +95,11 @@ Scanner memory channel information.
 
 | Field | Type | Description | Valid Values |
 |-------|------|-------------|--------------|
-| `index` | number | Channel number | 1-500 |
+| `index` | number | Channel number | 1..`capabilities.channel_count` (500 BC125AT family, 300 BC75XLT) |
 | `frequency` | number | Frequency (MHz) | 25.0000 - 512.0000 |
 | `modulation` | string | Modulation mode | "FM", "AM", "NFM", "AUTO" |
 | `alpha_tag` | string | Channel name | 0-16 characters |
-| `delay` | number | Scan delay (seconds); negative values are pre-delays | -10, -5, 0, 1, 2, 3, 4, 5 |
+| `delay` | number | Scan delay. **Units are model-dependent:** seconds on the BC125AT family (negatives are pre-delays), a boolean on the BC75XLT | `capabilities.valid_delays` — `-10, -5, 0, 1, 2, 3, 4, 5` or `0, 1` |
 | `lockout` | boolean | Locked out from scan | true, false |
 | `priority` | boolean | Priority channel | true, false |
 | `tone_squelch` | number or null | CTCSS tone (Hz), present when `tone_squelch_kind` is `ctcss` | 67.0 - 254.1 or null |
@@ -464,7 +464,7 @@ an envelope):
 Get specific channel by index.
 
 **Path Parameters:**
-- `index`: Channel number (1-500)
+- `index`: Channel number (1..`capabilities.channel_count` — 500 on the BC125AT family, 300 on a BC75XLT)
 
 **Example:** `/memory/channels/25`
 
@@ -496,7 +496,7 @@ Set or clear a channel's priority. Enforces one priority channel per bank
 (the hardware limit).
 
 **Path Parameters:**
-- `index`: Channel number (1-500)
+- `index`: Channel number (1..`capabilities.channel_count` — 500 on the BC125AT family, 300 on a BC75XLT)
 
 **Request:**
 
@@ -679,7 +679,7 @@ Import channels from CSV file.
 
 **Validation:**
 - Frequency must be 25-512 MHz
-- Delay must be one of `-10, -5, 0, 1, 2, 3, 4, 5`
+- Delay must be one of `capabilities.valid_delays` — `-10, -5, 0, 1, 2, 3, 4, 5` on the BC125AT family, `0, 1` on a BC75XLT. A value the scanner rejects is a format error, and per the vendor spec a format error aborts the ENTIRE `CIN` write.
 - Bank must be 1-10
 - Lockout/Priority must be "true" or "false"
 

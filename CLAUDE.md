@@ -197,7 +197,11 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 | `CIN,<index>` | Read channel data | PRG |
 | `GLF` / `LOF` / `ULF` | Walk/add/remove global lockouts | PRG |
 | `SCG` | Bank-enable mask (10 chars, `'1'`=disabled) | PRG |
-| `BLT`, `BSV`, `KBP`, `CNT`, `VOL`, `SQL`, `PRI`, `WXS` | Global settings | either |
+| `VOL`, `SQL` | Volume / squelch | any |
+| `PRI` | Priority mode | PRG |
+| `KBP` | Key beep | either on the BC125AT family; **PRG only** on a BC75XLT (`KBP,NG` outside) |
+| `BLT`, `BSV`, `CNT`, `WXS` | Backlight, battery save, contrast, weather alert | either — **absent on the BC75XLT**, all reply `ERR` |
+| `BPL` | Band plan (USA/Canada). Where modulation lives on a BC75XLT | PRG |
 
 CTCSS/DCS codes (0–231) are decoded to Hz in [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs).
 
@@ -214,7 +218,9 @@ The poll loop dispatches to the right transport based on whether the resolved po
 
 `./config.yaml` at repo root (gitignored). Example in [`crates/bearpaw-api/config.example.yaml`](crates/bearpaw-api/config.example.yaml).
 
-Minimal macOS config:
+**Neither scanner needs a config file.** Autodetect finds both: the BC125AT family via the direct-USB probe, the BC75XLT via its CP210x serial node, probing 115200 and 57600 in turn.
+
+Minimal macOS config, if you want to pin the BC125AT-family path explicitly:
 
 ```yaml
 device:
@@ -225,7 +231,9 @@ api:
   port: 8000
 ```
 
-On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver never binds — `/dev/cu.usbmodem*` does not appear. Setting `usb_vid`/`usb_pid` forces the `rusb` direct-USB path. Linux/Windows usually omit those fields and let auto-detect handle it.
+On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver never binds — `/dev/cu.usbmodem*` does not appear. Setting `usb_vid`/`usb_pid` forces the `rusb` direct-USB path. Linux/Windows usually omit those fields.
+
+**Do not set `usb_vid`/`usb_pid` for a BC75XLT.** Its CP210x bridge binds normally, so it is a serial device — and `UsbTransport` cannot drive a CP210x (see the note in `config.rs::usb_candidate_rank`). Set `baud: 57600` only to force the rate; autodetect already probes it.
 
 Frontend env (in `frontend/.env`):
 

@@ -91,6 +91,16 @@
 
         <h2 id="the-channel-list">The channel list</h2>
         <p>Each row is one channel. The columns, left to right:</p>
+        <div class="callout">
+          <p>
+            <strong>On a BC75XLT you'll see fewer columns.</strong> That scanner
+            doesn't store channel names, per-channel modulation, or tone, so
+            <strong>TAG</strong>, <strong>MODE</strong>, and
+            <strong>TONE</strong> aren't shown — there'd be nothing to put in
+            them. Search matches on frequency alone, and <strong>DLY</strong> is
+            a simple on/off rather than a number of seconds.
+          </p>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -343,6 +353,11 @@
           <strong>BC125AT</strong> for the full backup. The app writes
           <code>channels.csv</code> or <code>scanner.bc125at_ss</code> and lets
           you choose where it goes.
+        </p>
+        <p>
+          The <code>.bc125at_ss</code> format is the one Uniden's own software
+          uses, and it describes a 500-channel BC125AT-family radio. It isn't
+          offered for a BC75XLT — use CSV there.
         </p>
 
         <h3 id="importing">Importing</h3>
