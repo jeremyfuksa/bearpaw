@@ -107,9 +107,9 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
   return groups;
 }
 
-function HitSignalBars({ strength, className }: { strength: number; className?: string }) {
+function HitSignalBars({ strength }: { strength: number }) {
   return (
-    <div className={cn('flex shrink-0 items-end gap-[clamp(1px,0.8cqmin,8px)]', className)}>
+    <div className="flex shrink-0 items-end gap-[clamp(1px,0.8cqmin,8px)]">
       {[1, 2, 3, 4, 5].map((bar) => (
         <span
           key={bar}
@@ -281,59 +281,37 @@ export function ScanView({
             // (which aligns with the Display panel's bank row beside it),
             // and the middle hits are spaced evenly between. The minimum
             // `gap-y` keeps a small floor when the panel is short.
-            <div
-              className={cn(
-                'grid flex-1 min-h-0 grid-rows-[repeat(5,auto)] content-between gap-x-[clamp(12px,3.5cqmin,60px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]',
-                showTagColumn
-                  ? 'grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto]'
-                  : // The frequency column stays `auto` so it hugs its content and
-                    // sits right after the timestamp, exactly as it does beside a
-                    // tag column. Handing it the `1fr` instead made `text-right`
-                    // fling it to the far edge -- the same rows read left-aligned
-                    // on a BC125AT and right-aligned on a BC75XLT. The slack goes
-                    // to the trailing bars column instead.
-                    'grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)]',
-              )}
-            >
+            // The template is the SAME whether or not the scanner has alpha
+            // tags. The third track holds the tag when there is one and the
+            // roll-up count when there is not, so it is never an empty
+            // placeholder column -- and, critically, the frequency column
+            // stays pure numerics. `text-right` is there so decimal points
+            // line up; putting the "(N)" suffix inside that span made the
+            // column's contents vary in width, and right-aligning
+            // "146.8500 (2)" against "27.4050" indents the short rows into a
+            // ragged left edge.
+            <div className="grid flex-1 min-h-0 grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,auto)] content-between gap-x-[clamp(12px,3.5cqmin,60px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
               {Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
                 const hit = recentHits[idx];
                 if (!hit) {
-                  return (
-                    <div
-                      key={`empty-${idx}`}
-                      className={showTagColumn ? 'col-span-4' : 'col-span-3'}
-                      aria-hidden="true"
-                    />
-                  );
+                  return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
                 }
                 const countSuffix = hit.count > 1 ? ` (${hit.count})` : '';
                 return (
                   <div
                     key={hit.id}
-                    className={cn(
-                      'grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5',
-                      showTagColumn ? 'col-span-4' : 'col-span-3',
-                    )}
+                    className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
                   >
                     <span className="whitespace-nowrap text-white/60">
                       {getRelativeTime(hit.time)}
                     </span>
                     <span className="whitespace-nowrap text-right font-mono text-brand-light">
                       {hit.frequency}
-                      {showTagColumn ? '' : countSuffix}
                     </span>
-                    {showTagColumn ? (
-                      <span
-                        className="whitespace-nowrap text-white/60"
-                        title={hit.tag || undefined}
-                      >
-                        {hit.tag ? `${hit.tag}${countSuffix}` : `—${countSuffix}`}
-                      </span>
-                    ) : null}
-                    <HitSignalBars
-                      strength={hit.strength}
-                      className={showTagColumn ? undefined : 'justify-end'}
-                    />
+                    <span className="whitespace-nowrap text-white/60" title={hit.tag || undefined}>
+                      {showTagColumn ? `${hit.tag || '—'}${countSuffix}` : countSuffix.trimStart()}
+                    </span>
+                    <HitSignalBars strength={hit.strength} />
                   </div>
                 );
               })}

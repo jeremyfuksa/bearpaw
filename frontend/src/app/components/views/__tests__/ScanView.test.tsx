@@ -260,9 +260,18 @@ describe('ScanView Recent Hits rendering', () => {
       expect(screen.queryByText(/^— \(\d+\)$/)).not.toBeInTheDocument();
     });
 
-    it('shows the roll-up count beside the frequency instead', () => {
+    // REGRESSION GUARD: the count must live in its OWN cell, never inside the
+    // frequency span. The frequency column carries `text-right` so decimal
+    // points line up; mixing "146.8500 (2)" and "27.4050" into that column
+    // makes its contents vary in width, and right-aligning them indents the
+    // short rows into a ragged left edge -- the same rows then read
+    // left-aligned on a BC125AT and right-aligned on a BC75XLT.
+    it('shows the roll-up count in its own cell, not inside the frequency', () => {
       render(<ScanView {...baseProps} />);
-      expect(screen.getByText('146.850 (2)')).toBeInTheDocument();
+      const frequency = screen.getByText('146.850');
+      expect(frequency).toBeInTheDocument();
+      expect(frequency.textContent).toBe('146.850');
+      expect(screen.getByText('(2)')).toBeInTheDocument();
     });
   });
 
