@@ -131,7 +131,7 @@ The connection-status enum (`'connected' | 'connecting' | 'disconnected'`) is de
 
 ## Wire protocol
 
-The BC125AT speaks an ASCII line protocol over USB CDC-ACM at 115200 8N1, `\r`-terminated. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the canonical wire shape and the audit history. Real wire captures live in [`docs/wire_captures/`](docs/wire_captures/) (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`).
+The BC125AT speaks an ASCII line protocol over USB CDC-ACM at 115200 8N1, `\r`-terminated. **The BC75XLT speaks the same protocol at 57600** behind a CP210x bridge — autodetect probes both rates (see `docs/wire_captures/2026-08-26/bc75xlt-compatibility.md`). See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the canonical wire shape and the audit history. Real wire captures live in [`docs/wire_captures/`](docs/wire_captures/) (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`).
 
 **Captures win.** When a reference doc — including the decompiled [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — disagrees with the wire captures from this hardware, the captures are authoritative. Don't "fix" working code to match a reference; document the disagreement instead (see `docs/wire_captures/2026-05-21/audit-reconciliation.md` for prior reconciliations).
 
@@ -139,7 +139,7 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 
 | Cmd | Purpose | Mode |
 |---|---|---|
-| `MDL` | Model probe — must reply `MDL,BC125AT` (or BCT125AT, UBC125XLT, UBC126AT, AE125H) | any |
+| `MDL` | Model probe — must reply `MDL,BC125AT` (or BCT125AT, UBC125XLT, UBC126AT, AE125H, BC75XLT) | any |
 | `VER` | Firmware version | any |
 | `STS` | LCD dump + status flags | any |
 | `GLG` | Canonical live frequency/mod/tone/name/squelch | any |

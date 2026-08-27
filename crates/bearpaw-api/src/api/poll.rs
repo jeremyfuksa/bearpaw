@@ -1001,15 +1001,17 @@ mod tests {
     #[test]
     fn unsupported_model_sets_diagnostic_and_keeps_connection() {
         let state = crate::api::default_state();
-        // BC75XLT is the concrete hazard from #389: same wire protocol, 300
-        // channels instead of 500, so the fixed 1-500/10-bank memory model
-        // would drive it wrong.
-        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        // SDS100 is a real Uniden trunking scanner with a genuinely different
+        // memory model (systems/sites/groups, not a flat channel list), so it
+        // stays unsupported. This test previously used BC75XLT, which became
+        // supported in #400 -- pick a model that will not migrate into the
+        // allowlist and silently void the guard.
+        update_device_info_from_mdl(&state, "MDL,SDS100", "/dev/cu.test");
 
         let d = state.device.read().unwrap();
         assert_eq!(
             d.model.as_deref(),
-            Some("BC75XLT"),
+            Some("SDS100"),
             "the reported model must still be recorded so the UI can name it"
         );
         assert_eq!(
@@ -1027,7 +1029,7 @@ mod tests {
             d.diagnostic_message
                 .as_deref()
                 .unwrap_or_default()
-                .contains("BC75XLT"),
+                .contains("SDS100"),
             "the message must name the offending model, not just say 'unsupported'"
         );
     }
@@ -1131,7 +1133,7 @@ mod tests {
     #[test]
     fn supported_model_clears_diagnostic() {
         let state = crate::api::default_state();
-        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        update_device_info_from_mdl(&state, "MDL,SDS100", "/dev/cu.test");
         assert_eq!(
             state.device.read().unwrap().diagnostic_code.as_deref(),
             Some("unsupported_model"),

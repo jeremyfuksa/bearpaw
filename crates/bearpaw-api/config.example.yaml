@@ -19,8 +19,10 @@ device:
   #   port: COM3                     # Windows
   # port:
 
-  # Optional baud rate. The BC125AT runs at 115200; you almost never need to
-  # change this.
+  # Optional baud rate. Autodetect probes 115200 (BC125AT family) and 57600
+  # (BC75XLT) and uses whichever answers, so you almost never need this.
+  # Set it only to force a rate — an explicit value is always tried first
+  # and is never overridden by detection.
   # baud: 115200
 
   # Optional. Assert DTR after opening the serial port. Default `false` —
