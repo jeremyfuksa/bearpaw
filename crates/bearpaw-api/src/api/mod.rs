@@ -661,6 +661,18 @@ pub(crate) fn default_preferences() -> Map<String, Value> {
     // the behaviour it shipped with — but the app is offline-first, so a
     // user who wants zero network traffic needs a way to turn it off.
     m.insert("check_updates_on_launch".to_string(), Value::Bool(true));
+    // Whether the Scan page's analytics count only the connected scanner
+    // ("scanner", the default) or every scanner ever attached ("all").
+    //
+    // Defaults to per-scanner because a channel number means something
+    // different on each radio, so a summed "busiest channel" mixes
+    // incompatible memory maps. A user with one scanner sees no difference
+    // either way; a user with two gets the correct aggregation without having
+    // to know the setting exists.
+    m.insert(
+        "analytics_scope".to_string(),
+        Value::String("scanner".to_string()),
+    );
     m.insert("start_dashboard_mode".to_string(), Value::Bool(true));
     m.insert("recording_buffer_size".to_string(), Value::from(30));
     m.insert("data_retention_days".to_string(), Value::from(30));

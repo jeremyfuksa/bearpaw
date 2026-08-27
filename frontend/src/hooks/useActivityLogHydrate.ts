@@ -15,8 +15,9 @@ interface BackendHit {
 }
 
 /**
- * One-shot hydration of `activityLog` / `fullActivityLog` from the
- * backend's persisted `scan_hits` table at app start.
+ * Hydrates `activityLog` / `fullActivityLog` from the backend's persisted
+ * `scan_hits` table at app start, and again whenever the `analytics_scope`
+ * preference changes what that endpoint returns.
  *
  * Without this, the dashboard's Recent Hits / Busiest Channels /
  * Heatmap panels look blank on every cold launch until the user gets
@@ -26,6 +27,14 @@ interface BackendHit {
  */
 export function useActivityLogHydrate(): void {
   const hydrateActivityLogs = useStore((s) => s.hydrateActivityLogs);
+  // The backend scopes /activity-log by the `analytics_scope` preference, so a
+  // change to it changes what this endpoint returns. Without it in the deps
+  // this stays one-shot: Busiest Channels would follow the new setting on its
+  // next 5-second poll while Recent Hits and the heatmap -- both derived from
+  // `fullActivityLog`, which only this hook fills -- kept showing the old
+  // scope until an app restart. Three widgets disagreeing reads as a bug
+  // rather than a setting.
+  const analyticsScope = useStore((s) => s.preferences.analyticsScope);
 
   useEffect(() => {
     let active = true;
@@ -55,5 +64,5 @@ export function useActivityLogHydrate(): void {
     return () => {
       active = false;
     };
-  }, [hydrateActivityLogs]);
+  }, [hydrateActivityLogs, analyticsScope]);
 }
