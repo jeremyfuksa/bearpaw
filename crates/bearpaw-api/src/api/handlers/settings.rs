@@ -97,6 +97,13 @@ pub(crate) async fn set_backlight(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Refuse before the wire when the scanner has no such command. The UI
+    // already hides this control (#422), so reaching here means an API client
+    // or a stale frontend -- and a bare ERR from the radio is not something
+    // either can act on. See #432.
+    if !state.capabilities().has_backlight_control {
+        return Err(ApiError::BadRequest("backlight_unsupported".to_string()));
+    }
     let event = body
         .get("event")
         .and_then(Value::as_str)
@@ -146,6 +153,13 @@ pub(crate) async fn set_battery(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Refuse before the wire when the scanner has no such command. The UI
+    // already hides this control (#422), so reaching here means an API client
+    // or a stale frontend -- and a bare ERR from the radio is not something
+    // either can act on. See #432.
+    if !state.capabilities().has_battery_save {
+        return Err(ApiError::BadRequest("battery_save_unsupported".to_string()));
+    }
     // Validate the range on the wide type BEFORE narrowing to u8 — otherwise
     // e.g. 257 truncates to 1 and slips past a post-cast `1..=16` check. #143.
     let charge_time = body
@@ -766,6 +780,15 @@ pub(crate) async fn set_weather(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Refuse before the wire when the scanner has no such command. The UI
+    // already hides this control (#422), so reaching here means an API client
+    // or a stale frontend -- and a bare ERR from the radio is not something
+    // either can act on. See #432.
+    if !state.capabilities().has_weather_alert {
+        return Err(ApiError::BadRequest(
+            "weather_alert_unsupported".to_string(),
+        ));
+    }
     let priority = body
         .get("priority")
         .and_then(Value::as_bool)
@@ -816,6 +839,13 @@ pub(crate) async fn set_contrast(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Refuse before the wire when the scanner has no such command. The UI
+    // already hides this control (#422), so reaching here means an API client
+    // or a stale frontend -- and a bare ERR from the radio is not something
+    // either can act on. See #432.
+    if !state.capabilities().has_contrast {
+        return Err(ApiError::BadRequest("contrast_unsupported".to_string()));
+    }
     // Validate before narrowing — 264 truncates to 8 and passes `1..=15`. #143.
     let level = match body.get("level").and_then(Value::as_u64) {
         Some(v) if (1..=15).contains(&v) => v as u8,
