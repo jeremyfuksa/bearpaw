@@ -435,6 +435,10 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         tone_squelch,
         tone_squelch_kind,
         tone_dcs_code,
+        // REGRESSION GUARD: `cin_does_not_derive_bank`, paired with
+        // `channels_with_banks_derives_per_model` in api/mod.rs. See the
+        // third-rail table in CLAUDE.md.
+        //
         // Not derived here. `bank` depends on the scanner's memory model
         // (50 channels per bank on the BC125AT family, 30 on the BC75XLT) and
         // this parser is deliberately pure -- bytes in, ChannelData out, with

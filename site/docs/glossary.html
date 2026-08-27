@@ -65,9 +65,13 @@
 
         <h2 id="bank">Bank</h2>
         <p>
-          A group of 50 channels. The BC125AT's 500 channels are divided into
-          <strong>10 banks of 50</strong>: channels 1 to 50 are Bank 1, 51 to 100
-          are Bank 2, and so on. You can turn whole banks on or off for scanning
+          A group of channels. Every supported scanner has <strong>10 banks</strong>,
+          but how many channels each holds depends on the model: a BC125AT has
+          500 channels in <strong>banks of 50</strong> (1 to 50 are Bank 1, 51 to
+          100 are Bank 2, and so on), while a BC75XLT has 300 in
+          <strong>banks of 30</strong> (1 to 30 are Bank 1, 31 to 60 are Bank 2).
+          Bearpaw follows whichever scanner is plugged in. You can turn whole
+          banks on or off for scanning
           (on the
           <a href="scan.html#the-bank-buttons-1-to-9-then-0">Scan tab</a>), and
           you view and edit one bank at a time (on the
@@ -168,8 +172,10 @@
 
         <h2 id="memory-sync">Memory sync</h2>
         <p>
-          Reading all 500 channels out of the scanner into the app. Because the
-          scanner hands them over one at a time, it takes about 30 to 45 seconds.
+          Reading every channel out of the scanner into the app — 500 on a
+          BC125AT, 300 on a BC75XLT. Because the scanner hands them over one at
+          a time, it takes about 30 to 45 seconds (less on a BC75XLT, which has
+          fewer to read).
           It runs automatically when the app connects, and you can re-run it from
           <strong>Scanner → Sync Memory</strong>. Bearpaw doesn't store your
           channels between sessions; it re-reads them from the radio each time.

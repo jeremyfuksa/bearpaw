@@ -1,9 +1,14 @@
 # Scanner Protocol Reference
 
-**Last updated:** 2026-05-19
-**Devices:** Uniden BC125AT family — BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H
+**Last updated:** 2026-08-27
+**Devices:**
+- **BC125AT family** — BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H. 500 channels, 10 banks of 50, 115200 baud.
+- **BC75XLT** — 300 channels, 10 banks of 30, 57600 baud behind a CP210x bridge. Same wire protocol; `CIN` keeps the BC125AT's field positions with alpha tag, modulation, and tone marked `[RSV]`. See [`wire_captures/2026-08-26/bc75xlt-compatibility.md`](wire_captures/2026-08-26/bc75xlt-compatibility.md).
+
 **Authoritative sources:**
 - Uniden, *BC125AT PC Protocol v1.01* (programming command set, serial settings)
+- Uniden, *BC75XLT Operation Specification* — [`BC75XLT_PROTOCOL.pdf`](BC75XLT_PROTOCOL.pdf), text at [`.txt`](BC75XLT_PROTOCOL.txt)
+- Uniden, *BC75XLT Owner's Manual* — [`BC75XLT_OWNERS_MANUAL.pdf`](BC75XLT_OWNERS_MANUAL.pdf) (frequency coverage, user-facing feature set)
 - Uniden, *BCT15X v1.03 Protocol* (operational commands `STS`/`GLG`/`KEY`/`PWR`; BearTracker commands)
 
 > This document is the **wire-protocol** spec. For Bearpaw's REST/WebSocket API see [API_SPEC.md](API_SPEC.md) and [WEBSOCKET_SCHEMA.md](WEBSOCKET_SCHEMA.md). For the UI hit-workflow see [UI_WORKFLOW.md](UI_WORKFLOW.md).
@@ -71,7 +76,22 @@
 
 The `BC125AT_PROTOCOL.md` reference (decompiled from Uniden Sentinel + Scan125, see `docs/wire_captures/2026-05-21/audit-reconciliation.md`) states the BC125AT uses a Silicon Labs CP210x USB-UART bridge with VID/PID `0x10C4:0xEA60`. **This does not match our hardware.** Our unit (verified via `ioreg -p IOUSB` on macOS Darwin 25.4.0, 2026-05-22) enumerates as Uniden America Corp. CDC-ACM with `0x1965:0x0017` — no Silicon Labs intermediary. Likely a different firmware/hardware revision than what Sentinel was originally designed against, or an outdated claim in the decompiled doc.
 
-**Our captures win.** Bearpaw probes `0x1965:0x0017` and that is what it should keep doing for BC125AT-family hardware. If a user reports a `0x10C4:0xEA60` BC125AT in the future, we'll add a second VID/PID branch; until then it's hypothetical.
+**Our captures win.** Bearpaw probes `0x1965:0x0017` and that is what it should keep doing for BC125AT-family hardware.
+
+**Resolved 2026-08-26.** The disagreement was never a firmware revision — it was a different *scanner*. The **BC75XLT** genuinely does sit behind a Silicon Labs CP2104 at `0x10C4:0xEA60`, verified on hardware:
+
+```
+"idVendor"  = 4292    (0x10C4, Silicon Labs)
+"idProduct" = 60000   (0xEA60, CP2104 USB to UART Bridge Controller)
+"USB Serial Number" = "020D43D8"
+```
+
+Both claims are correct for their own model. Serial-bridge presence is an accident of which scanner you have, not a property of the family.
+
+Practical consequences, both learned the hard way:
+
+1. **The BC75XLT's CDC driver binds normally**, so it is an ordinary serial device — no `rusb` workaround, no config. It is found by `score_port` and confirmed by an MDL probe across 115200 and 57600.
+2. **A CP210x must never become a direct-USB target.** `UsbTransport` hardcodes the Uniden CDC-ACM endpoint layout (interface 1, `0x81`/`0x02`) and issues none of the CP210x vendor control requests, so it cannot drive a bridge — and on the way to failing it detaches the kernel driver, which on Linux takes the `ttyUSB` node with it until replug. See the note in `config.rs::usb_candidate_rank`.
 
 The `BC125AT_PROTOCOL.md` reference also documents a known macOS quirk for which we have empirical evidence: the device enumerates at USB level but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` does not appear. Bearpaw works around this via the `rusb` direct-USB transport (`crates/bearpaw-api/src/transport_usb.rs`), configured by setting `device.usb_vid` and `device.usb_pid` in `config.yaml`. See [`crates/bearpaw-api/config.example.yaml`](../crates/bearpaw-api/config.example.yaml).
 

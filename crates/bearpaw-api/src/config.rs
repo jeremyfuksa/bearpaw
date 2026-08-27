@@ -61,11 +61,16 @@ pub(crate) const ACCEPTED_MDL_MODELS: &[&str] = &[
 /// raw slice would reach for `.contains(&model)`, which is an exact-match test
 /// and would reject an otherwise-valid lowercase reply.
 ///
-/// This is the gate that keeps BC125AT-family *memory-model* constants safe --
-/// the fixed 1-500 / 10-bank layout in `protocol::channel_to_bank`, the
-/// `CIN,1..500` walk in `api::memory_sync`, and the 10-character `SCG` mask.
-/// Those are family assumptions, not protocol assumptions: a BC75XLT speaks
-/// the same wire protocol with 300 channels. See #389.
+/// Originally the gate that kept BC125AT-family memory-model constants safe.
+/// Those constants are gone -- channel count, bank width, delay range, and
+/// coverage bands now come from `ScannerCapabilities`, resolved from this same
+/// `MDL` reply (#399, #401, #402).
+///
+/// What it still decides is whether Bearpaw claims to *drive* the model at all.
+/// An unlisted scanner is allowed to connect but flagged with an
+/// `unsupported_model` diagnostic (#396), and it inherits BC125AT-family
+/// capabilities by fallback -- so this list is what separates "we know this
+/// hardware" from "we are guessing".
 pub fn is_supported_model(model: &str) -> bool {
     ACCEPTED_MDL_MODELS
         .iter()

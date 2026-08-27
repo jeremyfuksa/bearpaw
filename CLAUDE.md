@@ -4,7 +4,12 @@ Guidance for Claude Code (claude.ai/code) working in this repo.
 
 ## Project overview
 
-Bearpaw is a desktop control interface for the Uniden BC125AT scanner.
+Bearpaw is a desktop control interface for Uniden handheld scanners. It drives **two families** that speak the same wire protocol with different memory models:
+
+- **BC125AT family** — BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H. 500 channels in 10 banks of 50, alpha tags, per-channel modulation and tone, signed delay, 115200 baud.
+- **BC75XLT** — 300 channels in 10 banks of 30, no alpha tags, no per-channel modulation or tone (those `CIN` fields are `[RSV]`), boolean delay, 57600 baud behind a CP210x bridge.
+
+Anything model-specific reads [`ScannerCapabilities`](crates/bearpaw-api/src/protocol/capabilities.rs) rather than hardcoding a constant — see **Scanner capabilities** below.
 
 - **Backend:** Rust (Axum REST + WebSocket) in [`crates/bearpaw-api/`](crates/bearpaw-api/). Talks to the scanner over serial or direct USB.
 - **Frontend:** React + TypeScript + Vite SPA in [`frontend/`](frontend/), state in Zustand.
@@ -57,6 +62,49 @@ npm run tauri:build      # bundle for release
 
 ## Critical architecture concepts
 
+### 0. Scanner capabilities
+
+Two families, same wire protocol, different memory models. Every model-specific
+fact lives in one descriptor — [`ScannerCapabilities`](crates/bearpaw-api/src/protocol/capabilities.rs) —
+resolved from the `MDL` reply at connect and stored on `DeviceInfo`, so model and
+capabilities are always read under one lock.
+
+| Field | BC125AT family | BC75XLT |
+|---|---|---|
+| `channel_count` | 500 | 300 |
+| `channels_per_bank` | 50 | 30 |
+| `bank_count` | 10 | 10 |
+| `has_alpha_tags` | true | false (`CIN` field is `[RSV]`) |
+| `has_per_channel_modulation` | true | false (global `BPL` band plan) |
+| `has_tone_squelch` | true | false (`[RSV]`) |
+| `has_backlight_control` | true | false (no `BLT` command) |
+| `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) |
+| `key_beep_needs_program_mode` | false | true (`KBP,NG` outside PRG) |
+| `valid_delays` | `-10,-5,0,1,2,3,4,5` (seconds) | `0,1` (boolean) |
+| `cleared_delay` | 2 | 0 |
+| `default_baud` | 115200 | 57600 |
+| `coverage_bands` | 25–54, 108–174, 225–380, 400–512 | 25–54, 108–174, 406–512 |
+
+**Rules:**
+
+1. **Never branch on model name.** Backend reads `state.capabilities()`; frontend
+   reads `useScannerCapabilities()`. A model string scatters hardware knowledge
+   across the codebase and goes stale the moment a model is added.
+2. **`has_backlight_control` is not "has a backlight."** The BC75XLT has one — a
+   15-second button, per its owner's manual. It has no `BLT` command and no
+   settable mode. Flags name what Bearpaw can *control*.
+3. **A format error aborts the WHOLE `CIN` write.** Per the vendor spec, one bad
+   field silently discards the frequency, lockout, and priority in the same
+   command — so reserved fields go out empty and out-of-range values are rejected
+   before the wire, never "sent and hope".
+4. **Adding a model means adding a descriptor.** `every_accepted_model_resolves_to_capabilities`
+   fails otherwise; without it a new model silently inherits BC125AT constants.
+
+The TypeScript mirror is verified against real Rust output: a backend test writes
+`frontend/src/test/fixtures/scanner-capabilities.json` from the actual allowlist
+and fails when it is stale, and the frontend asserts its interface against that
+file. A hand-written fixture would pass whether or not it matched.
+
 ### 1. Three state surfaces
 
 **`LiveState`** ([`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs)) — real-time scanner state polled 5×/sec.
@@ -64,7 +112,7 @@ npm run tauri:build      # bundle for release
 - Live tone fields, populated only during a hit (`None` while squelch is closed): `tone_squelch_kind`, `tone_squelch`, `tone_dcs_code`, `tone_dcs_label`.
 - Updated by the poll loop in [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs).
 
-**Channel memory** — all 500 channels read once during memory sync via `PRG` → `CIN,1` … `CIN,500` → `EPG`. Cached in `AppState.shadow` (`ShadowState.channels`). Channel memory is **not** persisted across restarts — SQLite holds only preferences and analytics; every backend start needs a fresh memory sync.
+**Channel memory** — every channel read once during memory sync via `PRG` → `CIN,1` … `CIN,<channel_count>` → `EPG` (500 on the BC125AT family, 300 on a BC75XLT — the bound comes from `ScannerCapabilities`, not a constant). Cached in `AppState.shadow` (`ShadowState.channels`). Channel memory is **not** persisted across restarts — SQLite holds only preferences and analytics; every backend start needs a fresh memory sync.
 
 **`DeviceInfo`** — static metadata: model name (from `MDL`), port, connection_status. Same module.
 
@@ -149,7 +197,11 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 | `CIN,<index>` | Read channel data | PRG |
 | `GLF` / `LOF` / `ULF` | Walk/add/remove global lockouts | PRG |
 | `SCG` | Bank-enable mask (10 chars, `'1'`=disabled) | PRG |
-| `BLT`, `BSV`, `KBP`, `CNT`, `VOL`, `SQL`, `PRI`, `WXS` | Global settings | either |
+| `VOL`, `SQL` | Volume / squelch | any |
+| `PRI` | Priority mode | PRG |
+| `KBP` | Key beep | either on the BC125AT family; **PRG only** on a BC75XLT (`KBP,NG` outside) |
+| `BLT`, `BSV`, `CNT`, `WXS` | Backlight, battery save, contrast, weather alert | either — **absent on the BC75XLT**, all reply `ERR` |
+| `BPL` | Band plan (USA/Canada). Where modulation lives on a BC75XLT | PRG |
 
 CTCSS/DCS codes (0–231) are decoded to Hz in [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs).
 
@@ -166,7 +218,9 @@ The poll loop dispatches to the right transport based on whether the resolved po
 
 `./config.yaml` at repo root (gitignored). Example in [`crates/bearpaw-api/config.example.yaml`](crates/bearpaw-api/config.example.yaml).
 
-Minimal macOS config:
+**Neither scanner needs a config file.** Autodetect finds both: the BC125AT family via the direct-USB probe, the BC75XLT via its CP210x serial node, probing 115200 and 57600 in turn.
+
+Minimal macOS config, if you want to pin the BC125AT-family path explicitly:
 
 ```yaml
 device:
@@ -177,7 +231,9 @@ api:
   port: 8000
 ```
 
-On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver never binds — `/dev/cu.usbmodem*` does not appear. Setting `usb_vid`/`usb_pid` forces the `rusb` direct-USB path. Linux/Windows usually omit those fields and let auto-detect handle it.
+On macOS the BC125AT enumerates over USB but the kernel CDC-ACM driver never binds — `/dev/cu.usbmodem*` does not appear. Setting `usb_vid`/`usb_pid` forces the `rusb` direct-USB path. Linux/Windows usually omit those fields.
+
+**Do not set `usb_vid`/`usb_pid` for a BC75XLT.** Its CP210x bridge binds normally, so it is a serial device — and `UsbTransport` cannot drive a CP210x (see the note in `config.rs::usb_candidate_rank`). Set `baud: 57600` only to force the rate; autodetect already probes it.
 
 Frontend env (in `frontend/.env`):
 
@@ -198,6 +254,7 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`crates/bearpaw-api/src/api/security.rs`](crates/bearpaw-api/src/api/security.rs) — CORS + Host-header hardening. The API is an unauthenticated loopback server, so any web page the user visits is the threat; this closes the cross-origin-fetch and DNS-rebinding paths.
 - [`crates/bearpaw-api/src/api/handlers/`](crates/bearpaw-api/src/api/handlers/) — REST handlers (analytics, banks, commands, exports, import_ss, lockouts, memory, preferences, settings, status)
 - [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs) — STS/GLG/CIN/PWR parsers
+- [`crates/bearpaw-api/src/protocol/capabilities.rs`](crates/bearpaw-api/src/protocol/capabilities.rs) — `ScannerCapabilities`: per-model memory model and feature set
 - [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs) — CTCSS/DCS code → Hz
 - [`crates/bearpaw-api/src/protocol/defaults.rs`](crates/bearpaw-api/src/protocol/defaults.rs) — factory-default custom-search ranges (read-only; no `CSP` write path)
 - [`crates/bearpaw-api/src/logging.rs`](crates/bearpaw-api/src/logging.rs) — tracing setup, file + error log appenders
@@ -246,16 +303,28 @@ Gated by the `check_updates_on_launch` preference (default `true`, toggled on th
 4. **`STS` field count varies by firmware.** Use tail-anchored field finding (already done in `parse_sts_response`).
 5. **`SQL=1` means squelch OPEN** (signal present). Inverted from intuition.
 6. **`mode` is not a wire field.** Track it from user commands as `commanded_mode`.
-7. **Bank masks: `'1'` means disabled**, `'0'` means enabled. Counter-intuitive.
+7. **Bank masks: `'1'` means disabled**, `'0'` means enabled. Counter-intuitive. An all-disabled mask is refused by the scanner — reject it before the wire.
+8. **A `CIN` format error aborts the WHOLE write.** One bad field discards the frequency, lockout, and priority in the same command. Validate before sending; never send-and-hope.
+9. **Reserved `CIN` fields go out EMPTY.** An empty field means "leave unchanged"; writing a value into a `[RSV]` slot risks the format error in #8.
+10. **Never hardcode 500 / 50 / 115200 / delay 2.** Read `ScannerCapabilities`. The BC75XLT differs on every one of them.
+11. **The first command after a fresh open can return `ERR`.** A CP210x bridge buffers whatever was on the line. Retry — `probe_mdl_on_port` and the poll loop both do.
+12. **One scanner can present as four serial nodes** (two drivers × `cu.`/`tty.`). Dedupe on `(vid, pid, serial)`. Never probe a `/dev/tty.*` node — it blocks on carrier detect, which a scanner never asserts.
 
 ### Frontend
 1. **Check sequence numbers** in WS handlers to avoid stale-state regressions.
 2. **Mode vs squelch_open**: during a hit, mode stays "SCAN" but `squelch_open=true`. Display rules check both.
 3. **Frequency only stable when held or during a hit.** Don't render during scan-cycling — it changes 5–10×/sec.
-4. **Alpha tags need memory sync.** Until sync completes, channel-name lookups return null.
+4. **Alpha tags need memory sync** — and a BC75XLT never has them at all. Gate on `has_alpha_tags`, not on "the sync finished".
+5. **Hide unsupported controls, don't disable them.** A greyed-out control the scanner cannot honour is noise on every row; an absent one asks no questions.
+6. **Use conditional rendering, not the `hidden` attribute.** `hidden` is presentational — the element stays in the DOM, stays findable by `getByLabelText`, and stays visible to assistive tech that ignores it.
 
 ### macOS USB transport
-The BC125AT enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0017`) but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` never appears. Configure `usb_vid`/`usb_pid` in `config.yaml` to force the `rusb` direct-USB path. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the discrepancy with reference docs that claim CP210x VID/PID.
+
+**BC125AT family** — enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0017`) but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` never appears. Configure `usb_vid`/`usb_pid` in `config.yaml` to force the `rusb` direct-USB path, or let autodetect find it.
+
+**BC75XLT** — sits behind a Silicon Labs CP2104 bridge (`0x10C4:0xEA60`), and that driver *does* bind, so ordinary serial works. It needs no config: autodetect probes both 115200 and 57600.
+
+This resolves a long-standing note in [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) about reference docs claiming a CP210x VID/PID. Both are right — different models, different bridges.
 
 ## Testing and CI
 
@@ -291,7 +360,11 @@ When you touch code near one of these guards, **read the comment**, run the name
 | Priority swap is atomic (clear-old fails → new not set) | `set_channel_priority` in `crates/bearpaw-api/src/api/mod.rs` | `plan_priority_swap_orders_clear_before_set` (+ the `REGRESSION GUARD (priority swap atomicity)` comment at the code site) | Clearing a channel's priority is a destructive DCH+rewrite; setting the new priority channel before—or despite—a failed clear can leave a bank with two priority channels or a DCH-deleted, unrestored channel. The clear must run first, in a single ProgramModeGuard bracket, with its error propagated so a failed clear aborts the swap. |
 | Channel reorder is keyboard-operable | [`frontend/src/app/components/views/ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx) grip `<button>` in `ChannelRow` | `frontend/src/app/components/views/__tests__/ChannelsTab.test.tsx :: Keyboard reordering (#236)` | Reorder is driven by `react-dnd`'s **TouchBackend** (the HTML5 backend never fires `dragover`/`drop` in Tauri's WKWebView, #195), and pointer backends have no keyboard interaction at all — so the grab/move/drop path on the grip button is the *only* way a keyboard-only user can reorder (WCAG 2.1.1, Level A). If the grip reverts to a decorative `GripVertical` icon, the whole capability silently disappears with no visual change. The grab deliberately lives on its own focusable control rather than the row's Enter/Space, which is already claimed by the a11y C1 guard (open edit sheet). Reorder is also filter-unsafe — `rowIndex` is a position in the *filtered* list while `moveRow` splices the *unfiltered* bank order — so the grip must stay disabled while a search term is active. |
 | Leaving the Device page resumes scan | [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) `handleTabChange` (+ the `TabBar` wiring) | `frontend/src/app/__tests__/App.regression.test.tsx :: leaving the Device page resumes scan` | A Device-page write (unlock, bank/priority edit) runs inside a PRG/EPG bracket that parks the scanner in HOLD at ch1. Scan is intentionally NOT resumed on the page; it resumes when the user navigates away to Scan/Channels. Two regressions: dropping the `leavingDevice` resume in `handleTabChange`, or wiring `TabBar`'s `onTabChange` straight to `setCurrentTab` (bypassing the handler, so tab-bar clicks — the primary navigation — never resume and the scanner stays stuck at ch1). |
-| `buildEmptyDraft` describes a cleared channel as the SCANNER reports it | [`frontend/src/app/components/views/ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx) `buildEmptyDraft` (+ the `isClearPending` gate in the row-render loop) | `frontend/src/app/components/views/__tests__/ChannelsTab.test.tsx :: buildEmptyDraft matches a cleared channel as the scanner reports it` (+ `buildDraft returns the empty-draft shape for a cleared channel`, `an uploaded clear stops counting as a pending change`) | `buildDraft` short-circuits to `buildEmptyDraft` for any zero-frequency channel, so after an uploaded clear the rebuilt draft is diffed against the refetched channel by `draftChanges`' `hasChanges`. Every field that disagrees keeps the channel in `pendingChannelIds` **forever** — the row keeps its pending/cleared styling AND Upload Changes stays lit, rewriting those channels on every upload. `buildEmptyDraft` was written as "zero everything out" (`delay: '0'`, `lockout: false`); the hardware reports `delay: 2, lockout: true` for a cleared slot. Measured on the dev unit: 150/150 cleared channels permanently pending before, 0/150 after. Neither field is a sentinel — 0 is a valid delay and `lockout: false` is a real, different state — so do not "simplify" this back to zeroes. Both helpers are exported **for the tests**: two earlier attempts at this guard hand-built the draft shape in the test file and passed happily with the bug reintroduced, so the guard must assert the real function. The related `isClearPending` gate (`isCleared && isPending`) is necessary but NOT sufficient on its own: it gates on a signal that this bug prevented from ever clearing. |
+| `buildEmptyDraft` describes a cleared channel as the SCANNER reports it | [`frontend/src/app/components/views/ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx) `buildEmptyDraft` (+ the `isClearPending` gate in the row-render loop) | `frontend/src/app/components/views/__tests__/ChannelsTab.test.tsx :: buildEmptyDraft matches a cleared channel as the scanner reports it` (+ `buildDraft returns the empty-draft shape for a cleared channel`, `an uploaded clear stops counting as a pending change`) | `buildDraft` short-circuits to `buildEmptyDraft` for any zero-frequency channel, so after an uploaded clear the rebuilt draft is diffed against the refetched channel by `draftChanges`' `hasChanges`. Every field that disagrees keeps the channel in `pendingChannelIds` **forever** — the row keeps its pending/cleared styling AND Upload Changes stays lit, rewriting those channels on every upload. `buildEmptyDraft` was written as "zero everything out" (`delay: '0'`, `lockout: false`); the hardware reports `delay: 2, lockout: true` for a cleared slot. Measured on the dev unit: 150/150 cleared channels permanently pending before, 0/150 after. Neither field is a sentinel — 0 is a valid delay and `lockout: false` is a real, different state — so do not "simplify" this back to zeroes. Both helpers are exported **for the tests**: two earlier attempts at this guard hand-built the draft shape in the test file and passed happily with the bug reintroduced, so the guard must assert the real function. The related `isClearPending` gate (`isCleared && isPending`) is necessary but NOT sufficient on its own: it gates on a signal that this bug prevented from ever clearing. **#404 update:** the cleared-slot delay is MODEL-DEPENDENT and now comes from `ScannerCapabilities.cleared_delay` — the BC125AT family reports 2, a BC75XLT reports 0 (`CIN,299 -> CIN,299,,00000000,,,0,1,0`, hardware 2026-08-26). Hardcoding either value reproduces this exact bug on the other scanner. Lockout is `true` on both, so it stays a literal. |
+
+| Bank derivation follows the connected scanner | [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs) `parse_cin_response` (leaves `bank: 0`) + `AppState::channels_with_banks` in [`api/mod.rs`](crates/bearpaw-api/src/api/mod.rs) + `deriveBankFromIndex` in [`ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx) | `cin_does_not_derive_bank` **and** `channels_with_banks_derives_per_model` (+ `deriveBankFromIndex` suite in `ChannelsTab.test.tsx`) | Bank width is 50 channels on the BC125AT family and 30 on the BC75XLT, but a hardcoded `/ 50` lived in three places — the parser, the free function, and a frontend duplicate. All three agreed while all three were wrong: measured on hardware, 7 of 11 sampled BC75XLT channels were misfiled and channel 300 reported bank 6 instead of 10. Roughly a third of channels are correct by coincidence (channel 60 is bank 2 either way), which is why a spot check misses it. The parser CANNOT derive bank — it is pure, with no `AppState` and so no capability descriptor — and the wire carries no bank field at all (membership comes from `SCG`), so `bank: 0` there is an accurate statement rather than a placeholder. The two guards are paired on purpose: either alone passes while banks are broken. If the frontend and backend ever disagree, the UI files a channel in one bank while the scanner is told another — which is how a priority swap clears the wrong bank. |
+| A migration step is atomic and never bumps the version on failure | [`crates/bearpaw-api/src/api/mod.rs`](crates/bearpaw-api/src/api/mod.rs) `run_migration_step` | `a_failed_step_leaves_the_version_unchanged`, `a_partly_failing_step_rolls_back_entirely`, `a_failed_backup_aborts_the_migration` | Every migration statement was `let _ = conn.execute(...)` followed by an unconditional `set_schema_version`, so a failed step still marked the database migrated: the next launch read the new version, skipped the migration, and queried a schema that did not exist — invisible until a query hit a missing column. The version bump now lives INSIDE the step's transaction, so it cannot outlive a failure. Migrations are forward-only, which makes the pre-migration `.bak` the only recovery path — so a failed backup aborts rather than proceeding, and **nothing in Bearpaw deletes a `.bak`**. A database whose `user_version` is NEWER than this build is refused outright; running old code against a newer schema is silent misbehaviour. See `docs/DATA_LIFECYCLE.md`. |
+| Each test gets its own databases | [`crates/bearpaw-api/src/api/mod.rs`](crates/bearpaw-api/src/api/mod.rs) `fallback_db_path` (cfg-split) | `each_state_gets_its_own_databases` | `resolve_db_path` falls back to a fixed path when its env var is unset, and no test sets one — so all 29 `default_state()` calls opened the SAME two SQLite files and contended under parallel execution. `preferences_reset_alias_matches` deletes every preference row, which a concurrent test could observe mid-assertion. The suite passed with `--test-threads=1` and failed intermittently without it, and adding unrelated tests made it MORE likely to fire. That failure shape is the dangerous one: it trains people to rerun, and CLAUDE.md's "Never push to retry CI" depends on failures being real. |
 
 When you add a flow to this table, also add a `REGRESSION GUARD:` comment at the code site pointing back to the test name.
 

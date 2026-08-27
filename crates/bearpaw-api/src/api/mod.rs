@@ -84,6 +84,10 @@ impl AppState {
 
     /// Channel memory with `bank` filled in for the connected scanner.
     ///
+    /// REGRESSION GUARD: `channels_with_banks_derives_per_model`, paired with
+    /// `cin_does_not_derive_bank` in protocol/mod.rs. See the third-rail table
+    /// in CLAUDE.md — either guard alone passes while banks are broken.
+    ///
     /// `parse_cin_response` leaves `bank` at 0 because it is a pure function
     /// with no access to the capability descriptor, and the wire carries no
     /// bank field to begin with. This is where the derivation belongs: banks
@@ -1000,6 +1004,10 @@ fn resolve_db_path(env_key: &str, default_file: &str) -> String {
 
 /// Where a database lives when no env var names one.
 ///
+/// REGRESSION GUARD: `each_state_gets_its_own_databases`. See the third-rail
+/// table in CLAUDE.md — a shared path here made the whole suite flaky under
+/// parallel execution.
+///
 /// Split by cfg rather than branched inside `resolve_db_path` so neither build
 /// carries the other's path logic.
 #[cfg(not(test))]
@@ -1133,6 +1141,10 @@ fn schema_version(conn: &rusqlite::Connection) -> i32 {
         .unwrap_or(0)
 }
 
+/// REGRESSION GUARD: `a_failed_step_leaves_the_version_unchanged`,
+/// `a_partly_failing_step_rolls_back_entirely`. See the third-rail table in
+/// CLAUDE.md.
+///
 /// Run one migration step inside a transaction, bumping `user_version` only if
 /// every statement succeeded.
 ///

@@ -360,6 +360,11 @@ export function channelGridTemplate(columns: ChannelColumn[]): string {
 }
 
 /**
+ * REGRESSION GUARD: the `deriveBankFromIndex` suite in ChannelsTab.test.tsx,
+ * paired with `channels_with_banks_derives_per_model` on the backend. See the
+ * third-rail table in CLAUDE.md — if the two halves disagree, the UI files a
+ * channel in one bank while the scanner is told another.
+ *
  * Bank holding a channel index, for a scanner with the given layout.
  *
  * Bank width is model-dependent: 50 channels on the BC125AT family, 30 on the

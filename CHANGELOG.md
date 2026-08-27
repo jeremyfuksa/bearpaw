@@ -4,6 +4,51 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **BC75XLT support.** Bearpaw now drives a second scanner family. The BC75XLT
+  speaks the same wire protocol as the BC125AT but has 300 channels in banks of
+  30, no channel names, no per-channel modulation or tone, a simple on/off scan
+  delay, and a different serial speed behind a CP210x adapter. It's detected
+  automatically — no configuration — and the interface adapts: columns and
+  controls the radio can't support don't appear rather than sitting greyed out.
+  Verified against real hardware.
+
+- **The Device tab names your scanner and its capacity** — model, channel count,
+  and bank layout — so it's obvious which radio Bearpaw picked up when more than
+  one is on the desk.
+
+### Fixed
+
+- **Channel banks now follow the connected scanner.** Bank width was fixed at 50
+  channels in three places, so on a 300-channel scanner every channel above 30
+  was filed in the wrong bank — and the priority swap, which enforces one
+  priority channel per bank, could clear priority on a channel in a different
+  bank than the one you were editing.
+
+- **Writes are checked against what the scanner accepts** before they're sent.
+  A value the radio rejects doesn't just fail on its own — the scanner aborts
+  the whole write, silently discarding the frequency and lockout in the same
+  command. Scan delay, frequency coverage, and channel numbers are all validated
+  against the connected model now.
+
+- **Cleared channels stop showing as unsaved.** On a BC75XLT, every cleared
+  channel stayed marked as a pending change forever, keeping Upload Changes lit
+  and rewriting those channels on every upload.
+
+- **Database upgrades are safer.** A failed upgrade no longer marks itself
+  finished, upgrades run as a single all-or-nothing step, and a failure to write
+  the pre-upgrade backup stops the upgrade rather than proceeding without a way
+  back. Data written by a newer version of Bearpaw is now refused with an
+  explanation instead of being read by older code that doesn't understand it.
+
+- **A USB adapter that isn't a scanner is left alone.** Detection could try to
+  claim a generic serial adapter — including unrelated devices like development
+  boards — and on Linux that could take the device's serial port away until it
+  was unplugged.
+
 ## [1.0.0] — 2026-08-26
 
 First stable release. Every major feature has been exercised against the
