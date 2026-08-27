@@ -19,9 +19,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cfg = config::load_config(config_path.as_deref());
     let bind = format!("{}:{}", cfg.api.host, cfg.api.port);
     let state = default_state();
-    let baud = cfg.device.baud.unwrap_or(115200);
     let assert_dtr = cfg.device.assert_dtr_on_open;
-    let serial = config::resolve_serial_port(&cfg).map(|p| (p, baud, assert_dtr));
+    // Detection returns the rate that actually produced an MDL reply, which can
+    // differ from `device.baud` -- the BC75XLT speaks 57600 where the BC125AT
+    // family speaks 115200. Using the configured rate here would reopen at a
+    // rate detection just proved wrong.
+    let serial = config::resolve_scanner_port(&cfg).map(|r| (r.port_name, r.baud, assert_dtr));
 
     run_server(&bind, state, serial).await
 }
