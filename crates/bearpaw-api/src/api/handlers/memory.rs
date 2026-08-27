@@ -23,15 +23,18 @@ pub(crate) async fn get_memory_channels(
     State(state): State<AppState>,
     Query(q): Query<MemoryChannelsQuery>,
 ) -> Json<Vec<ChannelData>> {
-    let shadow = state.shadow.read().unwrap();
-    let mut channels: Vec<ChannelData> = shadow.channels.values().cloned().collect();
+    // Banks are derived here rather than during parsing: they depend on the
+    // connected scanner's memory model, and parse_cin_response has no access to
+    // it. The bank filter below therefore has to run AFTER derivation -- against
+    // raw parser output every channel's bank is 0 and the filter matches
+    // nothing. See #401.
+    let mut channels: Vec<ChannelData> = state.channels_with_banks();
     if let Some(bank) = q.bank {
         channels.retain(|c| c.bank == bank);
     }
     if let Some(lockout) = q.lockout {
         channels.retain(|c| c.lockout == lockout);
     }
-    channels.sort_by_key(|c| c.index);
     Json(channels)
 }
 
@@ -43,7 +46,8 @@ pub(crate) async fn get_memory_channel(
     // `CIN,0` / `CIN,501` go to the wire and (pre-#134) surfaced as phantom
     // channels; now they'd just error, but a 400 is the documented contract
     // and avoids a pointless round-trip. #143.
-    if !(1..=500).contains(&index) {
+    let channel_count = state.capabilities().channel_count;
+    if index == 0 || index > channel_count {
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
     if command_sender(&state).is_ok() {
@@ -57,11 +61,8 @@ pub(crate) async fn get_memory_channel(
             return Ok(Json(channel));
         }
     }
-    let shadow = state.shadow.read().unwrap();
-    shadow
-        .channels
-        .get(&index)
-        .cloned()
+    state
+        .channel_with_bank(index)
         .map(Json)
         .ok_or(ApiError::NotFound("not_found".to_string()))
 }
@@ -72,7 +73,8 @@ pub(crate) async fn put_memory_channel(
     Json(mut body): Json<ChannelData>,
 ) -> Result<Json<ChannelData>, ApiError> {
     let _ = command_sender(&state)?;
-    if !(1..=500).contains(&index) {
+    let caps = state.capabilities();
+    if index == 0 || index > caps.channel_count {
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
     body.index = index;
@@ -85,7 +87,7 @@ pub(crate) async fn put_memory_channel(
     if !matches!(body.delay, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5) {
         return Err(ApiError::BadRequest("delay_out_of_range".to_string()));
     }
-    if body.bank > 10 {
+    if body.bank > caps.bank_count {
         return Err(ApiError::BadRequest("bank_out_of_range".to_string()));
     }
     if body.alpha_tag.len() > 16 {
@@ -140,7 +142,7 @@ pub(crate) async fn put_memory_channel_priority(
     // out-of-range request with no scanner attached would return 503 instead of
     // 400 (and the priority_endpoint_rejects_out_of_range_index test would fail
     // against default_state()). Do not reorder these two checks.
-    if !(1..=500).contains(&index) {
+    if index == 0 || index > state.capabilities().channel_count {
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
     let _ = command_sender(&state)?;
@@ -174,9 +176,14 @@ pub(crate) async fn post_memory_sync(
     let tx = state.command_tx.lock().unwrap();
     let tx: &Sender<ControlCommand> = tx.as_ref().ok_or(ApiError::NoScanner)?;
     state.sync_cancel_requested.store(false, Ordering::Relaxed);
+    // Walk only as far as the scanner actually goes. A BC75XLT returns
+    // `CIN,ERR` for 301-500 -- parse_cin_response rejects those (the #134
+    // guard) so nothing corrupts, but it is 200 pointless round-trips, a
+    // progress bar that stalls at 60%, and 200 error-shaped replies in the log.
+    let max_channels = state.capabilities().channel_count;
     tx.send(ControlCommand::StartSync {
         task_id: task_id.clone(),
-        max_channels: 500,
+        max_channels,
     })
     .map_err(|_| {
         state.sync_task_id.lock().unwrap().take();

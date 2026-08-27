@@ -420,7 +420,19 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
         tone_squelch,
         tone_squelch_kind,
         tone_dcs_code,
-        bank: index_to_bank(index),
+        // Not derived here. `bank` depends on the scanner's memory model
+        // (50 channels per bank on the BC125AT family, 30 on the BC75XLT) and
+        // this parser is deliberately pure -- bytes in, ChannelData out, with
+        // no AppState and therefore no capability descriptor. Threading one in
+        // would mean passing it through every parse call site or making the
+        // parser stateful, both of which cost the property that makes the
+        // protocol layer testable straight from wire captures.
+        //
+        // The wire has no bank field at all (bank membership comes from SCG),
+        // so deriving it during parsing was convenient rather than correct.
+        // `AppState::channels_with_banks` fills it in where capabilities are
+        // in scope. See #401.
+        bank: 0,
     })
 }
 
@@ -436,7 +448,9 @@ fn empty_channel(index: u16) -> ChannelData {
         tone_squelch: None,
         tone_squelch_kind: ToneSquelchKind::None,
         tone_dcs_code: None,
-        bank: index_to_bank(index),
+        // See the note in parse_cin_response: banks are model-dependent and
+        // filled in where capabilities are available.
+        bank: 0,
     }
 }
 
@@ -493,9 +507,19 @@ pub fn validate_channel_name(name: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// Map a BC125AT channel index (1–500) to its fixed bank (1–10).
-/// Banks are 50 channels each: 1–50 = bank 1, ..., 451–500 = bank 10.
-/// Returns 0 for out-of-range input.
+/// Map a BC125AT-family channel index (1–500) to its bank (1–10).
+///
+/// **Prefer [`ScannerCapabilities::index_to_bank`] for anything that runs
+/// against a connected scanner** -- this function hardcodes the BC125AT
+/// family's 50-channel banks and is wrong for a BC75XLT, whose 300 channels
+/// sit in banks of 30.
+///
+/// Kept as the BC125AT-family reference implementation, and used by the
+/// capability descriptor's own guard test
+/// (`index_to_bank_matches_the_free_function_across_the_full_range`) to prove
+/// the descriptor did not change behaviour for existing hardware.
+///
+/// [`ScannerCapabilities::index_to_bank`]: crate::protocol::capabilities::ScannerCapabilities::index_to_bank
 pub fn index_to_bank(index: u16) -> u8 {
     if index == 0 || index > 500 {
         return 0;
@@ -762,7 +786,9 @@ mod tests {
         assert!(!ch.lockout);
         assert!(!ch.priority);
         assert!(ch.tone_squelch.is_none());
-        assert_eq!(ch.bank, 1, "channel 1 is in bank 1");
+        // Bank is derived per-model outside the parser (#401); see
+        // cin_does_not_derive_bank.
+        assert_eq!(ch.bank, 0, "parser leaves bank unset");
     }
 
     #[test]
@@ -775,7 +801,7 @@ mod tests {
         assert_eq!(ch.frequency, 0.0);
         assert!(ch.lockout, "lockout=1 in field 7");
         assert!(!ch.priority, "priority=0 in field 8");
-        assert_eq!(ch.bank, 1, "channel 3 is in bank 1 (1-50)");
+        assert_eq!(ch.bank, 0, "parser leaves bank unset (#401)");
     }
 
     #[test]
@@ -848,14 +874,40 @@ mod tests {
         assert_eq!(index_to_bank(501), 0, "out of range");
     }
 
+    /// REGRESSION GUARD (#401): the parser must NOT derive `bank`.
+    ///
+    /// Bank width is a property of the connected scanner -- 50 channels on the
+    /// BC125AT family, 30 on the BC75XLT -- and this parser is pure, with no
+    /// access to the capability descriptor. It used to hardcode `/ 50`, which
+    /// misfiled every BC75XLT channel above 30: measured on hardware, 7 of 11
+    /// sampled channels were in the wrong bank and channel 300 reported bank 6
+    /// instead of 10.
+    ///
+    /// The wire carries no bank field at all (membership comes from `SCG`), so
+    /// leaving it at 0 here is not a placeholder -- it is an accurate statement
+    /// that the wire did not say. `AppState::channels_with_banks` fills it in
+    /// where capabilities are in scope.
+    ///
+    /// Paired with `channels_with_banks_derives_per_model` in api/mod.rs.
     #[test]
-    fn cin_populates_bank_from_index() {
-        let ch1 = parse_cin_response(1, "CIN,1,Ararat UHF,01451300,AUTO,0,2,0,0").unwrap();
-        assert_eq!(ch1.bank, 1);
-        let ch100 = parse_cin_response(100, "CIN,100,Test,01451300,AUTO,0,2,0,0").unwrap();
-        assert_eq!(ch100.bank, 2);
-        let ch451 = parse_cin_response(451, "CIN,451,Test,01451300,AUTO,0,2,0,0").unwrap();
-        assert_eq!(ch451.bank, 10);
+    fn cin_does_not_derive_bank() {
+        for (idx, line) in [
+            (1u16, "CIN,1,Ararat UHF,01451300,AUTO,0,2,0,0"),
+            (100, "CIN,100,Test,01451300,AUTO,0,2,0,0"),
+            (451, "CIN,451,Test,01451300,AUTO,0,2,0,0"),
+        ] {
+            let ch = parse_cin_response(idx, line).unwrap();
+            assert_eq!(
+                ch.bank, 0,
+                "parser must leave bank unset for channel {idx}: it cannot know \
+                 the scanner's bank width"
+            );
+        }
+        assert_eq!(
+            empty_channel(300).bank,
+            0,
+            "the empty-slot shape must agree with the parsed shape"
+        );
     }
 
     #[test]

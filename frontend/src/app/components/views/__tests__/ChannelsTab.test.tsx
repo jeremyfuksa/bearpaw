@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
-import { ChannelsTab, buildDraft, buildEmptyDraft } from '../ChannelsTab';
+import { ChannelsTab, buildDraft, buildEmptyDraft, deriveBankFromIndex } from '../ChannelsTab';
+import capabilityFixture from '../../../../test/fixtures/scanner-capabilities.json';
 import { createTestChannel, createTestChannelDraft } from '../../../../test/fixtures';
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import { createMockStore } from '../../../../test/mocks/mockStore';
@@ -1047,5 +1048,69 @@ describe('ChannelsTab', () => {
 
       expect(screen.getByRole('button', { name: /reorder channel 1/i })).toBeDisabled();
     });
+  });
+});
+
+describe('deriveBankFromIndex (#401)', () => {
+  // REGRESSION GUARD: bank width is model-dependent — 50 channels on the
+  // BC125AT family, 30 on the BC75XLT. This function hardcoded 50, and the
+  // backend's parser hardcoded the same divisor, so both halves agreed while
+  // both were wrong for a BC75XLT.
+  //
+  // Measured on hardware 2026-08-26: 7 of 11 sampled BC75XLT channels were
+  // misfiled. Channel 31 showed in bank 1 (belongs in 2); channel 300 in
+  // bank 6 (belongs in 10).
+  //
+  // Asserts the REAL exported function rather than a hand-built copy, for the
+  // reason already recorded on buildEmptyDraft: two earlier guards in this file
+  // asserted reimplementations and passed happily with the bug present.
+  it('follows the BC125AT family layout (50 per bank)', () => {
+    expect(deriveBankFromIndex(1, 50, 10)).toBe(1);
+    expect(deriveBankFromIndex(50, 50, 10)).toBe(1);
+    expect(deriveBankFromIndex(51, 50, 10)).toBe(2);
+    expect(deriveBankFromIndex(500, 50, 10)).toBe(10);
+  });
+
+  it('follows the BC75XLT layout (30 per bank)', () => {
+    expect(deriveBankFromIndex(1, 30, 10)).toBe(1);
+    expect(deriveBankFromIndex(30, 30, 10)).toBe(1);
+    expect(deriveBankFromIndex(31, 30, 10)).toBe(2);
+    expect(deriveBankFromIndex(300, 30, 10)).toBe(10);
+  });
+
+  // Roughly a third of channels land in the same bank under both models, which
+  // is why a spot check misses this bug entirely.
+  it('agrees between models only where the arithmetic coincides', () => {
+    expect(deriveBankFromIndex(60, 50, 10)).toBe(2);
+    expect(deriveBankFromIndex(60, 30, 10)).toBe(2);
+
+    expect(deriveBankFromIndex(31, 50, 10)).toBe(1);
+    expect(deriveBankFromIndex(31, 30, 10)).toBe(2);
+  });
+
+  it('clamps to the bank count and treats sub-1 indexes as channel 1', () => {
+    expect(deriveBankFromIndex(0, 30, 10)).toBe(1);
+    expect(deriveBankFromIndex(-5, 30, 10)).toBe(1);
+    expect(deriveBankFromIndex(9999, 30, 10)).toBe(10);
+  });
+
+  // The backend derives banks too (AppState::channels_with_banks). If the two
+  // disagree, the UI files a channel in one bank while the scanner is told
+  // another — which is how a priority swap ends up clearing the wrong bank.
+  it('matches the backend layout for every model in the capability fixture', () => {
+    const fixture: Record<
+      string,
+      { channels_per_bank: number; bank_count: number; channel_count: number }
+    > = capabilityFixture;
+    for (const [model, caps] of Object.entries(fixture)) {
+      const last = deriveBankFromIndex(caps.channel_count, caps.channels_per_bank, caps.bank_count);
+      expect(last, `${model} last channel`).toBe(caps.bank_count);
+      const firstOfSecond = deriveBankFromIndex(
+        caps.channels_per_bank + 1,
+        caps.channels_per_bank,
+        caps.bank_count,
+      );
+      expect(firstOfSecond, `${model} first channel of bank 2`).toBe(2);
+    }
   });
 });
