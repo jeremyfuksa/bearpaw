@@ -39,6 +39,8 @@ interface ChannelRowProps {
   isGrabbed: boolean;
   disableDrag: boolean;
   displayFrequency: string;
+  columns: ChannelColumn[];
+  validDelays: number[];
   displayAlpha: string;
   displayModulation: string;
   displayTone: string | number;
@@ -64,6 +66,8 @@ function ChannelRow({
   isGrabbed,
   disableDrag,
   displayFrequency,
+  columns,
+  validDelays,
   displayAlpha,
   displayModulation,
   displayTone,
@@ -108,14 +112,33 @@ function ChannelRow({
   // eslint-disable-next-line react-hooks/refs
   drag(drop(ref));
 
+  const shows = (key: ChannelColumnKey) => columns.some((c) => c.key === key);
+
+  // The BC75XLT's CIN delay field is a boolean (`0:OFF / 1:ON` per the vendor
+  // spec), not the BC125AT family's signed seconds. Rendering "1s" there states
+  // a unit the hardware does not have.
+  const delayIsBoolean = validDelays.length === 2 && validDelays[0] === 0 && validDelays[1] === 1;
+
+  // Without a tag to read, every row on a BC75XLT would announce identically
+  // ("unnamed"), which is worse than useless in a 300-row list. Fall back to
+  // the frequency, which is the only thing that distinguishes the rows.
+  const rowLabel = shows('alpha')
+    ? `Edit channel ${displayIndex}, ${displayAlpha === '—' ? 'unnamed' : displayAlpha}, ${displayFrequency} MHz`
+    : `Edit channel ${displayIndex}, ${displayFrequency} MHz`;
+
   return (
     <div
       ref={ref}
       role="row"
+      // Tailwind arbitrary values are static strings, so a per-scanner column
+      // set has to come through an inline style. Header and row share
+      // `channelGridTemplate(columns)` — these are grid children, not table
+      // cells, so a mismatch misaligns silently rather than failing.
+      style={{ gridTemplateColumns: channelGridTemplate(columns) }}
       aria-rowindex={rowIndex + 2}
       aria-selected={isSelected}
       tabIndex={0}
-      aria-label={`Edit channel ${displayIndex}, ${displayAlpha === '—' ? 'unnamed' : displayAlpha}, ${displayFrequency} MHz`}
+      aria-label={rowLabel}
       onClick={onClick}
       // REGRESSION GUARD (a11y C1): Enter/Space on the row opens the edit sheet
       // (the row's primary action). The target===currentTarget guard means a
@@ -140,7 +163,7 @@ function ChannelRow({
       // call site for why this tracks pending state, not "frequency is 0".
       data-cleared={isClearPending || undefined}
       className={cn(
-        'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+        'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         isEditing ? 'bg-brand-primary/20 border-brand-primary/30' : 'hover:bg-white/5',
         isPending && !isClearPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
         isClearPending &&
@@ -215,19 +238,25 @@ function ChannelRow({
       >
         {displayFrequency}
       </div>
-      <div role="cell" className="font-medium text-white/80 truncate pl-1">
-        {displayAlpha}
-      </div>
-      <div role="cell" className="flex justify-center">
-        <span className="text-white/60 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
-          {displayModulation}
-        </span>
-      </div>
+      {shows('alpha') && (
+        <div role="cell" className="font-medium text-white/80 truncate pl-1">
+          {displayAlpha}
+        </div>
+      )}
+      {shows('modulation') && (
+        <div role="cell" className="flex justify-center">
+          <span className="text-white/60 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
+            {displayModulation}
+          </span>
+        </div>
+      )}
+      {shows('tone') && (
+        <div role="cell" className="text-white/60 text-xs text-center">
+          {displayTone}
+        </div>
+      )}
       <div role="cell" className="text-white/60 text-xs text-center">
-        {displayTone}
-      </div>
-      <div role="cell" className="text-white/60 text-xs text-center">
-        {displayDelay}s
+        {delayIsBoolean ? (displayDelay ? 'ON' : 'OFF') : `${displayDelay}s`}
       </div>
       <div role="cell" className="flex justify-center">
         {displayLockout ? (
@@ -252,6 +281,85 @@ function ChannelRow({
 }
 
 /**
+ * Which columns the channel table shows, for a scanner with the given
+ * capabilities.
+ *
+ * The BC75XLT reserves the CIN alpha-tag, modulation, and tone fields — they
+ * exist on the wire but are always empty. A permanently blank column, or one
+ * filled with a fabricated default, tells the user something untrue about
+ * their hardware: `parse_cin_response` defaults a blank modulation to "FM",
+ * and the live `GLG` frame reports NFM for the very channels whose CIN
+ * modulation is empty.
+ *
+ * Hidden rather than disabled. A user whose scanner has never had alpha tags
+ * has no use for a greyed-out column explaining their absence on 300 rows.
+ *
+ * Header labels, grid track widths, and row cells all derive from this one
+ * list. They were three parallel literals before — a column added to one and
+ * missed in another silently shifted every cell after it, because these are
+ * grid children rather than table cells and nothing fails visibly.
+ *
+ * Exported for tests (#404), for the same reason recorded on `buildDraft`.
+ */
+export type ChannelColumnKey =
+  | 'select'
+  | 'grip'
+  | 'index'
+  | 'frequency'
+  | 'alpha'
+  | 'modulation'
+  | 'tone'
+  | 'delay'
+  | 'lockout'
+  | 'priority';
+
+export type ChannelColumn = {
+  key: ChannelColumnKey;
+  /** Header text, or null for the checkbox and grip columns. */
+  label: string | null;
+  width: string;
+};
+
+const ALL_CHANNEL_COLUMNS: ChannelColumn[] = [
+  { key: 'select', label: null, width: '36px' },
+  { key: 'grip', label: null, width: '28px' },
+  { key: 'index', label: 'CH', width: '44px' },
+  { key: 'frequency', label: 'FREQ', width: '84px' },
+  { key: 'alpha', label: 'TAG', width: '1fr' },
+  { key: 'modulation', label: 'MODE', width: '60px' },
+  { key: 'tone', label: 'TONE', width: '60px' },
+  { key: 'delay', label: 'DLY', width: '50px' },
+  { key: 'lockout', label: 'L/O', width: '50px' },
+  { key: 'priority', label: 'PRIO', width: '50px' },
+];
+
+type ColumnCapabilities = {
+  has_alpha_tags: boolean;
+  has_per_channel_modulation: boolean;
+  has_tone_squelch: boolean;
+};
+
+export function visibleChannelColumns(caps: ColumnCapabilities): ChannelColumn[] {
+  return ALL_CHANNEL_COLUMNS.filter((col) => {
+    if (col.key === 'alpha') return caps.has_alpha_tags;
+    if (col.key === 'modulation') return caps.has_per_channel_modulation;
+    if (col.key === 'tone') return caps.has_tone_squelch;
+    return true;
+  });
+}
+
+/**
+ * Grid template for a column set.
+ *
+ * The header row and every channel row must use the SAME string. When the
+ * table always had ten columns this was a literal repeated in two places;
+ * deriving it means they cannot drift.
+ */
+export function channelGridTemplate(columns: ChannelColumn[]): string {
+  return columns.map((c) => c.width).join(' ');
+}
+
+/**
  * Bank holding a channel index, for a scanner with the given layout.
  *
  * Bank width is model-dependent: 50 channels on the BC125AT family, 30 on the
@@ -270,9 +378,9 @@ export function deriveBankFromIndex(index: number, channelsPerBank: number, bank
 // Exported for tests only (#272). The guard on buildEmptyDraft has to assert
 // the REAL function's output — earlier attempts asserted a hand-built copy in
 // the test file and passed happily with the bug reintroduced.
-export function buildDraft(channel: ChannelData): ChannelDraft {
+export function buildDraft(channel: ChannelData, clearedDelay = 2): ChannelDraft {
   if (channel.frequency === 0) {
-    return buildEmptyDraft();
+    return buildEmptyDraft(clearedDelay);
   }
   return {
     frequency: channel.frequency.toFixed(4),
@@ -304,13 +412,23 @@ export function buildDraft(channel: ChannelData): ChannelDraft {
 //
 // Exported so the guard asserts THIS function rather than a copy of it.
 // Guarded by ChannelsTab.test.tsx :: buildEmptyDraft matches a cleared channel.
-export function buildEmptyDraft(): ChannelDraft {
+//
+// #404: the cleared-slot delay is MODEL-DEPENDENT and now comes from
+// ScannerCapabilities.cleared_delay. The BC125AT family reports 2; a BC75XLT
+// reports 0 (measured on hardware 2026-08-26 — `CIN,299 -> CIN,299,,00000000,,,0,1,0`).
+// Hardcoding either value reproduces this exact bug on the other scanner: all
+// 300 cleared BC75XLT channels would sit permanently pending. Lockout is true
+// on both, so it stays a literal.
+//
+// The default of 2 preserves the BC125AT-family behaviour for callers that
+// have no capabilities yet, matching useScannerCapabilities' fallback.
+export function buildEmptyDraft(clearedDelay = 2): ChannelDraft {
   return {
     frequency: '0',
     alpha_tag: '',
     modulation: 'AUTO',
     tone_squelch: '',
-    delay: '2',
+    delay: clearedDelay.toString(),
     lockout: true,
     comments: '',
   };
@@ -332,7 +450,12 @@ export function ChannelsTab() {
   const setChannels = useStore((state) => state.setChannels);
   const setImportProgress = useStore((state) => state.setImportProgress);
 
-  const { channels_per_bank: channelsPerBank, bank_count: bankCount } = useScannerCapabilities();
+  const capabilities = useScannerCapabilities();
+  const { channels_per_bank: channelsPerBank, bank_count: bankCount } = capabilities;
+  // Memoized on the capability object, which useScannerCapabilities already
+  // keeps referentially stable — so this does not churn on every device_info
+  // broadcast.
+  const columns = useMemo(() => visibleChannelColumns(capabilities), [capabilities]);
   const [activeBank, setActiveBank] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
@@ -669,11 +792,11 @@ export function ChannelsTab() {
     );
     if (!confirmed) return;
     for (const channelIndex of selectedChannelIds) {
-      setMemoryDraft(channelIndex, buildEmptyDraft());
+      setMemoryDraft(channelIndex, buildEmptyDraft(capabilities.cleared_delay));
     }
     toast.success(`Cleared ${selectedChannelIds.length} channels`);
     setSelectedChannelIds([]);
-  }, [selectedChannelIds, setMemoryDraft]);
+  }, [capabilities.cleared_delay, selectedChannelIds, setMemoryDraft]);
 
   const handleUploadDrafts = useCallback(async () => {
     if (draftChanges.length === 0 || isUploading) return;
@@ -719,7 +842,7 @@ export function ChannelsTab() {
           setChannels((prev) =>
             prev.map((entry) => (entry.index === updated.index ? updated : entry)),
           );
-          setMemoryDraft(updated.index, buildDraft(updated));
+          setMemoryDraft(updated.index, buildDraft(updated, capabilities.cleared_delay));
         } catch (error) {
           const apiError = error as { message?: string; payload?: { detail?: string } };
           const detail = apiError?.payload?.detail ?? apiError?.message;
@@ -747,7 +870,7 @@ export function ChannelsTab() {
               setChannels((prev) =>
                 prev.map((entry) => (entry.index === refreshed.index ? refreshed : entry)),
               );
-              setMemoryDraft(refreshed.index, buildDraft(refreshed));
+              setMemoryDraft(refreshed.index, buildDraft(refreshed, capabilities.cleared_delay));
               if (matchesPrimaryFields) {
                 if (change.lockoutChanged && !lockoutApplied) {
                   warnings.push({
@@ -795,7 +918,7 @@ export function ChannelsTab() {
       for (const idx of participating) {
         const refreshed = byIndex.get(idx);
         if (refreshed) {
-          setMemoryDraft(idx, buildDraft(refreshed));
+          setMemoryDraft(idx, buildDraft(refreshed, capabilities.cleared_delay));
         }
       }
       setBankOrders({});
@@ -815,7 +938,16 @@ export function ChannelsTab() {
         `Failed to upload ${failed.length} channel edits. First failure: CH ${firstFailure.index}${detailText}`,
       );
     }
-  }, [api, bankCount, channelsPerBank, draftChanges, isUploading, setChannels, setMemoryDraft]);
+  }, [
+    api,
+    bankCount,
+    capabilities.cleared_delay,
+    channelsPerBank,
+    draftChanges,
+    isUploading,
+    setChannels,
+    setMemoryDraft,
+  ]);
 
   const handleDiscardDrafts = useCallback(async () => {
     if (draftChanges.length === 0 || isUploading) return;
@@ -989,7 +1121,11 @@ export function ChannelsTab() {
               <input
                 type="search"
                 aria-label="Search channels by frequency or tag"
-                placeholder="Search frequency or tag..."
+                placeholder={
+                  columns.some((c) => c.key === 'alpha')
+                    ? 'Search frequency or tag...'
+                    : 'Search frequency...'
+                }
                 className="scanner-input w-full border-white/5 py-1.5 pl-8 pr-4 text-xs placeholder:text-white/20 focus:border-brand-primary/50"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -1073,7 +1209,8 @@ export function ChannelsTab() {
             {/* Header */}
             <div
               role="row"
-              className="grid grid-cols-[36px_28px_44px_84px_1fr_60px_60px_50px_50px_50px] gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
+              className="grid gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
+              style={{ gridTemplateColumns: channelGridTemplate(columns) }}
             >
               <div role="columnheader" className="flex items-center justify-center">
                 <input
@@ -1095,15 +1232,18 @@ export function ChannelsTab() {
                   move it and Escape to drop it.
                 </span>
               </div>
-              {['CH', 'FREQ', 'TAG', 'MODE', 'TONE', 'DLY', 'L/O', 'PRIO'].map((h) => (
-                <div
-                  key={h}
-                  role="columnheader"
-                  className="text-xs font-bold text-white/60 uppercase tracking-wider select-none text-center first:text-left"
-                >
-                  {h}
-                </div>
-              ))}
+              {columns
+                .filter((col) => col.label !== null)
+                .map((col) => col.label as string)
+                .map((h) => (
+                  <div
+                    key={h}
+                    role="columnheader"
+                    className="text-xs font-bold text-white/60 uppercase tracking-wider select-none text-center first:text-left"
+                  >
+                    {h}
+                  </div>
+                ))}
             </div>
 
             {/* Rows */}
@@ -1213,6 +1353,8 @@ export function ChannelsTab() {
                       rowCount={orderedFilteredChannels.length}
                       disableDrag={searchTerm.trim().length > 0}
                       displayFrequency={displayFrequency}
+                      columns={columns}
+                      validDelays={capabilities.valid_delays}
                       displayAlpha={displayAlpha}
                       displayModulation={displayModulation}
                       displayTone={displayTone}
@@ -1230,7 +1372,7 @@ export function ChannelsTab() {
         {editingChannel && editingChannelIndex !== null && (
           <ChannelEditSheet
             channel={editingChannel}
-            draft={editingDraft ?? buildDraft(editingChannel)}
+            draft={editingDraft ?? buildDraft(editingChannel, capabilities.cleared_delay)}
             isOpen={editingChannelIndex !== null}
             onClose={handleCloseEditSheet}
             onSave={(draft) => handleSaveDraft(editingChannelIndex, draft)}

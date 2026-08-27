@@ -2,7 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
-import { ChannelsTab, buildDraft, buildEmptyDraft, deriveBankFromIndex } from '../ChannelsTab';
+import {
+  ChannelsTab,
+  buildDraft,
+  buildEmptyDraft,
+  deriveBankFromIndex,
+  visibleChannelColumns,
+  channelGridTemplate,
+} from '../ChannelsTab';
 import capabilityFixture from '../../../../test/fixtures/scanner-capabilities.json';
 import { createTestChannel, createTestChannelDraft } from '../../../../test/fixtures';
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
@@ -1112,5 +1119,114 @@ describe('deriveBankFromIndex (#401)', () => {
       );
       expect(firstOfSecond, `${model} first channel of bank 2`).toBe(2);
     }
+  });
+});
+
+describe('capability-driven columns (#404)', () => {
+  const BC125AT = {
+    has_alpha_tags: true,
+    has_per_channel_modulation: true,
+    has_tone_squelch: true,
+  };
+  const BC75XLT = {
+    has_alpha_tags: false,
+    has_per_channel_modulation: false,
+    has_tone_squelch: false,
+  };
+
+  it('shows every column on a BC125AT-family scanner', () => {
+    const keys = visibleChannelColumns(BC125AT).map((c) => c.key);
+    expect(keys).toEqual([
+      'select',
+      'grip',
+      'index',
+      'frequency',
+      'alpha',
+      'modulation',
+      'tone',
+      'delay',
+      'lockout',
+      'priority',
+    ]);
+  });
+
+  // These three CIN fields are [RSV] on the BC75XLT — present on the wire but
+  // always empty. A blank column, or one showing a fabricated "FM", states
+  // something untrue about the hardware.
+  it('drops tag, mode, and tone on a BC75XLT', () => {
+    const keys = visibleChannelColumns(BC75XLT).map((c) => c.key);
+    expect(keys).toEqual(['select', 'grip', 'index', 'frequency', 'delay', 'lockout', 'priority']);
+    expect(keys).not.toContain('alpha');
+    expect(keys).not.toContain('modulation');
+    expect(keys).not.toContain('tone');
+  });
+
+  // REGRESSION GUARD: the header row and every channel row are grid children,
+  // not table cells. If their templates disagree the table misaligns silently
+  // rather than failing — which is why both derive from one function.
+  it('grid template has one track per visible column', () => {
+    for (const caps of [BC125AT, BC75XLT]) {
+      const columns = visibleChannelColumns(caps);
+      const tracks = channelGridTemplate(columns).split(' ');
+      expect(tracks).toHaveLength(columns.length);
+    }
+    expect(channelGridTemplate(visibleChannelColumns(BC125AT))).toBe(
+      '36px 28px 44px 84px 1fr 60px 60px 50px 50px 50px',
+    );
+    expect(channelGridTemplate(visibleChannelColumns(BC75XLT))).toBe(
+      '36px 28px 44px 84px 50px 50px 50px',
+    );
+  });
+});
+
+describe('buildEmptyDraft cleared delay is model-dependent (#404)', () => {
+  // REGRESSION GUARD, extending the #272 guard above.
+  //
+  // buildEmptyDraft must describe a cleared slot AS THE SCANNER REPORTS IT.
+  // The delay differs by model: the BC125AT family reports 2, a BC75XLT
+  // reports 0 (hardware capture 2026-08-26 —
+  // `CIN,299 -> CIN,299,,00000000,,,0,1,0`). Hardcoding either value
+  // reproduces the original bug on the other scanner: every cleared channel
+  // stays in pendingChannelIds forever, the row keeps its cleared styling, and
+  // Upload Changes stays lit and rewrites those channels on every upload.
+  //
+  // Asserts the REAL exported functions — two earlier attempts at the #272
+  // guard hand-built the draft shape in this file and passed with the bug
+  // reintroduced.
+  it('uses the BC125AT-family delay by default', () => {
+    expect(buildEmptyDraft().delay).toBe('2');
+    expect(buildEmptyDraft(2).delay).toBe('2');
+  });
+
+  it('uses the BC75XLT cleared delay when told to', () => {
+    expect(buildEmptyDraft(0).delay).toBe('0');
+  });
+
+  it('keeps lockout true on both models', () => {
+    // The scanner locks a slot out when it is emptied — true on both families,
+    // so this stays a literal rather than becoming another capability.
+    expect(buildEmptyDraft(2).lockout).toBe(true);
+    expect(buildEmptyDraft(0).lockout).toBe(true);
+  });
+
+  it('buildDraft threads the cleared delay through for a zero-frequency channel', () => {
+    const cleared = createTestChannel({ index: 299, frequency: 0 });
+    expect(buildDraft(cleared, 0)).toEqual(buildEmptyDraft(0));
+    expect(buildDraft(cleared, 2)).toEqual(buildEmptyDraft(2));
+    expect(buildDraft(cleared, 0).delay).toBe('0');
+  });
+
+  // The whole point of the #272 guard: a rebuilt draft diffed against the
+  // refetched channel must show NO changes, or the channel stays pending.
+  it('a BC75XLT cleared channel rebuilds to an identical draft', () => {
+    const asScannerReports = createTestChannel({
+      index: 299,
+      frequency: 0,
+      alpha_tag: '',
+      modulation: 'AUTO',
+      delay: 0,
+      lockout: true,
+    });
+    expect(buildDraft(asScannerReports, 0)).toEqual(buildEmptyDraft(0));
   });
 });
