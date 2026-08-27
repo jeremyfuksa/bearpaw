@@ -322,7 +322,9 @@ pub fn resolve_scanner_port(cfg: &Config) -> Option<ResolvedPort> {
             // Keep scanning other candidates: the unsupported unit may not be
             // the only Uniden on the bus. The warn! in probe_mdl_on_port has
             // already told the user what we found and why we skipped it.
-            (MdlProbe::Unsupported, _) | (MdlProbe::NoReply, _) => continue,
+            (MdlProbe::Unsupported, _) | (MdlProbe::NoReply, _) | (MdlProbe::OpenFailed, _) => {
+                continue
+            }
         }
     }
 
@@ -557,10 +559,16 @@ fn dedupe_physical_devices(
 /// "a real Uniden answered with a model we don't drive yet" — the two used to
 /// collapse into `None`, which is why an unsupported scanner reported the same
 /// generic "no scanner found" as an empty USB bus.
+///
+/// `OpenFailed` exists for the same reason, one layer down: the OS refusing
+/// the port is a different fact from the port opening and nothing answering,
+/// and folding it into `NoReply` discarded the only evidence that the scanner
+/// was present at all.
 enum MdlProbe {
     Supported,
     Unsupported,
     NoReply,
+    OpenFailed,
 }
 
 /// Briefly open a serial port, send `MDL\r`, and classify what answered.
@@ -568,8 +576,9 @@ enum MdlProbe {
 /// well but isn't actually our hardware (e.g. an unrelated USB-serial
 /// device).
 ///
-/// Best-effort and tolerant: any open/read/parse failure yields
-/// `MdlProbe::NoReply` so the caller falls through to the next candidate.
+/// Best-effort and tolerant: a read/parse failure yields `MdlProbe::NoReply`,
+/// and a port the OS refuses to open yields `MdlProbe::OpenFailed` (logged at
+/// `warn!`); either way the caller falls through to the next candidate.
 /// A scanner that answers with a model outside `ACCEPTED_MDL_MODELS` yields
 /// `MdlProbe::Unsupported` and logs a `warn!` naming the model — see the
 /// enum docs for why those two cases stay distinct. Does **not** assert DTR
@@ -603,6 +612,9 @@ fn probe_mdl_on_port_any_baud(port_name: &str, configured: u32) -> (MdlProbe, u3
             // this port -- keep it, but let a later rate upgrade to Supported
             // in the (unlikely) case two rates both parse.
             MdlProbe::Unsupported => best = MdlProbe::Unsupported,
+            // Retrying other rates cannot help -- the port never opened, and
+            // each retry would re-emit the warn! above for one root cause.
+            MdlProbe::OpenFailed => return (MdlProbe::OpenFailed, rate),
             MdlProbe::NoReply => {}
         }
     }
@@ -612,8 +624,32 @@ fn probe_mdl_on_port_any_baud(port_name: &str, configured: u32) -> (MdlProbe, u3
 fn probe_mdl_on_port(port_name: &str, baud: u32) -> MdlProbe {
     use crate::transport::SerialTransport;
     let transport = SerialTransport::new(port_name, baud);
-    let Ok(mut port) = transport.open() else {
-        return MdlProbe::NoReply;
+    let mut port = match transport.open() {
+        Ok(port) => port,
+        Err(e) => {
+            // warn! for the same reason the responding-but-unsupported case
+            // below is a warn: the user has done nothing wrong and the generic
+            // "no scanner found" is actively misleading. A port that scored
+            // high enough to reach this probe and then refused to open means
+            // the scanner IS present and something else is wrong.
+            //
+            // Observed 2026-08-27: installing Silicon Labs' CP210x driver
+            // alongside the built-in AppleUSBSLCOM attaches BOTH to the same
+            // USB interface -- they declare different `IOMatchCategory`
+            // values, so IOKit does not pick a winner -- and every resulting
+            // node then fails to open with "Invalid argument". Swallowing the
+            // error made that indistinguishable from an empty USB bus.
+            warn!(
+                "Scanner candidate {} could not be opened at {} baud: {}. The port \
+                 exists but the OS refused it, so a scanner may well be attached. On \
+                 macOS this is usually two CP210x drivers claiming one device -- \
+                 disable the Silicon Labs driver extension under System Settings > \
+                 General > Login Items & Extensions > Driver Extensions. Otherwise \
+                 the port is likely held by another program.",
+                port_name, baud, e
+            );
+            return MdlProbe::OpenFailed;
+        }
     };
 
     // Retry the first MDL. Verified on a BC75XLT behind a CP2104 bridge
@@ -1035,5 +1071,11 @@ mod tests {
         assert!(matches!(MdlProbe::Unsupported, MdlProbe::Unsupported));
         assert!(matches!(MdlProbe::NoReply, MdlProbe::NoReply));
         assert!(!matches!(MdlProbe::Unsupported, MdlProbe::NoReply));
+        // Same argument one layer down: "the OS refused the port" is evidence
+        // the scanner is attached, and folding it into NoReply threw that away.
+        // Observed 2026-08-27 -- two CP210x drivers claiming one device made
+        // every node unopenable, and detection reported an empty USB bus.
+        assert!(matches!(MdlProbe::OpenFailed, MdlProbe::OpenFailed));
+        assert!(!matches!(MdlProbe::OpenFailed, MdlProbe::NoReply));
     }
 }
