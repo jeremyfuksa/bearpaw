@@ -412,6 +412,11 @@ describe('DeviceTab', () => {
       valid_delays: [0, 1],
       cleared_delay: 0,
       default_baud: 57600,
+      coverage_bands: [
+        [25, 54],
+        [108, 174],
+        [406, 512],
+      ] as Array<[number, number]>,
     };
 
     // Verified on hardware 2026-08-26: BLT, BSV, CNT and WXS all reply ERR on a

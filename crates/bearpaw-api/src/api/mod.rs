@@ -34,6 +34,7 @@ use tokio::sync::broadcast;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::{info, warn};
 
+use crate::protocol::capabilities::ScannerCapabilities;
 use crate::protocol::{classify_response, parse_cin_response, tones, ScannerReply};
 use crate::state::{ChannelData, DeviceInfo, LiveState, ScannerMode, ShadowState};
 
@@ -1447,6 +1448,34 @@ pub(crate) async fn read_channel_from_scanner(
 /// - Modulation is whitelisted (comma injection through this field reached
 ///   the wire before).
 pub(crate) fn build_cin_write_payload(channel: &ChannelData) -> Result<String, ApiError> {
+    build_cin_write_payload_for(channel, &ScannerCapabilities::default())
+}
+
+/// Build a `CIN` write payload for a scanner with the given capabilities.
+///
+/// The BC75XLT keeps the BC125AT's field POSITIONS and marks three of them
+/// `[RSV]` (reserved) — per the vendor spec its set form is
+/// `CIN,[INDEX],[RSV],[FRQ],[RSV],[RSV],[DLY],[LOUT],[PRI]`. Writing a
+/// 16-space tag, `AUTO`, and a tone code into reserved fields is not merely
+/// pointless: the spec says *"The set command is aborted if any format error
+/// is detected"*, so one rejected field silently discards the frequency,
+/// lockout, and priority in the same command.
+///
+/// Empty is the correct value there — *"In set command, only `,` parameters
+/// are not changed"* — so an empty field means "leave alone", which is exactly
+/// what a reserved field wants.
+pub(crate) fn build_cin_write_payload_for(
+    channel: &ChannelData,
+    caps: &ScannerCapabilities,
+) -> Result<String, ApiError> {
+    // Delay is a genuinely different quantity between families, not a wider
+    // and narrower range of one. The BC125AT takes signed seconds
+    // (negatives are pre-delays); the BC75XLT takes a boolean. Sending 2 to a
+    // BC75XLT aborts the whole write. See #402.
+    if !caps.accepts_delay(channel.delay) {
+        return Err(ApiError::BadRequest("delay_out_of_range".to_string()));
+    }
+
     let alpha_tag = channel
         .alpha_tag
         .replace(',', " ")
@@ -1495,12 +1524,29 @@ pub(crate) fn build_cin_write_payload(channel: &ChannelData) -> Result<String, A
     // shape observed on the wire (capture: `01451300` = 145.13 MHz).
     let freq = format!("{:08}", (channel.frequency * 10000.0).round() as i64);
 
+    // Reserved fields go out empty. See the note on this function.
+    let alpha_field = if caps.has_alpha_tags {
+        alpha_tag.as_str()
+    } else {
+        ""
+    };
+    let mod_field = if caps.has_per_channel_modulation {
+        modulation.as_str()
+    } else {
+        ""
+    };
+    let tone_field = if caps.has_tone_squelch {
+        tone_code.to_string()
+    } else {
+        String::new()
+    };
+
     Ok(format!(
         "{},{},{},{},{},{},{}",
-        alpha_tag,
+        alpha_field,
         freq,
-        modulation,
-        tone_code,
+        mod_field,
+        tone_field,
         channel.delay,
         if channel.lockout { "1" } else { "0" },
         if channel.priority { "1" } else { "0" },
@@ -1517,7 +1563,7 @@ pub(crate) async fn write_channel_no_readback(
     state: &AppState,
     channel: &ChannelData,
 ) -> Result<(), ApiError> {
-    let payload = build_cin_write_payload(channel)?;
+    let payload = build_cin_write_payload_for(channel, &state.capabilities())?;
     let write_cmd = format!("CIN,{},{}", channel.index, payload);
     match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
         ScannerReply::Ok => Ok(()),
@@ -1634,7 +1680,7 @@ pub(crate) async fn write_channel_to_scanner(
     state: &AppState,
     channel: &ChannelData,
 ) -> Result<ChannelData, ApiError> {
-    let payload = build_cin_write_payload(channel)?;
+    let payload = build_cin_write_payload_for(channel, &state.capabilities())?;
 
     let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
     if !in_program_mode {
@@ -1720,7 +1766,7 @@ async fn clear_channel_priority_locked(
     //    so a payload-build error can't strand us post-DCH.
     let mut rewritten = current.clone();
     rewritten.priority = false;
-    let payload = build_cin_write_payload(&rewritten)?;
+    let payload = build_cin_write_payload_for(&rewritten, &state.capabilities())?;
 
     // 4. DCH — wipe to factory-empty.
     match classify_response(&send_raw_command(state, &format!("DCH,{index}"), false).await?) {
@@ -1810,7 +1856,7 @@ pub(crate) async fn set_channel_priority(
     }
     let mut wrote = current.clone();
     wrote.priority = true;
-    let payload = build_cin_write_payload(&wrote)?;
+    let payload = build_cin_write_payload_for(&wrote, &state.capabilities())?;
     let write_cmd = format!("CIN,{new_to_set},{payload}");
     match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
         ScannerReply::Ok => {}
@@ -1873,7 +1919,7 @@ pub(crate) async fn set_channel_lockout_on_scanner(
 
     let mut updated = channel;
     updated.lockout = locked;
-    let payload = match build_cin_write_payload(&updated) {
+    let payload = match build_cin_write_payload_for(&updated, &state.capabilities()) {
         Ok(p) => p,
         Err(e) => {
             if !in_program_mode {
@@ -2892,6 +2938,81 @@ mod tests {
         }
     }
 
+    /// REGRESSION GUARD (#402): a CIN write must not put values in fields the
+    /// scanner reserves, and must not send a delay the scanner rejects.
+    ///
+    /// The BC75XLT's set form is
+    /// `CIN,[INDEX],[RSV],[FRQ],[RSV],[RSV],[DLY],[LOUT],[PRI]`. The vendor
+    /// spec says *"The set command is aborted if any format error is
+    /// detected"*, so a rejected reserved field does not merely fail to set
+    /// that field -- it silently discards the frequency, lockout, and priority
+    /// in the same command. An empty field is the correct value: *"In set
+    /// command, only `,` parameters are not changed."*
+    #[test]
+    fn cin_write_leaves_reserved_fields_empty_on_a_bc75xlt() {
+        use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
+
+        let mut ch = test_channel();
+        ch.alpha_tag = "Ararat UHF".to_string();
+        ch.modulation = "FM".to_string();
+        ch.delay = 2;
+
+        let bc125 = build_cin_write_payload_for(&ch, &BC125AT_FAMILY).unwrap();
+        let parts: Vec<&str> = bc125.split(',').collect();
+        assert_eq!(parts[0].trim(), "Ararat UHF", "tag is written on a BC125AT");
+        assert_eq!(parts[2], "FM", "modulation is written on a BC125AT");
+        assert!(!parts[3].is_empty(), "tone code is written on a BC125AT");
+
+        // Same channel, boolean delay so it is writable on this model.
+        ch.delay = 1;
+        let bc75 = build_cin_write_payload_for(&ch, &BC75XLT).unwrap();
+        let parts: Vec<&str> = bc75.split(',').collect();
+        assert_eq!(parts.len(), 7, "field COUNT is identical across models");
+        assert_eq!(parts[0], "", "alpha tag field is [RSV]");
+        assert_eq!(parts[2], "", "modulation field is [RSV]");
+        assert_eq!(parts[3], "", "tone field is [RSV]");
+        assert_eq!(parts[4], "1", "delay still goes on the wire");
+        assert_eq!(
+            parts[1],
+            bc125.split(',').collect::<Vec<_>>()[1],
+            "frequency unchanged"
+        );
+    }
+
+    /// A delay the model cannot accept must be refused BEFORE the wire.
+    ///
+    /// Sending 2 to a BC75XLT is a format error, and a format error aborts the
+    /// whole set command -- so this is not "the delay does not take", it is
+    /// "the entire channel write is silently discarded".
+    #[test]
+    fn cin_write_refuses_a_delay_the_model_rejects() {
+        use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
+
+        let mut ch = test_channel();
+
+        ch.delay = 2;
+        assert!(build_cin_write_payload_for(&ch, &BC125AT_FAMILY).is_ok());
+        assert!(
+            build_cin_write_payload_for(&ch, &BC75XLT).is_err(),
+            "delay 2 is a format error on a BC75XLT and aborts the whole write"
+        );
+
+        ch.delay = -5;
+        assert!(
+            build_cin_write_payload_for(&ch, &BC125AT_FAMILY).is_ok(),
+            "negative delays are pre-delays on the BC125AT family"
+        );
+        assert!(build_cin_write_payload_for(&ch, &BC75XLT).is_err());
+
+        for d in [0, 1] {
+            ch.delay = d;
+            assert!(
+                build_cin_write_payload_for(&ch, &BC75XLT).is_ok(),
+                "delay {d} is valid on a BC75XLT"
+            );
+        }
+    }
+
     /// REGRESSION GUARD (#401): banks follow the connected scanner's memory
     /// model, not a fixed divisor.
     ///
@@ -3424,6 +3545,65 @@ mod tests {
             settings_payload(&fake.transcript()),
             vec!["SCG,0111111111", "SCG"],
             "enabled banks must be '0' on the wire — '1' is DISABLED"
+        );
+    }
+
+    /// REGRESSION GUARD (#402): an all-disabled bank mask is refused before it
+    /// reaches the wire.
+    ///
+    /// Vendor spec, SCG: *"It can not set all channel strage banks to '1'."*
+    /// Without this the scanner replies with a bare ERR that the UI surfaces as
+    /// a generic failure, giving the user nothing to act on. Note the wire
+    /// inversion — all-disabled is every `banks` entry FALSE, which becomes
+    /// "1111111111".
+    #[tokio::test]
+    async fn set_banks_refuses_an_all_disabled_mask_without_touching_the_wire() {
+        let body = format!(r#"{{"banks":[{}]}}"#, ["false"; 10].join(","));
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, bank_responder());
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/banks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            fake.transcript().is_empty(),
+            "a mask the scanner cannot accept must not reach the wire: {:?}",
+            fake.transcript()
+        );
+    }
+
+    /// The paired half: a mask with at least one bank enabled still works.
+    /// A guard that rejected everything would pass the test above.
+    #[tokio::test]
+    async fn set_banks_still_accepts_a_mask_with_one_bank_enabled() {
+        let mut banks = ["false"; 10];
+        banks[9] = "true";
+        let body = format!(r#"{{"banks":[{}]}}"#, banks.join(","));
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, bank_responder());
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/banks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            settings_payload(&fake.transcript()),
+            vec!["SCG,1111111110", "SCG"]
         );
     }
 
