@@ -551,13 +551,12 @@ describe('ChannelsTab', () => {
       expect(row!).toHaveClass('border-l-2');
     });
 
-    // REGRESSION GUARD: priority and lockout are immediate actions (#206) whose
-    // live truth is always channel.priority / channel.lockout, never the draft.
-    // The row LED/lock icon must read the channel, not a stale draft snapshot.
-    // Before this fix the row read `draft?.priority ?? channel.priority`, so a
-    // draft frozen with priority=true (e.g. seeded at open time) kept the LED
-    // lit after an immediate clear zeroed channel.priority.
-    it('priority LED and lockout icon read the live channel, not a stale draft', () => {
+    // REGRESSION GUARD (#206/#250): PRIORITY is an immediate action. It has no
+    // `priority` field on ChannelDraft at all as of #250, so its live truth is
+    // always `channel.priority`. Reading a draft here let a snapshot frozen
+    // with priority=true keep the LED lit after an immediate clear zeroed the
+    // channel.
+    it('priority LED reads the live channel, never a draft', () => {
       const channel = createTestChannel({
         index: 1,
         frequency: 151.25,
@@ -566,12 +565,7 @@ describe('ChannelsTab', () => {
       });
       const store = createMockStore({
         channels: [channel],
-        memoryDrafts: {
-          // Stale snapshot: lockout still true from before the immediate clear
-          // updated the channel to false. (Priority can no longer go stale this
-          // way — ChannelDraft has no `priority` field as of #250.)
-          1: createTestChannelDraft({ lockout: true }),
-        },
+        memoryDrafts: { 1: createTestChannelDraft({ lockout: false }) },
       });
       setMockStore(store);
 
@@ -580,8 +574,58 @@ describe('ChannelsTab', () => {
       expect(row).not.toBeNull();
       // Priority LED off — no orange dot.
       expect(row!.querySelector('.bg-orange-500')).toBeNull();
-      // Lockout icon off — no red lock.
+    });
+
+    /**
+     * REGRESSION GUARD: LOCKOUT is a BATCHED draft field, unlike priority.
+     *
+     * It lives on `ChannelDraft`, `lockoutChanged` is part of `hasChanges`,
+     * and it ships in the upload payload. #206 lumped it in with priority as
+     * an "immediate action" and made the row read `channel.lockout`, so
+     * unlocking a channel in the edit sheet left the row's lock icon lit until
+     * upload — the staged change was real and pending, with nothing on screen
+     * to say so. Reported from hardware 2026-08-27.
+     */
+    it('lockout icon reflects a staged draft change before upload', () => {
+      const channel = createTestChannel({
+        index: 1,
+        frequency: 151.25,
+        priority: false,
+        lockout: true,
+      });
+      const store = createMockStore({
+        channels: [channel],
+        // The user unlocked it in the edit sheet; nothing uploaded yet.
+        memoryDrafts: { 1: createTestChannelDraft({ lockout: false }) },
+      });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      const row = screen.getByText(/151\.2500/i).closest('div')?.parentElement;
+      expect(row).not.toBeNull();
       expect(row!.querySelector('svg.text-red-400')).toBeNull();
+    });
+
+    it('lockout icon still shows when the draft agrees the channel is locked', () => {
+      const channel = createTestChannel({ index: 1, frequency: 151.25, lockout: true });
+      const store = createMockStore({
+        channels: [channel],
+        memoryDrafts: { 1: createTestChannelDraft({ lockout: true }) },
+      });
+      setMockStore(store);
+
+      render(<ChannelsTab />);
+      const row = screen.getByText(/151\.2500/i).closest('div')?.parentElement;
+      expect(row!.querySelector('svg.text-red-400')).not.toBeNull();
+    });
+
+    it('falls back to the channel when no draft exists', () => {
+      const channel = createTestChannel({ index: 1, frequency: 151.25, lockout: true });
+      setMockStore(createMockStore({ channels: [channel], memoryDrafts: {} }));
+
+      render(<ChannelsTab />);
+      const row = screen.getByText(/151\.2500/i).closest('div')?.parentElement;
+      expect(row!.querySelector('svg.text-red-400')).not.toBeNull();
     });
 
     // REGRESSION GUARD: isPending must reflect REAL pending changes

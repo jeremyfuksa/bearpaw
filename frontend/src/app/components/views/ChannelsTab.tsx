@@ -1301,14 +1301,24 @@ export function ChannelsTab() {
                   const displayDelay = isCleared
                     ? 0
                     : Number.parseInt(draft?.delay ?? channel.delay.toString(), 10);
-                  // Lockout and priority are immediate actions (#206), not
-                  // batched draft fields — their live truth is always the
-                  // channel, never a draft snapshot. Reading `draft?.x ??
-                  // channel.x` here let a stale draft (e.g. one frozen with
-                  // priority=true) keep the LED/lock lit after an immediate
-                  // clear zeroed the channel. draftChanges already mirrors the
-                  // channel for the same reason (see the priority note there).
-                  const displayLockout = isCleared ? false : channel.lockout;
+                  // Lockout and priority are NOT the same kind of field, and
+                  // #206 originally treated them as one.
+                  //
+                  // PRIORITY is an immediate action: `ChannelDraft` has no
+                  // `priority` field at all (#250), it is never diffed, and
+                  // `draftChanges` mirrors the channel's live value. Its truth
+                  // is always `channel.priority` — reading a draft here let a
+                  // snapshot frozen with priority=true keep the LED lit after
+                  // an immediate clear zeroed the channel.
+                  //
+                  // LOCKOUT is a batched draft field: it lives on
+                  // `ChannelDraft`, `lockoutChanged` is part of `hasChanges`,
+                  // and it ships in the upload payload. So a staged lockout
+                  // edit is a real pending change and the row has to show it —
+                  // reading `channel.lockout` meant unlocking a channel in the
+                  // edit sheet left the row's lock icon lit until upload, with
+                  // no indication the change had registered.
+                  const displayLockout = isCleared ? false : (draft?.lockout ?? channel.lockout);
                   const displayPriority = isCleared ? false : channel.priority;
                   const isPending = pendingChannelIds.has(channel.index);
                   // REGRESSION GUARD (#272): the amber row treatment means
