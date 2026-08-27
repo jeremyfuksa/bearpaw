@@ -1427,6 +1427,7 @@ async fn read_frequency_lockouts_walk(state: &AppState) -> Result<Vec<u32>, ApiE
 pub(crate) async fn read_settings_snapshot_from_scanner(
     state: &AppState,
 ) -> Result<Value, ApiError> {
+    let caps = state.capabilities();
     let firmware_response = send_raw_command(state, "VER", false).await?;
     let firmware = {
         let mut parts = firmware_response
@@ -1463,7 +1464,14 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
                 None => Value::Null,
             }
         };
-        let backlight = {
+        // Skipped entirely when the scanner has no such command. A BC75XLT
+        // replies ERR to BLT/BSV/CNT/WXS, so sending them meant four
+        // guaranteed-failing round-trips and four logged errors on EVERY
+        // GET /settings -- which the Device tab issues on every visit. The
+        // field is Null either way; this just stops asking. See #432.
+        let backlight = if !caps.has_backlight_control {
+            Value::Null
+        } else {
             let resp = send_raw_command(state, "BLT", false).await?;
             let parts = parse_command_parts(&resp, "BLT");
             match usable(&resp).then(|| parts.first().cloned()).flatten() {
@@ -1478,7 +1486,9 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
                 _ => Value::Null,
             }
         };
-        let battery = {
+        let battery = if !caps.has_battery_save {
+            Value::Null
+        } else {
             let resp = send_raw_command(state, "BSV", false).await?;
             let parts = parse_command_parts(&resp, "BSV");
             match usable(&resp)
@@ -1489,7 +1499,19 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
                 None => Value::Null,
             }
         };
-        let key_beep = {
+        // `get_config` does not open a program-mode bracket, and on a scanner
+        // where KBP is program-mode-only the reply is `KBP,NG` -- "invalid at
+        // this time". The read cannot succeed here, so skip it rather than
+        // burn a round-trip on a guaranteed failure. The dedicated
+        // `get_key_beep` endpoint DOES bracket and still works.
+        //
+        // Deliberately not solved by bracketing the whole snapshot: PRG parks
+        // the scanner in HOLD at ch1 (see the "Leaving the Device page resumes
+        // scan" third rail), and this runs on every Device tab visit for every
+        // model.
+        let key_beep = if caps.key_beep_needs_program_mode {
+            Value::Null
+        } else {
             let resp = send_raw_command(state, "KBP", false).await?;
             let parts = parse_command_parts(&resp, "KBP");
             match usable(&resp)
@@ -1600,7 +1622,9 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
                 "upper": upper / 10000.0
             }));
         }
-        let weather = {
+        let weather = if !caps.has_weather_alert {
+            Value::Null
+        } else {
             let resp = send_raw_command(state, "WXS", false).await?;
             let parts = parse_command_parts(&resp, "WXS");
             match usable(&resp).then(|| parts.first().cloned()).flatten() {
@@ -1608,7 +1632,9 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
                 _ => Value::Null,
             }
         };
-        let contrast = {
+        let contrast = if !caps.has_contrast {
+            Value::Null
+        } else {
             let resp = send_raw_command(state, "CNT", false).await?;
             let parts = parse_command_parts(&resp, "CNT");
             match usable(&resp)
@@ -3670,6 +3696,57 @@ mod tests {
                 "api-route-manifest.json was stale and has been regenerated. \
                  Commit the updated file: {}",
                 out.display()
+            );
+        }
+    }
+
+    /// REGRESSION GUARD (#432): a settings command is never sent to a scanner
+    /// that does not implement it.
+    ///
+    /// A BC75XLT replies `ERR` to BLT, BSV, CNT, and WXS (settings probe
+    /// 2026-08-26). `GET /settings` fires on every Device tab visit, so
+    /// sending them meant four guaranteed-failing round-trips and four logged
+    /// errors each time — and KBP is program-mode-only on that model, which
+    /// `get_config` does not bracket.
+    #[tokio::test]
+    async fn settings_snapshot_skips_commands_the_scanner_lacks() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        let fake = FakeScanner::attach(&state, scanner_responder(None, |_| false));
+
+        let _ = read_settings_snapshot_from_scanner(&state).await;
+        let sent = fake.transcript();
+
+        for cmd in ["BLT", "BSV", "CNT", "WXS", "KBP"] {
+            assert!(
+                !sent.iter().any(|c| c == cmd),
+                "{cmd} must not be sent to a scanner that cannot answer it: {sent:?}"
+            );
+        }
+        // The commands it DOES implement still go out — a gate that skipped
+        // everything would pass the assertions above.
+        assert!(
+            sent.iter().any(|c| c == "VER"),
+            "supported reads must still happen: {sent:?}"
+        );
+    }
+
+    /// The paired half: a BC125AT-family scanner still gets all of them.
+    #[tokio::test]
+    async fn settings_snapshot_still_reads_everything_on_a_bc125at() {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC125AT_FAMILY);
+        let fake = FakeScanner::attach(&state, scanner_responder(None, |_| false));
+
+        let _ = read_settings_snapshot_from_scanner(&state).await;
+        let sent = fake.transcript();
+
+        for cmd in ["BLT", "BSV", "CNT", "WXS", "KBP"] {
+            assert!(
+                sent.iter().any(|c| c == cmd),
+                "{cmd} must still be read on a BC125AT: {sent:?}"
             );
         }
     }
