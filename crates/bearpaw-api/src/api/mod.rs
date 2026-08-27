@@ -574,8 +574,17 @@ pub async fn run_server_with_shutdown(
 pub fn default_state() -> AppState {
     let preferences_db_path = resolve_db_path("BEARPAW_PREFERENCES_DB", "scanner.db");
     let analytics_db_path = resolve_db_path("BEARPAW_ANALYTICS_DB", "analytics.db");
-    init_preferences_db(&preferences_db_path);
-    init_analytics_db(&analytics_db_path);
+    // A migration failure must reach the user rather than starting degraded.
+    // DeviceTab already renders `diagnostic_message` ungated (#396), so this
+    // surfaces with no frontend change. Bearpaw is offline-first and starts
+    // with no network, so this cannot be an error dialog or a stall -- the
+    // diagnostic channel is the right surface.
+    let migration_error = init_preferences_db(&preferences_db_path)
+        .err()
+        .or_else(|| init_analytics_db(&analytics_db_path).err());
+    if let Some(err) = &migration_error {
+        tracing::error!("database migration failed: {}", err);
+    }
     let loaded_preferences = load_preferences_from_db(&preferences_db_path);
     let loaded_hits = load_analytics_hits_from_db(&analytics_db_path);
     let retention_days = extract_retention_days(&loaded_preferences);
@@ -590,6 +599,10 @@ pub fn default_state() -> AppState {
         live: Arc::new(std::sync::RwLock::new(LiveState::default())),
         device: Arc::new(std::sync::RwLock::new(DeviceInfo {
             connection_status: "disconnected".to_string(),
+            diagnostic_code: migration_error
+                .as_ref()
+                .map(|_| "migration_failed".to_string()),
+            diagnostic_message: migration_error.as_ref().map(|e| e.to_string()),
             ..Default::default()
         })),
         shadow: Arc::new(std::sync::RwLock::new(ShadowState::default())),
@@ -778,9 +791,12 @@ fn analytics_retention_days(state: &AppState) -> u32 {
     extract_retention_days(&prefs)
 }
 
-fn init_preferences_db(path: &str) {
-    if let Some(conn) = open_sqlite(path) {
-        migrate_preferences_db(path, &conn);
+fn init_preferences_db(path: &str) -> Result<(), MigrationError> {
+    match open_sqlite(path) {
+        Some(conn) => migrate_preferences_db(path, &conn),
+        // Unopenable is not a migration failure -- every read and write below
+        // already degrades to defaults when the file cannot be opened.
+        None => Ok(()),
     }
 }
 
@@ -832,9 +848,10 @@ pub(crate) fn reset_preferences_db(path: &str) {
     }
 }
 
-fn init_analytics_db(path: &str) {
-    if let Some(conn) = open_sqlite(path) {
-        migrate_analytics_db(path, &conn);
+fn init_analytics_db(path: &str) -> Result<(), MigrationError> {
+    match open_sqlite(path) {
+        Some(conn) => migrate_analytics_db(path, &conn),
+        None => Ok(()),
     }
 }
 
@@ -958,13 +975,92 @@ fn resolve_db_path(env_key: &str, default_file: &str) -> String {
         .into_owned()
 }
 
-fn backup_db_if_needed(path: &str, label: &str, from_version: i32, target_version: i32) {
+/// Why a migration could not run. Carried to the caller so a failure surfaces
+/// as a diagnostic rather than a silently half-migrated database.
+#[derive(Debug)]
+pub(crate) enum MigrationError {
+    /// The stored `user_version` is NEWER than this build understands.
+    ///
+    /// Migrations are forward-only, so there is nothing to do but stop. This is
+    /// reachable through ordinary use, not just prereleases: reinstalling a
+    /// previous version after a bad release, two machines sharing a data
+    /// directory, or restoring a machine from backup while the data directory
+    /// is newer than the restored app.
+    FromTheFuture {
+        found: i32,
+        supported: i32,
+        /// Most recent pre-upgrade backup beside this database, if one exists.
+        ///
+        /// Forward-only migrations make "restore the .bak" the documented way
+        /// back, so a user told to do that has to be able to find the file.
+        /// A future-version database never migrates and so never makes its own
+        /// backup -- but an EARLIER upgrade on this machine usually did.
+        backup: Option<String>,
+    },
+    /// The pre-migration backup could not be written. Forward-only migrations
+    /// make that backup the ONLY recovery path, so proceeding without it would
+    /// destroy the fallback exactly when it is most needed.
+    BackupFailed { path: String, source: String },
+    /// A migration step failed. The version is deliberately NOT bumped, so the
+    /// next launch retries rather than running against a schema that does not
+    /// match what the code expects.
+    StepFailed { version: i32, source: String },
+}
+
+impl std::fmt::Display for MigrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MigrationError::FromTheFuture {
+                found,
+                supported,
+                backup,
+            } => {
+                write!(
+                    f,
+                    "This data was created by a newer version of Bearpaw (schema v{found}; \
+                     this build supports v{supported}). Install a newer Bearpaw to use it, \
+                     or move your data directory aside to start fresh."
+                )?;
+                if let Some(path) = backup {
+                    write!(f, " A pre-upgrade backup exists at {path}.")?;
+                }
+                Ok(())
+            }
+            MigrationError::BackupFailed { path, source } => write!(
+                f,
+                "Could not write the pre-upgrade database backup to {path} ({source}). \
+                 Bearpaw stopped rather than upgrading without a way back."
+            ),
+            MigrationError::StepFailed { version, source } => write!(
+                f,
+                "Database upgrade to v{version} failed ({source}). Your data was left \
+                 as it was and the upgrade will be retried next launch."
+            ),
+        }
+    }
+}
+
+/// Copy the database aside before migrating.
+///
+/// Forward-only migrations (see #418) make this backup the only recovery path,
+/// so a failure here ABORTS the migration -- it used to be `let _ =`, which
+/// discarded the fallback precisely when it mattered. Returns the backup path
+/// so a failure message can name it.
+///
+/// Nothing in Bearpaw deletes these files. Pruning them to reclaim disk would
+/// remove the documented way back from an upgrade.
+fn backup_db_if_needed(
+    path: &str,
+    label: &str,
+    from_version: i32,
+    target_version: i32,
+) -> Result<Option<PathBuf>, MigrationError> {
     if from_version >= target_version {
-        return;
+        return Ok(None);
     }
     let source = PathBuf::from(path);
     if !source.exists() {
-        return;
+        return Ok(None);
     }
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -985,7 +1081,11 @@ fn backup_db_if_needed(path: &str, label: &str, from_version: i32, target_versio
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .join(backup_name);
-    let _ = std::fs::copy(source, backup_path);
+    std::fs::copy(&source, &backup_path).map_err(|e| MigrationError::BackupFailed {
+        path: backup_path.display().to_string(),
+        source: e.to_string(),
+    })?;
+    Ok(Some(backup_path))
 }
 
 fn schema_version(conn: &rusqlite::Connection) -> i32 {
@@ -993,31 +1093,107 @@ fn schema_version(conn: &rusqlite::Connection) -> i32 {
         .unwrap_or(0)
 }
 
-fn set_schema_version(conn: &rusqlite::Connection, version: i32) {
-    let _ = conn.pragma_update(None, "user_version", version);
+/// Run one migration step inside a transaction, bumping `user_version` only if
+/// every statement succeeded.
+///
+/// The version bump lives INSIDE the transaction on purpose. It used to run
+/// unconditionally after a `let _ = conn.execute(...)`, so a failed step still
+/// marked the database migrated -- the next launch read the new version, skipped
+/// the migration, and queried a schema that did not exist. See #418.
+fn run_migration_step(
+    conn: &rusqlite::Connection,
+    version: i32,
+    sql: &str,
+) -> Result<(), MigrationError> {
+    let fail = |e: rusqlite::Error| MigrationError::StepFailed {
+        version,
+        source: e.to_string(),
+    };
+    conn.execute_batch("BEGIN").map_err(fail)?;
+    let result = conn
+        .execute_batch(sql)
+        .and_then(|()| conn.pragma_update(None, "user_version", version));
+    match result {
+        Ok(()) => conn.execute_batch("COMMIT").map_err(fail),
+        Err(e) => {
+            // Roll back before reporting: leaving the transaction open would
+            // hold a write lock for the life of the connection.
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(fail(e))
+        }
+    }
 }
 
-fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) {
-    let current = schema_version(conn);
-    if current > 0 || has_user_tables(conn) {
-        backup_db_if_needed(path, "preferences", current, PREFERENCES_SCHEMA_VERSION);
+/// Refuse to run against a database from a newer Bearpaw.
+///
+/// Migrations are forward-only, so there is no down path -- and running old
+/// code against a newer schema is silent misbehaviour rather than a clean stop.
+fn check_not_from_the_future(
+    path: &str,
+    current: i32,
+    supported: i32,
+) -> Result<(), MigrationError> {
+    if current > supported {
+        return Err(MigrationError::FromTheFuture {
+            found: current,
+            supported,
+            backup: newest_backup_for(path),
+        });
     }
-    if current < 1 {
-        let _ = conn.execute(
-            "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
-            [],
-        );
-        set_schema_version(conn, 1);
-    }
+    Ok(())
 }
 
-fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) {
+/// Most recently modified `*.bak` sitting beside `path`, if any.
+///
+/// Best-effort and deliberately quiet: this only enriches an error message, so
+/// an unreadable directory just means no path is named.
+fn newest_backup_for(path: &str) -> Option<String> {
+    let db = PathBuf::from(path);
+    let dir = db.parent()?;
+    let stem = db.file_name()?.to_str()?;
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let name = entry.file_name();
+        let name = name.to_str().unwrap_or_default();
+        if !name.starts_with(stem) || !name.ends_with(".bak") {
+            continue;
+        }
+        let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+        if let Some(modified) = modified {
+            if best.as_ref().is_none_or(|(t, _)| modified > *t) {
+                best = Some((modified, entry.path()));
+            }
+        }
+    }
+    best.map(|(_, p)| p.display().to_string())
+}
+
+fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) -> Result<(), MigrationError> {
     let current = schema_version(conn);
+    check_not_from_the_future(path, current, PREFERENCES_SCHEMA_VERSION)?;
     if current > 0 || has_user_tables(conn) {
-        backup_db_if_needed(path, "analytics", current, ANALYTICS_SCHEMA_VERSION);
+        backup_db_if_needed(path, "preferences", current, PREFERENCES_SCHEMA_VERSION)?;
     }
     if current < 1 {
-        let _ = conn.execute_batch(
+        run_migration_step(
+            conn,
+            1,
+            "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL);",
+        )?;
+    }
+    Ok(())
+}
+
+fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) -> Result<(), MigrationError> {
+    let current = schema_version(conn);
+    check_not_from_the_future(path, current, ANALYTICS_SCHEMA_VERSION)?;
+    if current > 0 || has_user_tables(conn) {
+        backup_db_if_needed(path, "analytics", current, ANALYTICS_SCHEMA_VERSION)?;
+    }
+    if current < 1 {
+        run_migration_step(
+            conn,
+            1,
             "
             CREATE TABLE IF NOT EXISTS scan_hits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1038,9 +1214,9 @@ fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) {
             CREATE INDEX IF NOT EXISTS idx_hits_frequency ON scan_hits(frequency);
             CREATE INDEX IF NOT EXISTS idx_hits_session ON scan_hits(session_id);
             ",
-        );
-        set_schema_version(conn, 1);
+        )?;
     }
+    Ok(())
 }
 
 fn has_user_tables(conn: &rusqlite::Connection) -> bool {
@@ -2498,6 +2674,286 @@ mod tests {
         std::env::temp_dir().join(format!("bearpaw-test-{}-{}.db", name, ts))
     }
 
+    // ---------------------------------------------------------------------
+    // Migration hardening (#418)
+    //
+    // These exist because #412 will add ALTER TABLE migrations against tables
+    // holding a user's accumulated activity history and preferences. Until
+    // then the only migration is CREATE TABLE IF NOT EXISTS on an empty
+    // database, where nothing can be lost -- which is exactly why the error
+    // handling was never exercised.
+
+    /// REGRESSION GUARD: a database from a NEWER Bearpaw is refused, not
+    /// silently run against.
+    ///
+    /// Migrations are forward-only, so there is no down path. Without the
+    /// ceiling check no `current < N` branch matches, migration is skipped, and
+    /// the old code queries a schema with columns it does not know about.
+    ///
+    /// Reachable through ordinary use: reinstalling a previous version after a
+    /// bad release, two machines sharing a data directory, or restoring a
+    /// machine from backup while the data directory is newer.
+    #[test]
+    fn a_database_from_the_future_is_refused() {
+        let path = temp_db_file("future-schema");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.pragma_update(None, "user_version", PREFERENCES_SCHEMA_VERSION + 5)
+                .expect("set future version");
+        }
+        let err = init_preferences_db(path.to_str().unwrap())
+            .expect_err("a future schema version must be refused");
+        assert!(matches!(err, MigrationError::FromTheFuture { .. }));
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("newer version of Bearpaw"),
+            "message must name the situation: {msg}"
+        );
+        assert!(
+            msg.contains("data directory"),
+            "message must give the user something to do: {msg}"
+        );
+    }
+
+    /// The refusal names a real backup file when one exists beside the
+    /// database.
+    ///
+    /// Forward-only migrations make "restore the .bak" the documented way back
+    /// (#418), so a user told to do that has to be able to find the file. A
+    /// future-version database never migrates and so never makes its own
+    /// backup — but an earlier upgrade on this machine usually did.
+    #[test]
+    fn the_refusal_names_an_existing_backup() {
+        let path = temp_db_file("future-with-backup");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.pragma_update(None, "user_version", PREFERENCES_SCHEMA_VERSION + 1)
+                .expect("set future version");
+        }
+        // A backup an earlier upgrade would have left behind.
+        let backup = PathBuf::from(format!(
+            "{}.v0-to-v1.preferences.1.bak",
+            path.to_str().unwrap()
+        ));
+        std::fs::write(&backup, b"old").expect("write fake backup");
+
+        let err = init_preferences_db(path.to_str().unwrap()).expect_err("must refuse");
+        let msg = err.to_string();
+
+        assert!(
+            msg.contains(backup.to_str().unwrap()),
+            "the refusal must name the backup so the user can find it: {msg}"
+        );
+
+        let _ = std::fs::remove_file(&backup);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// No backup, no claim of one. Naming a file that does not exist is worse
+    /// than saying nothing.
+    #[test]
+    fn the_refusal_omits_the_backup_line_when_there_is_none() {
+        let path = temp_db_file("future-no-backup");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.pragma_update(None, "user_version", PREFERENCES_SCHEMA_VERSION + 1)
+                .expect("set future version");
+        }
+        let err = init_preferences_db(path.to_str().unwrap()).expect_err("must refuse");
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("backup exists at"),
+            "must not claim a backup that is not there: {msg}"
+        );
+        assert!(
+            msg.contains("data directory"),
+            "still gives a next step: {msg}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The paired half: a database at or below the supported version still
+    /// migrates. A ceiling that refused everything would pass the test above.
+    #[test]
+    fn a_current_database_is_not_refused_as_from_the_future() {
+        let path = temp_db_file("ceiling");
+        let p = path.to_str().unwrap();
+        assert!(check_not_from_the_future(p, 0, 1).is_ok());
+        assert!(check_not_from_the_future(p, 1, 1).is_ok(), "equal is fine");
+        assert!(check_not_from_the_future(p, 2, 1).is_err());
+    }
+
+    /// REGRESSION GUARD: a failed step must NOT bump `user_version`.
+    ///
+    /// The bump used to run unconditionally after `let _ = conn.execute(...)`,
+    /// so a failed step marked the database migrated -- the next launch read
+    /// the new version, skipped the migration, and queried a schema that did
+    /// not exist. The failure was invisible until a query hit a missing column.
+    #[test]
+    fn a_failed_step_leaves_the_version_unchanged() {
+        let path = temp_db_file("failed-step");
+        let conn = rusqlite::Connection::open(&path).expect("create db");
+
+        let err = run_migration_step(&conn, 1, "THIS IS NOT VALID SQL;")
+            .expect_err("invalid SQL must fail the step");
+        assert!(matches!(err, MigrationError::StepFailed { version: 1, .. }));
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(
+            version, 0,
+            "a failed step must leave the version alone so the next launch retries"
+        );
+    }
+
+    /// REGRESSION GUARD: a multi-statement step is atomic.
+    ///
+    /// A step that creates a table and then fails must leave NEITHER behind --
+    /// a half-applied schema is a state no version of the code expects.
+    #[test]
+    fn a_partly_failing_step_rolls_back_entirely() {
+        let path = temp_db_file("partial-step");
+        let conn = rusqlite::Connection::open(&path).expect("create db");
+
+        let err = run_migration_step(
+            &conn,
+            1,
+            "CREATE TABLE migration_probe (id INTEGER);
+             THIS IS NOT VALID SQL;",
+        )
+        .expect_err("the second statement must fail the step");
+        assert!(matches!(err, MigrationError::StepFailed { .. }));
+
+        let table_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='migration_probe'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query table");
+        assert_eq!(
+            table_exists, 0,
+            "the first statement must roll back with the second"
+        );
+
+        // The connection must be usable afterwards -- a left-open transaction
+        // would hold a write lock for the life of the connection.
+        conn.execute_batch("CREATE TABLE after_rollback (id INTEGER);")
+            .expect("connection must not be stuck in a transaction");
+    }
+
+    /// A successful step commits both the schema change and the version.
+    #[test]
+    fn a_successful_step_commits_schema_and_version_together() {
+        let path = temp_db_file("good-step");
+        let conn = rusqlite::Connection::open(&path).expect("create db");
+
+        run_migration_step(&conn, 3, "CREATE TABLE ok_probe (id INTEGER);").expect("step");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, 3);
+        let table_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ok_probe'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query table");
+        assert_eq!(table_exists, 1);
+    }
+
+    /// REGRESSION GUARD: a failed backup aborts the migration.
+    ///
+    /// Forward-only migrations make the pre-migration backup the ONLY recovery
+    /// path. It used to be `let _ = std::fs::copy(...)`, which proceeded on
+    /// failure -- destroying the fallback exactly when it is most needed.
+    ///
+    /// Simulated with an unwritable parent directory.
+    #[test]
+    fn a_failed_backup_aborts_the_migration() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "bearpaw-ro-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let path = dir.join("prefs.db");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.execute(
+                "CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
+                [],
+            )
+            .expect("create table");
+        }
+        // Read+execute only: the existing file stays readable, but a new file
+        // cannot be created alongside it.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500))
+            .expect("make dir read-only");
+
+        let result = backup_db_if_needed(path.to_str().unwrap(), "preferences", 0, 1);
+
+        // Restore permissions before asserting so a failure still cleans up.
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let err = result.expect_err("an unwritable backup must abort the migration");
+        assert!(matches!(err, MigrationError::BackupFailed { .. }));
+        assert!(
+            err.to_string().contains("backup"),
+            "message must name the backup: {err}"
+        );
+    }
+
+    /// The backup path appears in the failure message, because forward-only
+    /// migrations make "restore the .bak" the documented way back and a user
+    /// told to do that has to be able to find the file.
+    #[test]
+    fn a_successful_backup_lands_next_to_the_database() {
+        let path = temp_db_file("backup-made");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.execute("CREATE TABLE probe (id INTEGER)", [])
+                .expect("create table");
+        }
+        let backup = backup_db_if_needed(path.to_str().unwrap(), "preferences", 0, 1)
+            .expect("backup must succeed")
+            .expect("a backup must be made when migrating an existing database");
+
+        assert!(backup.exists(), "backup file must exist at {backup:?}");
+        assert_eq!(
+            backup.parent(),
+            path.parent(),
+            "backup must land beside the database so a user can find it"
+        );
+        assert!(backup.to_string_lossy().contains("v0-to-v1"));
+        let _ = std::fs::remove_file(&backup);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// No backup is made when there is nothing to migrate.
+    #[test]
+    fn no_backup_is_made_when_already_current() {
+        let path = temp_db_file("no-backup");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.execute("CREATE TABLE probe (id INTEGER)", [])
+                .expect("create table");
+        }
+        let backup = backup_db_if_needed(path.to_str().unwrap(), "preferences", 1, 1)
+            .expect("no-op must succeed");
+        assert!(backup.is_none(), "already-current needs no backup");
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn preferences_db_migration_sets_schema_version() {
         let path = temp_db_file("prefs-migration");
@@ -2509,7 +2965,7 @@ mod tests {
             )
             .expect("create legacy prefs table");
         }
-        init_preferences_db(path.to_str().expect("path to string"));
+        init_preferences_db(path.to_str().expect("path to string")).expect("migrate");
         let conn = rusqlite::Connection::open(&path).expect("reopen prefs db");
         let user_version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
@@ -2525,7 +2981,7 @@ mod tests {
             conn.execute("PRAGMA user_version = 0", [])
                 .expect("set legacy version");
         }
-        init_analytics_db(path.to_str().expect("path to string"));
+        init_analytics_db(path.to_str().expect("path to string")).expect("migrate");
         let conn = rusqlite::Connection::open(&path).expect("reopen analytics db");
         let user_version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
