@@ -392,11 +392,26 @@ pub fn parse_cin_response(index: u16, response: &str) -> Option<ChannelData> {
 
     let alpha_tag = p.first().map(|s| s.to_string()).unwrap_or_default();
     let frequency = p.get(1).map(|s| parse_freq_field(s)).unwrap_or(0.0);
+    // An EMPTY modulation field stays empty. It is `[RSV]` on a BC75XLT, so
+    // fabricating "FM" there states something the wire did not say -- and the
+    // live GLG frame reports NFM for the very channels whose CIN modulation is
+    // blank, so the invented value is not even a good guess.
+    //
+    // This also fixed a `buildEmptyDraft` mismatch: the frontend's draft says
+    // "AUTO" for a cleared slot while the parser said "FM", so every cleared
+    // BC75XLT channel compared unequal and sat permanently in
+    // `pendingChannelIds` -- the same failure the #272 third-rail guard exists
+    // to prevent, reproduced on the other scanner. Consumers coalesce empty to
+    // "AUTO", which is what `build_cin_write_payload_for` already writes.
+    //
+    // A non-empty but UNRECOGNISED value still falls back to "FM": that is a
+    // real parse failure rather than an absent field.
     let modulation = match p.get(2).map(|s| s.to_uppercase()).as_deref() {
         Some("AM") => "AM".to_string(),
         Some("FM") => "FM".to_string(),
         Some("NFM") => "NFM".to_string(),
         Some("AUTO") => "AUTO".to_string(),
+        Some("") | None => String::new(),
         _ => "FM".to_string(),
     };
     let tone_code = p.get(3).and_then(|s| s.parse::<u16>().ok()).unwrap_or(0);
@@ -872,6 +887,38 @@ mod tests {
         assert_eq!(index_to_bank(451), 10);
         assert_eq!(index_to_bank(500), 10);
         assert_eq!(index_to_bank(501), 0, "out of range");
+    }
+
+    /// REGRESSION GUARD: an empty `CIN` modulation field stays empty.
+    ///
+    /// It is `[RSV]` on a BC75XLT, so inventing "FM" states something the wire
+    /// did not say — and the live `GLG` frame reports NFM for the very channels
+    /// whose CIN modulation is blank, so it is not even a good guess.
+    ///
+    /// Concretely it broke pending-state tracking: the frontend's
+    /// `buildEmptyDraft` describes a cleared slot as "AUTO" while the parser
+    /// said "FM", so every cleared BC75XLT channel compared unequal and sat in
+    /// `pendingChannelIds` forever — the #272 third-rail failure reproduced on
+    /// the other scanner. Consumers coalesce empty to "AUTO".
+    #[test]
+    fn cin_does_not_invent_a_modulation_for_an_empty_field() {
+        // BC75XLT shape: alpha tag, modulation, and tone are all [RSV].
+        let ch = parse_cin_response(1, "CIN,1,,01451300,,,1,0,1").unwrap();
+        assert_eq!(
+            ch.modulation, "",
+            "an empty field is a fact about the wire, not a reason to guess"
+        );
+
+        // A recognised value is still preserved.
+        for (wire, expected) in [("AM", "AM"), ("FM", "FM"), ("NFM", "NFM"), ("AUTO", "AUTO")] {
+            let ch = parse_cin_response(1, &format!("CIN,1,Tag,01451300,{wire},0,2,0,0")).unwrap();
+            assert_eq!(ch.modulation, expected);
+        }
+
+        // A non-empty but UNRECOGNISED value still falls back — that is a real
+        // parse failure rather than an absent field.
+        let ch = parse_cin_response(1, "CIN,1,Tag,01451300,WAT,0,2,0,0").unwrap();
+        assert_eq!(ch.modulation, "FM");
     }
 
     /// REGRESSION GUARD (#401): the parser must NOT derive `bank`.

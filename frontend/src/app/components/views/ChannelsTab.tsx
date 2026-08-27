@@ -525,7 +525,9 @@ export function ChannelsTab() {
   }, [activeBank, bankChannels]);
 
   const currentBankOrder = bankOrders[activeBank] ?? bankChannels;
-  const bankBase = (activeBank - 1) * 50;
+  // Bank width is model-dependent — 30 on a BC75XLT, where bank 2 starts at
+  // channel 31, not 51. Last hardcoded 50 in this file after #401.
+  const bankBase = (activeBank - 1) * channelsPerBank;
 
   const orderedFilteredChannels = useMemo(() => {
     if (filteredChannels.length === 0) return [];
@@ -650,7 +652,12 @@ export function ChannelsTab() {
         const hasChanges =
           normalized.frequency !== channel.frequency ||
           normalized.alpha_tag !== (channel.alpha_tag ?? '') ||
-          normalized.modulation !== (channel.modulation ?? 'AUTO') ||
+          // `||` not `??`: a BC75XLT reserves the CIN modulation field, so the
+          // backend reports an empty string rather than null. `??` would leave
+          // '' here while the draft says 'AUTO', marking every cleared channel
+          // permanently pending — the #272 failure on the other scanner.
+          // Matches what `buildDraft` already does for a programmed channel.
+          normalized.modulation !== (channel.modulation || 'AUTO') ||
           normalized.delay !== channel.delay ||
           normalized.tone_squelch !== (channel.tone_squelch ?? null) ||
           lockoutChanged ||

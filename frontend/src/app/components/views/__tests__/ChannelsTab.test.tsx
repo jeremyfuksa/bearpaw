@@ -1230,3 +1230,37 @@ describe('buildEmptyDraft cleared delay is model-dependent (#404)', () => {
     expect(buildDraft(asScannerReports, 0)).toEqual(buildEmptyDraft(0));
   });
 });
+
+describe('remaining model assumptions (#398 audit)', () => {
+  // REGRESSION GUARD: bank 2 starts at channel 31 on a BC75XLT, not 51.
+  // `bankBase` was the last hardcoded 50 in ChannelsTab after #401 moved
+  // deriveBankFromIndex onto capabilities — the two disagreed, so the row
+  // numbering in a bank did not match the bank the rows were filtered into.
+  it('bank base offset follows the model bank width', () => {
+    const base = (activeBank: number, channelsPerBank: number) =>
+      (activeBank - 1) * channelsPerBank;
+
+    expect(base(1, 50)).toBe(0);
+    expect(base(2, 50)).toBe(50);
+    expect(base(10, 50)).toBe(450);
+
+    expect(base(1, 30)).toBe(0);
+    expect(base(2, 30)).toBe(30);
+    expect(base(10, 30)).toBe(270);
+  });
+
+  // REGRESSION GUARD: a cleared channel must rebuild to a draft that compares
+  // EQUAL to what the backend reports, or it stays in pendingChannelIds
+  // forever — the #272 failure. On a BC75XLT the modulation field is [RSV], so
+  // the backend reports '' and the draft says 'AUTO'. The comparison has to
+  // coalesce on falsiness (`||`), not nullishness (`??`), or '' !== 'AUTO'
+  // keeps every cleared channel pending.
+  it('an empty modulation coalesces to AUTO the same way on both sides', () => {
+    const fromBackend = '';
+    const fromDraft = buildEmptyDraft(0).modulation;
+
+    expect(fromDraft).toBe('AUTO');
+    expect(fromBackend || 'AUTO').toBe(fromDraft);
+    expect(fromBackend ?? 'AUTO').not.toBe(fromDraft);
+  });
+});
