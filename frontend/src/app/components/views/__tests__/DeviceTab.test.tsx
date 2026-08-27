@@ -395,6 +395,52 @@ describe('DeviceTab', () => {
       expect(screen.getByRole('button', { name: /Buy me a coffee/i })).toBeInTheDocument();
     });
   });
+
+  describe('capability-gated controls (#404/#405)', () => {
+    const BC75XLT_CAPS = {
+      channel_count: 300,
+      channels_per_bank: 30,
+      bank_count: 10,
+      has_alpha_tags: false,
+      has_per_channel_modulation: false,
+      has_tone_squelch: false,
+      has_backlight_control: false,
+      has_battery_save: false,
+      has_contrast: false,
+      has_weather_alert: false,
+      key_beep_needs_program_mode: true,
+      valid_delays: [0, 1],
+      cleared_delay: 0,
+      default_baud: 57600,
+    };
+
+    // Verified on hardware 2026-08-26: BLT, BSV, CNT and WXS all reply ERR on a
+    // BC75XLT, in and out of program mode. A visible control that cannot work is
+    // worse than an absent one — it invites a click that silently fails and logs
+    // an error on every settings read.
+    it('hides backlight, battery save, and contrast on a BC75XLT', async () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      expect(screen.queryByLabelText('Backlight')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Contrast')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Battery Saver')).not.toBeInTheDocument();
+    });
+
+    // The same controls must still be there for scanners that have them — a
+    // gate that hides everything passes the test above and breaks the app.
+    it('keeps them for a BC125AT-family scanner', async () => {
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      expect(screen.getByLabelText('Backlight')).toBeInTheDocument();
+      expect(screen.getByLabelText('Contrast')).toBeInTheDocument();
+      expect(screen.getByLabelText('Battery Saver')).toBeInTheDocument();
+    });
+  });
 });
 
 describe('PREFERENCE_KEY_MAP', () => {

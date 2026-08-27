@@ -1,0 +1,1597 @@
+                               BC75XLT Owner’s
+                                       Manual
+
+
+
+
+© 2012 Uniden America Corporation       Printed in Vietnam
+Fort Worth, Texas                       U01UB372ZZZ(0)
+BC
+PRECAUTIONS
+Before you use this scanner, please read and observe the
+following.
+
+ IMPORTANT
+This scanning radio has been manufactured so that it will not
+tune to the radio frequencies assigned by the FCC for cellular
+telephone usage. The Electronic Communications Privacy Act
+of 1986, as amended, makes it a federal crime to intentionally
+intercept cellular or cordless telephone transmissions or
+to market this radio when altered to receive them. The
+installation, possession, or use of this scanning radio in a
+motor vehicle may be prohibited, regulated, or require a
+permit in certain states, cities, and/or local jurisdictions. Your
+local law enforcement officials should be able to provide you
+with information regarding the laws in your community.
+Changes or modifications to this product not expressly
+approved by Uniden, or operation of this product in any way
+other than as detailed by this Operating Guide, could void
+your authority to operate this product.
+
+ EARPHONE WARNING!
+Be sure to use only a monaural earphone with this scanner.
+You can also use an optional stereo headset. Use of an
+incorrect earphone or mono headset might be potentially
+hazardous to your hearing. The output of the phone jack is
+monaural, but you will hear it in both headphones of a stereo
+headset.
+
+
+                                2
+Set the volume to a comfortable audio level coming from
+the speaker before plugging in the monaural earphone or
+headset. Otherwise, you might experience some discomfort
+or possible hearing damage if the volume suddenly becomes
+too loud because of the volume control or squelch control
+setting. This might be particularly true of the type of
+earphone that is placed in the ear canal.
+
+
+
+
+                            3
+Contents
+PRECAUTIONS . .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 2
+The FCC Wants You to Know. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 7
+  Scanning Legally. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+INTRODUCTION. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 10
+  BC75XLT Feature Highlights. . . . . . . . . . . . . . . . . . . . . . . . 10
+  FREQUENCY RANGE. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+  USA Band Plan . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+  Canada Band Plan. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+Scanning basics. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 17
+  What is Scanning?. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+  What is Searching? . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+     Conventional Scanning. . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+     Simplex Operation. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+     Repeater Operation. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+  What Are Banks?. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+     Channel Storage Banks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+     Service Search Bands. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+     Custom Search Ranges . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20
+  Where To LEARN MORE. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20
+Setup. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 21
+  What’s In The Box? . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+  Setting Up the Scanner . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+     Connect the Antenna. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+     Connect an Optional Earphone/Headphone. . . . . . . . . 23
+     Connecting an Optional Extension Speaker. . . . . . . . . . 23
+     Adjusting the Belt Clip. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+  POWERING THE SCANNER. . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+     Installing Non-Rechargeable Batteries. . . . . . . . . . . . . . . 24
+
+                                                                      4
+    Installing Rechargeable Ni-MH Batteries. . . . . . . . . . . . . 24
+    Charging the Ni-MH Batteries through
+    USB Connection. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25
+    Low Battery Alert. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27
+ Turn On The Scanner . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27
+    Adjust Squelch. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28
+    Adjusting for Interference. . . . . . . . . . . . . . . . . . . . . . . . . . . 28
+BC75XLT Controls and Display. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 29
+ Hardware Description. . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29
+    Keypad. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29
+    Scroll Control Knob. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 31
+ LCD Display. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32
+Operation. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 35
+ SearchING . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35
+    Quick Search. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35
+    Custom Search. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36
+    Service Search. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 37
+ Storing Frequencies . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 38
+    Erasing a Stored Frequency. . . . . . . . . . . . . . . . . . . . . . . . . 39
+ Scanning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 39
+    Enabling/Disabling Channel Banks. . . . . . . . . . . . . . . . . . 39
+    Scan the Stored Channels. . . . . . . . . . . . . . . . . . . . . . . . . . . 40
+    Manually Select a Channel. . . . . . . . . . . . . . . . . . . . . . . . . . 40
+SPECIAL FEATURES. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 42
+ Close Call® RF Capture. . . . . . . . . . . . . . . . . . . . . . . . . . . . . 42
+    Close Call Operation Mode. . . . . . . . . . . . . . . . . . . . . . . . . . 42
+    Using Close Call Mode . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 43
+ Locking Out Channels and Frequencies. . . . . . . . . 44
+    Temporary Lock Out. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45
+    Permanent Lock Out. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45
+
+                                                                5
+     Unlock. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45
+  Priority. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 46
+  Delay. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 47
+  Keylock. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 48
+  Backlight. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 49
+  PC Programming. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 49
+TROUBLESHOOTING . .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 50
+Care and Maintenance. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 53
+  Resetting the Scanner. . . . . . . . . . . . . . . . . . . . . . . . . . . . . 53
+  General Use . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 53
+  Location. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 53
+  Cleaning. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 54
+  Repairs. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 54
+  Birdies. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 54
+Specifications. .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 56
+One-Year Limited Warranty . .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  . 58
+
+
+
+
+                                                           6
+The FCC Wants You to Know
+WARNING! Uniden does not represent this unit to be
+   water­proof. To reduce the risk of fire or electrical
+   shock, do not expose this unit to rain or moisture.
+
+
+Uniden® and Close Call® are registered trademarks of Uniden
+America Corporation. Other trademarks used throughout
+this manual are the property of their respective holders.
+This scanner has been tested and found to comply with
+the limits for a scanning receiver, pursuant to Part 15 of the
+FCC Rules. These limits are designed to provide reasonable
+protection against harmful interference in a residential
+installation. This scanner generates, uses, and can radiate
+radio frequency energy and, if not installed and used in
+accordance with the instructions, may cause harmful
+interference to radio communications.
+However, there is no guarantee that interference will not
+occur in a particular installation. If this scanner does cause
+harmful interference to radio or television reception, which
+can be determined by turning the scanner on and off, you
+are encouraged to try to correct the interference by one or
+more of the following methods:
+ •   Reorient or relocate the receiving antenna
+ •   Increase the separation between the scanner and the
+     receiver
+This device complies with Part 15 of the FCC Rules. Operation
+is subject to the following two conditions: 1) This device
+may not cause harmful interference, and 2) this device must
+
+                               7
+accept any interference received, including interference that
+may cause undesired operation.
+
+Scanning Legally
+Your scanner covers frequencies used by many different
+groups, including police and fire departments, ambulance
+services, government agencies, private companies, amateur
+radio services, military operations, pager services, and
+wireline (telephone and telegraph) service providers. It is
+legal to listen to almost every transmission your scanner
+can receive. However, there are some transmissions that you
+should never intentionally listen to. These include:
+ •   Telephone conversations (cellular, cordless, or other
+     private means of telephone signal transmission)
+ •   Pager transmissions
+ •   Any scrambled or encrypted transmissions
+
+According to the Electronic Communications Privacy Act
+(ECPA), you are subject to fines and possible imprisonment
+for intentionally listening to, using, or divulging the contents
+of such a conversation unless you have the consent of a
+party to the conversation (unless such activity is otherwise
+illegal). This scanner has been designed to prevent the
+reception of cellular telephone transmissions and the
+decoding of scrambled transmissions. This is done to comply
+with the legal requirement that scanners be manufactured
+so they are not easy to modify to pick up these transmissions.
+Do not open your scanner’s case to make any modifications
+that could allow it to pick up transmissions that are illegal to
+monitor. Modifying or tampering with your scanner’s internal
+
+                               8
+components or using it in a way other than as described in
+this manual could invalidate your warranty and void your FCC
+authorization to operate it.
+In some areas, mobile use of this scanner is unlawful or
+requires a permit. Check the laws in your area. It is also illegal
+in many areas (and a bad idea everywhere) to interfere with
+the duties of public safety officials by traveling to the scene
+of an incident without authorization.
+
+
+
+
+                                9
+INTRODUCTION
+Thank you for purchasing a Uniden BC75XLT handheld
+scanner. The scanner is versatile, compact, and easy to use.
+In addition to its standard scanning features, your scanner
+also includes Close Call® RF capture technology designed to
+help you detect and identify strong local radio signals in your
+area.
+You can program up to 300 frequencies into the scanner’s
+memory. The scanner lets you scan transmissions and is
+preprogrammed with service bands for your convenience.
+You can quickly search those frequencies most commonly
+used by police and other agencies without tedious and
+complicated programming. The scanner gives you direct
+access to over 32,000 exciting frequencies.
+Use your scanner to monitor:
+ •   Police and fire departments (including rescue and
+     paramedics)
+ •   NOAA weather transmissions
+ •   Business/Industrial radio
+ •   Utilities
+ •   Marine and amateur (ham radio) bands
+ •   Aircraft band
+
+BC75XLT Feature Highlights
+Close Call® RF Capture Technology - you can set the
+scanner so it detects and provides information about nearby
+radio transmissions. See page 42 for more information on the
+Close Call RF feature.
+
+                               10
+PC Programming - lets you program your scanner using
+your PC.
+Custom Search - lets you program up to 10 custom search
+ranges and search any or all of those ranges.
+Quick Search - allows you to enter a frequency and start
+searching up or down from that frequency.
+Turbo Search - increases the search speed from 100 to 300
+steps per second automatically for bands with 5 kHz steps.
+Search Lockout - allows you to lock out up to 200 search
+frequencies (100 temporary and 100 permenant) in Custom,
+Service, Close Call, or Quick Search modes.
+Lock-Out Function - lets you set your scanner to skip
+over specified channels or frequencies when scanning or
+searching. You must manually unlock these channels.
+Temporary Lock-Out Function - lets you set your scanner to
+skip over specified channels or frequencies when scanning
+or searching. This temporary lock-out releases when you
+manually unlock the channels or frequencies or when you
+power down the scanner.
+Priority Channels - You can program one channel in each
+bank (10 channels total) as a priority channel. The scanner
+checks that channel every 2 seconds while it scans the
+bank so you do not miss transmissions on those channels.
+(Default=Priority Off )
+Priority Scan - lets you set the Priority feature to check each
+channel every 2 seconds regardless of whether or not the
+scanner is receiving transmissions.
+
+
+
+                              11
+Priority Scan with Do Not Disturb - lets you set the Priority
+feature to check each channel every 2 seconds as long as the
+scanner is not receiving transmissions.
+Duplicate Channel Alert - lets you know when you have
+entered a frequency that is already registered on another
+channel.
+Channel Storage Banks - the scanner has 10 banks. You can
+store up to 30 frequencies into each bank (for a total of 300
+frequencies), so you can more easily identify calls.
+Two-Second Scan Delay - delays scanning for about 2
+seconds before moving to another channel so you can hear
+more replies that are made on the same channel.
+Do Not Disturb prevents the scanner from interrupting
+transmissions during receiving.
+Ten Service Bands - frequencies are preset in separate
+Weather, Police, Fire/Emergency, Marine, Racing, Civil Air,
+HAM Radio, Railroad, CB Radio, and Other (Other = FRS/
+GMRS/MURS) bands to make it easy to locate specific types
+of calls.
+Key Lock - lets you lock the scanner’s keys to help prevent
+accidental changes to the scanner’s programming.
+Direct Access - lets you directly access any channel.
+Display Backlight - makes the scanner easy to read in low-
+light situations.
+Flexible Antenna with BNC Connector - provides adequate
+reception in strong signal areas and is designed to help
+prevent antenna breakage. You can also connect an external
+antenna for better reception.
+
+                              12
+Memory Backup - keeps the frequencies stored in memory
+for an extended time if the scanner loses power.
+Three Power Options - Use the supplied USB cable to
+charge the BC75XLT through your computer or other USB
+charging port. You can also power the scanner using two
+AA rechargeable Ni-MH batteries (not included) or optional
+alkaline batteries.
+Key Confirmation Tones - the scanner sounds a tone when
+you perform an operation correctly, and an error tone if you
+make an error.
+Battery Low Alert - warns you when battery power gets
+low. The Battery Low icon flashes (    ) and a battery low
+tone sounds every 15 seconds until the scanner is recharged,
+turned off, or drained completely.
+Battery Save - works when there is no transmission for 1
+minute in Scan Hold mode and in any Search Hold mode
+(does not work in Priority Scan and Close Call Scan modes).
+This feature turns off RF power for 1 second and turns it on in
+300ms intervals to extend the battery live.
+Scan/Search Delay/Resume - controls whether the scanner
+pauses at the end of the transmission to wait for a reply. You
+can set the Delay time for each Channel, Close Call Search,
+Custom Search, and Service Search mode.
+
+FREQUENCY RANGE
+These tables list the frequency ranges, default frequency
+step, default mode (AM or NFM), and type of transmissions
+you can hear for each range for USA or Canadian bands.
+
+
+                              13
+Select the band plan (USA or Canada) when you turn on the
+scanner (default = USA). Press and hold the    key for 2-3
+seconds to turn on the scanner while pressing and holding 1
+for USA or 2 for Canada. The band plan will remain until you
+change it again.
+
+USA Band Plan
+  Frequency Range   Step Mode   Transmission
+       (MHz)        (kHz)
+25.00000-27.99500   5.0   AM  Citizens Band/
+                              Business Band
+28.00000-54.00000   5.0   NFM 10 Meter
+                              Amateur Band
+108.00000-136.99166 8.33 AM   Aircraft Band
+137.00000-150.77000 5.0   NFM Military Band
+
+
+
+
+                             14
+  Frequency Range   Step Mode       Transmission
+       (MHz)        (kHz)
+150.77500-150.81250 7.5   NFM
+150.81500-154.45250 7.5      NFM
+154.45625-154.47875   7.5    NFM
+154.48250-154.51250   7.5    NFM
+154.51500-154.52500   5.0    NFM
+154.52750-154.53500   7.5    NFM
+154.54000-154.60750   7.5    NFM
+154.61000-154.64750   7.5    NFM
+154.65000-157.44750   7.5    NFM   VHF High Band
+157.45000-157.46500   5.0    NFM
+157.47000-163.24500   7.5    NFM
+163.25000-173.20000   12.5   NFM
+173.20375-173.21000   6.25   NFM
+173.21500-173.22000   5.0    NFM
+173.22500-173.38750   12.5   NFM
+173.39000-173.39625   6.25   NFM
+173.40000-174.00000   5.0    NFM
+406.00000-512.00000   6.25   NFM   UHF
+
+
+
+
+                        15
+Canada Band Plan
+
+  Frequency Range   Step Mode   Transmission
+       (MHz)        (kHz)
+25.00000-27.99500   5.0   AM  Citizens Band/
+                              Business Band
+28.00000-54.00000   5.0   NFM 10 Meter
+                              Amateur Band
+108.00000-136.99166 8.33 AM   Aircraft Band
+137.00000-174.00000 5.0   NFM Military Band
+406.00000-512.00000 6.25 NFM UHF
+
+
+
+
+                      16
+Scanning basics
+This section provides a background on how scanning works.
+You don’t really need to know all of this to use your scanner,
+but some background knowledge will help you get the most
+from your BC75XLT.
+
+What is Scanning?
+Unlike standard AM or FM radio stations, most two-way
+communications do not transmit continuously. Your
+BC75XLT scans programmed channels until it finds an active
+frequency, then stops on that frequency and remains on
+that channel as long as the transmission continues. When
+the transmission ends, the scanning cycle resumes until it
+receives another transmission on a programmed channel.
+
+What is Searching?
+The BC75XLT searches for active frequencies. This is different
+from scanning because you are searching for frequencies
+that have not been programmed into the scanner. When
+you select frequency bands to search, the scanner searches
+for any active frequency within the lower and upper limits
+you specify for that band. When the scanner finds an
+active frequency, it stops on that frequency as long as the
+transmission lasts. If you think the frequency is interesting,
+you can program it into one of the bands. If not, you can
+continue to search.
+
+
+
+
+                              17
+Conventional Scanning
+Conventional scanning is a relatively simple concept. Each
+group of users in a conventional system is assigned a single
+frequency (for simplex systems) or two frequencies (for
+repeater systems). Any time one of them transmits, their
+transmission always goes out on the same frequency. Up
+until the late 1980’s this was the primary way that radio
+systems operated.
+Even today, there are many 2-way radio users who operate
+using a conventional system:
+ • Aircraft
+ • Amateur radio
+ • FRS/GMRS users
+ • Broadcast AM/FM/TV stations
+ • Many business radio users
+When you want to store a conventional system, all you need
+to know are the frequencies they operate on. When you
+are scanning a conventional system, the scanner stops very
+briefly on each channel to see if there is activity. If there isn’t,
+the scanner quickly moves to the next channel. If there is,
+then the scanner pauses on the transmission until it is over.
+Simplex Operation
+Simplex systems use a single frequency for both transmit
+and receive. Most radios using this type of operation
+are limited to line-of-sight operation. This type of radio
+is frequently used at construction job sites and with
+inexpensive consumer radios such as GMRS/FRS radios. The
+range is typically 1-8 miles, depending upon the terrain and
+many other factors.
+
+                                 18
+Repeater Operation
+Repeater systems use two frequencies: one transmits from
+the radio to a central repeater; the other transmits from the
+repeater to other radios in the system. With a repeater-based
+system, the repeater is located on top of a tall building or
+on a radio tower that provides great visibility to the area of
+operation. When a user transmits (on an input frequency),
+the signal is picked up by the repeater and retransmitted
+(on an output frequency). The user’s radios always listen for
+activity on the output frequency and transmit on the input
+frequency. Since the repeater is located very high, there is
+a very large line of sight. Typical repeater systems provide
+coverage out to about a 25-mile radius from the repeater
+location.
+
+What Are Banks?
+Channel Storage Banks
+To make it easier to identify and select the channels you
+want to listen to, the 300 channels are divided into 10
+channel storage banks containing 30 channels each. You
+could use each channel storage bank to group frequencies
+by department, location, area of interest, or any other way
+you prefer. You can listen to any or all of the banks by using
+the number keys to turn them on or off.
+Service Search Bands
+The scanner is preprogrammed with many of the frequencies
+allocated to Weather, Police, Fire/Emergency, Marine,
+Racing, Civil Air, HAM Radio, Railroad, CB radio, and Other
+(Other = FRS/GMRS/MURS). Use the 10 bands allocated for
+
+                              19
+these service searches just like the channel storage banks,
+searching the frequencies using Service Search mode (see
+page 37).
+Custom Search Ranges
+Custom Search mode lets you program the upper and lower
+limits of search ranges. You can then search these 10 custom
+search ranges starting from the lowest frequency to the
+highest frequency in the search range you entered. You can
+turn off ranges you don’t want to search just like turning off
+(disabling) channel storage banks in Scan mode.
+Custom search ranges use the same LCD numbers on the
+display as the 10 channel storage banks (see page 32).
+
+Where To LEARN MORE
+By itself, this manual really only provides part of what you
+need to know to have fun scanning – how to program and
+use the scanner. The website, http://www.radioreference.
+com, is the Internet’s premier source for user-supported
+radio system information. You can find lists of frequencies for
+your area there. This web sites is not affiliated with Uniden
+Corporation.
+For more information about Uniden and our other products,
+visit http://www.uniden.com.
+
+
+
+
+                              20
+Setup
+What’s In The Box?
+
+
+
+
+ BC75XLT Scanner          Antenna             Belt Clip
+                                             (attached)
+
+                      Not shown:
+                      • USB cable
+                      • Strap
+                      • Owner’s Manual
+
+
+If any of these items are missing or damaged, immediately
+contact your place of purchase or Uniden Customer Service
+at: (800) 297-1023, 8:00 a.m. to 5:00 p.m., Central, Monday
+through Friday.
+
+
+
+                             21
+Setting Up the Scanner
+Connect the Antenna
+
+
+
+
+1.   Align the slots around the antenna’s connector with the
+     tabs on the scanner’s BNC connector.
+2.   Slide the antenna’s connector down over the scanner’s
+     connector.
+3.   Rotate the antenna connector’s outer ring clockwise
+     until it locks into place.
+The scanner’s BNC connector makes it easy to connect a
+variety of optional antennas, including an external mobile
+antenna or outdoor base station antenna.
+Note: Always use 50-ohm, RG-58, or RG-8, coaxial cable to
+connect an outdoor antenna. If the antenna is over 50 feet from
+the scanner, use RG-8 low-loss dielectric coaxial cable. If it is
+less than 50 feet, use RG-58. You can get a BNC adapter at local
+electronics stores.
+
+
+
+
+                               22
+Connect an Optional Earphone/Headphone
+For private listening, you can plug a 1/8-inch (3.5 mm) mini-
+plug earphone or stereo headphones (not supplied) into the
+headphone jack on top of your scanner. This automatically
+disconnects the internal speaker.
+Connecting an Optional Extension Speaker
+In a noisy area, an optional extension speaker, positioned in
+the right place, might provide more comfortable listening.
+Plug the speaker cable’s 1/8-inch (3.5-mm) mini-plug into
+your scanner’s jack. If your speaker’s cable ends in a mono
+plug, use a mono-to-stereo adapter to prevent shorting the
+audio amplifier and reducing volume.
+WARNING! If you connect an external speaker to the
+   scanner’s headphone jack, never connect the audio
+   output line to a power supply and ground. This might
+   damage the scanner.
+Adjusting the Belt Clip
+The factory-attached belt clip makes it easier to carry the
+scanner. Use a Phillips screwdriver to adjust (loosen) the
+mounting screws or remove the belt clip completely.
+
+POWERING THE SCANNER
+Use the provided USB cable to connect your scanner to
+your computer to charge the Ni-MH batteries (not included)
+on initial installation and to recharge them. You can also
+use a power adapter that provides USB charge power (not
+included, but available at many retailers). You can also use
+alkaline (ALK) non-rechargeable batteries (not included).
+
+                              23
+Inside the battery compartment is a switch; set the unit to
+either ALK or Ni-MH to match the type of battery you’re
+using.
+Warning! Non-rechargeable batteries can get hot or
+   burst if you try to charge them.
+Cautions:
+ • When         flashes in the display and the scanner
+   beeps every 15 seconds, recharge or replace the
+   batteries.
+ • Use only fresh batteries of the required size and
+   recommended type.
+ • Always remove old or weak batteries. Batteries can
+   leak chemicals that destroy electronic circuits.
+ • Do not mix old and new batteries, different types of
+   batteries (standard, alkaline, or rechargeable), or
+   rechargeable batteries of different capacities.
+Installing Non-Rechargeable Batteries
+1. Make sure the power is turned off.
+2.   Slide the battery compartment cover off.
+3.   Use a pointed object such as a ballpoint pen to set the
+     battery selection switch inside the compartment to
+     ALK.
+4.   Insert the batteries as indicated by the polarity symbols
+     (+ and -) marked inside the battery compartment.
+5.   Replace the battery compartment cover.
+Installing Rechargeable 2300mAh Ni-MH Batteries
+You can also use two Ni-MH rechargeable batteries to power
+your scanner.
+                              24
+1.   Make sure the power is turned off.
+2.   Slide the battery compartment cover off.
+3.   Use a pointed object such as a ballpoint pen to set the
+     battery selection switch inside the compartment to
+     Ni-MH.
+4.   Install two batteries in the compartment as indicated by
+     the polarity symbols (+ and -) marked inside the battery
+     compartment.
+5.   Replace the battery compartment cover.
+Note: To prevent damage to Ni-MH batteries, never charge
+them in an area where the temperature is above 113°F (45°C) or
+below 40°F (4°C).
+Charging the Ni-MH Batteries through USB Connection
+The scanner has a built-in circuit to charge the Ni-MH
+batteries when a USB cable connects it to a computer (NOT
+to a USB hub) or to an AC or DC adapter that provides USB
+charging power. Verify that the battery selection switch is
+set to Ni-MH and that only Ni-MH rechargeable batteries
+are inserted in the scanner before connecting it to your
+computer.
+ Caution: Never attempt to charge non-rechargeable
+   batteries or install non-rechargeable batteries when
+   the battery selection switch is set to Ni-MH.
+1. Be sure the scanner is turned off. It will recharge only if
+   it is turned off, even with the USB cable connecting it to
+   a computer.
+2.   Connect the included USB cable to the scanner’s USB
+     port.
+
+                              25
+3.   Connect the other end of the USB cable to the
+     computer’s USB port or to an AC or DC adapter that
+     provides USB charging power.
+Note: If you connect to a computer’s USB port, the PC will
+prompt you for the drivers for your scanner. To download and
+install these drivers, go to http://info.uniden.com/UnidenMan4/
+BC75XLT.
+4.   The scanner displays CHArg and the low battery icon
+     while it charges the batteries. The screen goes blank
+     after the scanner is completely charged.
+Different status messages may display, depending on the
+battery type and scanner status:
+ LCD Message        Batt.          Meaning          Scanner
+                    Type                             Cond.
+ CHArg             Ni-MH    Scanner is charging.    Off
+ None              Ni-MH    Unit is charged.        Off
+
+ None              Ni-MH    Scanner is not          Off
+                            charging (Battery
+                            selection switch is
+                            set to Alk.)
+ Err CHArg         Ni-MH    Batteries cannot        Off
+                            be charged (dead
+                            battery).
+ ILEgAL            Ni-MH    USB external power      Off
+                            is out of range.
+If the batteries are good, the scanner charges the batteries.
+and it operates normally. If the scanner cannot immediately
+
+                              26
+determine if the batteries are good and can be charged, it
+checks them and displays the battery icon. If the scanner
+judges the batteries are good, the scanner starts charging
+and the battery icon disappears. If it cannot regard the
+batteries as good in 60 seconds, the scanner stops checking
+and the battery icon blinks.
+Low Battery Alert
+The Low Battery Alert tone sounds every 15 seconds and
+the battery icon flashes when the battery voltage is low. If it
+drops below the threshold, the scanner automatically shuts
+off until the battery is recharged.
+
+Turn On The Scanner
+Turn on the scanner after it has been completely charged
+(Ni-MH batteries) or alkaline batteries have been installed.
+Note: Make sure the antenna is connected before you turn on
+the scanner.
+1.   You can select the band plan (USA or Canada) when you
+     turn on the scanner (default = USA). Press and hold the
+          key for 2-3 seconds to turn on the scanner and then
+     press and hold 1 for USA or 2 for Canada. The band plan
+     will remain until you change it again.
+2.   If this is the first time you have turned on the scanner,
+     All LocOut displays. This means that no frequencies
+     have been saved into channels. Press Srch to begin
+     searching.
+
+
+
+
+                               27
+Adjust Squelch
+The scanner recognizes signals as transmissions if they
+exceed a signal strength threshold. Adjusting the squelch
+sets this threshold level. Increasing squelch requires a signal
+to be stronger to be seen as a transmission. If you set the
+squelch too high, you will risk not receiving transmissions
+that are lower than that threshold. Reducing the squelch
+allows weaker signals to be accepted. However, if you lower
+the squelch too much, you will hear white noise all the time.
+1.   Press Func and the press down and release the scroll
+     control knob. SqL and a number display.
+2.   Turn the knob until the interference is gone. Press the
+     scroll control knob again to set the level and return to
+     the previous function.
+Adjusting for Interference
+There are several options to adjust your scanner to minimize
+interference. Try:
+ •   Moving the scanner or its antenna away from the
+     source.
+ •   Using an optional external antenna designed for multi-
+     band coverage. (You can purchase this type of antenna
+     at a local electronics store). If the optional antenna has
+     no cable, use 50-70 ohm coaxial cable for lead-in. An
+     adapter might be necessary for the optional antennas.
+ •   Moving the scanner from high-moisture environments
+     such as the kitchen or bathroom.
+ •   Moving the scanner from direct sunlight or near heating
+     elements or vents.
+
+
+                               28
+BC75XLT Controls and Display
+Hardware Description
+Keypad
+
+      Priority
+        Hold/                                   Delay
+    Close Call
+         Scan                                   PSrc
+      Search/
+      Service
+     Lockout/                                    Clear
+  Keypad Lock                                    Function
+       Power/
+     Backlight                                   Program/
+                                                 Enter
+
+Your scanner’s keys have various functions labeled on the
+key tops.
+To select the function labeled on a key, simply press the key.
+To select the function labeled in smaller text on a key, first
+press Func then release it. F appears on the display. Press
+the next key in the function key sequence while F displays.
+ F appears or disappears as you press Func.
+If your scanner’s keys seem confusing at first, the following
+information should help you understand each key’s function.
+  Key/Icon             Primary            Function Key
+ Hold /          Hold - Stays on a         Close Call - lets
+                 frequency until      scanner lock into
+                 released.            nearby transmissions
+                                      (see page 42).
+
+                                 29
+Key/Icon         Primary                 Function Key
+Scan       Cycles through           NA
+           channels looking
+           for transmissions on
+           stored frequencies
+           (see page 39).
+Srch/Svc   Searches through         Service Search -
+           frequencies looking      cycles through
+           for transmissions (see   preprogrammed
+           page 35).                service bands (see
+                                    page 37).
+L/O /      Temporarily or           Locks the keypad (see
+           permanently              page 48).
+           lockout a channel or
+           frequency (see page
+           44).
+   /       Turn scanner on and      Turns display
+           off.                     backlight on and off
+                                    (see page 49).
+1/Pri      Enter a numeric 1.       Cycles through
+                                    Priority Off, Priority
+                                    Do Not Disturb, and
+                                    Priority Scan (see
+                                    page 46).
+5/Dly      Enter a numeric 5.       Turns the Delay
+                                    function on and
+                                    off for the current
+                                    channel (see page 47).
+
+                          30
+  Key/Icon            Primary             Function Key
+ 6/PSrc       Enter a numeric 6.      Sets the Program
+                                      Custom Search limits
+                                      (see page 36).
+ Pgm/E        Sets Channel Program Enter.
+              mode.
+ . Clr        Press once: enters a   NA
+              decimal.
+              Press twice: cancels a
+              numeric key input.
+ Func         Sets scanner in         Cancels Function
+              Function mode.          mode.
+Scroll Control Knob
+                      Audio
+                      output
+
+                                     Scroll
+Antenna                              control
+                                     knob
+
+
+The scroll control knob has three uses:
+ •   Sel - Turn the knob to cycle through selections; press
+     down on the knob to select.
+ •   Vol - Press down on the knob and then turn it to adjust
+     the volume. Press it down to select that level.
+ •   Sql - Press Func, press down on the knob, and then turn
+     it to adjust the squelch level.
+
+
+
+                                31
+LCD Display
+                                                       Line 1
+                                                       Line 2
+
+                                                       Line 3
+
+                                                       Line 4
+                                                       Line 5
+
+
+The display has indicators that show the scanner’s current
+operating status. The display information helps you
+understand how your scanner operates.
+
+ Line Display                        Description
+  1    B:1 - 10           Search mode: Custom Search
+                          range.
+                          Scan mode: Channel bank.
+       PGM                Displays while you store a
+                          frequency into a channel.
+                          Displays when keypad is locked.
+
+
+
+
+                             32
+Line Display                      Description
+ 2   F                 Displays when the Function mode
+                       is on.
+     ▲SEARCH▼          Displays during Search mode.
+     DLY               Displays when a 2-second delay
+                       at the end of a transmission is on.
+                       Displays when the scanner is set
+           /
+                       to Close Call mode:
+                           - Close Call Priority
+                           - Close Call Do Not Disturb
+                       Displays and blinks when the
+                       battery power gets low.
+                       Displays when the rechargeable
+                       batteries are charging.
+     T L/O             Indicates a locked out frequency.
+     L/O               T L/O: Temporary Lock Out
+                       L/O: Lock Out
+ 3   P                 Displays when a Priority channel
+                       is selected.
+     888               Current channel number.
+     PRI               Displays when the Priority feature
+                       is active.
+     888.888           Current frequency.
+     25, 33, 50, 66, 75 One of these numbers displays to
+                       indicate the frequency step. For
+                       example, “25” indicates 0.25kHz.
+
+
+                          33
+Line Display                      Description
+4, 5   Scan             Displays when you scan channels.
+       Hold             Displays during Scan Hold and
+                        Search Hold modes.
+       WX, AIR, FIRE,   Service bands. These will display
+       HAM, POL,        with an indicator for the current
+       RAIL, MRN, CB,   service band during a Service
+       RACE, OTHER
+                        search.
+
+
+
+
+                           34
+Operation
+SearchING
+The BC75XLT has 10 preset search ranges that display as 1 -
+10 across the top of the screen when you press Srch. It also
+has 10 preset service bands that display in two rows across
+the bottom of the screen when you press Func + Svc.
+Note: Service Search is discussed on page 37.
+When you press Srch, the BC75XLT begins searching the
+search ranges until it finds activity. The search range number
+flashes and it remains on that frequency until activity ends.
+Press Srch at any time to continue.
+Press a search range’s corresponding number to turn it off
+and back on. For example, press 4 to turn search range #4
+off. The number 4 will no longer display across the top of the
+screen.
+You can search these ranges through:
+ •   Quick Search - Designate a starting point to search from.
+ •   Custom Search - Designate and store upper and lower
+     frequency limits for each of 10 search ranges. The
+     scanner searches within this range.
+Quick Search
+Quick Search lets you designate a starting point for
+searching. Once you are searching from this point, you can
+stop the search and store frequencies in a channel.
+1.   If the scanner is scanning or searching, press Hold.
+2.   Enter the frequency using the number and . Clr keys.
+     The scanner automatically rounds the entered number
+                              35
+     to the nearest valid frequency. For example, if you enter
+     151.473 (MHz), your scanner accepts it as 151.475.
+     However, if you enter a frequency that is out of range,
+     the scanner sounds an error tone and Error appears.
+     Enter another frequency.
+3.   Press Srch. The scanner searches, starting from the
+     frequency you just entered. (Turn the scroll control
+     knob to change the search direction.) The scanner also
+     automatically turns on the Delay function; DLY displays.
+     To turn off the function, press Func + Dly (see page 47).
+Custom Search
+You can adjust each preset search range’s upper and lower
+frequency limits.
+1.   Press Func + Psrc. The scanner enters Custom Search
+     mode and displays SRCH and PGM. The upper and
+     lower frequencies for Custom Search range 1 alternate.
+2.   Turn the scroll control knob to scroll through the rest
+     of Custom Search ranges until you find the one you
+     want. The search range numbers at the top of the screen
+     change as you cycle through them.
+3.   Enter the lower limit frequency and press E. The
+     frequency range flashes with the adjusted lower limit
+     frequency.
+4.   Enter the upper limit frequency and press E. The
+     adjusted frequency range flashes with the adjusted
+     upper limit frequency (both upper and lower
+     frequencies are now adjusted).
+
+
+
+                              36
+5.   Press Srch to start searching your custom search range
+     or turn the scroll control knob to a different search
+     range and enter another frequency.
+Service Search
+You can search for Weather, Police, Fire/Emergency, Marine,
+Racing, Civil Air, HAM Radio, Railroad, CB radio, and Other
+(Other = FRS/GMRS/MURS) transmissions without knowing
+the specific frequencies used in your area. The scanner is
+preprogrammed with all the frequencies allocated to these
+services. To use this feature, press Func + Svc. SRCH appears
+and the scanner starts searching from the weather service
+bands.
+To select a different service search, repeatedly press Svc
+as long as you are still in Function mode. If you are not in
+Function mode, press Func to return and then press Svc.
+Services are scanned in the following order: Weather,
+Police, Fire/Emergency, Marine, Racing, Civil Air, HAM Radio,
+Railroad, CB radio, and Other (Other = FRS/GMRS/MURS).
+When the scanner stops on a transmission, press Hold to
+stop searching and listen to the transmission. Hold displays.
+In this mode, you can also turn the scroll control knob to step
+through the frequencies.
+To release the hold and continue searching, press Hold
+again.
+Note: Because there are many different frequencies allocated
+to fire and police departments, it can take several minutes to
+search all the service frequencies.
+
+
+
+                               37
+Storing Frequencies
+To store frequencies in the first available channel:
+1.   Press Hold.
+2.   Enter the frequency and press Hold and Func + Pgm.
+3.   The scanner alternates between the frequency you are
+     stopped on and the first available channel number with
+     no frequency stored. Press E.
+4.   The scanner is now on that frequency, on Hold with the
+     Delay function automatically turned on (see page 47).
+     Press Srch or Scan again to continue.
+Note: Refer to www.radioreference.com for a list of frequencies
+in your area.
+You can also store frequencies directly into a specific channel
+in a specific channel bank.
+1.   From Search or Scan modes, press Hold.
+2.   Press Func + Pgm. The scanner displays the next
+     available channel number and alternates between O and
+     the frequency you’re holding on.
+3.   Press Func and turn the scroll control knob to change
+     channel banks if desired; press Func again to select that
+     channel bank.
+4.   Turn the scroll control knob to change channels within
+     that bank.
+5.   Press E to store the frequency in the displayed channel/
+     channel bank.
+6.   The scanner is now on that frequency, on Hold with the
+     Delay function automatically turned on (see page 47).
+
+                               38
+If you entered a frequency that has already been entered
+elsewhere, the scanner sounds an error tone and displays the
+channel that was duplicated. If you entered the frequency
+by mistake, press .Clr twice to clear the frequency and enter
+a different one. To enter the frequency anyway, press E to
+accept.
+Erasing a Stored Frequency
+1. Find the frequency you want to erase. Press Hold.
+2.   Press Func + Pgm.
+3.   Press 0 and then press E.
+4.   The displayed frequency changes to all 0s.
+
+Scanning
+When you store frequencies into channels, those channels
+are grouped into banks. Each bank contains 30 channels. You
+can store service channels and non-service channels in the
+same bank. For example, you can store a city’s fire, police,
+marine, etc, together with utilities and other businesses.
+There is no frequency range restriction per bank.
+While you are scanning frequencies stored in the banks,
+the word SCAN scrolls across the display. When it finds a
+transmission, that frequency displays.
+Enabling/Disabling Channel Banks
+You can enable and disable each channel bank. When you
+disable a bank, the scanner does not scan any of the 30
+channels in that bank.
+In Scan modes, press the number key that corresponds to
+the bank you want to disable or enable. That bank number
+
+                                 39
+displays at (or disappears from) the top of the screen,
+showing the currently enabled banks.
+The scanner scans all the channels within the displayed
+banks that are not locked out. The bank number flashes
+when the scanner scans a channel that belongs to that bank.
+You can manually select any channel within a bank, even if
+that bank is disabled. You cannot, however, disable all banks.
+One bank must always be enabled.
+Scan the Stored Channels
+Press Scan. The scanner scans through all non-locked out
+channels in enabled banks. (See page 44 for more information
+on locking out channels.) When the scanner finds a
+transmission, it stops on it. When the transmission ends, the
+scanner resumes scanning.
+Notes:
+ •   If you have not stored frequencies into any channels,
+     the scanner does not scan.
+ •   If the scanner picks up unwanted partial or very weak
+     transmissions, press Func and press the scroll control
+     knob. SqL displays. Turn the knob clockwise to decrease
+     the scanner’s sensitivity to these signals. To listen to a
+     weak or distant station, turn the knob counterclockwise.
+ •   Adjust squelch until the audio mutes.
+Manually Select a Channel
+You can continuously monitor a single channel without
+scanning. This is useful if you hear an emergency broadcast
+on a channel and do not want to miss any details - even
+though there might be periods of silence - or if you want to
+monitor a specific channel.
+                              40
+To manually select a channel when in Scan mode, press
+Hold, enter the channel number, and press Hold again.The
+scanner moves to the frequency stored in that channel.
+During scanning, if the radio stops at a channel you want to
+listen to, press Hold once. (Rotate the scroll control knob to
+step through stored channels.) Press Hold again or Scan to
+resume automatic scanning.
+
+
+
+
+                              41
+SPECIAL FEATURES
+Close Call® RF Capture
+Your scanner’s Close Call feature lets you set the scanner to
+detect then display the frequency of a nearby strong radio
+transmission such as mobile and handheld two-way radios
+in areas with no other strong transmission sources. However,
+if you are in an area with many transmission sources (such
+as pager radio transmitters, multi-use radio towers, traffic
+control devices, etc.), Close Call mode might not find
+the transmission you are searching for, or it might find a
+transmission other than the one you are searching for.
+Close Call mode works well for finding frequencies at venues
+such as malls and sporting events. You can set the scanner
+so that Close Call detection works “in the background” while
+you are scanning other frequencies. You can turn off the
+Close Call feature and scan normally as well as turn off the
+scanning function and look for Close Call transmissions only.
+Close Call Operation Mode
+1.   Press Func and hold     until the following screen
+     displays:
+
+       B: 1 2 3 4
+                    DLY
+
+
+
+
+                              42
+2.     For the Close Call mode, frequencies are divided into
+       4 Close Call bands. Turn these bands on and off by
+       pressing 1 - 4 as indicated:
+                    Range (MHz)          To turn a Close Call
+     Band
+                  Low          High      band on/off, press...
+ VHF Low      25.00000      54.00000               1
+ AIR          108.00000     136.99166              2
+ VHF High 137.00000         174.00000              3
+ UHF          406.00000     512.00000              4
+
+
+You can set the scanner so it alerts you when the Close Call
+feature detects a frequency. Program alert tones through
+your PC (see page 49).
+Notes:
+• Close Call RF capture cannot detect frequencies outside the
+  scanner’s normal operating range.
+• Close Call mode works better with some types of
+  transmissions than others. It might not correctly display
+  frequency information for transmitters using a highly
+  directive antenna (such as an amateur radio beam antenna),
+  if there are many transmitters operating at the same time in
+  the same area, or if the transmitter is a broadcast television
+  station.
+Using Close Call Mode
+Close Call mode has three operation modes:
+
+
+
+                                43
+ •   Close Call DND. Close Call Do Not Disturb only checks
+     for close calls if it is not stopped on a transmission. The
+          icon displays.
+ • Close Call Priority. The scanner checks for close calls
+     regardless of whether it is stopped on a transmission.
+     The      icon displays.
+ • Close Call Off. The scanner does not check for close calls.
+     No icon displays.
+Pressing Fnc +        cycles through the Close Call functions in
+this order: Close Call Off/Close Call DND/ Close Call Priority.
+To turn on Close Call mode, press Func +      once except in
+WX Search, Band Select, or Program mode.
+Notes:
+ •   Set the squelch tight (where only strong signals are
+     received) while using the Close Call feature.
+ • To continue scanning normally while the Close Call feature
+     is working, simply press Scan.
+When the scanner finds a frequency, Found displays; it does
+not display the frequency. Press any key to confirm the
+displayed frequency. Press Scan to resume scanning. Every 2
+seconds, the scanner checks for frequencies in the Close Call
+band you specified (see page 43).
+
+Locking Out Channels and Frequencies
+You can skip any channel or up to 200 specified frequencies
+during Search mode (100 permanent and 100 temporary).
+This lets you avoid unwanted frequencies (Search/Close Call
+modes), channels that have a continuous transmission (such
+as a weather channel), or have static and interference.
+
+                              44
+Temporary Lock Out
+To temporarily lock out a channel in Scan mode or a
+frequency in Search and Close Call modes, manually select
+the channel or frequency (see page 40) and then press L/O.
+TL/O appears. You have TEMPORARILY locked out the
+channel/frequency.
+Permanent Lock Out
+To permenantly lock out a frequency or channel, press L/O
+twice while on that frequency. L/O displays.
+Note: You can still manually select locked-out channels.
+Unlock
+Unlock Temporary Lock Out
+1. Locate the temporarily locked out channel; press Hold.
+2.   Press L/O until the locked out status no longer displays.
+3.   Press Hold again to return to Scan or Search modes.
+You can also turn the scanner off and back on. It will unlock
+all channels that have been temporarily locked out
+Unlock Permenant Lock Out
+To unlock a permanently locked-out frequency/channel:
+1.   Manually enter the frequency/channel then press Hold.
+     The frequency and lockout status display.
+2.   Press L/O until the locked out status no longer displays.
+3.   Press Hold again to return to Scan or Search modes.
+
+
+To unlock all registered channels in enabled banks, press
+Hold to stop scanning, then press and hold L/O until the
+
+                               45
+scanner beeps twice and CLEAr displays. Press E to unlock
+all.
+Notes:
+ •   You cannot lock out frequencies during WX service search.
+ •   Locked out frequencies are shared between Service Search,
+     Custom Search, Quick Search, and Close Call modes. If
+     locked out frequencies are set in a specific mode, those
+     frequencies are also skipped in other Search (except WX
+     Service Search) and Close Call modes.
+ •   If you selected all frequencies in a search band to be
+     skipped, the scanner beeps 3 times and does not search.
+ •   You can skip 100 frequencies for Temporary Lockout and
+     100 frequencies for Permenant Lockout (200 locked out
+     frequencies total). After locking out 200 frequencies, the
+     next time you try to select a frequency to skip the scanner
+     displays Full and will not lock out that frequency.
+ •   If you want to find your locked-out frequencies, press Hold
+     and then turn the scroll control knob to cycle through
+     the frequencies. L/O or T/LO displays on the locked out
+     frequencies.
+
+Priority
+The Priority feature lets you scan through the channels
+and still not miss important or interesting calls on specific
+channels. There are three Priority options available in Scan or
+Scan Hold mode:
+ •   Priority Off (no display) : The scanner does not check for
+     priority channels.
+ •   Priority DND ( PRI displays) : In Priority Do Not
+     Disturb (DND), the scanner checks Priority channels
+                               46
+    every 2 seconds only when it is not receiving
+    transmissions.
+ • Priority Scan ( PRI displays) : The scanner checks
+    Priority channels every 2 seconds regardless of whether
+    or not it is receiving a transmission.
+You can designate one channel in each bank as a priority
+channel (10 total). The first channel in each bank is the
+default Priority channel.
+Follow these steps to select a different channel in a bank as
+the priority channel.
+1.   Manually select the channel you want for the Priority
+     channel.
+2.   Press Func + Pgm, then press Func + Pri. P appears to
+     the left of the selected channel number.
+3.   Repeat Steps 1 and 2 for other channels for each bank
+     you want to program as a priority channel.
+From Scan Hold mode, press Func + Pri to cycle through the
+Priority options.
+
+Delay
+Sometimes a user might pause before replying to a
+transmission. To avoid missing a reply on a specific channel,
+you can program a 2-second delay into channels or searches.
+The scanner continues to monitor the channel frequency for
+an additional 2 seconds after the transmission stops before
+resuming scanning or searching.
+     Mode                    Delay Specification
+ Scan            Each channel can be set individually.
+
+                              47
+     Mode                     Delay Specification
+ Search           Custom Search: If one range is set, all
+                  ranges are set.
+                  Service Search: Each band can be set as a
+                  unit.
+ Quick Search Changes made to Delay assignment in one
+ and Close Call mode are reflected in the other mode.
+When the delay feature is on, DLY displays. If it is off, follow
+one of these procedures to program a delay depending on
+how the scanner is operating.
+ •   If the scanner is scanning and stops on an active
+     channel where you want to program a delay, quickly
+     press Func + Dly before it continues scanning again.
+     DLY appears.
+ • If the desired channel is not selected, manually select
+     the channel, then press Func + Dly. DLY appears.
+ • If the scanner is searching, press Func + Dly. DLY
+     appears and the scanner automatically adds a 2-second
+     delay to every frequency it stops on in that band.
+To turn off the 2-second delay, press Func + Dly while the
+scanner is monitoring a channel, scanning, or searching. DLY
+disappears.
+
+Keylock
+Use the scanner’s keylock to protect it from accidental
+program changes. When the scanner’s keys are locked, the
+only controls that operate are scroll control knob (volume
+only), Func, Hold, and     .
+
+
+                                48
+To turn on keylock, press Func +    .       appears. To turn
+off keylock, press Func +    again.        no longer displays.
+Note: Using keylock does not prevent the scanner from
+scanning channels.
+
+Backlight
+Pressing    turns the display light on and off. It remains on
+for 15 seconds and then turn off automatically.
+
+PC Programming
+Connect your scanner to your PC through the USB cable to:
+ • Program channels into the scanner
+ • Set any setting
+When you connect your scanner to your PC, a series of
+screens will appear to assist you.
+USB drivers and programming software are available for
+download from http://info.uniden.com/UnidenMan4/
+BC75XLT.
+
+
+
+
+                              49
+TROUBLESHOOTING
+If your BC75XLT is not performing properly, try the following
+steps.
+
+  Problem        Possible Cause           Suggestion
+ The scanner    The scanner          Check the batteries
+ doesn’t        might not be         or make sure the USB
+ work.          receiving any        cable is connected
+                power.               to the PC and to the
+                                     scanner.
+
+
+ Improper       The scanner’s        Check the antenna
+ reception.     antenna might        connection or move or
+                need to be           reposition the antenna.
+                adjusted.
+                                     Move the scanner.
+                                     You might be in a
+                                     remote area that
+                                     requires an optional
+                                     multi-band antenna.
+                                     Check with your dealer
+                                     or local electronics
+                                     store.
+ Scan won’t     The squelch          Adjust the squelch
+ stop.          might need to be     threshold. See page 28.
+                adjusted.
+
+
+
+                             50
+ Problem      Possible Cause           Suggestion
+Scan          The antenna         Check the antenna
+won’t stop    might need to be    connection.
+(continued)   adjusted.
+              One or more         Make sure the
+              channels might      channels you want to
+              be locked out.      scan are not locked
+                                  out.
+              The channel’s       Make sure the
+              frequency might     channel’s frequency is
+              not be stored in    stored in the scanner’s
+              memory.             memory.
+              The channel         Wait for a transmission
+              might not be        on the channel.
+              active.
+
+
+
+
+                             51
+ Problem     Possible Cause          Suggestion
+Scan won’t   You must press     Press Scan.
+start.       Scan to scan.
+
+             The squelch        Adjust the squelch
+             might need to be   threshold. See page 28.
+             adjusted.
+             One or more        Make sure the
+             channels might     channels you want to
+             be locked out.     scan are not locked
+                                out.
+             The antenna        Check the antenna
+             might need to be   connection.
+             adjusted.
+Weather      The squelch        Adjust the squelch
+scan         might need to be   threshold. See page 28.
+doesn’t      adjusted.
+work.
+             The antenna        Check the antenna
+             might need to be   connection.
+             adjusted.
+
+
+
+
+                        52
+Care and Maintenance
+Resetting the Scanner
+If the scanner’s display locks up or stops operating properly,
+you might need to reset the scanner.
+ CAUTION: This procedure clears all the information
+   you have stored in the scanner. Before you reset
+   the scanner, try turning it off and back on to see if
+   it begins working properly. Reset the scanner only
+   when you are sure it is not working properly.
+1. Turn off the scanner.
+2.   While holding down 2, 9, and Hold, turn on the scanner.
+     It takes about 3 seconds to initialize and CLEAr appears.
+
+General Use
+ •   Turn the scanner off before disconnecting the power.
+ •   Always write down the programmed frequencies in the
+     event of memory loss.
+ •   If memory is lost, simply reprogram each channel. The
+     display shows 000.0000 in all channels when there has
+     been a memory loss.
+ •   Always press each button firmly until you hear the entry
+     tone for that key entry.
+
+Location
+ •   Do not use the scanner in high-moisture environments
+     such as the kitchen or bathroom.
+ •   Avoid placing the unit in direct sunlight or near heating
+     elements or vents.
+
+                                53
+ •   If the scanner receives strong interference or electrical
+     noise, move it away from the source of the noise. If
+     possible, a higher elevation might provide better
+     reception.
+
+Cleaning
+Keep the scanner dry. If it gets wet, wipe it dry immediately.
+Use and store the scanner only in normal temperature
+environments. Handle the scanner carefully: do not drop it.
+Keep the scanner away from dust and dirt, and wipe it with a
+damp cloth occasionally.
+ •   Disconnect the power to the unit before cleaning.
+ •   Clean the outside of the scanner with a mild detergent.
+ •   To prevent scratches, do not use abrasive cleaners or
+     solvents. Be careful not to rub the LCD window.
+ •   Do not use excessive amounts of water.
+
+Repairs
+Do not attempt any repair. The scanner contains no user
+serviceable parts. Contact the Uniden Customer Service
+Center or take it to a qualified repair technician.
+
+Birdies
+All radios can receive “birdies” (undesired signals). If your
+scanner stops during Scan mode and no sound is heard, it
+might be receiving a birdie. Birdies are internally generated
+signals inherent in the electronics of the receiver.
+Press L/O to lock out the channel, then press Scan to resume
+scanning.
+
+
+                               54
+If you still cannot get satisfactory results while using your
+scanner or if you want additional information, please call or
+write the Uniden Parts and Service Division. The address and
+phone number are listed in the Warranty at the end of this
+manual. If you would like immediate assistance, please call
+Customer Service at (800) 297-1023.
+If you have Internet access, you can visit
+http://www.uniden.com for additional information.
+
+
+
+
+                             55
+Specifications
+Certified in accordance with FCC Rules and Regulations Part
+15, Subpart C, as of date of manu­facture.
+  Channels: . .................................................................................. 300
+  Banks: ...................................................... 10 (30 channels each)
+Sensitivity (SINAD 12 dB)
+   25.005 MHz (AM) .............................................................. 0.3 µV
+   40.840 MHz (NFM) ........................................................... 0.2 µV
+   53.980 MHz (NFM) ........................................................... 0.2 µV
+  118.800 MHz (AM). ............................................................ 0.3 µV
+  127.175 MHz (AM). ............................................................ 0.3 µV
+  135.500 MHz (AM). ............................................................ 0.3 µV
+  138.150 MHz (NFM)........................................................... 0.3 µV
+  157.100 MHz (FM).............................................................. 0.2 µV
+  161.985 MHz (NFM) .......................................................... 0.3 µV
+  173.225 MHz (NFM) .......................................................... 0.3 µV
+  406.875 MHz (NFM)........................................................... 0.3 µV
+  453.250 MHz (NFM) .......................................................... 0.3 µV
+  511.9125 MHz (NFM) . ...................................................... 0.3 µV
+Operating Temperature:
+  Normal ................................................................ –20°C to +60°C
+  Close Call ............................................................ –10°C to +50°C
+  Scan Rate . ..............................90 channels per second (max)
+Search Rate (OSp7, #10)
+   Normal ......................................... 90 steps per second (max)
+                                                  56
+      Hyper.......................................... 270 steps per second (max)
+     Priority Sampling ....................................................... 2 seconds
+     Scan Delay .....................................................................2 seconds
+     IF Rejection (at 453.25 MHz) ........................................... 80 dB
+     IF Frequencies
+     1st IF (25-512 MHz)........................ 265.5050-265.6000 MHz
+     2nd IF . ............................................................................ 21.3 MHz
+     3rd IF ................................................................................. 450 kHz
+Internal Speaker . ...............................24 ohm, 0.8W Max (32 Ø)
+Audio Output
+     Internal Speaker.......................... 360mW nominal (24 ohm)
+     Headphone (L-ch)............................ 4mW nominal (32 ohm)
+Current Drain
+     Squelched .......................................................................... 120 mA
+     Full Output ....................................................................... 280 mA
+ Power Requirements:
+ •     2 AA Alkaline Batteries (3V DC), or
+ •     2 AA Rechargeable Ni-MH Batteries (2.4V DC), or
+ •     Connect to PC with USB cable (5.0V DC 500mA)
+     Antenna: .................................................50 ohms (Impedance)
+  External Jacks: ................................Antenna Jack (BNC Type)
+                                                                  Phone Jack (3.5mm)
+                                              USB Jack (5pin Mini USB B type)
+  Size: .........................67mm. (W) x 32.7mm. (D) x115mm (H)
+  Weight: . ..............................175g (w/o antenna and battery)
+
+                                                    57
+One-Year Limited Warranty
+     Important: Evidence of original purchase is required
+     for warranty service.
+
+WARRANTOR: UNIDEN AMERICA CORPORATION
+(“Uniden”)
+ELEMENTS OF WARRANTY: Uniden warrants, for one year, to the original
+retail owner, this Uniden Product to be free from defects in materials and
+craftsmanship with only the limitations or exclusions set out below.
+WARRANTY DURATION: This warranty to the original user shall terminate
+and be of no further effect 12 months after the date of original retail sale.
+The warranty is invalid if the Product is (A) damaged or not maintained
+as reasonable or necessary, (B) modified, altered, or used as part of any
+conversion kits, subassemblies, or any configurations not sold by Uniden,
+(C) improperly installed, (D) serviced or repaired by someone other than an
+authorized Uniden service center for a defect or malfunction covered by this
+warranty, (E) used in any conjunction with equipment or parts or as part of
+any system not manufactured by Uniden, or (F) installed or programmed by
+anyone other than as detailed by the Operating Guide for this product.
+STATEMENT OF REMEDY: In the event that the product does not conform
+to this warranty at any time while this warranty is in effect, warrantor will
+repair the defect and return it to you without charge for parts, service, or
+any other cost (except shipping and handling) incurred by warrantor or its
+representatives in connection with the performance of this warranty. THE
+LIMITED WARRANTY SET FORTH ABOVE IS THE SOLE AND ENTIRE
+WARRANTY PERTAINING TO THE PRODUCT AND IS IN LIEU OF AND
+EXCLUDES ALL OTHER WARRANTIES OF ANY NATURE WHATSOEVER,
+WHETHER EXPRESS, IMPLIED OR ARISING BY OPERATION OF LAW,
+INCLUDING, BUT NOT LIMITED TO ANY IMPLIED WARRANTIES OF
+MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. THIS
+WARRANTY DOES NOT COVER OR PROVIDE FOR THE REIMBURSEMENT OR
+PAYMENT OF INCIDENTAL OR CONSEQUENTIAL DAMAGES. Some states do
+not allow this exclusion or limitation of incidental or consequential damages
+so the above limitation or exclusion might not apply to you.
+
+
+                                     58
+LEGAL REMEDIES: This warranty gives you specific legal rights, and you might
+also have other rights which vary from state to state. This warranty is void
+outside the United States of America.
+PROCEDURE FOR OBTAINING PERFORMANCE OF WARRANTY:
+If, after following the instructions in this Operating Guide you are certain that
+the Product is defective, pack the Product carefully (preferably in its original
+packaging). Include
+evidence of original purchase and a note describing the defect that has caused
+you to return it. The Product should be shipped freight prepaid, by
+traceable means, or delivered, to warrantor at:
+Uniden America Corporation
+Parts and Service Division
+4700 Amon Carter Boulevard
+Fort Worth, TX 76155
+(800) 297-1023, 8:00 a.m. to 5:00 p.m., Central, Monday through Friday
+
+
+
+
+                                        59
+

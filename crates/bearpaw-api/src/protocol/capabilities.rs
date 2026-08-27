@@ -46,9 +46,32 @@ pub struct ScannerCapabilities {
     /// Whether `CIN` carries a CTCSS/DCS tone code. False on the BC75XLT,
     /// where the field is reserved.
     pub has_tone_squelch: bool,
-    /// Whether the scanner implements `BLT` (backlight). The BC75XLT omits it
-    /// from its command table entirely and replies bare `ERR`.
-    pub has_backlight: bool,
+    /// Whether the scanner exposes a settable backlight *mode* via `BLT`.
+    ///
+    /// Deliberately not named `has_backlight`: the BC75XLT HAS a backlight. Its
+    /// owner's manual documents a button that lights the display for 15 seconds
+    /// (BC75XLTom.pdf, "Backlight"). What it lacks is programmatic control --
+    /// `BLT` is absent from its command table and replies bare `ERR`, and there
+    /// is no persistent mode to set.
+    ///
+    /// The BC125AT's `BLT` sets a mode (`AO`/`SQ`/`KY`) that persists. These are
+    /// different features, not one feature present or absent, so the flag names
+    /// what Bearpaw can control rather than what the hardware has.
+    pub has_backlight_control: bool,
+    /// Whether `BSV` (battery save) works. Absent on the BC75XLT -- `ERR` in
+    /// both modes, verified 2026-08-26.
+    pub has_battery_save: bool,
+    /// Whether `CNT` (LCD contrast) works. Absent on the BC75XLT, which has no
+    /// contrast setting in its own menus either.
+    pub has_contrast: bool,
+    /// Whether `WXS` (weather alert priority) works. Absent on the BC75XLT.
+    pub has_weather_alert: bool,
+    /// Whether `KBP` (key beep) is accepted outside program mode.
+    ///
+    /// The BC125AT takes it in either mode. The BC75XLT replies `KBP,NG`
+    /// outside program mode -- "invalid at this time" per the vendor spec --
+    /// and `KBP,,0` inside, so its key-beep reads and writes must be bracketed.
+    pub key_beep_needs_program_mode: bool,
     /// Accepted values for the `CIN` delay field, ascending.
     ///
     /// These are genuinely different quantities, not a wider and narrower
@@ -78,7 +101,11 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     has_alpha_tags: true,
     has_per_channel_modulation: true,
     has_tone_squelch: true,
-    has_backlight: true,
+    has_backlight_control: true,
+    has_battery_save: true,
+    has_contrast: true,
+    has_weather_alert: true,
+    key_beep_needs_program_mode: false,
     // Per docs/BC125AT_PROTOCOL.md §5.3. Negatives are pre-delays.
     valid_delays: &[-10, -5, 0, 1, 2, 3, 4, 5],
     cleared_delay: 2,
@@ -97,7 +124,11 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_alpha_tags: false,
     has_per_channel_modulation: false,
     has_tone_squelch: false,
-    has_backlight: false,
+    has_backlight_control: false,
+    has_battery_save: false,
+    has_contrast: false,
+    has_weather_alert: false,
+    key_beep_needs_program_mode: true,
     // Vendor spec: `[DLY] : Delay Time (0:OFF / 1:ON)`.
     valid_delays: &[0, 1],
     // Observed: `CIN,299 -> CIN,299,,00000000,,,0,1,0`.
@@ -208,7 +239,11 @@ mod tests {
         assert!(c.has_alpha_tags);
         assert!(c.has_per_channel_modulation);
         assert!(c.has_tone_squelch);
-        assert!(c.has_backlight);
+        assert!(c.has_backlight_control);
+        assert!(c.has_battery_save);
+        assert!(c.has_contrast);
+        assert!(c.has_weather_alert);
+        assert!(!c.key_beep_needs_program_mode);
     }
 
     // Every value here is from the 2026-08-26 hardware capture and the vendor
@@ -232,8 +267,15 @@ mod tests {
         assert!(!c.has_alpha_tags);
         assert!(!c.has_per_channel_modulation);
         assert!(!c.has_tone_squelch);
-        // BLT is absent from the command table; replies bare ERR.
-        assert!(!c.has_backlight);
+        // BLT is absent from the command table; replies bare ERR. The scanner
+        // still HAS a backlight -- a 15-second button, per the owner's manual.
+        assert!(!c.has_backlight_control);
+        // BSV/CNT/WXS all reply ERR in both modes (settings probe 2026-08-26).
+        assert!(!c.has_battery_save);
+        assert!(!c.has_contrast);
+        assert!(!c.has_weather_alert);
+        // KBP,NG outside program mode; KBP,,0 inside.
+        assert!(c.key_beep_needs_program_mode);
     }
 
     #[test]
