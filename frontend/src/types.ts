@@ -123,8 +123,17 @@ export interface DeviceInfo {
   serial_number?: string | null;
   description?: string | null;
   connection_status: 'connected' | 'disconnected' | 'connecting';
+  /** A CONNECTION problem, cleared the moment a connect succeeds. */
   diagnostic_code?: string | null;
   diagnostic_message?: string | null;
+  /**
+   * A problem with the stored DATA — true regardless of the scanner, and
+   * cleared only when its cause is. Surfaced by `DataDiagnosticBanner`, which
+   * must not be gated on `connection_status`: the whole point is that this is
+   * still true while the scanner is connected and everything looks fine.
+   */
+  data_diagnostic_code?: string | null;
+  data_diagnostic_message?: string | null;
   /**
    * Absent until a scanner identifies itself. Consumers should use
    * `useScannerCapabilities()` rather than reading this directly — it supplies

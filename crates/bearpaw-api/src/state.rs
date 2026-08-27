@@ -100,10 +100,37 @@ pub struct DeviceInfo {
     pub firmware: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub serial_number: Option<String>,
+    /// A problem with the CONNECTION, cleared the moment one succeeds.
+    ///
+    /// Correct for `usb_detected_no_serial_endpoint`, `unsupported_model` and
+    /// friends: connecting is what resolves them, so the connect path in
+    /// `api::poll` blanks this pair on every successful open. Anything whose
+    /// cause a connection does NOT fix belongs in `data_diagnostic_*` instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic_message: Option<String>,
+    /// A problem with the stored DATA, true regardless of the scanner and
+    /// cleared only when its cause is.
+    ///
+    /// REGRESSION GUARD (`migration_diagnostic_survives_a_connect`): a failed
+    /// migration used to be written into `diagnostic_code`, which the connect
+    /// path clears on every successful open -- so the one channel #418 chose
+    /// to carry it was wiped before any user could see it, and only stayed
+    /// visible for someone whose scanner was ALSO unplugged. Two more gates
+    /// compounded it: `App.tsx` renders `diagnostic_message` only while
+    /// `connection_status === "disconnected"`, and `DeviceTab` only if you
+    /// visit that tab -- no reason to, with a scanner working fine.
+    ///
+    /// The split is structural rather than an exception list in the connect
+    /// path: a `code != "migration_failed"` check would need every future
+    /// persistent diagnostic to remember to add itself, and the one that
+    /// forgets reintroduces exactly this bug. Two fields with two lifetimes
+    /// mean the connect path CANNOT reach this one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_diagnostic_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_diagnostic_message: Option<String>,
     /// Memory model and feature set of the connected scanner, resolved from the
     /// `MDL` reply at connect. Lives on `DeviceInfo` rather than as a sibling
     /// `AppState` field so `model` and `capabilities` are always read under one
@@ -120,6 +147,23 @@ pub struct DeviceInfo {
     /// request body), so nothing is lost.
     #[serde(skip_serializing_if = "Option::is_none", skip_deserializing)]
     pub capabilities: Option<crate::protocol::capabilities::ScannerCapabilities>,
+}
+
+impl DeviceInfo {
+    /// Clear the CONNECTION diagnostic, leaving the data diagnostic alone.
+    ///
+    /// REGRESSION GUARD (`clearing_a_connection_diagnostic_leaves_the_data_one`):
+    /// every connect path calls this instead of assigning the two fields
+    /// inline. Inline assignment is how the bug happened -- three separate
+    /// sites in `api::poll` each blanked `diagnostic_*`, which was correct
+    /// until a second kind of diagnostic moved in beside it. Routing the clear
+    /// through one method means a future persistent diagnostic is safe by
+    /// default rather than safe only if whoever adds it remembers all three
+    /// sites.
+    pub fn clear_connection_diagnostic(&mut self) {
+        self.diagnostic_code = None;
+        self.diagnostic_message = None;
+    }
 }
 
 /// Kind of tone squelch carried on a channel. The BC125AT wire field is an
