@@ -25,6 +25,29 @@ const KNOWN_SCANNER_USB_IDS: &[(u16, u16)] = &[
 /// `docs/BC125AT_PROTOCOL.md` §5.1.
 const ACCEPTED_MDL_MODELS: &[&str] = &["BC125AT", "BCT125AT", "UBC125XLT", "UBC126AT", "AE125H"];
 
+/// Is this `MDL` model string a scanner Bearpaw can drive?
+///
+/// Exposed as a predicate rather than publishing `ACCEPTED_MDL_MODELS` so the
+/// case-insensitive comparison lives in exactly one place. A caller handed the
+/// raw slice would reach for `.contains(&model)`, which is an exact-match test
+/// and would reject an otherwise-valid lowercase reply.
+///
+/// This is the gate that keeps BC125AT-family *memory-model* constants safe --
+/// the fixed 1-500 / 10-bank layout in `protocol::channel_to_bank`, the
+/// `CIN,1..500` walk in `api::memory_sync`, and the 10-character `SCG` mask.
+/// Those are family assumptions, not protocol assumptions: a BC75XLT speaks
+/// the same wire protocol with 300 channels. See #389.
+pub fn is_supported_model(model: &str) -> bool {
+    ACCEPTED_MDL_MODELS
+        .iter()
+        .any(|known| model.eq_ignore_ascii_case(known))
+}
+
+/// The models Bearpaw drives, formatted for a user-facing message.
+pub fn supported_models_list() -> String {
+    ACCEPTED_MDL_MODELS.join(", ")
+}
+
 /// Sidecar filename for the most-recently-confirmed scanner. Lets us prefer
 /// the same physical unit across reconnects when multiple scanners would
 /// otherwise tie.
@@ -232,21 +255,87 @@ pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
     None
 }
 
-/// Walk rusb's device list and return the first VID/PID matching a known
-/// Uniden scanner. Returns None on enumeration error or no match.
+/// Rank a USB device as a scanner candidate. Lower is better; `None` means
+/// "not a candidate".
+///
+/// See `rank_usb_candidate` docs for why the Uniden-VID tier exists.
+fn usb_candidate_rank(vid: u16, pid: u16) -> Option<u8> {
+    if KNOWN_SCANNER_USB_IDS.contains(&(vid, pid)) {
+        return Some(0);
+    }
+    if vid == UNIDEN_VID {
+        return Some(1);
+    }
+    None
+}
+
+/// Walk rusb's device list and return the best scanner candidate's VID/PID.
+///
+/// Two tiers, best-first:
+///
+/// 0. VID/PID present in `KNOWN_SCANNER_USB_IDS` — a scanner we have seen.
+/// 1. Any device on `UNIDEN_VID` — Uniden owns that vendor ID, so the device
+///    is a Uniden product even if we have not catalogued this PID.
+///
+/// Tier 1 exists because `KNOWN_SCANNER_USB_IDS` was the sole gate on this
+/// path while `ACCEPTED_MDL_MODELS` carries five models against two PIDs. On
+/// macOS no serial node appears (see `CLAUDE.md` -> "macOS USB transport"), so
+/// this function is the *only* discovery path, and a supported scanner on an
+/// uncatalogued PID reported the generic "no scanner found" (#392). The serial
+/// path already matched loosely on `"uniden"` product strings in `score_port`;
+/// this brings the USB path to parity.
+///
+/// Tier 1 asserts nothing about which model a PID is — it says "this is a
+/// Uniden device, ask it what it is". The answer comes from `MDL` on the wire
+/// and is checked against `is_supported_model` at the connect chokepoint in
+/// `api::poll::update_device_info_from_mdl`. That keeps the captures-win rule
+/// in `CLAUDE.md` satisfied: no unverified PID-to-model mapping enters the
+/// tree.
+///
+/// Ordering is load-bearing. A known PID must always win over an uncatalogued
+/// one so the common case is unchanged and a non-scanner Uniden peripheral
+/// (cordless base, dash cam) can never displace a real scanner.
+///
+/// Test: `known_pid_outranks_unknown_uniden_pid`.
 fn probe_known_scanner_via_usb() -> Option<(u16, u16)> {
     use rusb::UsbContext;
     let ctx = rusb::Context::new().ok()?;
     let devices = ctx.devices().ok()?;
+
+    let mut best: Option<(u8, u16, u16)> = None;
     for dev in devices.iter() {
         let Ok(desc) = dev.device_descriptor() else {
             continue;
         };
-        for &(vid, pid) in KNOWN_SCANNER_USB_IDS {
-            if desc.vendor_id() == vid && desc.product_id() == pid {
-                return Some((vid, pid));
-            }
+        let (vid, pid) = (desc.vendor_id(), desc.product_id());
+        let Some(rank) = usb_candidate_rank(vid, pid) else {
+            continue;
+        };
+        if best.is_none_or(|(best_rank, _, _)| rank < best_rank) {
+            best = Some((rank, vid, pid));
         }
+        // Rank 0 is the best possible; no point walking the rest of the bus.
+        if rank == 0 {
+            break;
+        }
+    }
+
+    if let Some((rank, vid, pid)) = best {
+        if rank > 0 {
+            // warn! so it lands in a log the user actually sends us. This is
+            // the report path for an uncatalogued PID -- see #392. Deliberately
+            // log-only: the scanner works, and a UI nudge on a working device
+            // is worse UX than silence.
+            warn!(
+                "Found a Uniden device at {:04x}:{:04x} that is not in the known-scanner \
+                 PID list. Treating it as a scanner candidate; the MDL reply decides. \
+                 If Bearpaw works with this device, please report this USB ID at \
+                 https://github.com/jeremyfuksa/bearpaw/issues so it can be recognised \
+                 directly.",
+                vid, pid
+            );
+        }
+        return Some((vid, pid));
     }
     None
 }
@@ -334,10 +423,7 @@ fn probe_mdl_on_port(port_name: &str, baud: u32) -> MdlProbe {
     let Some(model) = crate::protocol::parse_mdl_response(&response) else {
         return MdlProbe::NoReply;
     };
-    if ACCEPTED_MDL_MODELS
-        .iter()
-        .any(|known| model.eq_ignore_ascii_case(known))
-    {
+    if is_supported_model(&model) {
         debug!("MDL probe on {}: matched model {}", port_name, model);
         MdlProbe::Supported
     } else {
@@ -352,7 +438,7 @@ fn probe_mdl_on_port(port_name: &str, baud: u32) -> MdlProbe {
              Please report this model at https://github.com/jeremyfuksa/bearpaw/issues so support can be considered.",
             port_name,
             model,
-            ACCEPTED_MDL_MODELS.join(", ")
+            supported_models_list()
         );
         MdlProbe::Unsupported
     }
@@ -470,6 +556,50 @@ mod tests {
         let _ = fs::write(&path, b"not json at all");
         assert!(load_last_scanner_cache().is_none());
         let _ = fs::remove_file(&path);
+    }
+
+    /// REGRESSION GUARD (#392): a catalogued PID must always outrank an
+    /// uncatalogued Uniden device.
+    ///
+    /// `probe_known_scanner_via_usb` walks the bus in arbitrary order, so
+    /// without an explicit rank a non-scanner Uniden peripheral (cordless
+    /// base, dash cam) enumerated before the scanner would be returned
+    /// instead of it. Widening detection is only safe while the known PID
+    /// still wins.
+    #[test]
+    fn known_pid_outranks_unknown_uniden_pid() {
+        let known = usb_candidate_rank(UNIDEN_VID, 0x0017).expect("known PID must be a candidate");
+        let unknown =
+            usb_candidate_rank(UNIDEN_VID, 0x00ff).expect("any Uniden VID must be a candidate");
+        assert!(
+            known < unknown,
+            "a catalogued PID (rank {known}) must outrank an uncatalogued Uniden \
+             device (rank {unknown}), or bus enumeration order decides which \
+             device we open"
+        );
+    }
+
+    /// Tier 1 is what makes a supported scanner on an uncatalogued PID
+    /// discoverable on macOS at all. Pinning it so a future "tighten this
+    /// back up" change has to confront #392 rather than silently restoring
+    /// the "no scanner found" bug.
+    #[test]
+    fn uncatalogued_uniden_pid_is_still_a_candidate() {
+        assert!(
+            usb_candidate_rank(UNIDEN_VID, 0x00ff).is_some(),
+            "an unknown PID on Uniden's vendor ID must be probed; the MDL reply \
+             is what decides, not the PID table"
+        );
+    }
+
+    /// The widening is scoped to Uniden's vendor ID. A random third-party
+    /// device must never be opened and written to.
+    #[test]
+    fn non_uniden_vid_is_not_a_candidate() {
+        assert!(
+            usb_candidate_rank(0x05ac, 0x1234).is_none(),
+            "a non-Uniden VID must not be a scanner candidate"
+        );
     }
 
     #[test]
