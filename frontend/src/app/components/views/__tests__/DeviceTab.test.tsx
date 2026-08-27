@@ -435,6 +435,34 @@ describe('DeviceTab', () => {
       expect(screen.queryByLabelText('Battery Saver')).not.toBeInTheDocument();
     });
 
+    // With two supported families, a user with both scanners otherwise has no
+    // in-app way to confirm which one Bearpaw is driving.
+    it('names the detected scanner and its memory capacity', async () => {
+      useStore.setState({
+        deviceInfo: {
+          ...createTestDeviceInfo(),
+          model: 'BC75XLT',
+          capabilities: BC75XLT_CAPS,
+        },
+      });
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      expect(screen.getByText('BC75XLT')).toBeInTheDocument();
+      expect(screen.getByText(/300 ch/)).toBeInTheDocument();
+      expect(screen.getByText(/10×30/)).toBeInTheDocument();
+    });
+
+    // Bearpaw drives two families now, so naming one when nothing is connected
+    // is a guess presented as fact.
+    it('does not guess a model when nothing is connected', async () => {
+      useStore.setState({ deviceInfo: null });
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      expect(screen.queryByText('BC125AT')).not.toBeInTheDocument();
+    });
+
     // The same controls must still be there for scanners that have them — a
     // gate that hides everything passes the test above and breaks the app.
     it('keeps them for a BC125AT-family scanner', async () => {

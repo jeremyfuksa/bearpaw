@@ -1195,7 +1195,10 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex justify-between">
                   <span className="text-white/50">Model</span>
-                  <span className="text-white">{deviceInfo?.model ?? 'BC125AT'}</span>
+                  {/* No 'BC125AT' fallback: Bearpaw drives two families now, so
+                      naming one when nothing is connected is a guess presented
+                      as fact. */}
+                  <span className="text-white">{deviceInfo?.model ?? '—'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/50">Port</span>
@@ -1208,6 +1211,18 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 <div className="flex justify-between">
                   <span className="text-white/50">Firmware</span>
                   <span className="text-white">{firmware ?? '—'}</span>
+                </div>
+                {/* Capacity varies by model — 500 channels in banks of 50 on the
+                    BC125AT family, 300 in banks of 30 on the BC75XLT. With two
+                    supported families a user with both scanners otherwise has no
+                    in-app way to confirm which one Bearpaw is driving. */}
+                <div className="flex justify-between">
+                  <span className="text-white/50">Memory</span>
+                  <span className="text-white">
+                    {deviceInfo?.capabilities
+                      ? `${capabilities.channel_count} ch · ${capabilities.bank_count}×${capabilities.channels_per_bank}`
+                      : '—'}
+                  </span>
                 </div>
               </div>
               {deviceInfo?.diagnostic_message && (
