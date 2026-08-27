@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Download, Calendar, Trash2 } from 'lucide-react';
+import { Download, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { cn } from '../../../lib/utils';
-import { getAPI, API_BASE } from '../../../api/useApi';
+import { API_BASE } from '../../../api/useApi';
 import { saveExport } from '../../../tauri-shell';
 
 interface ActivityExportSheetProps {
@@ -59,7 +59,6 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const api = getAPI();
 
   const getTimeframeLabel = (timeframe: Timeframe): string => {
     switch (timeframe) {
@@ -157,19 +156,6 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
     }
   };
 
-  const handleCleanup = async () => {
-    setIsExporting(true);
-    try {
-      await api.cleanupAnalytics();
-      toast.success('Analytics data cleaned up');
-    } catch (error) {
-      console.error('Failed to cleanup analytics', error);
-      toast.error('Failed to cleanup analytics');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   return (
     <Dialog
       open={isOpen}
@@ -261,16 +247,6 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
           >
             <Download size={20} aria-hidden="true" />
             {isExporting ? 'Exporting...' : 'Download CSV'}
-          </button>
-          <button
-            type="button"
-            onClick={handleCleanup}
-            disabled={isExporting}
-            aria-busy={isExporting}
-            className="flex w-full items-center justify-center gap-2 rounded border border-destructive bg-destructive py-3 text-sm font-bold uppercase tracking-wider text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Trash2 size={20} aria-hidden="true" />
-            {isExporting ? 'Cleaning...' : 'Cleanup Analytics'}
           </button>
         </div>
       </DialogContent>

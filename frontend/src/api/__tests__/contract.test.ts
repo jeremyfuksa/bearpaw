@@ -115,7 +115,6 @@ const CALLS: Array<[string, (c: ScannerAPIClient) => Promise<unknown>]> = [
   ['getSyncStatus', (c) => c.getSyncStatus()],
   ['getAllPreferences', (c) => c.getAllPreferences()],
   ['resetPreferences', (c) => c.resetPreferences()],
-  ['cleanupAnalytics', (c) => c.cleanupAnalytics()],
   ['updateChannel', (c) => c.updateChannel(1, { frequency: 146.52 } as never)],
   ['setBacklight', (c) => c.setBacklight('AO')],
   ['setBatterySettings', (c) => c.setBatterySettings(3)],

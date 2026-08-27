@@ -189,10 +189,6 @@
       "path": "/api/v1/preferences/reset"
     },
     {
-      "method": "POST",
-      "path": "/api/v1/analytics/cleanup"
-    },
-    {
       "method": "GET",
       "path": "/api/v1/analytics/activity-log"
     },

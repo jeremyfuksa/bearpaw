@@ -331,10 +331,6 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/analytics/activity-log",
             get(handlers::analytics::analytics_activity_log),
         )
-        .route(
-            "/api/v1/analytics/cleanup",
-            post(handlers::analytics::analytics_cleanup),
-        )
         .route("/ws", get(ws::ws_handler))
         .layer(security::cors_layer())
         .layer(
@@ -3828,7 +3824,6 @@ mod tests {
         ("GET", "/api/v1/preferences"),
         ("POST", "/api/v1/preferences"),
         ("POST", "/api/v1/preferences/reset"),
-        ("POST", "/api/v1/analytics/cleanup"),
         ("GET", "/api/v1/analytics/activity-log"),
         ("GET", "/api/v1/analytics/busiest-channels"),
         ("GET", "/api/v1/analytics/hourly-heatmap"),

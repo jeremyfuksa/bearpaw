@@ -38,9 +38,7 @@ describe('ActivityExportSheet', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getAPI).mockReturnValue({
-      cleanupAnalytics: vi.fn().mockResolvedValue(undefined),
-    } as any);
+    vi.mocked(getAPI).mockReturnValue({} as any);
     mockFetch([]);
   });
 
