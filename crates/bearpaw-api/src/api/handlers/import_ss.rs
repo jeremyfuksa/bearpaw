@@ -2,32 +2,32 @@ use axum::extract::{Multipart, State};
 use axum::response::Json;
 use serde_json::{json, Value};
 
-use super::exports::import_progress;
 use super::super::{
     command_sender, send_raw_command, split_command_parts, write_channel_no_readback, ApiError,
     AppState, ProgramModeGuard,
 };
+use super::exports::import_progress;
 use crate::protocol::{classify_response, ScannerReply};
 use crate::state::{ChannelData, ToneSquelchKind};
 
 #[derive(Default)]
 pub(crate) struct SsSettings {
-    pub backlight: Option<String>,   // BLT: On->AO Off->AF Key->KY Squelch->SQ K+S->KS
-    pub beep: Option<String>,        // KBP field 1: Auto->0 Off->99 else digits
-    pub key_lock: Option<String>,    // KBP field 2: On->1 Off->0
-    pub contrast: Option<String>,    // CNT
-    pub volume: Option<String>,      // VOL
-    pub squelch: Option<String>,     // SQL
+    pub backlight: Option<String>, // BLT: On->AO Off->AF Key->KY Squelch->SQ K+S->KS
+    pub beep: Option<String>,      // KBP field 1: Auto->0 Off->99 else digits
+    pub key_lock: Option<String>,  // KBP field 2: On->1 Off->0
+    pub contrast: Option<String>,  // CNT
+    pub volume: Option<String>,    // VOL
+    pub squelch: Option<String>,   // SQL
     pub charge_time: Option<String>, // BSV
-    pub priority: Option<String>,    // PRI: Off->0 On->1 Plus->2 DND->3
-    pub wx_pri: Option<String>,      // WXS: On->1 Off->0
+    pub priority: Option<String>,  // PRI: Off->0 On->1 Plus->2 DND->3
+    pub wx_pri: Option<String>,    // WXS: On->1 Off->0
     pub service_flags: Option<String>, // SSG 10-char mask
-    pub scan_flags: Option<String>,    // SCG 10-char bank mask
-    pub custom_flags: Option<String>,  // CSG 10-char mask
+    pub scan_flags: Option<String>, // SCG 10-char bank mask
+    pub custom_flags: Option<String>, // CSG 10-char mask
     pub custom_ranges: Vec<(u8, i64, i64)>, // (index, lower_100hz, upper_100hz)
-    pub search_delay: Option<String>,  // SCO field 1
-    pub search_code: Option<String>,   // SCO field 2 (On->1 Off->0)
-    pub cc_mode: Option<String>,       // CloseCall field: Off->0 Pri->1 DND->2
+    pub search_delay: Option<String>, // SCO field 1
+    pub search_code: Option<String>, // SCO field 2 (On->1 Off->0)
+    pub cc_mode: Option<String>,   // CloseCall field: Off->0 Pri->1 DND->2
     pub cc_beep: Option<String>,
     pub cc_light: Option<String>,
     pub cc_lockout: Option<String>,
@@ -42,11 +42,19 @@ pub(crate) struct SsConfig {
 
 fn on_to_mask_bit(v: &str) -> char {
     // On -> enabled -> '0'; Off/anything -> disabled -> '1'
-    if v.eq_ignore_ascii_case("On") { '0' } else { '1' }
+    if v.eq_ignore_ascii_case("On") {
+        '0'
+    } else {
+        '1'
+    }
 }
 
 fn on_off_to_flag(v: &str) -> &'static str {
-    if v.eq_ignore_ascii_case("On") { "1" } else { "0" }
+    if v.eq_ignore_ascii_case("On") {
+        "1"
+    } else {
+        "0"
+    }
 }
 
 pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
@@ -62,10 +70,17 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
         let f: Vec<&str> = line.split('\t').collect();
         match f.first().copied() {
             Some("Misc") if f.len() >= 8 => {
-                s.backlight = Some(match f[1] {
-                    "On" => "AO", "Off" => "AF", "Key" => "KY",
-                    "Squelch" => "SQ", "K+S" => "KS", _ => "AF",
-                }.to_string());
+                s.backlight = Some(
+                    match f[1] {
+                        "On" => "AO",
+                        "Off" => "AF",
+                        "Key" => "KY",
+                        "Squelch" => "SQ",
+                        "K+S" => "KS",
+                        _ => "AF",
+                    }
+                    .to_string(),
+                );
                 s.beep = Some(match f[2] {
                     "Auto" => "0".to_string(),
                     "Off" => "99".to_string(),
@@ -78,21 +93,31 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
                 s.charge_time = Some(f[7].to_string());
             }
             Some("Priority") if f.len() >= 2 => {
-                s.priority = Some(match f[1] {
-                    "On" => "1", "Plus" => "2", "DND" => "3", _ => "0",
-                }.to_string());
+                s.priority = Some(
+                    match f[1] {
+                        "On" => "1",
+                        "Plus" => "2",
+                        "DND" => "3",
+                        _ => "0",
+                    }
+                    .to_string(),
+                );
             }
             Some("WxPri") if f.len() >= 2 => {
                 s.wx_pri = Some(on_off_to_flag(f[1]).to_string());
             }
             Some("Service") if f.len() >= 4 => {
                 if let Ok(idx) = f[1].parse::<usize>() {
-                    if (1..=10).contains(&idx) { service[idx - 1] = on_to_mask_bit(f[3]); }
+                    if (1..=10).contains(&idx) {
+                        service[idx - 1] = on_to_mask_bit(f[3]);
+                    }
                 }
             }
             Some("Conventional") if f.len() >= 4 => {
                 if let Ok(idx) = f[1].parse::<usize>() {
-                    if (1..=10).contains(&idx) { scan[idx - 1] = on_to_mask_bit(f[3]); }
+                    if (1..=10).contains(&idx) {
+                        scan[idx - 1] = on_to_mask_bit(f[3]);
+                    }
                 }
             }
             Some("Custom") if f.len() >= 6 => {
@@ -111,26 +136,35 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
                 s.search_code = Some(on_off_to_flag(f[2]).to_string());
             }
             Some("CloseCall") if f.len() >= 5 => {
-                s.cc_mode = Some(match f[1] {
-                    "Pri" => "1", "DND" => "2", _ => "0",
-                }.to_string());
+                s.cc_mode = Some(
+                    match f[1] {
+                        "Pri" => "1",
+                        "DND" => "2",
+                        _ => "0",
+                    }
+                    .to_string(),
+                );
                 s.cc_beep = Some(on_off_to_flag(f[2]).to_string());
                 s.cc_light = Some(on_off_to_flag(f[3]).to_string());
                 s.cc_lockout = Some(on_off_to_flag(f[4]).to_string());
             }
             Some("CloseCallBands") if f.len() >= 6 => {
                 let bands: String = (1..=5)
-                    .map(|i| if f[i].eq_ignore_ascii_case("On") { '1' } else { '0' })
+                    .map(|i| {
+                        if f[i].eq_ignore_ascii_case("On") {
+                            '1'
+                        } else {
+                            '0'
+                        }
+                    })
                     .collect();
                 s.cc_bands = Some(bands);
             }
-            Some("C-Freq") if f.len() >= 9 => {
-                match parse_ss_channel(&f) {
-                    Ok(Some(ch)) => channels.push(ch),
-                    Ok(None) => {}
-                    Err(e) => errors.push(e),
-                }
-            }
+            Some("C-Freq") if f.len() >= 9 => match parse_ss_channel(&f) {
+                Ok(Some(ch)) => channels.push(ch),
+                Ok(None) => {}
+                Err(e) => errors.push(e),
+            },
             _ => {} // unknown line type: ignore (forward-compatible)
         }
     }
@@ -138,7 +172,11 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
     s.scan_flags = Some(scan.iter().collect());
     s.service_flags = Some(service.iter().collect());
     s.custom_flags = Some(custom_enabled.iter().collect());
-    SsConfig { settings: s, channels, errors }
+    SsConfig {
+        settings: s,
+        channels,
+        errors,
+    }
 }
 
 fn parse_ss_channel(f: &[&str]) -> Result<Option<ChannelData>, String> {
@@ -147,7 +185,9 @@ fn parse_ss_channel(f: &[&str]) -> Result<Option<ChannelData>, String> {
     if !(1..=500).contains(&index) {
         return Err(format!("C-Freq index out of range: {}", index));
     }
-    let freq_hz: i64 = f[3].parse().map_err(|_| "bad C-Freq frequency".to_string())?;
+    let freq_hz: i64 = f[3]
+        .parse()
+        .map_err(|_| "bad C-Freq frequency".to_string())?;
     if freq_hz == 0 {
         return Ok(None); // empty slot
     }
@@ -272,7 +312,12 @@ pub(crate) async fn import_bc125at_ss(
         }
         if total > 0 && (n + 1) % 10 == 0 {
             let pct = ((n + 1) * 80 / total) as u8;
-            import_progress(&state, "import-ss", pct, &format!("Importing {}/{}", n + 1, total));
+            import_progress(
+                &state,
+                "import-ss",
+                pct,
+                &format!("Importing {}/{}", n + 1, total),
+            );
         }
     }
 

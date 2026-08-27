@@ -19,8 +19,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-const RELEASES_URL: &str =
-    "https://api.github.com/repos/jeremyfuksa/bearpaw/releases?per_page=20";
+const RELEASES_URL: &str = "https://api.github.com/repos/jeremyfuksa/bearpaw/releases?per_page=20";
 
 /// Total budget for the check. Startup runs this off-thread, but a hung
 /// socket should still resolve to "no update" rather than linger.

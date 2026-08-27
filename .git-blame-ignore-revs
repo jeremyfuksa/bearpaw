@@ -1,0 +1,14 @@
+# Revisions to skip when running `git blame`.
+#
+# Only bulk mechanical reformats belong here — commits that touched many lines
+# without changing behavior, and which would otherwise make `git blame` point at
+# the reformat instead of the commit that wrote the logic.
+#
+# Enable locally (one time, per clone):
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub applies this file automatically in its blame view.
+
+# style: apply cargo fmt across the workspace (#394)
+286483fca3167cf17788d3be67240f4742fbd3ae

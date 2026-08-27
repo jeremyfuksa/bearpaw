@@ -254,8 +254,14 @@ mod tests {
         // change, or an endpoint is added, the clear_halt calls in `open()`
         // must be revisited to match. See the guard comment at the call site.
         let t = UsbTransport::new(crate::config::UNIDEN_VID, 0x0017);
-        assert_eq!(t.ep_in, 0x81, "IN endpoint changed — update open()'s clear_halt");
-        assert_eq!(t.ep_out, 0x02, "OUT endpoint changed — update open()'s clear_halt");
+        assert_eq!(
+            t.ep_in, 0x81,
+            "IN endpoint changed — update open()'s clear_halt"
+        );
+        assert_eq!(
+            t.ep_out, 0x02,
+            "OUT endpoint changed — update open()'s clear_halt"
+        );
     }
 
     #[test]

@@ -63,11 +63,15 @@ fn build_cin_write_payload(channel: &ChannelData) -> Result<String, String> {
         ToneSquelchKind::None => 0,
         ToneSquelchKind::Search => 127,
         ToneSquelchKind::Ctcss => {
-            let hz = channel.tone_squelch.ok_or_else(|| "tone_missing".to_string())?;
+            let hz = channel
+                .tone_squelch
+                .ok_or_else(|| "tone_missing".to_string())?;
             tones::ctcss_hz_to_code(hz).ok_or_else(|| format!("tone_invalid (hz={hz})"))?
         }
         ToneSquelchKind::Dcs => {
-            let code = channel.tone_dcs_code.ok_or_else(|| "tone_missing".to_string())?;
+            let code = channel
+                .tone_dcs_code
+                .ok_or_else(|| "tone_missing".to_string())?;
             if tones::dcs_code_to_number(code).is_none() {
                 return Err(format!("tone_invalid (dcs_code={code})"));
             }

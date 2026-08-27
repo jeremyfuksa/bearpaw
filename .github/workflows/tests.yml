@@ -27,6 +27,20 @@ jobs:
       - uses: actions/checkout@v7
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          # rustfmt ships with the stable toolchain by default; naming it makes
+          # the dependency of the format check below visible rather than
+          # incidental.
+          components: rustfmt
+      # Runs before the cache restore and the build because it needs neither:
+      # `cargo fmt --check` only parses and prints, so a formatting failure
+      # reports in seconds instead of after a multi-minute compile.
+      #
+      # `--all` rather than `-p bearpaw-api` deliberately: the drift this guard
+      # was added for (#394) included two files in frontend/src-tauri, and
+      # `--all` is also what a developer runs locally.
+      - name: Check formatting
+        run: cargo fmt --all -- --check
       - name: Cache Rust
         uses: actions/cache@v6
         with:

@@ -87,9 +87,8 @@ pub fn ctcss_code_to_hz(code: u16) -> Option<f64> {
 /// `None` as a validation error — never write raw Hz into the wire code
 /// field (that was #132: CTCSS 100.0 Hz wrote code 100, a different tone).
 pub fn ctcss_hz_to_code(hz: f64) -> Option<u16> {
-    (64u16..=113).find(|&code| {
-        ctcss_code_to_hz(code).is_some_and(|canonical| (canonical - hz).abs() < 0.05)
-    })
+    (64u16..=113)
+        .find(|&code| ctcss_code_to_hz(code).is_some_and(|canonical| (canonical - hz).abs() < 0.05))
 }
 
 /// Translate a DCS code (128–231) to its 3-digit Motorola designation.
@@ -287,7 +286,11 @@ mod tests {
             // Survives float jitter from a JSON round-trip.
             assert_eq!(ctcss_hz_to_code(hz + 0.01), Some(code));
         }
-        assert_eq!(ctcss_hz_to_code(100.5), None, "non-canonical Hz must not encode");
+        assert_eq!(
+            ctcss_hz_to_code(100.5),
+            None,
+            "non-canonical Hz must not encode"
+        );
         assert_eq!(ctcss_hz_to_code(0.0), None);
         assert_eq!(ctcss_hz_to_code(-67.0), None);
     }

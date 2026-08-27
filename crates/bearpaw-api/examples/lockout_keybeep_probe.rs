@@ -82,7 +82,9 @@ fn main() {
     let beep_orig = beep_of(&kbp_orig).unwrap_or_else(|| "0".to_string());
     let lock_orig = {
         let f: Vec<&str> = kbp_orig.split(',').collect();
-        f.get(2).map(|s| s.trim().to_string()).unwrap_or_else(|| "0".to_string())
+        f.get(2)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "0".to_string())
     };
     println!("--- KBP original: beep={beep_orig} keylock={lock_orig}");
 
