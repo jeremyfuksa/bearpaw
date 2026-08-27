@@ -29,7 +29,7 @@ describe('computeLocalHeatmap', () => {
     expect(hourlyHeatmap).toHaveLength(7);
     expect(hourlyHeatmap.every((row) => row.length === 24)).toBe(true);
     expect(hourlyHeatmap.every((row) => row.every((c) => c === 0))).toBe(true);
-    expect(heatmapStats).toEqual({ min: 0, max: 0, avg: 0 });
+    expect(heatmapStats).toEqual({ max: 0 });
   });
 
   it('buckets a hit by local day/hour, not UTC', () => {
@@ -113,7 +113,7 @@ describe('computeLocalHeatmap', () => {
     expect(hourlyHeatmap[6][9]).toBe(1);
   });
 
-  it('reports stats only for populated cells', () => {
+  it('reports the busiest cell count, ignoring empty cells', () => {
     const now = Date.now() / 1000;
     const { heatmapStats } = computeLocalHeatmap(
       [
@@ -122,9 +122,8 @@ describe('computeLocalHeatmap', () => {
       ],
       2,
     );
-    // Two populated cells with count=1 each → min=max=avg=1
-    expect(heatmapStats.min).toBe(1);
+    // Two populated cells with count=1 each. `max` is what drives colour
+    // intensity; the 166 empty cells must not drag it down.
     expect(heatmapStats.max).toBe(1);
-    expect(heatmapStats.avg).toBe(1);
   });
 });
