@@ -3,12 +3,14 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    # Code review has nothing to say about a PDF or a changelog entry. Prose
+    # changes get human review; this workflow is for code.
+    paths:
+      - "crates/**"
+      - "frontend/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/claude-code-review.yml"
 
 jobs:
   claude-review:

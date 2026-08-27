@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # CodeQL analyzes JS/TS and Rust; a docs-only PR gives it nothing to scan.
+    # Coverage does not lapse: pushes to `main` and the weekly cron below both
+    # run unfiltered, so any code that lands is still analyzed.
+    paths:
+      - "crates/**"
+      - "frontend/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/codeql.yml"
   schedule:
     # Weekly full scan (Mondays 07:11 UTC) so newly-disclosed query patterns
     # catch existing code even when nothing is being pushed.
