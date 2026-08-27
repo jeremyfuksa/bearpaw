@@ -1,0 +1,402 @@
+                                    < BC75XLT Operation Specification >
+
+
+9 PC programming Command
+ 【 FORMAT OF THIS DOCUMENT 】
+
+  <COMMAND NAME>
+    Summary explanation of the function of the command
+
+    Controller → Radio
+     Command format
+    Radio → Controller
+     Response format
+
+    NOTE
+     1. Any command is required to wait a response from the scanner, then, next command will be acceptable.
+     2. All memory access commands are acceptable in only Program Mode.
+        Use PRG command to enter Program Mode, and EPG command to exit.
+     3. Error message isn't described in this document, but the scanner returns error message to the controller
+        as follows.
+
+         1) Command format error / Value error           : ERR[¥r]
+         2) The command is invalid at the time           : NG[¥r]
+
+       4. [¥r] means "to hit the Enter key" or "to send the Return code".
+       5. In set command, only "," parameters are not changed.
+       6. The set command is aborted if any format error is detected.
+
+  【 Virtual Serial port settng 】
+   Buadrate              57600bps
+   Start bit             1bit
+   Stop bit              1bit
+   Data length           8bit
+   Parity                none
+   Flow control          none
+
+                                                                                                 Program
+ No.              Category               Command                       Function                   Mode
+                                                                                                   Only
+  1. Program Control Mode                  PRG      Enter Program Mode
+  2.                                       EPG      Exit Program Mode
+  3. System Information                    MDL      Get Model Info
+  4.                                       VER      Get Firmware Version
+  5. System Settings                       CLR      Clear All Memory                                O
+  6.                                       BPL      Get/Set Band Plan                               O
+  7.                                       KBP      Get/Set Key setting                             O
+  8.                                       PRI      Get/Set Priority Mode                           O
+  9. Scan Settings                         SCG      Get/Set Group Quick Lockout                     O
+  10.                                      CIN      Get/Set Channel Info                            O
+  11.Search / Close Call Settings          SCO      Get/Set Search/Close Call Settings              O
+  12.                                      GLF      Get Global Lockout Freq                         O
+  13.                                      ULF      Unlock Global L/O                               O
+  14.                                      LOF      Lock Out Frequency                              O
+  15.                                      CLC      Get/Set Close Call Settings                     O
+  16.Service Search Settings               SSP      Get/Set Service Search Settings                 O
+  17.Custom Search Settings                CSG      Get/Set Custom Search Group                     O
+  18.                                      CSP      Get/Set Custom Search Settings                  O
+  19.Volume Level Settings                 VOL      Get/Set Volume Level Settings
+  20.Squelch Level Settings                SQL      Get/Set Squelch Level Settings
+
+
+
+                                                    58                               02.09 JQD824ZF002 R0
+                                     < BC75XLT Operation Specification >
+
+<COMMAND PRG>
+  Enter Program Mode
+  Controller → Radio
+    ①      PRG[¥r]
+  Radio → Controller
+    ①      PRG,OK[¥r]
+    ②      PRG,NG[¥r]
+
+
+             The scanner goes to Program Mode.
+             The scanner displays "PC" and Key lock and PGM icons .
+
+<COMMAND EPG>
+  Exit Program Mode
+  Controller → Radio
+    ①      EPG[¥r]
+  Radio → Controller
+    ①      EPG,OK[¥r]
+
+             The scanner exits from Program Mode.
+             Then the scanner goes to Scan Hold Mode.
+
+<COMMAND MDL>
+  Get Model Info
+  Controller → Radio
+    ①      MDL[¥r]
+  Radio → Controller
+    ①      MDL,BC75XLT[¥r]
+
+             Returns Model Information.
+
+<COMMAND VER>
+  Get Firmware Version
+  Controller → Radio
+    ①      VER[¥r]
+  Radio → Controller
+    ①      VER,Version 1.00.00[¥r]
+
+             Returns Firmware Version.
+
+<COMMAND CLR>
+  Clear All Memory
+  Controller → Radio
+    ① CLR[¥r]
+  Radio → Controller
+    ① CLR,OK[¥r]
+
+             All the memories are set for initial setting.
+             This command is only acceptable in Programming Mode.
+
+           Note :
+             It takes dozens of seconds.
+
+
+
+
+                                                   59                      02.09 JQD824ZF002 R0
+                                     < BC75XLT Operation Specification >
+
+<COMMAND BPL>
+  Get/Set Band Plan
+  Controller → Radio
+    ① BPL[¥r]
+    ② BPL,[PLAN][¥r]
+  Radio → Controller
+    ① BPL,[PLAN][¥r]
+    ② BPL,OK[¥r]
+
+       [PLAN] : Band Plan (0:USA / 1:Canada)
+
+       This command is only acceptable in Programming Mode.
+       Band Plan setting affects frequency step. Issue this command before frequency programming.
+
+<COMMAND KBP>
+  Get/Set Key setting
+  Controller → Radio
+    ①      KBP[¥r]
+    ②      KBP,[RSV],[LOCK][¥r]
+  Radio → Controller
+    ①      KBP,[ RSV],[LOCK][¥r]
+    ②      KBP,OK[¥r]
+
+          [LOCK]            : Key Lock status (0:OFF / 1:ON)
+
+             This command is only acceptable in Programming Mode.
+
+<COMMAND PRI>
+  Get/Set Priority Mode
+  Controller → Radio
+    ①      PRI[¥r]       : Get Priority Mode Setting
+    ②      PRI,[PRI_MODE][¥r]
+  Radio → Controller
+    ①      PRI,[PRI_MODE][¥r]
+    ②      PRI,OK[¥r]
+
+                   [PRI_MODE]        : Priority Setting        (0:OFF / 1:ON / 2:PLUS ON / 3:DND)
+
+             Get/Set Priority Mode.
+             This command is only acceptable in Programming Mode.
+
+  <COMMAND SCG>
+  Get/Set SCAN Channel Group
+  Controller → Radio
+    ①      SCG,[¥r]
+    ②      SCG,##########[¥r]
+  Radio → Controller
+    ①      SCG,##########[¥r]
+    ②      SCG,OK[¥r]
+
+                   ########## (each # is 0 or 1)           :         0 : valid   / 1 : invalid
+
+             The Order of Range is as same as LCD Icon (1 – 10).
+             Get/Set current status of the channel starage bank select.
+             This command is only acceptable in Programming Mode.
+             *It can not set all channel strage banks to "1".
+
+
+
+
+                                                      60                                         02.09 JQD824ZF002 R0
+                                   < BC75XLT Operation Specification >
+
+<COMMAND CIN>
+Get/Set Channel Info
+Controller → Radio
+  ①      CIN,[INDEX][¥r]
+  ②      CIN,[INDEX],[RSV],[FRQ],[RSV],[RSV],[DLY],[LOUT],[PRI][¥r]
+Radio → Controller
+  ①      CIN,[INDEX],[RSV],[FRQ],[RSV],[RSV],[DLY],[LOUT],[PRI][¥r]
+  ②      CIN,OK[¥r]
+
+           [INDEX]                 : Channel Index(1-300)
+           [FRQ]                   : Channel Frequency ex) 290000
+           [DLY]                   : Delay Time            (0:OFF / 1:ON)
+           [LOUT]                  : Lockout               (0:Unlocked / 1:Lockout)
+           [PRI]                   : Priority              (0:OFF / 1:ON)
+
+           Get/Set Channel Information.
+           In set command, only "," parameters are not changed.
+           The set command is aborted if any format error is detected.
+           This command is only acceptable in Programming Mode.
+
+<COMMAND SCO>
+Get/Set Search/Close Call Settings
+Controller → Radio
+    ①      SCO[¥r]
+    ②      SCO,[DLY],[RSV],[DIR][¥r]
+Radio → Controller
+    ①      SCO,[DLY],[RSV],[DIR] [¥r]
+    ②      SCO,OK[¥r]
+
+                [DLY]              : Delay Time               (0:OFF / 1:ON)
+                [DIR]              : Direction                (0:Up / 1:Dw)
+
+
+           Get/Set Search/Close Call Settings.
+           In set command, only "," parameters are not changed.
+           The set command is aborted if any format error is detected.
+           This command is only acceptable in Programming Mode.
+
+<COMMAND GLF>
+Get Global Lockout Freq
+Controller → Radio
+  ①      GLF[¥r]
+  ②      GLF,[***][¥r]
+Radio → Controller
+  ①      GLF,[FRQ][¥r]
+          GLF,-1[¥r]
+          GLF,OK[¥r]
+
+       [FRQ]               : Lockout Frequency        (250000-512000)
+       [***]               : Don't care               (to retrieve 1'st L/O frequency)
+             This command is used to get Global L/O frequency list.
+             You should call this command again and again to get all-global L/O frequency until the scanner
+             returns "-1".
+             "-1" means that no more L/O frequency exists.
+             This command is only acceptable in Programming Mode.
+
+
+
+
+                                                  61                               02.09 JQD824ZF002 R0
+                                  < BC75XLT Operation Specification >
+
+<COMMAND ULF>
+Unlock Global L/O
+Controller → Radio
+  ①      ULF,[FRQ][¥r]
+Radio → Controller
+  ①      ULF,OK[¥r]
+
+                [FRQ]             : Lockout Frequency          (250000-5120000)
+
+           This command unlocks a L/O frequency.
+           The frequency is deleted from L/O list.
+           This command is only acceptable in Programming Mode.
+
+<COMMAND LOF >
+Lock Out Frequency
+Controller → Radio
+  ①      LOF,[FRQ][¥r]
+Radio → Controller
+  ①      LOF,OK[¥r]
+
+                [FRQ]             : Frequency                  (250000-5120000)
+
+           This command locks out a frequency.
+           The frequency is added to L/O list.
+           This command is only acceptable in Programming Mode.
+
+<COMMAND CLC>
+Get/Set Close Call Settings
+Controller → Radio
+  ①      CLC[¥r]
+          ②      CLC,[CC_MODE],[ALTB],[ALTL],[CC_BAND],[ RSV][¥r]
+Radio → Controller
+          ①      CLC,[CC_MODE],[ALTB],[ALTL],[CC_BAND],[ RSV][¥r]
+  ②      CLC,OK[¥r]
+
+           [CC_MODE]              : Mode                        ( 0:OFF / 1:CC PRI / 2:CC DND)
+           [ALTB]                 : Alert Beep                            (0:OFF / 1:ON)
+           [ALTL]                 : Alert Light                           (0:OFF / 1:ON)
+           [CC_BAND]              : Close Call Band         (5digit ##### )
+                                                      (each # is 0 or 1)     |||||
+                                                      0 means OFF            |||||
+                                                      1 means ON             ||||+--- UHF
+                                                                             |||+---- 0 (RSV )
+                                                                             ||+----- VHF HIGH
+                                                                             |+------ AIR BAND
+                                                                             +------- VHF LOW
+
+           Get/Set Close Call Settings.
+           In set command, only "," parameters are not changed.
+           The set command is aborted if any format error is detected.
+           This command is only acceptable in Programming Mode.
+
+
+
+
+                                                 62                                 02.09 JQD824ZF002 R0
+                                  < BC75XLT Operation Specification >
+
+<COMMAND SSP>
+Get/Set Service Search Settings
+Controller → Radio
+  ①      SSP,[SVC_INDEX][¥r]
+  ②      SSP,[SVC_INDEX],[DLY] ,[DIR][¥r]
+Radio → Controller
+         SSP,[SVC_INDEX],[DLY] ,[DIR][¥r]
+  ①      SSP,OK[¥r]
+
+           [SVC_INDEX]
+               1     WX
+               2     Police
+               3     Fire/Emergency
+               4     Marine
+               5     Racing
+               6     Civil Air
+               7     HAM Radio
+               8     Railroad
+               9     CB Radio
+               10    FRS/GMRS/MRUS
+
+           [DLY]                  : Delay Time                (0:OFF / 1:ON)
+           [DIR]                  : Direction                 (0:Up / 1:Dw)
+
+
+           The set command is aborted if any format error is detected.
+           This command is only acceptable in Programming Mode.
+
+<COMMAND CSG>
+Get/Set Custom Search Group
+Controller → Radio
+  ①      CSG[¥r]
+  ②      CSG,##########, [DLY],[DIR] [¥r] : Status of Each Search Range
+Radio → Controller
+  ①      CSG,##########,[DLY] ,[DIR] [¥r]
+  ②      CSG,OK[¥r]
+
+               ########## (each # is 0 or 1)          :       0 : valid   / 1 : invalid
+
+           [DLY]                  : Delay Time                (0:OFF / 1:ON)
+           [DIR]                  : Direction                 (0:Up / 1:Dw)
+
+           The Order of Range is as same as LCD Icon (1 – 10).
+           Get/Set current status of the custom search range.
+           This command is only acceptable in Programming Mode.
+           *It can not set all Custom Search Ranges to "0".
+
+<COMMAND CSP>
+Get/Set Custom Search Settings
+Controller → Radio
+  ①      CSP,[SRCH_INDEX][¥r]
+  ②      CSP,[SRCH_INDEX],[LIMIT_L],[LIMIT_H][¥r]
+Radio → Controller
+  ①      CSP,[SRCH_INDEX],[LIMIT_L],[LIMIT_H],[¥r]
+  ②      CSP,OK[¥r]
+
+               [SRCH_INDEX]       : Index                     (1-10)
+               [LIMIT_L]                   : Lower Limit Frequency    (250000-5120000)
+               [LIMIT_H]          : Upper Limit Frequency     (250000-5120000)
+
+           Get/Set Custom Search Settings.
+           In set command, only "," parameters are not changed.
+           The set command is aborted if any format error is detected.
+           This command is only acceptable in Programming Mode.
+
+
+                                                 63                                       02.09 JQD824ZF002 R0
+                                 < BC75XLT Operation Specification >
+<COMMAND VOL>
+Get/Set Volume Level Settings
+Controller → Radio
+  ①      VOL[¥r]
+  ②      VOL,[LEVEL][¥r]
+Radio → Controller
+  ①      VOL,[LEVEL][¥r]
+  ②      VOL,OK[¥r]
+
+                [LEVEL]          : Volume Level            ( 0 - 15 )
+
+<COMMAND SQL>
+Get/Set Squelch Level Settings
+Controller → Radio
+  ①      SQL[¥r]
+  ②      SQL,[LEVEL][¥r]
+Radio → Controller
+  ①      SQL,[LEVEL][¥r]
+  ②      SQL,OK[¥r]
+
+                [LEVEL]          : Squelch Level           (0:OPEN / 1-14 / 15:CLOSE)
+
+
+
+
+                                                  64                           02.09 JQD824ZF002 R0
+
