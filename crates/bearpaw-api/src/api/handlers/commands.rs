@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use tracing::warn;
 
-use crate::protocol::{classify_response, index_to_bank, ScannerReply};
+use crate::protocol::{classify_response, ScannerReply};
 use crate::state::ChannelData;
 
 use super::super::{
@@ -251,7 +251,10 @@ pub(crate) async fn post_lockout(
                     tone_squelch: None,
                     tone_squelch_kind: Default::default(),
                     tone_dcs_code: None,
-                    bank: index_to_bank(index),
+                    // Capability-aware: a BC75XLT's banks are 30 wide, so
+                    // the free function's fixed /50 reported the wrong bank in
+                    // the KEY-command echo. See #401.
+                    bank: state.capabilities().index_to_bank(index),
                 });
                 ch.lockout = !ch.lockout;
                 ch.clone()
