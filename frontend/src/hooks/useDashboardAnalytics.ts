@@ -4,8 +4,39 @@ import { useStore } from '../store/useStore';
 import type { ActivityLogEntry } from '../types';
 
 export interface BusiestChannel {
-  alpha_tag: string;
+  alpha_tag: string | null;
+  /** Present on every row the backend returns; the tag may not be. */
+  frequency?: number | null;
+  channel?: number | null;
   hit_count: number;
+  /** Axis label, derived once on fetch. See `busiestChannelLabel`. */
+  label: string;
+}
+
+/**
+ * Name a busiest-channels bar.
+ *
+ * The chart used to key its X axis on `alpha_tag` alone. A BC75XLT has no
+ * alpha tags at all (`has_alpha_tags: false`), so every bar came out blank —
+ * a row of anonymous rectangles, unusable rather than merely untidy, and
+ * silent to a screen reader.
+ *
+ * Falls back to the frequency, which is what actually distinguishes the bars,
+ * then to the channel number. Deliberately NOT gated on `has_alpha_tags`: a
+ * BC125AT channel the user never named is equally blank, so the rule is "use
+ * whatever identifies this row" rather than a per-model branch. Never invents
+ * a placeholder like "Untitled" for a field the hardware cannot store.
+ */
+export function busiestChannelLabel(row: {
+  alpha_tag?: string | null;
+  frequency?: number | null;
+  channel?: number | null;
+}): string {
+  const tag = row.alpha_tag?.trim();
+  if (tag) return tag;
+  if (row.frequency) return row.frequency.toFixed(3);
+  if (row.channel !== undefined && row.channel !== null) return `CH ${row.channel}`;
+  return '—';
 }
 
 export interface SessionStats {
@@ -118,7 +149,15 @@ export function useDashboardAnalytics(enabled: boolean): DashboardAnalytics {
         ]);
         if (channelsRes.ok) {
           const data = await channelsRes.json();
-          if (active) setBusiestChannels(data.channels || []);
+          if (active) {
+            const rows: BusiestChannel[] = (data.channels || []).map(
+              (row: Omit<BusiestChannel, 'label'>) => ({
+                ...row,
+                label: busiestChannelLabel(row),
+              }),
+            );
+            setBusiestChannels(rows);
+          }
         }
         if (statsRes.ok) {
           const data = await statsRes.json();

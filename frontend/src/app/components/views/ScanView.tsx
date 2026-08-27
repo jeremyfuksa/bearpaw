@@ -323,7 +323,7 @@ export function ScanView({
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={busiestChannels}>
                 <XAxis
-                  dataKey="alpha_tag"
+                  dataKey="label"
                   tick={{ fill: 'var(--color-chart-axis)', fontSize: 10 }}
                   interval={0}
                 />
