@@ -92,4 +92,74 @@ describe('BankControls', () => {
       });
     });
   });
+
+  // Bank 8-10 off, the rest on — the mask actually read from the dev BC75XLT
+  // on 2026-08-27, which is what exposed the placeholder problem.
+  const REAL_MASK = [true, true, true, true, true, true, true, false, false, false];
+
+  describe('before the scanner has answered (#393)', () => {
+    /**
+     * REGRESSION GUARD: the store's placeholder is ten ENABLED banks, and the
+     * startup SCG read failed on every launch — so a radio with banks 8-10 off
+     * displayed all ten lit.
+     *
+     * The buttons must not present the placeholder as the radio's state, and
+     * must not claim `aria-pressed` either way: asserting a value we do not
+     * have is the bug, not the styling.
+     */
+    it('does not claim a state before the mask is known', () => {
+      render(<BankControls {...defaultProps} activeBanks={REAL_MASK} banksKnown={false} />);
+      const bank1 = screen.getByRole('button', { name: /bank 1 \(reading from scanner\)/i });
+      expect(bank1).toBeDisabled();
+      expect(bank1).not.toHaveAttribute('aria-pressed');
+      expect(screen.queryByRole('button', { name: /\(enabled\)/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /\(disabled\)/i })).not.toBeInTheDocument();
+    });
+
+    /**
+     * The sharp end of #393. A toggle computes the next mask from the current
+     * one, so acting on the all-enabled placeholder would WRITE that guess
+     * back to the scanner — turning a display bug into a memory write that
+     * silently re-enables banks the user had switched off.
+     */
+    it('cannot toggle while the mask is still a placeholder', async () => {
+      const onToggleBank = vi.fn();
+      render(
+        <BankControls
+          {...defaultProps}
+          activeBanks={REAL_MASK}
+          banksKnown={false}
+          onToggleBank={onToggleBank}
+        />,
+      );
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /bank 1 \(reading from scanner\)/i }),
+      );
+
+      expect(onToggleBank).not.toHaveBeenCalled();
+    });
+
+    it('behaves normally once the mask is known', async () => {
+      const onToggleBank = vi.fn();
+      render(
+        <BankControls
+          {...defaultProps}
+          activeBanks={REAL_MASK}
+          banksKnown
+          onToggleBank={onToggleBank}
+        />,
+      );
+
+      const bank8 = screen.getByRole('button', { name: /bank 8 \(disabled\)/i });
+      expect(bank8).toBeEnabled();
+      await userEvent.click(bank8);
+      expect(onToggleBank).toHaveBeenCalledWith(7);
+    });
+
+    it('defaults to known so existing callers are unaffected', () => {
+      render(<BankControls {...defaultProps} activeBanks={REAL_MASK} />);
+      expect(screen.getByRole('button', { name: /bank 1 \(enabled\)/i })).toBeEnabled();
+    });
+  });
 });

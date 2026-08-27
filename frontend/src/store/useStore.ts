@@ -53,6 +53,17 @@ export interface AppStore {
   deviceInfo: DeviceInfo | null;
   channels: ChannelData[];
   banks: boolean[];
+  /**
+   * Whether `banks` reflects a real `SCG` read, or is still the all-enabled
+   * placeholder.
+   *
+   * The default is ten enabled banks, which is a GUESS presented as fact: a
+   * scanner with banks 8-10 off showed all ten lit until the first successful
+   * read, and toggling from that view would have written the guessed mask back
+   * to the radio. Consumers must render a distinct "unknown" state rather than
+   * treat the placeholder as truth.
+   */
+  banksKnown: boolean;
   sync: SyncState;
   importProgress: ImportProgressState;
   fullActivityLog: ActivityLogEntry[];
@@ -122,6 +133,7 @@ export const useStore = create<AppStore>((set) => ({
   deviceInfo: null,
   channels: [],
   banks: defaultBanks,
+  banksKnown: false,
   sync: defaultSync,
   importProgress: defaultImportProgress,
   fullActivityLog: [],
@@ -161,7 +173,13 @@ export const useStore = create<AppStore>((set) => ({
             ? channels
             : [],
     })),
-  setBanks: (banks) => set({ banks: banks.length === 10 ? banks : defaultBanks }),
+  // A well-formed mask is the only thing that marks the state as known: a
+  // malformed reply falls back to the placeholder, and a placeholder must not
+  // claim to be a reading.
+  setBanks: (banks) =>
+    banks.length === 10
+      ? set({ banks, banksKnown: true })
+      : set({ banks: defaultBanks, banksKnown: false }),
   updateSync: (patch) => set((prev) => ({ sync: { ...prev.sync, ...patch } })),
   setImportProgress: (patch) =>
     set((prev) => ({ importProgress: { ...prev.importProgress, ...patch } })),

@@ -496,11 +496,18 @@ export default function App() {
     let active = true;
     const loadInitialData = async () => {
       try {
-        const [statusResult, infoResult, channelsResult, banksResult] = await Promise.allSettled([
+        // Deliberately NO getBanks() here (#393). This runs on mount, before
+        // the backend has finished probing and opening the serial port, so the
+        // SCG sits unserviced past its 3s deadline and the poll loop discards
+        // it as expired -- two logged failures on every single launch, and a
+        // wasted ProgramModeGuard attempt against a scanner that cannot answer
+        // yet. Reading banks is owned by the connection-gated effect below,
+        // which fires the moment `connection_status` turns "connected" and is
+        // the only place that can succeed.
+        const [statusResult, infoResult, channelsResult] = await Promise.allSettled([
           api.getStatus(),
           api.getDeviceInfo(),
           api.getChannels(),
-          api.getBanks(),
         ]);
         if (!active) return;
 
@@ -519,10 +526,6 @@ export default function App() {
         if (channelsResult.status === 'fulfilled') {
           setChannels(channelsResult.value);
         }
-
-        if (banksResult.status === 'fulfilled' && Array.isArray(banksResult.value.banks)) {
-          setBanks(banksResult.value.banks);
-        }
       } catch (error) {
         if (!active) return;
         console.warn('Failed to load initial scanner data', error);
@@ -532,10 +535,11 @@ export default function App() {
     return () => {
       active = false;
     };
-    // setBanks is a Zustand store action — stable by identity, like the
-    // setChannels/setDeviceInfo already listed — so declaring it is honest
-    // about what the effect reads without changing when it re-runs.
-  }, [api, setBanks, setChannels, setDeviceInfo, updateLiveState]);
+    // setChannels/setDeviceInfo are Zustand store actions — stable by
+    // identity — so declaring them is honest about what the effect reads
+    // without changing when it re-runs. `setBanks` is deliberately absent:
+    // this effect no longer reads banks (#393).
+  }, [api, setChannels, setDeviceInfo, updateLiveState]);
 
   useEffect(() => {
     // Refetch banks once the scanner is reachable AND any initial memory
