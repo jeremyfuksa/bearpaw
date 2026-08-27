@@ -3,6 +3,21 @@ import type { Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChannelEditSheet } from '../ChannelEditSheet';
+import { buildEmptyDraft } from '../ChannelsTab';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// The REAL descriptors, written from the Rust allowlist by a backend test.
+const REAL_CAPS = JSON.parse(
+  readFileSync(
+    resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      '../../../../test/fixtures/scanner-capabilities.json',
+    ),
+    'utf-8',
+  ),
+);
 import { createTestChannel, createTestChannelDraft } from '../../../../test/fixtures';
 import type { ChannelDraft, ChannelData } from '../../../../types';
 import { useStore } from '../../../../store/useStore';
@@ -20,11 +35,14 @@ describe('ChannelEditSheet', () => {
   let mockOnClose: Mock<() => void>;
   let mockOnPriorityChange: Mock<(next: boolean) => void | Promise<void>>;
 
-  const renderSheet = (isOpen = true, priorityChecked = false) =>
+  // The real function, per the #272 note: earlier guards hand-built this shape
+  // in the test file and passed while the bug was live.
+  const renderSheet = (isOpen = true, priorityChecked = false, clearedDelay = 2) =>
     render(
       <ChannelEditSheet
         channel={mockChannel}
         draft={mockDraft}
+        emptyDraft={buildEmptyDraft(clearedDelay)}
         isOpen={isOpen}
         onClose={mockOnClose}
         onSave={mockOnSave}
@@ -117,6 +135,7 @@ describe('ChannelEditSheet', () => {
         <ChannelEditSheet
           channel={mockChannel}
           draft={mockDraft}
+          emptyDraft={buildEmptyDraft(2)}
           isOpen={false}
           onClose={mockOnClose}
           onSave={mockOnSave}
@@ -128,6 +147,7 @@ describe('ChannelEditSheet', () => {
         <ChannelEditSheet
           channel={mockChannel}
           draft={mockDraft}
+          emptyDraft={buildEmptyDraft(2)}
           isOpen={true}
           onClose={mockOnClose}
           onSave={mockOnSave}
@@ -253,6 +273,47 @@ describe('ChannelEditSheet', () => {
       await userEvent.click(screen.getByRole('button', { name: /save draft/i }));
       await waitFor(() => expect(mockOnSave).toHaveBeenCalled());
       expect(mockOnSave.mock.calls[0][0]).toMatchObject({ frequency: '0', alpha_tag: '' });
+    });
+
+    /**
+     * REGRESSION GUARD (#272/#404, observed on hardware 2026-08-27): `Clear`
+     * used to hand-build the draft with `delay: '2'` and `lockout: false` —
+     * BC125AT-family literals, and a third copy of a shape `buildEmptyDraft`
+     * already owned.
+     *
+     * A BC75XLT's `valid_delays` is [0, 1]. Clearing therefore wrote 2, failed
+     * its own validation with "Delay must be one of 0, 1", and blocked Save —
+     * the sheet rejecting a value it had just written itself. Sending 2 to that
+     * radio is also a CIN format error, which aborts the ENTIRE write and
+     * silently discards the frequency and lockout in the same command.
+     */
+    it('clears to the capability-derived delay, not a hardcoded 2', async () => {
+      useStore.setState({
+        deviceInfo: {
+          model: 'BC75XLT',
+          connection_status: 'connected',
+          capabilities: REAL_CAPS.BC75XLT,
+        } as never,
+      });
+      // cleared_delay is 0 on this model — "off" per the vendor spec.
+      renderSheet(true, false, REAL_CAPS.BC75XLT.cleared_delay);
+
+      await userEvent.click(screen.getByRole('button', { name: /^clear$/i }));
+
+      // No validation error, and Save is reachable.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      const save = screen.getByRole('button', { name: /save draft/i });
+      expect(save).toBeEnabled();
+
+      await userEvent.click(save);
+      await waitFor(() => expect(mockOnSave).toHaveBeenCalled());
+      expect(mockOnSave.mock.calls[0][0]).toMatchObject({
+        frequency: '0',
+        delay: '0',
+        // The hardware reports a cleared slot as locked out; `false` was the
+        // other half of the same hand-built mistake.
+        lockout: true,
+      });
     });
   });
 
