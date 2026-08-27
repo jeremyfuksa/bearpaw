@@ -204,15 +204,6 @@ pub struct ResolvedPort {
     pub baud: u32,
 }
 
-/// Resolve just the port name, discarding the detected baud.
-///
-/// Retained for callers that predate multi-baud detection. Anything opening the
-/// port wants [`resolve_scanner_port`] instead -- the baud is not always the
-/// configured one.
-pub fn resolve_serial_port(cfg: &Config) -> Option<String> {
-    resolve_scanner_port(cfg).map(|r| r.port_name)
-}
-
 /// Resolve the scanner connection from config: explicit port first, then USB
 /// auto-detect.
 ///
