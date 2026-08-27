@@ -259,6 +259,7 @@ export interface ScannerDisplayProps {
   onHoldToggle: () => void;
   onLockout: (type: 'temporary' | 'permanent') => void;
   banks: boolean[];
+  banksKnown?: boolean;
   onBankToggle: (index: number) => void;
   className?: string;
 }
@@ -284,6 +285,7 @@ export function ScannerDisplay({
   onHoldToggle,
   onLockout,
   banks,
+  banksKnown = true,
   onBankToggle,
   className,
 }: ScannerDisplayProps) {
@@ -350,7 +352,7 @@ export function ScannerDisplay({
         </div>
 
         {/* Bottom — bank row */}
-        <BankControls activeBanks={banks} onToggleBank={onBankToggle} />
+        <BankControls activeBanks={banks} banksKnown={banksKnown} onToggleBank={onBankToggle} />
       </div>
     </div>
   );
@@ -360,6 +362,12 @@ export function ScannerDisplay({
 
 interface BankControlsProps {
   activeBanks: boolean[]; // Array of 10 booleans
+  /**
+   * False until an `SCG` read has actually answered. `activeBanks` is an
+   * all-enabled placeholder until then, so the buttons must not present it as
+   * the radio's state.
+   */
+  banksKnown?: boolean;
   onToggleBank: (index: number) => void;
 }
 
@@ -373,8 +381,19 @@ interface BankControlsProps {
  * - **Disabled** (skip this bank): outlined dark stroke + dark
  *   number — same treatment the VOL / L-O / HOLD buttons wear in
  *   their resting state (see `CONTROL_BUTTON_CLASSES` above).
+ * - **Unknown** (no `SCG` read has answered yet): dashed stroke, faded,
+ *   and inert.
+ *
+ * The third state exists because the store's placeholder is ten ENABLED
+ * banks, which is a guess presented as fact. A radio with banks 8-10 off
+ * showed all ten lit until the first read landed (#393). The buttons are
+ * inert while unknown rather than hidden: a toggle computes the next mask
+ * from the current one, so acting on the placeholder would write the guess
+ * back to the scanner -- turning a display bug into a memory write. They are
+ * disabled rather than removed so the row does not reflow the moment the
+ * read arrives.
  */
-export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
+export function BankControls({ activeBanks, banksKnown = true, onToggleBank }: BankControlsProps) {
   const banks = Array.from({ length: 10 }, (_, i) => i + 1);
 
   return (
@@ -387,13 +406,22 @@ export function BankControls({ activeBanks, onToggleBank }: BankControlsProps) {
             key={bank}
             type="button"
             onClick={() => onToggleBank(index)}
-            aria-pressed={isActive}
-            aria-label={`Bank ${label} ${isActive ? '(enabled)' : '(disabled)'}`}
+            disabled={!banksKnown}
+            // No `aria-pressed` while unknown: reporting either value would
+            // state a fact we do not have. The label carries the uncertainty.
+            aria-pressed={banksKnown ? isActive : undefined}
+            aria-label={
+              banksKnown
+                ? `Bank ${label} ${isActive ? '(enabled)' : '(disabled)'}`
+                : `Bank ${label} (reading from scanner)`
+            }
             className={cn(
               'inline-flex h-[clamp(18px,9cqmin,120px)] flex-1 items-center justify-center rounded-scanner-xs font-mono font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors active:translate-y-[1px]',
-              isActive
-                ? 'bg-[rgba(28,31,38,0.7)] text-brand-primary hover:bg-[rgba(28,31,38,0.85)]'
-                : 'border border-[rgba(28,31,38,0.8)] text-[rgba(28,31,38,0.9)] hover:bg-[rgba(28,31,38,0.1)]',
+              !banksKnown
+                ? 'cursor-default border border-dashed border-[rgba(28,31,38,0.5)] text-[rgba(28,31,38,0.45)]'
+                : isActive
+                  ? 'bg-[rgba(28,31,38,0.7)] text-brand-primary hover:bg-[rgba(28,31,38,0.85)]'
+                  : 'border border-[rgba(28,31,38,0.8)] text-[rgba(28,31,38,0.9)] hover:bg-[rgba(28,31,38,0.1)]',
             )}
           >
             {label}
