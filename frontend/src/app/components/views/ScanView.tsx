@@ -6,6 +6,7 @@ import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
 import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
+import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import type { ActivityLogEntry } from '../../../types';
 import { ScannerDisplay } from '../ScannerUI';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -83,7 +84,10 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
       groups.push({
         id: entry.id,
         frequency: entry.frequency.toFixed(3),
-        tag: entry.alpha_tag || '—',
+        // Empty, not an em dash: a scanner with no alpha tags would otherwise
+        // render a full column of placeholders. The dash is applied at render
+        // time, and only when the tag column is shown at all.
+        tag: entry.alpha_tag || '',
         strength: strengthSum,
         time: entry.timestamp,
         count: 1,
@@ -97,7 +101,10 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
     group.strength = Math.round(strengthSum / group.count);
   }
 
-  return groups.map((g) => (g.count > 1 ? { ...g, tag: `${g.tag} (${g.count})` } : g));
+  // The `(N)` suffix is NOT baked into `tag` any more. With no alpha tags
+  // there is no tag column to carry it, and a bare "(3)" floating in an
+  // otherwise empty column reads as a glitch. The renderer places it.
+  return groups;
 }
 
 function HitSignalBars({ strength }: { strength: number }) {
@@ -166,6 +173,12 @@ export function ScanView({
   // then show the five most recent groups. Sourced from `fullActivityLog`
   // rather than the store's 5-entry `activityLog` so a group's count can
   // exceed five.
+  // A scanner with no alpha tags would render a full column of placeholders,
+  // so the column is removed rather than blanked (CLAUDE.md: hide unsupported
+  // surfaces, do not show an empty one). The roll-up count moves next to the
+  // frequency, which becomes the row's identity.
+  const capabilities = useScannerCapabilities();
+  const showTagColumn = capabilities.has_alpha_tags;
   const recentHits = useMemo(
     () => rollUpHits(fullActivityLog).slice(0, HIT_SLOT_COUNT),
     [fullActivityLog],
@@ -268,26 +281,49 @@ export function ScanView({
             // (which aligns with the Display panel's bank row beside it),
             // and the middle hits are spaced evenly between. The minimum
             // `gap-y` keeps a small floor when the panel is short.
-            <div className="grid flex-1 min-h-0 grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,auto)] content-between gap-x-[clamp(12px,3.5cqmin,60px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
+            <div
+              className={cn(
+                'grid flex-1 min-h-0 grid-rows-[repeat(5,auto)] content-between gap-x-[clamp(12px,3.5cqmin,60px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]',
+                showTagColumn
+                  ? 'grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto]'
+                  : 'grid-cols-[minmax(14ch,max-content)_minmax(0,1fr)_auto]',
+              )}
+            >
               {Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
                 const hit = recentHits[idx];
                 if (!hit) {
-                  return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
+                  return (
+                    <div
+                      key={`empty-${idx}`}
+                      className={showTagColumn ? 'col-span-4' : 'col-span-3'}
+                      aria-hidden="true"
+                    />
+                  );
                 }
+                const countSuffix = hit.count > 1 ? ` (${hit.count})` : '';
                 return (
                   <div
                     key={hit.id}
-                    className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
+                    className={cn(
+                      'grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5',
+                      showTagColumn ? 'col-span-4' : 'col-span-3',
+                    )}
                   >
                     <span className="whitespace-nowrap text-white/60">
                       {getRelativeTime(hit.time)}
                     </span>
                     <span className="whitespace-nowrap text-right font-mono text-brand-light">
                       {hit.frequency}
+                      {showTagColumn ? '' : countSuffix}
                     </span>
-                    <span className="whitespace-nowrap text-white/60" title={hit.tag}>
-                      {hit.tag}
-                    </span>
+                    {showTagColumn ? (
+                      <span
+                        className="whitespace-nowrap text-white/60"
+                        title={hit.tag || undefined}
+                      >
+                        {hit.tag ? `${hit.tag}${countSuffix}` : `—${countSuffix}`}
+                      </span>
+                    ) : null}
                     <HitSignalBars strength={hit.strength} />
                   </div>
                 );

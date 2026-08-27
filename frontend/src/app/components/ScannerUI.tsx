@@ -27,6 +27,14 @@ interface StatusBarProps {
   shellStatusText?: string | null;
   currentTab: string;
   sessionStats?: StatusBarSessionStats | null;
+  /**
+   * `capabilities.reports_live_channel`. When false the scanner never names a
+   * channel in its live `GLG` frame, so `unique_channels` cannot rise above
+   * zero and the counter is hidden rather than shown as a permanent `0` --
+   * which reads as "finding nothing" while the scanner is actively scanning.
+   * Hidden, not disabled or blanked, per CLAUDE.md's frontend rule.
+   */
+  showChannelCount?: boolean;
 }
 
 function formatActiveDuration(totalSeconds?: number | null) {
@@ -55,6 +63,7 @@ export function StatusBar({
   shellStatusText,
   currentTab,
   sessionStats,
+  showChannelCount = true,
 }: StatusBarProps) {
   const { statusColor, statusText } = getStatusDisplay(connectionStatus, modelName);
 
@@ -88,12 +97,14 @@ export function StatusBar({
                 {formatActiveDuration(sessionStats.active_time_seconds)}
               </span>
             </span>
-            <span className="font-sans text-xs text-white/60">
-              Channels{' '}
-              <span className="font-mono font-medium text-white/80">
-                {sessionStats.unique_channels ?? 0}
+            {showChannelCount ? (
+              <span className="font-sans text-xs text-white/60">
+                Channels{' '}
+                <span className="font-mono font-medium text-white/80">
+                  {sessionStats.unique_channels ?? 0}
+                </span>
               </span>
-            </span>
+            ) : null}
           </div>
         ) : null}
         {shellStatusText ? (

@@ -72,6 +72,12 @@ export interface ScannerCapabilities {
   bank_count: number;
   /** False on the BC75XLT, where the CIN alpha-tag field is reserved. */
   has_alpha_tags: boolean;
+  /**
+   * Whether the live `GLG` frame reports which channel is being received.
+   * Separate from `has_alpha_tags`: one describes stored channel memory, the
+   * other the live frame. False on a BC75XLT, whose GLG field 11 is empty.
+   */
+  reports_live_channel: boolean;
   /** False on the BC75XLT, where modulation is a global band-plan setting. */
   has_per_channel_modulation: boolean;
   /** False on the BC75XLT, where the CIN tone field is reserved. */

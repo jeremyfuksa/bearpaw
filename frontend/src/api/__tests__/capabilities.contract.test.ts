@@ -30,6 +30,7 @@ const EXPECTED_KEYS = [
   'channels_per_bank',
   'bank_count',
   'has_alpha_tags',
+  'reports_live_channel',
   'has_per_channel_modulation',
   'has_tone_squelch',
   'has_backlight_control',
@@ -62,6 +63,7 @@ describe('ScannerCapabilities contract', () => {
     expect(typeof caps.channels_per_bank).toBe('number');
     expect(typeof caps.bank_count).toBe('number');
     expect(typeof caps.has_alpha_tags).toBe('boolean');
+    expect(typeof caps.reports_live_channel).toBe('boolean');
     expect(typeof caps.has_per_channel_modulation).toBe('boolean');
     expect(typeof caps.has_tone_squelch).toBe('boolean');
     expect(typeof caps.has_backlight_control).toBe('boolean');
@@ -99,6 +101,9 @@ describe('ScannerCapabilities contract', () => {
       channel_count: 300,
       channels_per_bank: 30,
       has_alpha_tags: false,
+      // GLG field 11 is empty on this model, so the live frame never names a
+      // channel: GLG,145.1300,NFM,,,,,,0,1,,, (hardware, 2026-08-27).
+      reports_live_channel: false,
       has_per_channel_modulation: false,
       valid_delays: [0, 1],
       cleared_delay: 0,
