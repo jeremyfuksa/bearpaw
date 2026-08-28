@@ -139,8 +139,11 @@ export function SearchRangeEditSheet({
         onChange={(e) => handleFieldChange(name, e.target.value)}
         aria-invalid={errors[name] ? true : undefined}
         aria-describedby={errors[name] ? `range-${name}-error` : undefined}
+        // `.scanner-input` carries the border, fill and focus ring but no
+        // padding -- its other consumers are Radix triggers that bring their
+        // own. A bare input needs it or the digits sit on the border.
         className={cn(
-          'scanner-input w-full font-mono text-sm',
+          'scanner-input w-full px-3 py-2 font-mono text-sm',
           errors[name] && 'border-red-500/60',
         )}
       />
