@@ -142,7 +142,27 @@ pub fn parse_sts_frame(response: &str) -> Option<StsFrame> {
     // layout (1.06.06 capture): ..., SQL, MUT, _, _, _, _, SIG_LVL, _, BK_DIMMER.
     //
     // Defensive: if anchoring fails, return None so the caller re-polls.
-    let tail_start = find_sts_tail_start(&parts)?;
+    //
+    // ...unless the frame is simply SHORT. A BC75XLT's STS carries no status
+    // block at all -- six fields, ending in SQL and MUT:
+    //
+    //   BC75XLT   STS,1, 145.1300      ,,0,1
+    //   BC125AT   STS,...,<LCD cells>,...,SQL,MUT,_,_,_,_,SIG_LVL,_,BK_DIMMER
+    //
+    // `find_sts_tail_start` needs >= 10 fields because it anchors on that
+    // nine-field tail, so EVERY BC75XLT frame failed to parse -- 5,450 drops
+    // in one session, one per poll at 5 Hz. Nothing visibly broke because
+    // STS only supplies `squelch_open` and `sig_lvl` as fallbacks behind GLG
+    // and PWR, both of which this model answers. It was a wasted round-trip
+    // 5x/sec on a 57600 link, and 5,450 warnings hiding real ones.
+    //
+    // Structural, not model-gated: this function is pure and has no
+    // capability descriptor (the same constraint recorded for
+    // `parse_cin_response`). A short frame ending in two 0/1 digits is
+    // unambiguous on its own terms.
+    let Some(tail_start) = find_sts_tail_start(&parts) else {
+        return parse_short_sts_frame(&parts);
+    };
     let tail = &parts[tail_start..];
 
     let sql = tail.first().and_then(|s| parse_bit(s))?;
@@ -164,6 +184,38 @@ pub fn parse_sts_frame(response: &str) -> Option<StsFrame> {
         muted,
         sig_lvl,
         bk_dimmer,
+    })
+}
+
+/// Parse an STS frame that carries no status block -- the BC75XLT shape.
+///
+/// `STS,1, 145.1300      ,,0,1`: the last two fields are SQL and MUT, and
+/// there is no SIG_LVL or BK_DIMMER to read. Confirmed against two captures
+/// whose trailing pair matched the squelch/mute of the GLG frame taken
+/// alongside them (2026-08-26):
+///
+/// ```text
+///   STS,1, 145.1300      ,,0,1     GLG,145.1300,NFM,,,,,,0,1,,,
+///   STS,1, 464.5000      ,,1,0     GLG,464.5000,NFM,,,,,,1,0,,,
+/// ```
+///
+/// Deliberately strict: BOTH trailing fields must be single 0/1 digits, and
+/// the frame must be too short to hold a real status block. A long frame that
+/// merely failed to anchor still returns `None` -- that is a parse failure
+/// worth re-polling, not a short frame.
+fn parse_short_sts_frame(parts: &[&str]) -> Option<StsFrame> {
+    if parts.len() >= 10 {
+        return None;
+    }
+    let sql = parse_bit(parts.get(parts.len().checked_sub(2)?)?)?;
+    let muted = parse_bit(parts.last()?)?;
+    Some(StsFrame {
+        squelch_open: sql,
+        muted,
+        // Not present in this frame. `sig_lvl` feeds RSSI only as a fallback
+        // behind PWR, which this model answers, so 0 is never rendered.
+        sig_lvl: 0,
+        bk_dimmer: 0,
     })
 }
 
@@ -657,6 +709,59 @@ pub fn livestate_from_frames(
 
 #[cfg(test)]
 mod tests {
+
+    /// REGRESSION GUARD: a BC75XLT `STS` frame must parse.
+    ///
+    /// That model sends no status block -- six fields ending in SQL and MUT,
+    /// where the BC125AT sends a nine-field tail. `find_sts_tail_start`
+    /// requires >= 10 fields, so EVERY frame from this radio was dropped:
+    /// 5,450 in one session, one per poll at 5 Hz.
+    ///
+    /// Nothing visibly broke because STS supplies `squelch_open` and
+    /// `sig_lvl` only as fallbacks behind GLG and PWR, which this model
+    /// answers -- so it was a wasted round-trip 5x/sec on a 57600 link, and
+    /// 5,450 warnings hiding real ones.
+    ///
+    /// Captures 2026-08-26; the trailing pair matched the squelch/mute of the
+    /// GLG frame taken alongside each one.
+    #[test]
+    fn a_short_sts_frame_parses_its_squelch_and_mute() {
+        let closed = parse_sts_frame("STS,1, 145.1300      ,,0,1").expect("must parse");
+        assert!(!closed.squelch_open, "trailing pair 0,1 is squelch CLOSED");
+        assert!(closed.muted);
+
+        let open = parse_sts_frame("STS,1, 464.5000      ,,1,0").expect("must parse");
+        assert!(open.squelch_open, "trailing pair 1,0 is squelch OPEN");
+        assert!(!open.muted);
+    }
+
+    /// The short path must not swallow a genuinely malformed LONG frame.
+    /// A long frame that fails to anchor is a parse failure worth re-polling,
+    /// not a short frame -- collapsing the two would hide real corruption.
+    #[test]
+    fn a_long_unanchorable_sts_frame_still_fails() {
+        // Ten fields, but no position satisfies the tail signature.
+        let junk = "STS,a,b,c,d,e,f,g,h,i";
+        assert!(parse_sts_frame(junk).is_none());
+    }
+
+    /// A short frame whose trailing pair is not 0/1 digits is not a status
+    /// frame either.
+    #[test]
+    fn a_short_sts_frame_needs_two_trailing_bits() {
+        assert!(parse_sts_frame("STS,1, 145.1300      ,,x,1").is_none());
+        assert!(parse_sts_frame("STS,1, 145.1300      ,,0,9").is_none());
+    }
+
+    /// The BC125AT path is untouched: a real long frame still anchors on its
+    /// nine-field tail and reads SIG_LVL, which the short path cannot supply.
+    #[test]
+    fn a_long_sts_frame_still_reads_its_status_block() {
+        let long = "STS,011000,          ,,GMRS CH 03     ,,          ,,1,0,0,0,,,3,,2";
+        let f = parse_sts_frame(long).expect("long frame must still parse");
+        assert!(f.squelch_open);
+        assert_eq!(f.sig_lvl, 3);
+    }
     use super::*;
 
     // Fixtures captured from BC125AT firmware 1.06.06 on 2026-05-21.
