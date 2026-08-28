@@ -1,0 +1,55 @@
+# port: /dev/cu.usbserial-020D43D8  baud: 57600
+
+=== Phase 0: identity ===
+MDL                                -> 'MDL,BC75XLT'
+VER                                -> 'VER,Version 1.02.04'
+PRG                                -> 'PRG,OK'
+
+=== Phase 1: survey bank 9 (channels 241-270) ===
+CIN,241  ['', '00000000', '', '', '0', '1', '1']
+CIN,242  ['', '01605300', '', '', '1', '0', '0']
+CIN,243  ['', '01605450', '', '', '1', '0', '0']
+CIN,244  ['', '01605600', '', '', '1', '0', '0']
+CIN,245  ['', '01609350', '', '', '1', '0', '0']
+CIN,246  ['', '01610100', '', '', '1', '0', '0']
+CIN,247  ['', '01610400', '', '', '1', '0', '0']
+CIN,248  ['', '01610700', '', '', '1', '0', '0']
+CIN,249  ['', '01611000', '', '', '1', '0', '0']
+CIN,250  ['', '01611300', '', '', '1', '0', '0']
+CIN,251  ['', '01611750', '', '', '1', '0', '0']
+CIN,252  ['', '01467900', '', '', '1', '0', '0']
+--- 11 programmed, priority on [241]
+
+=== Phase 2: build the precondition ===
+--- programming CIN,241 with 01451300 (was empty)
+CIN,241,,01451300,,,0,0,0          -> 'CIN,OK'
+CIN,241                            -> 'CIN,241,,01451300,,,0,0,1'
+
+--- BEFORE
+    CIN,241  holds priority : ['', '01451300', '', '', '0', '0', '1']
+    CIN,242  partner        : ['', '01605300', '', '', '1', '0', '0']
+
+=== Phase 3: designate CIN,242 as the bank's priority channel ===
+CIN,242,,01605300,,,1,0,1          -> 'CIN,OK'
+CIN,242                            -> 'CIN,242,,01605300,,,1,0,1'
+    CIN,242 after the write: priority=1
+CIN,241                            -> 'CIN,241,,01451300,,,0,0,0'
+    CIN,241 after the write: priority=0
+
+=== OUTCOME B: THE FIRMWARE AUTO-SWAPS ===
+--- CIN,241 dropped priority on its own when CIN,242 took it.
+--- One per bank is enforced by the radio. Bearpaw's clear-then-set is
+--- imposing a rule the hardware already keeps, and the clear is exactly
+--- the step that cannot work here. Skip it: just SET.
+
+=== Phase 4: restore, best effort ===
+CIN,242,,01605300,,,1,0,0          -> 'CIN,OK'
+CIN,242                            -> 'CIN,242,,01605300,,,1,0,1'
+    CIN,242: priority=1
+CIN,241,,01451300,,,0,0,1          -> 'CIN,OK'
+CIN,241                            -> 'CIN,241,,01451300,,,0,0,1'
+    CIN,241: priority=1
+--- CIN,242 still holds priority, as expected -- the clear is refused.
+--- left as: CIN,241=['', '01451300', '', '', '0', '0', '1'], CIN,242=['', '01605300', '', '', '1', '0', '1']
+--- Bank 9 is the scratch bank; no recovery needed.
+EPG                                -> 'EPG,OK'
