@@ -5,11 +5,16 @@ MDL                                -> 'MDL,BC75XLT'
 VER                                -> 'VER,Version 1.02.04'
 PRG                                -> 'PRG,OK'
 
-=== Phase 1: find targets (scanning 1..60) ===
+=== Phase 1: find targets ===
+--- searching 1..60 upward for a priority channel
 CIN,1   priority channel  -> ['', '01451300', '', '', '1', '0', '1']
+--- searching 300..241 downward for an empty slot
+CIN,300 empty slot        -> ['', '00000000', '', '', '0', '1', '0']
 
 === Phase 2: does DCH exist? ===
-SKIP: no empty channel in 1..60; refusing to DCH a programmed one.
+DCH,300                            -> 'ERR'
+CIN,300                            -> 'CIN,300,,00000000,,,0,1,0'
+--- DCH on an empty slot: ABSENT ('ERR')
 
 === Phase 3: can priority be cleared IN PLACE? ===
 CIN,1,,01451300,,,1,0,0            -> 'CIN,OK'
