@@ -178,9 +178,16 @@ async function loadRelease() {
       li.appendChild(a);
       listEl.appendChild(li);
     }
-  } catch {
+  } catch (err) {
     // Rate-limited, offline, or an unexpected release shape: leave the static
     // Releases-page button in place and say so instead of showing a spinner.
+    //
+    // Those three look identical on screen, so name the cause somewhere. A 403
+    // here is almost always this browser's own unauthenticated GitHub quota
+    // (60/hour, counted per client IP because the fetch runs in the visitor's
+    // browser) — which only a person reloading the page all afternoon will hit,
+    // and which clears itself within the hour.
+    console.warn("Bearpaw: could not load the latest release —", err);
     versionEl.textContent = "Latest release: see GitHub Releases";
   }
 }
