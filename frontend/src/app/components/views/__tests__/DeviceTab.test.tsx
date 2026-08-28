@@ -568,6 +568,34 @@ describe('DeviceTab', () => {
       expect(screen.queryByLabelText(/Lockout Hits While Scanning/i)).not.toBeInTheDocument();
     });
 
+    // Every control in the Display & System card is capability-gated, so on a
+    // BC75XLT it rendered as an empty titled box once #471 gated Key Beep
+    // alongside BLT and CNT. An empty card is not a neutral outcome — it reads
+    // as a section that failed to load.
+    it('hides the whole Display & System card when it would be empty', async () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      expect(screen.queryByRole('heading', { name: /Display & System/i })).not.toBeInTheDocument();
+      // Scanning Logic takes the vacated grid slot rather than leaving a gap.
+      expect(screen.getByRole('heading', { name: /Scanning Logic/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Audio & Power/i })).toBeInTheDocument();
+    });
+
+    // Paired half: a card that disappeared for everyone would pass the test
+    // above while removing backlight and contrast from the scanners that have
+    // them.
+    it('keeps the Display & System card on a BC125AT-family scanner', async () => {
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      expect(screen.getByRole('heading', { name: /Display & System/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Scanning Logic/i })).toBeInTheDocument();
+    });
+
     // CC Only (mode 3) is absent from the BC75XLT vendor spec AND its owner's
     // manual, but the radio accepts and retains it (hardware 2026-08-28).
     // Captures win — this option must NOT be hidden on that model.
