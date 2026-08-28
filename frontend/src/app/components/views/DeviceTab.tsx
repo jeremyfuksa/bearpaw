@@ -1350,141 +1350,155 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
 
         {/* Close Call */}
         {activeCategory === 'Close Call' && (
-          <div className="grid grid-cols-2 gap-8 max-w-4xl">
-            <div className="space-y-8">
-              <section className="space-y-4">
-                <h3 className="text-lg font-bold text-white">Settings</h3>
+          <div className="max-w-4xl space-y-6">
+            {/* Deliberately NOT the "press a key to resume" line the two search
+                pages carry. Close Call Priority and DND run in the background
+                during an ordinary scan, and Bearpaw resumes scanning by itself
+                when you leave the Device page (see the "Leaving the Device page
+                resumes scan" third rail). So there is nothing for the user to
+                press -- the honest note is that the writes are immediate and
+                where they take effect. */}
+            <p className="text-base text-white/60">
+              Close Call settings are written to the scanner immediately. Each write leaves it in
+              Hold; Bearpaw resumes scanning when you leave the Device page, and Close Call Priority
+              and DND take effect from there.
+            </p>
+            <div className="grid grid-cols-2 gap-8">
+              <div className="space-y-8">
+                <section className="space-y-4">
+                  <h3 className="text-lg font-bold text-white">Settings</h3>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-white/70">Mode</span>
-                    <span className="text-sm text-white/60">Operation mode</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-white/70">Mode</span>
+                      <span className="text-sm text-white/60">Operation mode</span>
+                    </div>
+                    <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
+                      <SelectTrigger
+                        aria-label="Mode"
+                        className="h-8 w-[var(--size-select-wide)] border-white/10 bg-white/5 text-sm"
+                      >
+                        <SelectValue placeholder="Select mode" />
+                      </SelectTrigger>
+                      <SelectContent className="scanner-select-content">
+                        <SelectItem value="off">Off</SelectItem>
+                        <SelectItem value="cc_dnd">CC DND</SelectItem>
+                        <SelectItem value="cc_priority">CC Priority</SelectItem>
+                        <SelectItem value="cc_only">CC Only</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Select value={closeCallMode} onValueChange={handleCloseCallModeChange}>
-                    <SelectTrigger
-                      aria-label="Mode"
-                      className="h-8 w-[var(--size-select-wide)] border-white/10 bg-white/5 text-sm"
-                    >
-                      <SelectValue placeholder="Select mode" />
-                    </SelectTrigger>
-                    <SelectContent className="scanner-select-content">
-                      <SelectItem value="off">Off</SelectItem>
-                      <SelectItem value="cc_dnd">CC DND</SelectItem>
-                      <SelectItem value="cc_priority">CC Priority</SelectItem>
-                      <SelectItem value="cc_only">CC Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
 
-                {/* CLC field 5 is reserved on some models: written `1` on a
+                  {/* CLC field 5 is reserved on some models: written `1` on a
                     BC75XLT it reads back empty (hardware 2026-08-28). It is
                     accepted without an error and silently discarded, so
                     nothing but a read-back would ever reveal the failure. */}
-                {capabilities.has_close_call_hit_scan && (
-                  <div className="flex items-center gap-3 pt-2">
+                  {capabilities.has_close_call_hit_scan && (
+                    <div className="flex items-center gap-3 pt-2">
+                      <Switch
+                        id="cc-lockout"
+                        className="data-[state=checked]:bg-brand-primary"
+                        checked={closeCallLockout}
+                        disabled={closeCallMode === 'off'}
+                        onCheckedChange={(checked) =>
+                          handleCloseCallSettingChange('lockout', checked)
+                        }
+                      />
+                      <label
+                        htmlFor="cc-lockout"
+                        className={cn(
+                          'text-sm font-medium cursor-pointer',
+                          closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
+                        )}
+                      >
+                        Lockout Hits While Scanning
+                      </label>
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-4">
+                  <h3 className="text-lg font-bold text-white">Alerts</h3>
+
+                  <div className="flex items-center gap-3">
                     <Switch
-                      id="cc-lockout"
+                      id="cc-beep"
                       className="data-[state=checked]:bg-brand-primary"
-                      checked={closeCallLockout}
+                      checked={closeCallBeep}
                       disabled={closeCallMode === 'off'}
                       onCheckedChange={(checked) =>
-                        handleCloseCallSettingChange('lockout', checked)
+                        handleCloseCallSettingChange('alert_beep', checked)
                       }
                     />
                     <label
-                      htmlFor="cc-lockout"
+                      htmlFor="cc-beep"
                       className={cn(
                         'text-sm font-medium cursor-pointer',
                         closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
                       )}
                     >
-                      Lockout Hits While Scanning
+                      Alert Beep
                     </label>
                   </div>
-                )}
-              </section>
+
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      id="cc-light"
+                      className="data-[state=checked]:bg-brand-primary"
+                      checked={closeCallLight}
+                      disabled={closeCallMode === 'off'}
+                      onCheckedChange={(checked) =>
+                        handleCloseCallSettingChange('alert_light', checked)
+                      }
+                    />
+                    <label
+                      htmlFor="cc-light"
+                      className={cn(
+                        'text-sm font-medium cursor-pointer',
+                        closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
+                      )}
+                    >
+                      Alert Light
+                    </label>
+                  </div>
+                </section>
+              </div>
 
               <section className="space-y-4">
-                <h3 className="text-lg font-bold text-white">Alerts</h3>
-
-                <div className="flex items-center gap-3">
-                  <Switch
-                    id="cc-beep"
-                    className="data-[state=checked]:bg-brand-primary"
-                    checked={closeCallBeep}
-                    disabled={closeCallMode === 'off'}
-                    onCheckedChange={(checked) =>
-                      handleCloseCallSettingChange('alert_beep', checked)
-                    }
-                  />
-                  <label
-                    htmlFor="cc-beep"
-                    className={cn(
-                      'text-sm font-medium cursor-pointer',
-                      closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
-                    )}
-                  >
-                    Alert Beep
-                  </label>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Switch
-                    id="cc-light"
-                    className="data-[state=checked]:bg-brand-primary"
-                    checked={closeCallLight}
-                    disabled={closeCallMode === 'off'}
-                    onCheckedChange={(checked) =>
-                      handleCloseCallSettingChange('alert_light', checked)
-                    }
-                  />
-                  <label
-                    htmlFor="cc-light"
-                    className={cn(
-                      'text-sm font-medium cursor-pointer',
-                      closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
-                    )}
-                  >
-                    Alert Light
-                  </label>
-                </div>
-              </section>
-            </div>
-
-            <section className="space-y-4">
-              <h3 className="text-lg font-bold text-white">Enabled Bands</h3>
-              <div className="bg-white/5 rounded-lg p-4 space-y-4 border border-white/10">
-                {/* Index IS the wire position in the 5-character CLC mask, so
+                <h3 className="text-lg font-bold text-white">Enabled Bands</h3>
+                <div className="bg-white/5 rounded-lg p-4 space-y-4 border border-white/10">
+                  {/* Index IS the wire position in the 5-character CLC mask, so
                     the reserved slot is skipped in place rather than filtered
                     out -- `entries()` keeps the index after the null is gone.
                     The families disagree on positions 4 and 5 (BC125AT: UHF,
                     800 MHz; BC75XLT: reserved, UHF), verified on hardware
                     2026-08-28. Remapping only one of the two would leave a
                     "UHF" switch writing the reserved slot. */}
-                {[...capabilities.close_call_bands.entries()]
-                  .filter((entry): entry is [number, string] => entry[1] !== null)
-                  .map(([index, band]) => (
-                    <div key={band} className="flex items-center justify-between">
-                      <label
-                        htmlFor={`band-${band}`}
-                        className={cn(
-                          'text-sm font-medium cursor-pointer',
-                          closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
-                        )}
-                      >
-                        {band}
-                      </label>
-                      <Switch
-                        id={`band-${band}`}
-                        className="data-[state=checked]:bg-brand-primary"
-                        checked={closeCallBands[index]}
-                        disabled={closeCallMode === 'off'}
-                        onCheckedChange={() => handleCloseCallBandToggle(index)}
-                      />
-                    </div>
-                  ))}
-              </div>
-            </section>
+                  {[...capabilities.close_call_bands.entries()]
+                    .filter((entry): entry is [number, string] => entry[1] !== null)
+                    .map(([index, band]) => (
+                      <div key={band} className="flex items-center justify-between">
+                        <label
+                          htmlFor={`band-${band}`}
+                          className={cn(
+                            'text-sm font-medium cursor-pointer',
+                            closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
+                          )}
+                        >
+                          {band}
+                        </label>
+                        <Switch
+                          id={`band-${band}`}
+                          className="data-[state=checked]:bg-brand-primary"
+                          checked={closeCallBands[index]}
+                          disabled={closeCallMode === 'off'}
+                          onCheckedChange={() => handleCloseCallBandToggle(index)}
+                        />
+                      </div>
+                    ))}
+                </div>
+              </section>
+            </div>
           </div>
         )}
 
@@ -1492,9 +1506,19 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         {activeCategory === 'Service Search' && (
           <div className="max-w-3xl">
             <div className="bg-white/5 rounded-lg border border-white/10 p-6">
+              {/* Same correction as Custom Search: "then start Service Search"
+                  implied the toggles were staged, when each one reaches the
+                  scanner immediately. EPG leaves it in Scan Hold, so the write
+                  lands and then looks like it did nothing. This page only shows
+                  on a BC125AT-family scanner (a BC75XLT has no SSG), where the
+                  documented start is Func then Srch -- `KEY,F,P` then `KEY,R,P`,
+                  and `R` is the Srch button. */}
               <p className="text-base text-white/60 mb-4">
-                Service Search runs on the scanner itself. Enable the service banks you want to use,
-                then start Service Search directly on the device.
+                Service Search runs on the scanner itself. Bank toggles are written to the scanner
+                immediately, but each write leaves it in Hold. Press{' '}
+                <span className="font-bold text-white/80">Func</span> then{' '}
+                <span className="font-bold text-white/80">Srch</span> on the scanner to resume
+                searching with the new settings.
               </p>
               <div className="grid grid-cols-2 gap-x-16 gap-y-4">
                 {[
@@ -1566,9 +1590,19 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         {/* Custom Search */}
         {activeCategory === 'Custom Search' && (
           <div className="flex flex-col max-w-5xl mx-auto overflow-hidden gap-4">
+            {/* Both halves of this are load-bearing. Writes ARE immediate --
+                a range edit or an Active toggle reaches the scanner as soon as
+                it is made -- but every write runs inside a PRG/EPG bracket, and
+                the vendor spec is explicit that EPG leaves the scanner in Scan
+                Hold. So the change lands and then appears to do nothing, which
+                reads as a failed write rather than a parked radio. Naming Srch
+                is the recovery; the manual's own procedure is "Press Srch to
+                start searching your custom search range". */}
             <p className="text-base text-white/60">
-              Custom Search runs on the scanner itself. Configure these ranges here, then start
-              Custom Search directly on the device.
+              Custom Search runs on the scanner itself. Range edits and Active toggles are written
+              to the scanner immediately, but each write leaves it in Hold. Press{' '}
+              <span className="font-bold text-white/80">Srch</span> on the scanner to resume
+              searching with the new settings.
             </p>
             <div className="flex-1 h-full bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner">
               {/* Table Header */}
