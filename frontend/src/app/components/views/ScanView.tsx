@@ -166,6 +166,8 @@ export interface ScanViewProps {
   busiestChannels: BusiestChannel[];
   hourlyHeatmap: number[][];
   heatmapStats: HeatmapStats;
+  squelch: number;
+  onSquelchChange: (squelch: number) => void;
   onHoldToggle: () => void;
   onLockout: (type: 'temporary' | 'permanent') => void;
   onVolumeChange: (value: number) => void;
@@ -184,6 +186,8 @@ export function ScanView({
   busiestChannels,
   hourlyHeatmap,
   heatmapStats,
+  squelch,
+  onSquelchChange,
   onHoldToggle,
   onLockout,
   onVolumeChange,
@@ -240,6 +244,8 @@ export function ScanView({
             isError={isError}
             errorType={errorType}
             volume={liveState?.volume ?? 0}
+            squelch={squelch}
+            onSquelchChange={onSquelchChange}
             isHolding={isHolding}
             onVolumeChange={onVolumeChange}
             onHoldToggle={onHoldToggle}

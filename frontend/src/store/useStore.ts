@@ -110,6 +110,7 @@ const defaultLiveState: LiveState = {
   volume: 0,
   battery: null,
   stale: true,
+  squelch_level: 0,
 };
 
 const defaultBanks: boolean[] = Array.from({ length: 10 }, () => true);

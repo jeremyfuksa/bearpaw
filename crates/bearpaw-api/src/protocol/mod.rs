@@ -590,6 +590,7 @@ pub fn livestate_from_frames(
     pwr: Option<&PwrFrame>,
     commanded_mode: ScannerMode,
     volume: u8,
+    squelch_level: u8,
 ) -> LiveState {
     let timestamp = std::time::SystemTime::UNIX_EPOCH
         .elapsed()
@@ -646,6 +647,7 @@ pub fn livestate_from_frames(
         // Battery is not exposed by the BC125AT/BCT125AT protocol.
         battery: None,
         stale: false,
+        squelch_level,
         tone_squelch_kind,
         tone_squelch,
         tone_dcs_code,
@@ -1006,7 +1008,7 @@ mod tests {
         let sts = parse_sts_frame(STS_SIGNAL_PRESENT).unwrap();
         let glg = parse_glg_response(GLG_SIGNAL_PRESENT).unwrap();
         let pwr = parse_pwr_response(PWR_SAMPLE).unwrap();
-        let live = livestate_from_frames(Some(&sts), Some(&glg), Some(&pwr), ScannerMode::Scan, 7);
+        let live = livestate_from_frames(Some(&sts), Some(&glg), Some(&pwr), ScannerMode::Scan, 7, 0);
         assert_eq!(live.frequency, 462.6125);
         assert_eq!(live.modulation, "NFM");
         assert!(live.squelch_open);
@@ -1023,7 +1025,7 @@ mod tests {
     fn livestate_falls_back_to_sts_sig_lvl_when_pwr_absent() {
         let sts = parse_sts_frame(STS_SIGNAL_PRESENT).unwrap();
         let glg = parse_glg_response(GLG_SIGNAL_PRESENT).unwrap();
-        let live = livestate_from_frames(Some(&sts), Some(&glg), None, ScannerMode::Scan, 0);
+        let live = livestate_from_frames(Some(&sts), Some(&glg), None, ScannerMode::Scan, 0, 0);
         // sig_lvl=5 → 5*20 = 100
         assert_eq!(live.rssi, 100);
     }
@@ -1175,7 +1177,7 @@ mod tests {
     #[test]
     fn livestate_decodes_ctcss_tone_when_squelch_open() {
         let glg = parse_glg_response(GLG_CTCSS_OPEN).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0);
+        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Ctcss);
         assert_eq!(live.tone_squelch, Some(100.0));
         assert_eq!(live.tone_dcs_code, None);
@@ -1185,7 +1187,7 @@ mod tests {
     #[test]
     fn livestate_suppresses_tone_when_squelch_closed() {
         let glg = parse_glg_response(GLG_CTCSS_CLOSED).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0);
+        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::None);
         assert_eq!(live.tone_squelch, None);
         assert_eq!(live.tone_dcs_code, None);
@@ -1195,7 +1197,7 @@ mod tests {
     #[test]
     fn livestate_decodes_dcs_tone_with_label_when_squelch_open() {
         let glg = parse_glg_response(GLG_DCS_OPEN).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0);
+        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Dcs);
         assert_eq!(live.tone_squelch, None);
         assert_eq!(live.tone_dcs_code, Some(151));

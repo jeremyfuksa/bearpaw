@@ -70,6 +70,8 @@ pub struct LiveState {
     pub battery: Option<u8>,
     #[serde(default)]
     pub stale: bool,
+    #[serde(default)]
+    pub squelch_level: u8,
     /// Tone squelch decoded from the live GLG frame during an active hit.
     /// `None` / defaulted while the squelch is closed (tone is meaningless
     /// when no signal is present). Mirrors `ChannelData`'s tone shape plus a
