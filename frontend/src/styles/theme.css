@@ -435,10 +435,24 @@
     background-color: var(--bg-scanner-dark);
   }
 
+  /* A dialog is a RAISED surface, so it sits above the shell rather than
+     below it. It used --bg-scanner-panel (#11131b), the darkest token in the
+     system and the one meant for the inset behind the amber display — so a
+     modal was the darkest thing on screen, floating over a shell the overlay
+     had already dimmed. Pure white text on it ran ~18:1, which reads as glare
+     rather than as contrast.
+
+     The lift is the panel wash the rest of the app uses to elevate off the
+     shell, doubled — a modal sits a step above a panel, and one step still ran
+     14:1 against white. Composited rather than applied as a utility so it does
+     not fight the background-color. Lands near #31343b: unmistakably a dark
+     modal, ~11.6:1 against white text, still well past AAA but out of the
+     glare range that pure white on #11131b (18.5:1) sat in. */
   .scanner-modal {
     @apply fixed left-1/2 top-1/2 z-50 flex -translate-x-1/2 -translate-y-1/2 flex-col border border-white/10 shadow-2xl;
     max-height: var(--layout-modal-max-height);
-    background-color: var(--bg-scanner-panel);
+    background-color: var(--bg-scanner-dark);
+    background-image: linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.1));
   }
 
   .scanner-app-shell {

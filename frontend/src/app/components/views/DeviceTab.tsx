@@ -1507,7 +1507,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   either model, so a label could never be saved -- the old one
                   wrote to local state and vanished on reload. `R-n` already
                   names the row. */}
-              <div className="grid grid-cols-[50px_80px_1fr_1fr] gap-2 px-4 py-2 bg-white/5 text-sm font-bold text-white/60 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
+              <div className="grid grid-cols-[72px_80px_1fr_1fr] gap-2 px-4 py-2 bg-white/5 text-sm font-bold text-white/60 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
                 <div className="text-center">Active</div>
                 <div>Range</div>
                 <div className="text-center">Lower (MHz)</div>
@@ -1535,7 +1535,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                       }
                     }}
                     className={cn(
-                      'group flex-1 grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[50px_80px_1fr_1fr] items-center gap-2 border-b border-white/5 px-4 text-left transition-colors last:border-0 hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary',
+                      'group flex-1 grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[72px_80px_1fr_1fr] items-center gap-2 border-b border-white/5 px-4 text-left transition-colors last:border-0 hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary',
                       range.enabled && 'bg-brand-primary/5',
                     )}
                   >
