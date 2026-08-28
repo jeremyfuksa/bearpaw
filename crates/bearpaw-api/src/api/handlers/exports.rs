@@ -326,6 +326,13 @@ const BC75XLT_SERVICE_NAMES: [&str; 10] = [
     "Other (FRS/GMRS/MURS)",
 ];
 
+/// The delay Uniden's tool writes into every `.bc75xlt_ss` channel row.
+///
+/// Constant, not the radio's value: 600 of 600 channels across two real files
+/// are `2`, empty slots included, and this model's CIN delay is a boolean
+/// (0/1) so `2` cannot have come off the wire.
+const BC75XLT_SS_CHANNEL_DELAY: u8 = 2;
+
 /// Custom-search ranges as the BC75XLT tool writes them, in Hz.
 ///
 /// `CSP` has never been probed on this model, so Bearpaw does not send it --
@@ -502,7 +509,18 @@ pub(crate) async fn export_bc75xlt_ss_file(
                     idx,
                     hz,
                     on_off_bool(ch.map(|c| c.lockout).unwrap_or(false)),
-                    ch.map(|c| c.delay).unwrap_or(caps.cleared_delay),
+                    // A CONSTANT 2, not the wire value. Uniden's tool writes 2
+                    // for every channel of this model -- 600 of 600 across two
+                    // real files, including empty slots. It cannot be echoing
+                    // the radio: this model's CIN delay is a boolean (0/1), so
+                    // 2 is not a value the wire can produce. The file's delay
+                    // column uses the BC125AT's seconds vocabulary, which this
+                    // model has no counterpart for, and the tool fills it with
+                    // a fixed 2.
+                    //
+                    // The BC125AT files DO vary here (490 x 2, 10 x 0), so this
+                    // is specific to the BC75XLT, not the format.
+                    BC75XLT_SS_CHANNEL_DELAY,
                     on_off_bool(ch.map(|c| c.priority).unwrap_or(false))
                 ));
             }

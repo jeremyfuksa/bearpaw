@@ -3690,7 +3690,10 @@ mod tests {
                 if idx <= 251 {
                     ch.frequency = 146.0 + f64::from(idx - 1) * 0.025;
                 }
-                ch.delay = 2;
+                // A REAL wire value for this model (boolean), not the 2 the
+                // file carries -- otherwise this test passes whether or not
+                // the exporter writes the constant.
+                ch.delay = if idx <= 251 { 1 } else { 0 };
                 shadow.channels.insert(idx, ch);
             }
         }
@@ -3753,7 +3756,13 @@ mod tests {
         assert!(!ours.contains("Bnak"));
 
         // The reserved columns go out empty, as the real file has them.
+        // Delay 2 despite the channel carrying wire delay 1: the tool writes a
+        // constant here, and a file echoing the boolean would not match.
         assert!(ours.contains("C-Freq\t1\t\t146000000\t\t\tOff\t2\tOff\r\n"));
+        assert!(
+            !ours.contains("\tOff\t1\tOff"),
+            "the wire delay must never reach the file"
+        );
     }
 
     #[test]
