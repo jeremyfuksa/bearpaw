@@ -1,0 +1,33 @@
+# port: /dev/cu.usbserial-020D43D8  baud: 57600
+
+=== Phase 0: identity ===
+MDL                                -> 'MDL,BC75XLT'
+VER                                -> 'VER,Version 1.02.04'
+PRG                                -> 'PRG,OK'
+
+=== Phase 1: read first (restore depends on this) ===
+CLC                                -> 'CLC,1,1,1,11101,'
+--- mode='1' beep='1' light='1' mask='11101' field5=''
+
+=== Phase 2: which mask positions does the radio keep? ===
+CLC,1,1,1,11111,                   -> 'CLC,OK'
+CLC                                -> 'CLC,1,1,1,11101,'
+--- wrote 11111 -> read back '11101'
+--- FORCED TO 0 AT POSITION(S) [4] -> reserved there.
+--- [4] alone matches the vendor spec: 1 VHF Low, 2 Air, 3 VHF High, 4 RSV, 5 UHF.
+
+=== Phase 3: does mode 3 (CC Only) exist? ===
+CLC,3,1,1,11101,                   -> 'CLC,OK'
+CLC                                -> 'CLC,3,1,1,11101,'
+--- after writing mode 3, radio reports mode '3' (ACCEPTED)
+
+=== Phase 4: is field 5 (hit_scan) reserved? ===
+CLC,1,1,1,11101,1                  -> 'CLC,OK'
+CLC                                -> 'CLC,1,1,1,11101,'
+--- wrote 1 into field 5 -> read back '' (RESERVED)
+
+=== Phase 5: restore ===
+CLC,1,1,1,11101,                   -> 'CLC,OK'
+CLC                                -> 'CLC,1,1,1,11101,'
+--- CLC holds its original settings: ['1', '1', '1', '11101', '']
+EPG                                -> 'EPG,OK'
