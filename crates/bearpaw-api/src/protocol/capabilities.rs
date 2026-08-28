@@ -43,18 +43,17 @@ pub struct ScannerCapabilities {
     /// Whether `CIN` carries a channel name. False on the BC75XLT, where the
     /// field is present but reserved.
     pub has_alpha_tags: bool,
-    /// Whether this model exchanges settings as a Uniden `.bc125at_ss` file.
+    /// Which Uniden settings-file layout this model uses.
     ///
-    /// Named for the FORMAT, not "has a settings file": the BC75XLT has one
-    /// too, in its own layout, which Bearpaw does not implement because we
-    /// have never seen its spec. Writing a guessed file is worse than
-    /// offering none -- Uniden's own software would reject it, and the user
-    /// would not find out until they tried to load it.
+    /// `"bc125at"`, `"bc75xlt"`, or `""` for a model Bearpaw cannot exchange
+    /// settings files with. A single discriminant rather than one boolean per
+    /// format: the two are mutually exclusive, and two booleans would make
+    /// "both at once" representable.
     ///
     /// Replaces a substring match on the model name
     /// (`model.contains("BC125AT")`), which worked only by luck: "BC125AT" is
     /// a substring of "BCT125AT".
-    pub has_bc125at_ss_format: bool,
+    pub ss_format: &'static str,
     /// Region stamped into the `.bc125at_ss` file: "USA" or "EUR".
     ///
     /// A real per-model fact -- the UBC-prefixed units are the European
@@ -149,7 +148,7 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     channels_per_bank: 50,
     bank_count: 10,
     has_alpha_tags: true,
-    has_bc125at_ss_format: true,
+    ss_format: "bc125at",
     ss_region: "USA",
     reports_live_channel: true,
     has_per_channel_modulation: true,
@@ -177,9 +176,10 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     channels_per_bank: 30,
     bank_count: 10,
     has_alpha_tags: false,
-    // The BC75XLT has its own settings-file layout. We have no spec for it, so
-    // Bearpaw exchanges CSV with this model and nothing else.
-    has_bc125at_ss_format: false,
+    // Its own layout, recovered from real files written by Uniden's tool
+    // (2026-08-27). Same tab-delimited sections as the BC125AT minus `WxPri`
+    // and `AvoidFreqs`, plus `CustomSearch`, with 300 channels not 500.
+    ss_format: "bc75xlt",
     ss_region: "USA",
     reports_live_channel: false,
     has_per_channel_modulation: false,

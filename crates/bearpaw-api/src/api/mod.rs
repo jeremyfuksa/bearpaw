@@ -292,6 +292,10 @@ pub fn router(state: AppState) -> Router {
             get(handlers::exports::export_bc125at_ss_file),
         )
         .route(
+            "/api/v1/memory/export/bc75xlt_ss",
+            get(handlers::exports::export_bc75xlt_ss_file),
+        )
+        .route(
             "/api/v1/memory/export/csv",
             get(handlers::exports::export_csv),
         )
@@ -3659,6 +3663,99 @@ mod tests {
         assert_ne!(channel.bank, 0, "bank 0 is the parser's placeholder");
     }
 
+    /// GOLDEN TEST: the `.bc75xlt_ss` we write must match the shape of a file
+    /// written by Uniden's own tool.
+    ///
+    /// `fixtures/sample.bc75xlt_ss` is a real export with the channel
+    /// frequencies replaced by neutral values -- the structure is byte-identical
+    /// to the original, which carried a real operator's call sign and
+    /// programming and does not belong in a public repository.
+    ///
+    /// Asserts the things that would make Uniden's software reject the file:
+    /// section order, per-section field counts, CRLF, and the `Search Bank`
+    /// spelling (the BC125AT tool writes `Search Bnak`; this one does not).
+    #[tokio::test]
+    async fn bc75xlt_ss_export_matches_the_reference_file_shape() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for idx in 1..=300u16 {
+                let mut ch = ChannelData {
+                    index: idx,
+                    ..Default::default()
+                };
+                if idx <= 251 {
+                    ch.frequency = 146.0 + f64::from(idx - 1) * 0.025;
+                }
+                ch.delay = 2;
+                shadow.channels.insert(idx, ch);
+            }
+        }
+        // Exactly the replies this model gave on the wire, 2026-08-26.
+        let _scanner = FakeScanner::attach(&state, |cmd: &str| {
+            Ok(match cmd {
+                "KBP" => "KBP,,0".to_string(),
+                "SQL" => "SQL,2".to_string(),
+                "PRI" => "PRI,0".to_string(),
+                "SCO" => "SCO,2,,0".to_string(),
+                "CLC" => "CLC,2,1,1,11101,".to_string(),
+                "SCG" => "SCG,1111111111".to_string(),
+                _ => "OK".to_string(),
+            })
+        });
+
+        let response =
+            super::handlers::exports::export_bc75xlt_ss_file(axum::extract::State(state.clone()))
+                .await
+                .map_err(|e| format!("{e:?}"))
+                .expect("export should succeed");
+        let body = axum::response::IntoResponse::into_response(response);
+        let bytes = axum::body::to_bytes(body.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let ours = String::from_utf8(bytes.to_vec()).expect("utf8");
+
+        let reference = include_str!("../../fixtures/sample.bc75xlt_ss");
+
+        // CRLF everywhere, including the trailing one.
+        assert_eq!(
+            ours.matches('\n').count(),
+            ours.matches("\r\n").count(),
+            "no bare LF may survive"
+        );
+
+        // Run-length encoded so a mismatch prints a readable diff rather than
+        // 336 tuples.
+        let shape = |text: &str| -> Vec<(String, usize, usize)> {
+            let mut out: Vec<(String, usize, usize)> = Vec::new();
+            for l in text.split("\r\n").filter(|l| !l.is_empty()) {
+                let f: Vec<&str> = l.split('\t').collect();
+                let key = f[0].to_string();
+                match out.last_mut() {
+                    Some((k, n, run)) if *k == key && *n == f.len() => *run += 1,
+                    _ => out.push((key, f.len(), 1)),
+                }
+            }
+            out
+        };
+        assert_eq!(
+            shape(&ours),
+            shape(reference),
+            "section order and per-section field counts must match the reference file"
+        );
+
+        // Uniden fixed their "Search Bnak" typo in this tool. The BC125AT
+        // writer must keep it; this one must not have it.
+        assert!(ours.contains("Custom\t1\tSearch Bank1\t"));
+        assert!(!ours.contains("Bnak"));
+
+        // The reserved columns go out empty, as the real file has them.
+        assert!(ours.contains("C-Freq\t1\t\t146000000\t\t\tOff\t2\tOff\r\n"));
+    }
+
     #[test]
     fn clearing_a_priority_channel_is_not_a_failure() {
         use crate::protocol::capabilities::BC75XLT;
@@ -3987,6 +4084,7 @@ mod tests {
         ("POST", "/api/v1/memory/program-mode/end"),
         ("GET", "/api/v1/memory/export/csv"),
         ("GET", "/api/v1/memory/export/bc125at_ss"),
+        ("GET", "/api/v1/memory/export/bc75xlt_ss"),
         ("GET", "/api/v1/preferences"),
         ("POST", "/api/v1/preferences"),
         ("POST", "/api/v1/preferences/reset"),

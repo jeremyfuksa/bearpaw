@@ -83,7 +83,8 @@ export interface ScannerCapabilities {
    * Named for the FORMAT: the BC75XLT has its own layout, which Bearpaw does
    * not implement because we have no spec for it.
    */
-  has_bc125at_ss_format: boolean;
+  /** 'bc125at' | 'bc75xlt' | '' when no settings file is supported. */
+  ss_format: string;
   /** Region stamped into the `.bc125at_ss` file: 'USA' or 'EUR'. */
   ss_region: string;
   /** False on the BC75XLT, where modulation is a global band-plan setting. */
