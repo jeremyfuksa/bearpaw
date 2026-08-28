@@ -637,7 +637,15 @@ export function ChannelsTab() {
         const normalized = {
           frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
           alpha_tag: draft?.alpha_tag ?? channel.alpha_tag ?? '',
-          modulation: draft?.modulation ?? channel.modulation ?? 'AUTO',
+          // `|| 'AUTO'`, not `?? 'AUTO'`. A BC75XLT reserves the CIN
+          // modulation field, so the backend reports an EMPTY STRING, and `??`
+          // only falls through on null/undefined -- '' survives it. The
+          // comparison below already uses `||` for exactly this reason, so
+          // this side normalised to '' while that side normalised to 'AUTO'
+          // and every channel on that model compared as changed. All 300 sat
+          // permanently in pendingChannelIds, and Upload Changes would have
+          // rewritten every one of them.
+          modulation: draft?.modulation ?? (channel.modulation || 'AUTO'),
           delay: Number.isFinite(parsedDelay) ? parsedDelay : channel.delay,
           tone_squelch: toneHz,
           tone_squelch_kind: toneKind,

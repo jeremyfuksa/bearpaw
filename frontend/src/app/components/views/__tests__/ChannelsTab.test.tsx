@@ -762,6 +762,50 @@ describe('ChannelsTab', () => {
       expect(row).not.toHaveClass('bg-brand-primary/10');
     });
 
+    // REGRESSION GUARD: a channel nobody has touched is not pending.
+    //
+    // A BC75XLT reserves the CIN modulation field, so the backend reports an
+    // EMPTY STRING for every channel. `draftChanges` normalised its own side
+    // with `?? 'AUTO'` -- which only falls through on null/undefined, so ''
+    // survived it -- while comparing against `channel.modulation || 'AUTO'`,
+    // where '' does not. The two sides normalised the same value differently,
+    // so every channel compared as changed: all 300 sat permanently in
+    // pendingChannelIds and Upload Changes would have rewritten every one.
+    //
+    // Asserts with NO drafts at all, which is the state right after a memory
+    // sync -- the moment the bug was reported from.
+    it('leaves untouched channels non-pending when the model reports no modulation', () => {
+      setMockStore(
+        createMockStore({
+          // Exactly what the backend returns for a BC75XLT: modulation ''.
+          channels: [
+            createTestChannel({ index: 1, frequency: 145.13, modulation: '', alpha_tag: '' }),
+            createTestChannel({ index: 2, frequency: 146.955, modulation: '', alpha_tag: '' }),
+          ],
+          memoryDrafts: {},
+        }),
+      );
+
+      render(<ChannelsTab />);
+
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+    });
+
+    // The paired half: a model that DOES report modulation must still compare
+    // equal when untouched, so the fix cannot be "always normalise to AUTO".
+    it('leaves untouched channels non-pending when the model reports modulation', () => {
+      setMockStore(
+        createMockStore({
+          channels: [createTestChannel({ index: 1, frequency: 145.13, modulation: 'NFM' })],
+          memoryDrafts: {},
+        }),
+      );
+
+      render(<ChannelsTab />);
+
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+    });
+
     // REGRESSION GUARD (#272): the end-to-end half of the buildEmptyDraft
     // contract — an uploaded clear must stop counting as a pending change.
     // buildDraft short-circuits to buildEmptyDraft for any zero-frequency
