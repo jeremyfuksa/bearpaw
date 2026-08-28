@@ -24,6 +24,7 @@ import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { SearchRangeEditSheet } from './SearchRangeEditSheet';
 
 type DeviceCategory =
   | 'Locked Channels'
@@ -36,7 +37,6 @@ type DeviceCategory =
 interface SearchRange {
   id: number;
   enabled: boolean;
-  label: string;
   start: string;
   end: string;
 }
@@ -264,19 +264,23 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   const [searchDelay, setSearchDelay] = useState(3);
   const [codeSearchEnabled, setCodeSearchEnabled] = useState(false);
 
-  // Custom Search Settings
-  const [searchRanges, setSearchRanges] = useState<SearchRange[]>([
-    { id: 1, enabled: true, label: 'VHF Low', start: '25.0000', end: '54.0000' },
-    { id: 2, enabled: true, label: 'Civil Air', start: '108.0000', end: '136.9916' },
-    { id: 3, enabled: true, label: 'VHF High', start: '137.0000', end: '174.0000' },
-    { id: 4, enabled: false, label: 'UHF Air', start: '225.0000', end: '380.0000' },
-    { id: 5, enabled: false, label: 'UHF', start: '400.0000', end: '512.0000' },
-    { id: 6, enabled: false, label: '800 MHz', start: '806.0000', end: '960.0000' },
-    { id: 7, enabled: false, label: 'Range 7', start: '1240.0000', end: '1300.0000' },
-    { id: 8, enabled: false, label: 'Range 8', start: '0.0000', end: '0.0000' },
-    { id: 9, enabled: false, label: 'Range 9', start: '0.0000', end: '0.0000' },
-    { id: 10, enabled: false, label: 'Range 10', start: '0.0000', end: '0.0000' },
-  ]);
+  // Custom Search Settings.
+  //
+  // Placeholders until `CSP,1..10` hydrates them, so they say nothing rather
+  // than something false. The previous seed named bands the ranges were not
+  // ('VHF Low' on 25-54, which is CB) and two the scanner cannot receive at all
+  // ('800 MHz', 1240-1300) -- see #477. A row that reads `Range 4  —  —` is
+  // obviously waiting for the radio; one that reads `800 MHz  806.0000` looks
+  // like a setting.
+  const [editingRangeId, setEditingRangeId] = useState<number | null>(null);
+  const [searchRanges, setSearchRanges] = useState<SearchRange[]>(() =>
+    Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      enabled: false,
+      start: '',
+      end: '',
+    })),
+  );
 
   const connectionStatusLabel =
     connectionStatus === 'connected'
@@ -429,24 +433,10 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
 
         // Populate custom search settings and ranges
         if (settings.custom_search && settings.custom_search_ranges) {
-          const defaultLabels = [
-            'VHF Low',
-            'Civil Air',
-            'VHF High',
-            'UHF Air',
-            'UHF',
-            '800 MHz',
-            'Range 7',
-            'Range 8',
-            'Range 9',
-            'Range 10',
-          ];
-
           setSearchRanges(
             settings.custom_search_ranges.map((r, idx) => ({
               id: r.index,
               enabled: settings.custom_search?.groups[idx] || false,
-              label: defaultLabels[idx] || `Range ${r.index}`,
               start: r.lower.toFixed(4),
               end: r.upper.toFixed(4),
             })),
@@ -801,35 +791,31 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     [api, searchRanges],
   );
 
-  const updateRange = useCallback(
-    async (id: number, field: 'start' | 'end' | 'label', value: string) => {
-      // Always write the raw typed string to state so these controlled inputs
-      // reflect what was typed (#264). Gating the state write on a successful
-      // parse swallowed keystrokes like clearing the field or a leading '.';
-      // the parse guard below is what keeps a non-numeric value off the wire.
-      const newRanges = searchRanges.map((r) => (r.id === id ? { ...r, [field]: value } : r));
-      setSearchRanges(newRanges);
-
-      if (field === 'start' || field === 'end') {
-        const range = newRanges.find((r) => r.id === id);
-        if (range) {
-          try {
-            const startVal = parseFloat(range.start);
-            const endVal = parseFloat(range.end);
-            if (isNaN(startVal) || isNaN(endVal)) {
-              console.error('Invalid frequency range');
-              return;
-            }
-            await api.setCustomSearchRange(id, startVal, endVal);
-          } catch (error) {
-            console.error('Failed to update search range', error);
-            toast.error('Failed to update search range');
-          }
-        }
+  // Batched behind the edit sheet's Save button. This used to fire
+  // `setCustomSearchRange` from the table's `onChange`, so every keystroke that
+  // left both fields parseable wrote to the radio: typing `146.5` into an empty
+  // lower limit sent CSP writes for `1`, `14`, `146` and `146.5`, three of them
+  // values nobody chose. Each opens a program-mode bracket, which parks the
+  // scanner in HOLD at channel 1.
+  const saveRange = useCallback(
+    async (id: number, draft: { start: string; end: string }) => {
+      const startVal = parseFloat(draft.start);
+      const endVal = parseFloat(draft.end);
+      if (isNaN(startVal) || isNaN(endVal)) return;
+      try {
+        await api.setCustomSearchRange(id, startVal, endVal);
+        setSearchRanges((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, start: draft.start, end: draft.end } : r)),
+        );
+      } catch (error) {
+        console.error('Failed to update search range', error);
+        toast.error('Failed to update search range');
       }
     },
-    [api, searchRanges],
+    [api],
   );
+
+  const editingRange = searchRanges.find((r) => r.id === editingRangeId) ?? null;
 
   const activeRangeCount = searchRanges.filter((r) => r.enabled).length;
 
@@ -1517,10 +1503,13 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
             </p>
             <div className="flex-1 h-full bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner">
               {/* Table Header */}
-              <div className="grid grid-cols-[50px_60px_1fr_100px_100px] gap-2 px-4 py-2 bg-white/5 text-sm font-bold text-white/60 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
+              {/* Table Header. No Label column: `CSP` has no name field on
+                  either model, so a label could never be saved -- the old one
+                  wrote to local state and vanished on reload. `R-n` already
+                  names the row. */}
+              <div className="grid grid-cols-[72px_80px_1fr_1fr] gap-2 px-4 py-2 bg-white/5 text-sm font-bold text-white/60 uppercase tracking-wider border-b border-white/5 shrink-0 select-none">
                 <div className="text-center">Active</div>
                 <div>Range</div>
-                <div>Label</div>
                 <div className="text-center">Lower (MHz)</div>
                 <div className="text-center">Upper (MHz)</div>
               </div>
@@ -1530,13 +1519,29 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 {searchRanges.map((range) => (
                   <div
                     key={range.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Edit search range ${range.id}`}
+                    onClick={() => setEditingRangeId(range.id)}
+                    // Enter/Space opens the sheet -- the row's primary action.
+                    // The target===currentTarget guard leaves a Space press on
+                    // the Active switch toggling the switch instead. Same shape
+                    // as ChannelsTab's row (a11y C1).
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setEditingRangeId(range.id);
+                      }
+                    }}
                     className={cn(
-                      'group flex-1 grid min-h-[var(--size-panel-stat-min-height)] grid-cols-[50px_60px_1fr_100px_100px] items-center gap-2 border-b border-white/5 px-4 transition-colors last:border-0 hover:bg-white/5',
+                      'group flex-1 grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer grid-cols-[72px_80px_1fr_1fr] items-center gap-2 border-b border-white/5 px-4 text-left transition-colors last:border-0 hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary',
                       range.enabled && 'bg-brand-primary/5',
                     )}
                   >
-                    <div className="flex justify-center">
+                    <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
                       <Switch
+                        aria-label={`Range ${range.id} active`}
                         checked={range.enabled}
                         onCheckedChange={() => toggleRange(range.id)}
                         className={cn(
@@ -1550,52 +1555,40 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                       R-{range.id}
                     </div>
 
-                    <div className="relative">
-                      <input
-                        aria-label={`Range ${range.id} label`}
-                        value={range.label}
-                        onChange={(e) => updateRange(range.id, 'label', e.target.value)}
-                        className={cn(
-                          'w-full bg-transparent border-none outline-none text-sm font-medium tracking-wide transition-colors placeholder:text-white/10',
-                          range.enabled ? 'text-white/80' : 'text-white/30',
-                        )}
-                        placeholder="Label..."
-                      />
+                    <div
+                      className={cn(
+                        'text-center text-sm font-mono font-bold',
+                        range.enabled
+                          ? 'text-brand-primary group-hover:text-brand-light'
+                          : 'text-white/30',
+                      )}
+                    >
+                      {range.start || '—'}
                     </div>
 
-                    <div className="relative">
-                      <input
-                        type="text"
-                        aria-label={`Range ${range.id} lower MHz`}
-                        value={range.start}
-                        onChange={(e) => updateRange(range.id, 'start', e.target.value)}
-                        className={cn(
-                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-sm font-mono font-bold text-center outline-none transition-all py-0',
-                          range.enabled
-                            ? 'text-brand-primary group-hover:text-brand-light'
-                            : 'text-white/30 group-hover:border-white/10',
-                        )}
-                      />
-                    </div>
-
-                    <div className="relative">
-                      <input
-                        type="text"
-                        aria-label={`Range ${range.id} upper MHz`}
-                        value={range.end}
-                        onChange={(e) => updateRange(range.id, 'end', e.target.value)}
-                        className={cn(
-                          'w-full bg-transparent border-b border-transparent focus:border-brand-primary text-sm font-mono font-bold text-center outline-none transition-all py-0',
-                          range.enabled
-                            ? 'text-brand-primary group-hover:text-brand-light'
-                            : 'text-white/30 group-hover:border-white/10',
-                        )}
-                      />
+                    <div
+                      className={cn(
+                        'text-center text-sm font-mono font-bold',
+                        range.enabled
+                          ? 'text-brand-primary group-hover:text-brand-light'
+                          : 'text-white/30',
+                      )}
+                    >
+                      {range.end || '—'}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+            {editingRange && (
+              <SearchRangeEditSheet
+                index={editingRange.id}
+                draft={{ start: editingRange.start, end: editingRange.end }}
+                isOpen
+                onClose={() => setEditingRangeId(null)}
+                onSave={(draft) => saveRange(editingRange.id, draft)}
+              />
+            )}
           </div>
         )}
 
