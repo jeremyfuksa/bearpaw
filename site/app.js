@@ -5,6 +5,13 @@ const REPO = "jeremyfuksa/bearpaw";
 // use event delegation because the links are injected by loadRelease() after
 // fetch; a listener bound at parse time would miss them. gtag may be absent if
 // GA is blocked or offline, so guard every call.
+//
+// `platform` is the build the visitor CHOSE, which is a different question from
+// the OS they are on — GA4's built-in `operatingSystem` answers that one for
+// free. Crossing the two is the point: a Macintosh visitor taking the .msi, or
+// a Windows visitor taking the .deb, shows up only in that cross-tab. Every
+// param below must also be registered as an event-scoped custom dimension in
+// GA4 Admin, or it is collected and then invisible in every report.
 function track(name, params) {
   if (typeof window.gtag === "function") window.gtag("event", name, params);
 }
@@ -13,10 +20,22 @@ function track(name, params) {
 // events carry which OS was picked. Set once loadRelease() knows the assets.
 let assetPlatformByUrl = {};
 
+// Two different failures leave the same static "Download from GitHub Releases"
+// button on the page: the release fetch died, or it succeeded but we could not
+// tell which build to recommend. Conflating them hides an OS-detection gap
+// behind what looks like a GitHub outage, so the download event names which.
+let releasesButtonSource = "releases-fallback";
+
 function initAnalytics() {
   const hero = document.getElementById("hero-download");
   if (hero) {
-    hero.addEventListener("click", () => track("download_intent"));
+    // Tag intent with the build we would recommend, so the intent -> download
+    // funnel reads per platform. "unknown" is the interesting value: it means
+    // detectPlatformKey() matched nothing (phone, Chrome OS, an unusual UA),
+    // which is also the case where no primary button ever gets rendered.
+    hero.addEventListener("click", () =>
+      track("download_intent", { platform: detectPlatformKey() ?? "unknown" }),
+    );
   }
 
   document.addEventListener("click", (e) => {
@@ -37,8 +56,7 @@ function initAnalytics() {
         source: link.closest("#asset-list") ? "asset-list" : "primary-button",
       });
     } else if (href === `https://github.com/${REPO}/releases`) {
-      // The static fallback button, shown when the release fetch fails.
-      track("download", { platform: "unknown", source: "releases-fallback" });
+      track("download", { platform: "unknown", source: releasesButtonSource });
     }
   });
 }
@@ -133,6 +151,7 @@ async function loadRelease() {
     versionEl.textContent = `Latest release: ${release.tag_name}`;
 
     const mine = found.find((p) => p.key === detectPlatformKey());
+    if (!mine) releasesButtonSource = "no-detected-platform";
     if (mine) {
       primaryEl.textContent = "";
       const btn = document.createElement("a");
