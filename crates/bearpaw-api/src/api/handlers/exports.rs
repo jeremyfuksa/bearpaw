@@ -356,10 +356,17 @@ const BC75XLT_SS_CHANNEL_DELAY: u8 = 2;
 
 /// Custom-search ranges as the BC75XLT tool writes them, in Hz.
 ///
-/// `CSP` has never been probed on this model, so Bearpaw does not send it --
-/// an unanswered command inside the PRG bracket is the #436 failure again.
+/// Bearpaw does not read `CSP` here even though that command is now known to
+/// work on this model (write -> read-back -> match, hardware 2026-08-28). The
+/// reason is the format, not the wire: Uniden's own tool writes these constant
+/// factory ranges into a `.bc75xlt_ss` rather than reading the radio, and this
+/// export matches the tool. Reading `CSP` would produce a DIFFERENT file from
+/// the one the vendor writes for the same scanner.
+///
 /// These are the values present in real exported files; they are the radio's
-/// factory ranges and differ from the BC125AT's.
+/// factory ranges and differ from the BC125AT's. The 2026-08-28 probe read all
+/// ten back off a real unit and they match this table exactly -- two
+/// independent recoveries agreeing.
 const BC75XLT_CUSTOM_RANGES: [(u32, u32); 10] = [
     (25_000_000, 27_995_000),
     (28_000_000, 29_695_000),
