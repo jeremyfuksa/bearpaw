@@ -2926,11 +2926,34 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
+    async fn post_lockout_channel(
+        caps: crate::protocol::capabilities::ScannerCapabilities,
+        mode: &str,
+        channel: u16,
+    ) -> StatusCode {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(caps);
+        router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/lockout")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"mode":"{mode}","channel":{channel}}}"#
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+    }
+
     // REGRESSION GUARD (#143): post_lockout must range-check the channel index.
     #[tokio::test]
     async fn post_lockout_rejects_out_of_range_channel() {
-        let app = router(default_state());
-        let response = app
+        let state = default_state();
+        let response = router(state)
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
@@ -2944,6 +2967,36 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body = json_body(response).await;
         assert_eq!(body["error"], "channel_out_of_range");
+    }
+
+    /// REGRESSION GUARD (#435): the bound follows the CONNECTED scanner.
+    ///
+    /// The guard above posts channel 600, which is out of range on both
+    /// families -- so it passed whether the bound read `ScannerCapabilities` or
+    /// a hardcoded 500, and it did in fact hide a hardcoded 500 in
+    /// `handlers::commands`. Channel 350 is the index where the models
+    /// disagree: valid on a BC125AT, past the end of a BC75XLT's 300. This is
+    /// the CH31 lesson from #429 applied to the lockout bound.
+    ///
+    /// Both modes are covered because both are reachable from the same UI
+    /// control and each carried its own copy of the literal.
+    #[tokio::test]
+    async fn post_lockout_bound_follows_the_connected_scanner() {
+        use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
+
+        for mode in ["temporary", "permanent"] {
+            assert_eq!(
+                post_lockout_channel(BC75XLT, mode, 350).await,
+                StatusCode::BAD_REQUEST,
+                "{mode}: channel 350 is past the end of a BC75XLT's 300"
+            );
+            assert_ne!(
+                post_lockout_channel(BC125AT_FAMILY, mode, 350).await,
+                StatusCode::BAD_REQUEST,
+                "{mode}: channel 350 is valid on a BC125AT -- a bound that \
+                 rejects it everywhere is just a different wrong constant"
+            );
+        }
     }
 
     #[tokio::test]

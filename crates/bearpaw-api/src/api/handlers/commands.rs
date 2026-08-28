@@ -174,7 +174,10 @@ pub(crate) async fn post_lockout(
                 .channel
                 .or(live.channel)
                 .ok_or_else(|| ApiError::BadRequest("channel_required".to_string()))?;
-            if !(1..=500).contains(&channel) {
+            // CLAUDE.md pitfall #10: never hardcode 500. A BC75XLT has 300
+            // channels, so a literal bound accepted 301-500 and passed them to
+            // a radio that has no such slot.
+            if !(1..=state.capabilities().channel_count).contains(&channel) {
                 return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
             }
             let frequency = body.frequency.unwrap_or(live.frequency);
@@ -225,7 +228,9 @@ pub(crate) async fn post_lockout(
                 .channel
                 .or(live.channel)
                 .ok_or_else(|| ApiError::BadRequest("channel_required".to_string()))?;
-            if !(1..=500).contains(&index) {
+            // Same bound, same reason. Both modes are reachable from the same
+            // UI control, so fixing one would leave the other wrong.
+            if !(1..=state.capabilities().channel_count).contains(&index) {
                 return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
             }
             let updated = if command_sender(&state).is_ok() {
