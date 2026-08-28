@@ -175,29 +175,62 @@ Two caveats worth stating rather than glossing:
 
 No code change follows from this: the existing implementation is right.
 
-## 7. Priority clear: refused in place, and it reports success
+## 7. Priority cannot be cleared remotely at all
 
 **Transcript:** [priority-clear-probe.txt](priority-clear-probe.txt) · **Script:** [priority-clear-probe.py](priority-clear-probe.py)
 
-Partial — see the caveat below.
+Both mechanisms fail. This is the worst of the three outcomes the probe was
+built to distinguish.
 
 ```
+DCH,300                   -> ERR                       (on an ALREADY-EMPTY slot)
+CIN,300                   -> CIN,300,,00000000,,,0,1,0 (unchanged, as expected)
+
 CIN,1                     -> CIN,1,,01451300,,,1,0,1
-CIN,1,,01451300,,,1,0,0   -> CIN,OK      <-- reports success
+CIN,1,,01451300,,,1,0,0   -> CIN,OK                    <-- reports success
 CIN,1                     -> CIN,1,,01451300,,,1,0,1   <-- priority still 1
 ```
 
-**The BC75XLT refuses an in-place priority `1`→`0` write, exactly as the
-BC125AT does** — and the refusal is silent. The write is answered `CIN,OK` and
-then ignored. Nothing but a read-back reveals it, which is the same failure
-shape as the reserved `CLC` field 5 in §5.
+**`DCH` does not exist on this model.** Its absence from the vendor spec's
+20-command table was not an oversight. The test targeted channel 300, which was
+already factory-empty, so nothing was at risk either way.
 
-So this model does need a separate clear mechanism. Whether it *has* one is
-still open: **`DCH` was not tested.** The probe declines to `DCH` a programmed
-channel and found no empty slot in 1–60 — every channel in that range is
-programmed on this unit. The 2026-08-26 capture shows 299 and 300 are empty, so
-the probe searches the wrong end of memory. Fixed by searching downward from
-the top; a re-run settles it.
+**An in-place priority `1`→`0` write is refused, silently.** The write is
+answered `CIN,OK` and then ignored — the same lie the reserved `CLC` field 5
+tells in §5. Nothing but a read-back reveals it.
+
+So the BC75XLT shares the BC125AT's firmware quirk (no in-place clear) without
+sharing its remedy (`DCH`). Bearpaw has no way to clear a priority channel on
+this model.
+
+### What the manual says, and why it may change the fix
+
+> You can designate one channel in each bank as a priority channel (10 total).
+> The first channel in each bank is the default Priority channel.
+>
+> 1. Manually select the channel you want for the Priority channel.
+> 2. Press Func + Pgm, then press Func + Pri. P appears to the left of the
+>    selected channel number.
+
+**The keypad procedure has no clear step.** You designate a new priority channel
+and that is the whole operation — which suggests the firmware moves the flag
+within the bank by itself, and that a clear is not something the model expects
+anyone to do separately.
+
+If that is right, Bearpaw's clear-then-set swap is imposing a rule this hardware
+already enforces, and the clear is precisely the step that cannot work. The fix
+would be to skip it and set directly.
+
+**That is a hypothesis, not a finding.** The current factory state does not
+settle it: channels 1 and 31 both carry priority, but those are the first
+channels of banks 1 and 2 — the documented defaults — so they are equally
+consistent with firmware enforcement and with nothing being enforced at all.
+
+Testing it means writing priority to a second channel in an occupied bank and
+seeing whether the first one drops it. That test is **not** freely reversible:
+if the firmware does *not* auto-swap, the bank is left with two priority
+channels and — per this very section — Bearpaw cannot clear either one. The
+recovery is the scanner's own keypad.
 
 See #479.
 
