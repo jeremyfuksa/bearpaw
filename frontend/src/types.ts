@@ -114,6 +114,15 @@ export interface ScannerCapabilities {
    */
   has_service_search_groups: boolean;
   /**
+   * Whether the `KBP` key-beep field is settable.
+   *
+   * The BC125AT's `KBP` is `[BEEP],[LOCK]`; the BC75XLT's is `[RSV],[LOCK]` —
+   * the beep slot is reserved, and that model's manual documents no key-beep
+   * setting. Separate from `key_beep_needs_program_mode`, which says WHERE the
+   * command may be sent; both are true of a BC75XLT at once.
+   */
+  has_key_beep: boolean;
+  /**
    * True on the BC75XLT, where `KBP` replies `KBP,NG` outside program mode.
    * The BC125AT accepts it in either mode.
    */
