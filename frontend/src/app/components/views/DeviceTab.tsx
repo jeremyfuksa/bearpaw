@@ -264,19 +264,23 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   const [searchDelay, setSearchDelay] = useState(3);
   const [codeSearchEnabled, setCodeSearchEnabled] = useState(false);
 
-  // Custom Search Settings
-  const [searchRanges, setSearchRanges] = useState<SearchRange[]>([
-    { id: 1, enabled: true, label: 'VHF Low', start: '25.0000', end: '54.0000' },
-    { id: 2, enabled: true, label: 'Civil Air', start: '108.0000', end: '136.9916' },
-    { id: 3, enabled: true, label: 'VHF High', start: '137.0000', end: '174.0000' },
-    { id: 4, enabled: false, label: 'UHF Air', start: '225.0000', end: '380.0000' },
-    { id: 5, enabled: false, label: 'UHF', start: '400.0000', end: '512.0000' },
-    { id: 6, enabled: false, label: '800 MHz', start: '806.0000', end: '960.0000' },
-    { id: 7, enabled: false, label: 'Range 7', start: '1240.0000', end: '1300.0000' },
-    { id: 8, enabled: false, label: 'Range 8', start: '0.0000', end: '0.0000' },
-    { id: 9, enabled: false, label: 'Range 9', start: '0.0000', end: '0.0000' },
-    { id: 10, enabled: false, label: 'Range 10', start: '0.0000', end: '0.0000' },
-  ]);
+  // Custom Search Settings.
+  //
+  // Placeholders until `CSP,1..10` hydrates them, so they say nothing rather
+  // than something false. The previous seed named bands the ranges were not
+  // ('VHF Low' on 25-54, which is CB) and two the scanner cannot receive at all
+  // ('800 MHz', 1240-1300) -- see #477. A row that reads `Range 4  —  —` is
+  // obviously waiting for the radio; one that reads `800 MHz  806.0000` looks
+  // like a setting.
+  const [searchRanges, setSearchRanges] = useState<SearchRange[]>(() =>
+    Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      enabled: false,
+      label: `Range ${i + 1}`,
+      start: '',
+      end: '',
+    })),
+  );
 
   const connectionStatusLabel =
     connectionStatus === 'connected'
@@ -429,24 +433,19 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
 
         // Populate custom search settings and ranges
         if (settings.custom_search && settings.custom_search_ranges) {
-          const defaultLabels = [
-            'VHF Low',
-            'Civil Air',
-            'VHF High',
-            'UHF Air',
-            'UHF',
-            '800 MHz',
-            'Range 7',
-            'Range 8',
-            'Range 9',
-            'Range 10',
-          ];
-
+          // Generic labels on purpose. `CSP` has no name field on either model,
+          // so nothing here comes off the radio and nothing typed here is saved
+          // to it. The list this replaced was positional and wrong on BOTH
+          // families -- range 1 is 25-27.995 (CB), not 'VHF Low'; range 5 is the
+          // AIR band, not 'UHF'; and '800 MHz' named a band neither scanner
+          // receives. Six of ten were mislabelled. Naming a range after the band
+          // it actually covers would mean deriving it from the frequencies, and
+          // a wrong-but-confident name is worse than no name.
           setSearchRanges(
             settings.custom_search_ranges.map((r, idx) => ({
               id: r.index,
               enabled: settings.custom_search?.groups[idx] || false,
-              label: defaultLabels[idx] || `Range ${r.index}`,
+              label: `Range ${r.index}`,
               start: r.lower.toFixed(4),
               end: r.upper.toFixed(4),
             })),
