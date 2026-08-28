@@ -412,6 +412,7 @@ describe('DeviceTab', () => {
       has_contrast: false,
       has_weather_alert: false,
       has_service_search_groups: false,
+      has_key_beep: false,
       key_beep_needs_program_mode: true,
       valid_delays: [0, 1],
       cleared_delay: 0,
@@ -437,6 +438,21 @@ describe('DeviceTab', () => {
       expect(screen.queryByLabelText('Backlight')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('Contrast')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('Battery Saver')).not.toBeInTheDocument();
+    });
+
+    // `KBP` on this model is `[RSV],[LOCK]` -- the beep slot is reserved, and
+    // the radio answers `KBP,,0` (settings probe 2026-08-26). The read could
+    // never parse, so the switch rendered a fabricated `on`; the write put a
+    // number in the reserved slot, which per the vendor spec aborts the whole
+    // set command and takes the key lock with it.
+    it('hides key beep on a BC75XLT', async () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      expect(screen.queryByLabelText('Key Beep')).not.toBeInTheDocument();
     });
 
     // With two supported families, a user with both scanners otherwise has no
@@ -476,6 +492,7 @@ describe('DeviceTab', () => {
       expect(screen.getByLabelText('Backlight')).toBeInTheDocument();
       expect(screen.getByLabelText('Contrast')).toBeInTheDocument();
       expect(screen.getByLabelText('Battery Saver')).toBeInTheDocument();
+      expect(screen.getByLabelText('Key Beep')).toBeInTheDocument();
     });
 
     // The BC75XLT has service search on its `Svc` key but no `SSG` command, so

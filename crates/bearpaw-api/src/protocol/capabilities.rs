@@ -118,6 +118,22 @@ pub struct ScannerCapabilities {
     /// it and there is no `Military Air` -- so the BC125AT band names are
     /// wrong here even where the mask would fit.
     pub has_service_search_groups: bool,
+    /// Whether the `KBP` key-beep field is settable on this model.
+    ///
+    /// The BC125AT's `KBP` is `[BEEP],[LOCK]`; the BC75XLT's is `[RSV],[LOCK]`
+    /// -- the beep slot is reserved. Confirmed on hardware: that model answers
+    /// `KBP,,0` inside program mode (settings probe 2026-08-26), with field 1
+    /// empty, and its owner's manual documents no key-beep setting at all.
+    ///
+    /// Separate from `key_beep_needs_program_mode`, which says WHERE `KBP` may
+    /// be sent. Both are true of a BC75XLT at once: the command exists and is
+    /// program-mode only, and carries a key lock Bearpaw reads for the settings
+    /// file -- only the beep half is missing.
+    ///
+    /// Writing a number into that reserved slot is the format-error hazard in
+    /// CLAUDE.md pitfall #8 applied to `KBP`: per the vendor spec one bad field
+    /// aborts the whole set command, discarding the key lock sent with it.
+    pub has_key_beep: bool,
     /// Whether `KBP` (key beep) is accepted outside program mode.
     ///
     /// The BC125AT takes it in either mode. The BC75XLT replies `KBP,NG`
@@ -173,6 +189,7 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     has_contrast: true,
     has_weather_alert: true,
     has_service_search_groups: true,
+    has_key_beep: true,
     key_beep_needs_program_mode: false,
     // Per docs/BC125AT_PROTOCOL.md §5.3. Negatives are pre-delays.
     valid_delays: &[-10, -5, 0, 1, 2, 3, 4, 5],
@@ -205,6 +222,7 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_contrast: false,
     has_weather_alert: false,
     has_service_search_groups: false,
+    has_key_beep: false,
     key_beep_needs_program_mode: true,
     // Vendor spec: `[DLY] : Delay Time (0:OFF / 1:ON)`.
     valid_delays: &[0, 1],
@@ -357,6 +375,7 @@ mod tests {
         assert!(c.has_contrast);
         assert!(c.has_weather_alert);
         assert!(c.has_service_search_groups);
+        assert!(c.has_key_beep);
         assert!(!c.key_beep_needs_program_mode);
     }
 
@@ -394,6 +413,7 @@ mod tests {
         assert!(!c.has_weather_alert);
         assert!(!c.has_service_search_groups);
         // KBP,NG outside program mode; KBP,,0 inside.
+        assert!(!c.has_key_beep);
         assert!(c.key_beep_needs_program_mode);
     }
 

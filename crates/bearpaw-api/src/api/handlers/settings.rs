@@ -220,6 +220,14 @@ pub(crate) async fn set_key_beep(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Refuse before the wire on a model whose `KBP` beep field is reserved.
+    // The UI hides the control there, so reaching here means an API client or
+    // a stale frontend -- and per the vendor spec a value in a reserved slot
+    // is a format error that aborts the WHOLE set command, taking the key lock
+    // sent alongside it. Same guard as `set_weather` (#432).
+    if !state.capabilities().has_key_beep {
+        return Err(ApiError::BadRequest("key_beep_unsupported".to_string()));
+    }
     // Validate before narrowing (99 = "auto" sentinel). #143.
     let level = body
         .get("level")

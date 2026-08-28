@@ -4889,6 +4889,34 @@ mod tests {
         );
     }
 
+    /// A model whose `KBP` beep field is `[RSV]` must never be sent one. The
+    /// vendor spec aborts the whole set command on a format error, so a write
+    /// here would take the key lock down with it.
+    #[tokio::test]
+    async fn set_key_beep_is_refused_without_a_beep_field() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        let fake = FakeScanner::attach(&state, |_| Ok("OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/settings/key-beep")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"level":1,"lock":false}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            settings_payload(&fake.transcript()).is_empty(),
+            "nothing may reach a scanner whose KBP beep field is reserved"
+        );
+    }
+
     #[tokio::test]
     async fn set_weather_sends_wxs() {
         let (status, t) =

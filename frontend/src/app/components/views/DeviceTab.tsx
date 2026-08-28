@@ -1140,20 +1140,22 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                    <label
-                      htmlFor="key-beep"
-                      className="text-sm font-medium text-white/70 cursor-pointer"
-                    >
-                      Key Beep
-                    </label>
-                    <Switch
-                      id="key-beep"
-                      className="data-[state=checked]:bg-brand-primary"
-                      checked={keyBeepEnabled}
-                      onCheckedChange={handleKeyBeepChange}
-                    />
-                  </div>
+                  {capabilities.has_key_beep && (
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                      <label
+                        htmlFor="key-beep"
+                        className="text-sm font-medium text-white/70 cursor-pointer"
+                      >
+                        Key Beep
+                      </label>
+                      <Switch
+                        id="key-beep"
+                        className="data-[state=checked]:bg-brand-primary"
+                        checked={keyBeepEnabled}
+                        onCheckedChange={handleKeyBeepChange}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
