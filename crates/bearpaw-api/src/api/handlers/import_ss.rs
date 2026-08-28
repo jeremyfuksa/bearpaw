@@ -7,6 +7,7 @@ use super::super::{
     AppState, ProgramModeGuard,
 };
 use super::exports::import_progress;
+use crate::protocol::capabilities::ScannerCapabilities;
 use crate::protocol::{classify_response, ScannerReply};
 use crate::state::{ChannelData, ToneSquelchKind};
 
@@ -57,7 +58,7 @@ fn on_off_to_flag(v: &str) -> &'static str {
     }
 }
 
-pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
+pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfig {
     let mut s = SsSettings::default();
     let mut channels = Vec::new();
     let mut errors = Vec::new();
@@ -160,7 +161,7 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
                     .collect();
                 s.cc_bands = Some(bands);
             }
-            Some("C-Freq") if f.len() >= 9 => match parse_ss_channel(&f) {
+            Some("C-Freq") if f.len() >= 9 => match parse_ss_channel(&f, caps) {
                 Ok(Some(ch)) => channels.push(ch),
                 Ok(None) => {}
                 Err(e) => errors.push(e),
@@ -179,11 +180,16 @@ pub(crate) fn parse_ss_config(text: &str) -> SsConfig {
     }
 }
 
-fn parse_ss_channel(f: &[&str]) -> Result<Option<ChannelData>, String> {
+fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<ChannelData>, String> {
     let on = |v: &str| v.eq_ignore_ascii_case("On");
     let index: u16 = f[1].parse().map_err(|_| "bad C-Freq index".to_string())?;
-    if !(1..=500).contains(&index) {
-        return Err(format!("C-Freq index out of range: {}", index));
+    // Bounded by the CONNECTED scanner, not a hardcoded 500 -- the same class
+    // of bug #433 fixed on the CSV path. A BC75XLT holds 300.
+    if !(1..=caps.channel_count).contains(&index) {
+        return Err(format!(
+            "C-Freq index out of range: {} (must be 1-{})",
+            index, caps.channel_count
+        ));
     }
     let freq_hz: i64 = f[3]
         .parse()
@@ -192,7 +198,27 @@ fn parse_ss_channel(f: &[&str]) -> Result<Option<ChannelData>, String> {
         return Ok(None); // empty slot
     }
     let frequency = freq_hz as f64 / 1_000_000.0;
-    let delay: i8 = f[7].parse().map_err(|_| "bad C-Freq delay".to_string())?;
+    if !caps.covers_frequency(frequency) {
+        return Err(format!(
+            "C-Freq {} is outside this scanner's coverage: {}",
+            index, frequency
+        ));
+    }
+    let parsed_delay: i8 = f[7].parse().map_err(|_| "bad C-Freq delay".to_string())?;
+    // Clamp to something the radio can take. The file's delay column does not
+    // always carry a usable value: on a BC75XLT it is a constant 2 in every
+    // row (docs/SS_FILE_FORMAT.md) while that model's wire delay is a boolean.
+    // Sending 2 is a CIN format error, and the vendor spec aborts the ENTIRE
+    // write on one -- silently discarding the frequency and lockout with it.
+    //
+    // The BC75XLT import path replaces this with the channel's existing delay
+    // afterwards, since the file genuinely carries no information here. The
+    // clamp is the safety net for any other model whose file disagrees.
+    let delay = if caps.valid_delays.contains(&parsed_delay) {
+        parsed_delay
+    } else {
+        caps.cleared_delay
+    };
     Ok(Some(ChannelData {
         index,
         frequency,
@@ -250,6 +276,112 @@ async fn write_setting_verified(
 /// Under ONE program-mode bracket: writes every channel (fast CIN path, retry
 /// once — same as CSV import), then applies global settings write-verified
 /// (each rejection is non-fatal and recorded). Progress streams over the WS.
+/// Pull the `file` part out of a multipart upload.
+async fn read_upload(mut multipart: Multipart) -> Result<Vec<u8>, ApiError> {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("multipart_error: {}", e)))?
+    {
+        if field.name() == Some("file") {
+            return Ok(field
+                .bytes()
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("upload_error: {}", e)))?
+                .to_vec());
+        }
+    }
+    Err(ApiError::BadRequest("file_required".to_string()))
+}
+
+/// Import a `.bc75xlt_ss` file.
+///
+/// Channels only. The settings sections in that file are written by a tool
+/// that can send `BLT`/`BSV`/`CNT`/`WXS`, and this model answers `ERR` to all
+/// four -- pushing them would stall the PRG bracket (#436). Applying settings
+/// on this model needs its own probe and is deliberately out of scope here.
+///
+/// The file's delay column carries a constant 2 (see docs/SS_FILE_FORMAT.md),
+/// which is a `CIN` format error on this radio. Each channel therefore keeps
+/// the delay it already has rather than taking one from a file that does not
+/// actually record it.
+pub(crate) async fn import_bc75xlt_ss(
+    State(state): State<AppState>,
+    multipart: Multipart,
+) -> Result<Json<Value>, ApiError> {
+    let _ = command_sender(&state)?;
+    if state.sync_task_id.lock().unwrap().is_some() {
+        return Err(ApiError::Conflict("sync_in_progress".to_string()));
+    }
+    let caps = state.capabilities();
+    if caps.ss_format != "bc75xlt" {
+        return Err(ApiError::BadRequest("unsupported_model".to_string()));
+    }
+
+    let bytes = read_upload(multipart).await?;
+    let text = String::from_utf8_lossy(&bytes);
+    let cfg = parse_ss_config(&text, &caps);
+
+    let mut errors: Vec<Value> = cfg.errors.iter().map(|e| json!({ "error": e })).collect();
+    let mut imported = 0usize;
+    let total = cfg.channels.len();
+
+    // Substitute each channel's existing delay BEFORE the bracket opens, so
+    // the shadow read is not holding a lock across a wire round-trip.
+    let channels: Vec<ChannelData> = {
+        let shadow = state.shadow.read().unwrap();
+        cfg.channels
+            .iter()
+            .map(|ch| {
+                let mut ch = ch.clone();
+                ch.delay = shadow
+                    .channels
+                    .get(&ch.index)
+                    .map(|existing| existing.delay)
+                    .unwrap_or(caps.cleared_delay);
+                ch
+            })
+            .collect()
+    };
+
+    let _prg = ProgramModeGuard::enter(&state).await?;
+    for (n, ch) in channels.iter().enumerate() {
+        let mut r = write_channel_no_readback(&state, ch).await;
+        if r.is_err() {
+            r = write_channel_no_readback(&state, ch).await;
+        }
+        match r {
+            Ok(()) => {
+                imported += 1;
+                state
+                    .shadow
+                    .write()
+                    .unwrap()
+                    .channels
+                    .insert(ch.index, ch.clone());
+            }
+            Err(e) => errors.push(json!({ "index": ch.index, "error": format!("{:?}", e) })),
+        }
+        if total > 0 && (n + 1) % 10 == 0 {
+            let pct = ((n + 1) * 100 / total) as u8;
+            import_progress(
+                &state,
+                "import-ss",
+                pct,
+                &format!("Importing {}/{}", n + 1, total),
+            );
+        }
+    }
+    import_progress(&state, "import-ss", 100, "Import complete");
+
+    Ok(Json(json!({
+        "imported": imported,
+        "total": total,
+        "settings_applied": 0,
+        "errors": errors,
+    })))
+}
+
 pub(crate) async fn import_bc125at_ss(
     State(state): State<AppState>,
     mut multipart: Multipart,
@@ -294,7 +426,7 @@ pub(crate) async fn import_bc125at_ss(
     };
 
     let text = String::from_utf8_lossy(&bytes);
-    let cfg = parse_ss_config(&text);
+    let cfg = parse_ss_config(&text, &caps);
 
     let mut errors: Vec<Value> = cfg.errors.iter().map(|e| json!({ "error": e })).collect();
     let mut imported = 0usize;
@@ -413,6 +545,7 @@ pub(crate) async fn import_bc125at_ss(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
 
     #[test]
     fn setting_ok_reply_classified() {
@@ -427,7 +560,7 @@ mod tests {
 
     #[test]
     fn parses_misc_to_wire_settings() {
-        let cfg = parse_ss_config(SAMPLE);
+        let cfg = parse_ss_config(SAMPLE, &BC125AT_FAMILY);
         // Misc: backlight K+S->KS, beep Auto->99, keylock Off->0,
         // contrast 8, volume 10, squelch 3, charge 16
         assert_eq!(cfg.settings.backlight.as_deref(), Some("KS"));
@@ -439,14 +572,14 @@ mod tests {
 
     #[test]
     fn parses_priority_and_wxpri() {
-        let cfg = parse_ss_config(SAMPLE);
+        let cfg = parse_ss_config(SAMPLE, &BC125AT_FAMILY);
         assert_eq!(cfg.settings.priority.as_deref(), Some("1")); // On->1
         assert_eq!(cfg.settings.wx_pri.as_deref(), Some("0")); // Off->0
     }
 
     #[test]
     fn parses_bank_mask_with_correct_polarity() {
-        let cfg = parse_ss_config(SAMPLE);
+        let cfg = parse_ss_config(SAMPLE, &BC125AT_FAMILY);
         // Conventional 1 On -> '0', Conventional 4 Off -> '1', rest default On->'0'
         // mask is 10 chars, positions 1..10
         let mask = cfg.settings.scan_flags.as_deref().unwrap();
@@ -457,7 +590,7 @@ mod tests {
 
     #[test]
     fn parses_service_mask() {
-        let cfg = parse_ss_config(SAMPLE);
+        let cfg = parse_ss_config(SAMPLE, &BC125AT_FAMILY);
         // Service 1 Off -> '1', Service 3 On -> '0'
         let mask = cfg.settings.service_flags.as_deref().unwrap();
         assert_eq!(&mask[0..1], "1");
@@ -467,21 +600,21 @@ mod tests {
     #[test]
     fn parses_beep_auto_to_wire_zero() {
         // SAMPLE's Misc line has beep field "Auto"
-        let cfg = parse_ss_config(SAMPLE);
+        let cfg = parse_ss_config(SAMPLE, &BC125AT_FAMILY);
         assert_eq!(cfg.settings.beep.as_deref(), Some("0"));
     }
 
     #[test]
     fn parses_beep_off_to_wire_99() {
         let text = "Misc\tK+S\tOff\tOff\t8\t10\t3\t16\tUSA\n";
-        let cfg = parse_ss_config(text);
+        let cfg = parse_ss_config(text, &BC125AT_FAMILY);
         assert_eq!(cfg.settings.beep.as_deref(), Some("99"));
     }
 
     #[test]
     fn parses_closecall_pri_to_wire_one() {
         let text = "CloseCall\tPri\tOn\tOff\tOff\n";
-        let cfg = parse_ss_config(text);
+        let cfg = parse_ss_config(text, &BC125AT_FAMILY);
         assert_eq!(cfg.settings.cc_mode.as_deref(), Some("1"));
     }
 
@@ -489,7 +622,9 @@ mod tests {
     fn parses_cfreq_channel() {
         let line = "C-Freq\t1\tArarat UHF\t145130000\tAUTO\tOff\tOff\t2\tOff";
         let f: Vec<&str> = line.split('\t').collect();
-        let ch = parse_ss_channel(&f).unwrap().expect("some");
+        let ch = parse_ss_channel(&f, &BC125AT_FAMILY)
+            .unwrap()
+            .expect("some");
         assert_eq!(ch.index, 1);
         assert!((ch.frequency - 145.13).abs() < 0.00005);
         assert_eq!(ch.alpha_tag, "Ararat UHF");
@@ -501,15 +636,82 @@ mod tests {
     fn cfreq_zero_freq_is_empty_slot() {
         let line = "C-Freq\t6\tAUTO\t0\tAUTO\tOff\tOff\t2\tOff";
         let f: Vec<&str> = line.split('\t').collect();
-        assert!(parse_ss_channel(&f).unwrap().is_none());
+        assert!(parse_ss_channel(&f, &BC125AT_FAMILY).unwrap().is_none());
     }
 
     #[test]
     fn cfreq_lockout_priority_on() {
         let line = "C-Freq\t3\tRepeater\t146940000\tFM\tOff\tOn\t2\tOn";
         let f: Vec<&str> = line.split('\t').collect();
-        let ch = parse_ss_channel(&f).unwrap().expect("some");
+        let ch = parse_ss_channel(&f, &BC125AT_FAMILY)
+            .unwrap()
+            .expect("some");
         assert!(ch.lockout);
         assert!(ch.priority);
+    }
+
+    /// The BC75XLT parser must read a real file written by Uniden's tool.
+    ///
+    /// `fixtures/blank.bc75xlt_ss` is a `New` -> `Save As` from the real
+    /// software: 300 empty channels, so every `C-Freq` row parses to "empty
+    /// slot" and nothing should be imported.
+    #[test]
+    fn a_blank_bc75xlt_file_parses_to_no_channels() {
+        let text = include_str!("../../../fixtures/blank.bc75xlt_ss");
+        let cfg = parse_ss_config(text, &BC75XLT);
+        assert!(
+            cfg.channels.is_empty(),
+            "every slot in a blank file is empty"
+        );
+        assert!(
+            cfg.errors.is_empty(),
+            "a file the tool itself wrote must parse cleanly: {:?}",
+            cfg.errors
+        );
+    }
+
+    /// REGRESSION GUARD: the file's delay column must never reach the wire on
+    /// a BC75XLT.
+    ///
+    /// Every row of a real `.bc75xlt_ss` carries `2` (docs/SS_FILE_FORMAT.md),
+    /// and that model's `CIN` delay is a boolean. Sending 2 is a format error,
+    /// and the vendor spec aborts the ENTIRE set command on one -- so a single
+    /// imported row would silently discard its own frequency and lockout.
+    #[test]
+    fn the_files_delay_never_reaches_a_bc75xlt() {
+        let row = "C-Freq\t1\t\t145130000\t\t\tOff\t2\tOff";
+        let f: Vec<&str> = row.split('\t').collect();
+        let ch = parse_ss_channel(&f, &BC75XLT)
+            .expect("parses")
+            .expect("programmed slot");
+        assert!(
+            BC75XLT.valid_delays.contains(&ch.delay),
+            "delay {} is not writable on this model",
+            ch.delay
+        );
+        assert_ne!(ch.delay, 2, "2 is the file's constant, not a wire value");
+    }
+
+    /// The same row on a BC125AT keeps its delay: 2 seconds is legal there,
+    /// and clamping it would be silent data loss.
+    #[test]
+    fn a_bc125at_keeps_a_delay_the_file_supplies() {
+        let row = "C-Freq\t1\tTEST\t145130000\tFM\t\tOff\t2\tOff";
+        let f: Vec<&str> = row.split('\t').collect();
+        let ch = parse_ss_channel(&f, &BC125AT_FAMILY)
+            .expect("parses")
+            .expect("programmed slot");
+        assert_eq!(ch.delay, 2);
+    }
+
+    /// The index bound follows the connected scanner, not a hardcoded 500 --
+    /// the same class of bug #433 fixed on the CSV path.
+    #[test]
+    fn the_ss_index_bound_follows_the_model() {
+        let row = "C-Freq\t301\t\t145130000\t\t\tOff\t2\tOff";
+        let f: Vec<&str> = row.split('\t').collect();
+        assert!(parse_ss_channel(&f, &BC125AT_FAMILY).is_ok());
+        let err = parse_ss_channel(&f, &BC75XLT).expect_err("301 does not exist here");
+        assert!(err.contains("1-300"), "got: {err}");
     }
 }

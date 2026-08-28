@@ -1051,12 +1051,15 @@ export function ChannelsTab() {
     // Accept both formats. In Tauri a synthetic <input type=file> opens the
     // picker but its change event never fires, so pickAndReadFile uses the
     // native dialog + fs there, and the input element in a browser.
-    const picked = await pickAndReadFile(['csv', 'bc125at_ss']);
+    const picked = await pickAndReadFile(['csv', 'bc125at_ss', 'bc75xlt_ss']);
     if (!picked) return;
 
     // A .ss file restores the WHOLE config (channels + all settings), so it's
     // more destructive than a CSV channel import — confirm first.
-    const isSs = picked.name.toLowerCase().endsWith('.bc125at_ss');
+    const lower = picked.name.toLowerCase();
+    const isBc125atSs = lower.endsWith('.bc125at_ss');
+    const isBc75xltSs = lower.endsWith('.bc75xlt_ss');
+    const isSs = isBc125atSs || isBc75xltSs;
     if (isSs) {
       const ok = await confirmDialog(
         'Restore full config from this file? This overwrites all channels and settings.',
@@ -1077,7 +1080,7 @@ export function ChannelsTab() {
     });
     try {
       const endpoint = isSs
-        ? `${API_BASE}/memory/import/bc125at_ss`
+        ? `${API_BASE}/memory/import/${isBc75xltSs ? 'bc75xlt_ss' : 'bc125at_ss'}`
         : `${API_BASE}/memory/import/csv`;
       const formData = new FormData();
       formData.append('file', new File([picked.bytes as BlobPart], picked.name));
