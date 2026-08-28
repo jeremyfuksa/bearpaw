@@ -114,6 +114,20 @@ export interface ScannerCapabilities {
    */
   has_service_search_groups: boolean;
   /**
+   * Close Call band labels, indexed by position in the `CLC` mask.
+   *
+   * `null` marks a reserved position — present in the 5-character mask, but
+   * not a band. The families disagree on positions 4 and 5: the BC125AT is
+   * `[…, 'UHF', '800 MHz']`, the BC75XLT is `[…, null, 'UHF']`. Render by
+   * index and skip the nulls; never reorder, the index IS the wire position.
+   */
+  close_call_bands: Array<string | null>;
+  /**
+   * Whether `CLC` field 5 (`hit_scan`, "Lockout Hits While Scanning") is
+   * settable. Reserved on the BC75XLT: written `1`, it reads back empty.
+   */
+  has_close_call_hit_scan: boolean;
+  /**
    * Whether the `KBP` key-beep field is settable.
    *
    * The BC125AT's `KBP` is `[BEEP],[LOCK]`; the BC75XLT's is `[RSV],[LOCK]` —

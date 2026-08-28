@@ -1303,24 +1303,32 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   </Select>
                 </div>
 
-                <div className="flex items-center gap-3 pt-2">
-                  <Switch
-                    id="cc-lockout"
-                    className="data-[state=checked]:bg-brand-primary"
-                    checked={closeCallLockout}
-                    disabled={closeCallMode === 'off'}
-                    onCheckedChange={(checked) => handleCloseCallSettingChange('lockout', checked)}
-                  />
-                  <label
-                    htmlFor="cc-lockout"
-                    className={cn(
-                      'text-sm font-medium cursor-pointer',
-                      closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
-                    )}
-                  >
-                    Lockout Hits While Scanning
-                  </label>
-                </div>
+                {/* CLC field 5 is reserved on some models: written `1` on a
+                    BC75XLT it reads back empty (hardware 2026-08-28). It is
+                    accepted without an error and silently discarded, so
+                    nothing but a read-back would ever reveal the failure. */}
+                {capabilities.has_close_call_hit_scan && (
+                  <div className="flex items-center gap-3 pt-2">
+                    <Switch
+                      id="cc-lockout"
+                      className="data-[state=checked]:bg-brand-primary"
+                      checked={closeCallLockout}
+                      disabled={closeCallMode === 'off'}
+                      onCheckedChange={(checked) =>
+                        handleCloseCallSettingChange('lockout', checked)
+                      }
+                    />
+                    <label
+                      htmlFor="cc-lockout"
+                      className={cn(
+                        'text-sm font-medium cursor-pointer',
+                        closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
+                      )}
+                    >
+                      Lockout Hits While Scanning
+                    </label>
+                  </div>
+                )}
               </section>
 
               <section className="space-y-4">
@@ -1373,26 +1381,35 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
             <section className="space-y-4">
               <h3 className="text-lg font-bold text-white">Enabled Bands</h3>
               <div className="bg-white/5 rounded-lg p-4 space-y-4 border border-white/10">
-                {['VHF Low', 'Air', 'VHF High', 'UHF', '800 MHz'].map((band, index) => (
-                  <div key={band} className="flex items-center justify-between">
-                    <label
-                      htmlFor={`band-${band}`}
-                      className={cn(
-                        'text-sm font-medium cursor-pointer',
-                        closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
-                      )}
-                    >
-                      {band}
-                    </label>
-                    <Switch
-                      id={`band-${band}`}
-                      className="data-[state=checked]:bg-brand-primary"
-                      checked={closeCallBands[index]}
-                      disabled={closeCallMode === 'off'}
-                      onCheckedChange={() => handleCloseCallBandToggle(index)}
-                    />
-                  </div>
-                ))}
+                {/* Index IS the wire position in the 5-character CLC mask, so
+                    the reserved slot is skipped in place rather than filtered
+                    out -- `entries()` keeps the index after the null is gone.
+                    The families disagree on positions 4 and 5 (BC125AT: UHF,
+                    800 MHz; BC75XLT: reserved, UHF), verified on hardware
+                    2026-08-28. Remapping only one of the two would leave a
+                    "UHF" switch writing the reserved slot. */}
+                {[...capabilities.close_call_bands.entries()]
+                  .filter((entry): entry is [number, string] => entry[1] !== null)
+                  .map(([index, band]) => (
+                    <div key={band} className="flex items-center justify-between">
+                      <label
+                        htmlFor={`band-${band}`}
+                        className={cn(
+                          'text-sm font-medium cursor-pointer',
+                          closeCallMode === 'off' ? 'text-white/30' : 'text-white/70',
+                        )}
+                      >
+                        {band}
+                      </label>
+                      <Switch
+                        id={`band-${band}`}
+                        className="data-[state=checked]:bg-brand-primary"
+                        checked={closeCallBands[index]}
+                        disabled={closeCallMode === 'off'}
+                        onCheckedChange={() => handleCloseCallBandToggle(index)}
+                      />
+                    </div>
+                  ))}
               </div>
             </section>
           </div>

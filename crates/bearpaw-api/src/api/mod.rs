@@ -4984,6 +4984,53 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD: a reserved `CLC` field goes out EMPTY, never `0`.
+    ///
+    /// Field 5 (`hit_scan`) is reserved on a BC75XLT -- written `1` it reads
+    /// back empty (hardware 2026-08-28). It is accepted without an error and
+    /// silently discarded, so nothing but a read-back reveals the failure.
+    /// CLAUDE.md pitfall #9: an empty field means "leave unchanged", while a
+    /// value in a reserved slot risks the format error that aborts the whole
+    /// set command. The UI hides that control, so the `lockout` arriving here
+    /// is a default rather than a user choice -- writing it would be inventing
+    /// an answer.
+    ///
+    /// Paired with the BC125AT case: a guard that emptied the field for every
+    /// model would pass alone while silently dropping a real setting.
+    async fn clc_write_for(caps: crate::protocol::capabilities::ScannerCapabilities) -> String {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(caps);
+        let fake = FakeScanner::attach(&state, |_| Ok("OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/settings/close-call")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"mode":1,"alert_beep":true,"alert_light":true,"band":[true,true,true,false,true],"lockout":true}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = settings_payload(&fake.transcript_with_closed_bracket());
+        assert_eq!(payload.len(), 1, "expected one CLC write: {payload:?}");
+        payload.into_iter().next().unwrap()
+    }
+
+    #[tokio::test]
+    async fn close_call_leaves_a_reserved_hit_scan_field_empty() {
+        use crate::protocol::capabilities::BC75XLT;
+        assert_eq!(clc_write_for(BC75XLT).await, "CLC,1,1,1,11101,");
+    }
+
+    #[tokio::test]
+    async fn close_call_still_writes_hit_scan_where_it_is_settable() {
+        assert_eq!(clc_write_for(BC125AT_FAMILY).await, "CLC,1,1,1,11101,1");
+    }
+
     #[tokio::test]
     async fn set_weather_sends_wxs() {
         let (status, t) =

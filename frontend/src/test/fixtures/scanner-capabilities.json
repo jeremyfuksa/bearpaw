@@ -4,6 +4,13 @@
     "channel_count": 500,
     "channels_per_bank": 50,
     "cleared_delay": 2,
+    "close_call_bands": [
+      "VHF Low",
+      "Air",
+      "VHF High",
+      "UHF",
+      "800 MHz"
+    ],
     "coverage_bands": [
       [
         25.0,
@@ -26,6 +33,7 @@
     "has_alpha_tags": true,
     "has_backlight_control": true,
     "has_battery_save": true,
+    "has_close_call_hit_scan": true,
     "has_contrast": true,
     "has_key_beep": true,
     "has_per_channel_modulation": true,
@@ -52,6 +60,13 @@
     "channel_count": 500,
     "channels_per_bank": 50,
     "cleared_delay": 2,
+    "close_call_bands": [
+      "VHF Low",
+      "Air",
+      "VHF High",
+      "UHF",
+      "800 MHz"
+    ],
     "coverage_bands": [
       [
         25.0,
@@ -74,6 +89,7 @@
     "has_alpha_tags": true,
     "has_backlight_control": true,
     "has_battery_save": true,
+    "has_close_call_hit_scan": true,
     "has_contrast": true,
     "has_key_beep": true,
     "has_per_channel_modulation": true,
@@ -100,6 +116,13 @@
     "channel_count": 300,
     "channels_per_bank": 30,
     "cleared_delay": 0,
+    "close_call_bands": [
+      "VHF Low",
+      "Air",
+      "VHF High",
+      null,
+      "UHF"
+    ],
     "coverage_bands": [
       [
         25.0,
@@ -118,6 +141,7 @@
     "has_alpha_tags": false,
     "has_backlight_control": false,
     "has_battery_save": false,
+    "has_close_call_hit_scan": false,
     "has_contrast": false,
     "has_key_beep": false,
     "has_per_channel_modulation": false,
@@ -138,6 +162,13 @@
     "channel_count": 500,
     "channels_per_bank": 50,
     "cleared_delay": 2,
+    "close_call_bands": [
+      "VHF Low",
+      "Air",
+      "VHF High",
+      "UHF",
+      "800 MHz"
+    ],
     "coverage_bands": [
       [
         25.0,
@@ -160,6 +191,7 @@
     "has_alpha_tags": true,
     "has_backlight_control": true,
     "has_battery_save": true,
+    "has_close_call_hit_scan": true,
     "has_contrast": true,
     "has_key_beep": true,
     "has_per_channel_modulation": true,
@@ -186,6 +218,13 @@
     "channel_count": 500,
     "channels_per_bank": 50,
     "cleared_delay": 2,
+    "close_call_bands": [
+      "VHF Low",
+      "Air",
+      "VHF High",
+      "UHF",
+      "800 MHz"
+    ],
     "coverage_bands": [
       [
         25.0,
@@ -208,6 +247,7 @@
     "has_alpha_tags": true,
     "has_backlight_control": true,
     "has_battery_save": true,
+    "has_close_call_hit_scan": true,
     "has_contrast": true,
     "has_key_beep": true,
     "has_per_channel_modulation": true,
@@ -234,6 +274,13 @@
     "channel_count": 500,
     "channels_per_bank": 50,
     "cleared_delay": 2,
+    "close_call_bands": [
+      "VHF Low",
+      "Air",
+      "VHF High",
+      "UHF",
+      "800 MHz"
+    ],
     "coverage_bands": [
       [
         25.0,
@@ -256,6 +303,7 @@
     "has_alpha_tags": true,
     "has_backlight_control": true,
     "has_battery_save": true,
+    "has_close_call_hit_scan": true,
     "has_contrast": true,
     "has_key_beep": true,
     "has_per_channel_modulation": true,
