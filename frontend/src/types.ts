@@ -128,6 +128,15 @@ export interface ScannerCapabilities {
    */
   has_close_call_hit_scan: boolean;
   /**
+   * Whether Bearpaw can clear a channel's priority flag on this model.
+   *
+   * The BC125AT family needs `DCH` + a full rewrite; a BC75XLT has no `DCH`
+   * and refuses an in-place clear, but its firmware moves the flag within a
+   * bank by itself. False does NOT mean priority cannot be moved — it means
+   * the clear is the radio's job rather than ours.
+   */
+  has_priority_clear: boolean;
+  /**
    * Whether the `KBP` key-beep field is settable.
    *
    * The BC125AT's `KBP` is `[BEEP],[LOCK]`; the BC75XLT's is `[RSV],[LOCK]` —

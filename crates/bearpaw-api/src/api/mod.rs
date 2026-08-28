@@ -2208,21 +2208,34 @@ pub(crate) async fn set_channel_priority(
     let _guard = ProgramModeGuard::enter(state).await?; // ONE bracket for the whole swap
     let mut changed = Vec::new();
 
-    // REGRESSION GUARD (priority swap atomicity): clear the OLD priority channel
-    // BEFORE setting the new one, inside a SINGLE program-mode bracket, and
-    // propagate the clear's error with `?` so a failed clear ABORTS the swap.
-    // Setting first, ignoring the clear error, or dropping/re-entering the guard
-    // between clear and set can leave a bank with two priority channels, a
-    // DCH-deleted channel, or an interleaved command mid-swap. See the priority spec.
+    // REGRESSION GUARD (priority swap atomicity): on a model where Bearpaw
+    // clears, clear the OLD priority channel BEFORE setting the new one, inside
+    // a SINGLE program-mode bracket, and propagate the clear's error with `?` so
+    // a failed clear ABORTS the swap. Setting first, ignoring the clear error, or
+    // dropping/re-entering the guard between clear and set can leave a bank with
+    // two priority channels, a DCH-deleted channel, or an interleaved command
+    // mid-swap. See the priority spec.
+    //
+    // `has_priority_clear` is false where the RADIO owns the swap. A BC75XLT has
+    // no `DCH` and refuses an in-place clear, but moves the flag within a bank
+    // itself -- measured in both directions on hardware 2026-08-28, see
+    // docs/wire_captures/2026-08-28/findings.md §8. Running the clear there was
+    // not merely unnecessary, it was the one step that could not work: every
+    // swap failed with `priority_clear_dch_failed` (#479).
     if let Some(old) = old_to_clear {
-        let cleared = clear_channel_priority_locked(state, old).await?; // locked: no inner guard
-        state
-            .shadow
-            .write()
-            .unwrap()
-            .channels
-            .insert(old, cleared.clone());
-        changed.push(cleared);
+        if caps.has_priority_clear {
+            let cleared = clear_channel_priority_locked(state, old).await?; // locked: no inner guard
+            state
+                .shadow
+                .write()
+                .unwrap()
+                .channels
+                .insert(old, cleared.clone());
+            changed.push(cleared);
+        }
+        // Otherwise the old channel is cleared by the SET below, as a side
+        // effect. It is re-read after that write, not before -- reading first
+        // reports a state the next command undoes.
     }
 
     // Set the new priority channel with a plain CIN write (SET works in place).
@@ -2255,6 +2268,36 @@ pub(crate) async fn set_channel_priority(
         .channels
         .insert(new_to_set, readback.clone());
     changed.push(readback);
+
+    // Where the firmware owns the swap, the old channel dropped its flag as a
+    // side effect of the write above. Re-read it: without this the shadow cache
+    // -- and so the UI -- keeps showing a priority channel the radio has already
+    // cleared, which is the same stale-view failure #402 produced by a different
+    // route.
+    if let Some(old) = old_to_clear {
+        if !caps.has_priority_clear {
+            let cleared = read_channel_from_scanner(state, old).await?;
+            if cleared.priority {
+                // Contradicts the 2026-08-28 measurement. Report the truth
+                // rather than a tidy fiction: the requested channel DID get
+                // priority, so this is not a failed request, but the bank now
+                // holds two and nothing here can fix that.
+                tracing::warn!(
+                    old,
+                    new = new_to_set,
+                    "firmware did not clear the previous priority channel; bank now holds two"
+                );
+            }
+            state
+                .shadow
+                .write()
+                .unwrap()
+                .channels
+                .insert(old, cleared.clone());
+            // Contract: cleared-old first, then the new one.
+            changed.insert(0, cleared);
+        }
+    }
     Ok(changed)
 }
 
@@ -4073,6 +4116,111 @@ mod tests {
             !is_factory_empty(&cleared, &BC125AT_FAMILY),
             "delay 0 is not what a BC125AT reports either — this is not a \
              sentinel, it is a real per-model value"
+        );
+    }
+
+    /// REGRESSION GUARD (#479): the swap sends `DCH` only where `DCH` exists.
+    ///
+    /// A BC75XLT has no `DCH` and refuses an in-place priority clear, so the
+    /// clear step failed and aborted every swap -- by design, per the atomicity
+    /// guard. It needs no clear: its firmware moves the flag within a bank
+    /// itself (hardware 2026-08-28, findings.md §8).
+    ///
+    /// Paired on purpose. Asserting only the BC75XLT half would pass for a
+    /// build that never cleared on ANY model, which would silently leave a
+    /// BC125AT bank holding two priority channels.
+    async fn priority_swap_transcript(
+        caps: crate::protocol::capabilities::ScannerCapabilities,
+    ) -> Vec<String> {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(caps);
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for (index, priority) in [(2u16, true), (9u16, false)] {
+                shadow.channels.insert(
+                    index,
+                    ChannelData {
+                        index,
+                        frequency: 146.52,
+                        priority,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        // Delay 0, not the shared responder's 2. Delay is a boolean on a
+        // BC75XLT, so a channel carrying 2 cannot exist there and
+        // `build_cin_write_payload_for` rejects it before the wire -- the swap
+        // would fail for a reason that has nothing to do with the clear. 0 is
+        // valid on both models, so the pair differs ONLY by capabilities.
+        let scanner = FakeScanner::attach(&state, |command: &str| {
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            if command.starts_with("DCH,") {
+                return Ok("DCH,OK\r".to_string());
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let mut fields = rest.splitn(2, ',');
+                let index: u16 = fields.next().unwrap_or("").parse().unwrap_or(0);
+                match fields.next() {
+                    Some(payload) => {
+                        let wrote_priority = payload.rsplit(',').next() == Some("1");
+                        WROTE_PRIORITY.with(|w| {
+                            w.borrow_mut().insert(index, wrote_priority);
+                        });
+                        return Ok("CIN,OK\r".to_string());
+                    }
+                    None => {
+                        let priority = WROTE_PRIORITY
+                            .with(|w| w.borrow().get(&index).copied())
+                            .unwrap_or(index == 2);
+                        return Ok(format!(
+                            "CIN,{index},,01451300,,,0,0,{}\r",
+                            if priority { 1 } else { 0 }
+                        ));
+                    }
+                }
+            }
+            Ok("OK\r".to_string())
+        });
+        let _ = set_channel_priority(&state, 9).await;
+        scanner.transcript_with_closed_bracket()
+    }
+
+    #[tokio::test]
+    async fn priority_swap_skips_the_clear_where_the_firmware_owns_it() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let sent = priority_swap_transcript(BC75XLT).await;
+        assert!(
+            !sent.iter().any(|c| c.starts_with("DCH")),
+            "a BC75XLT has no DCH; sending one aborts the whole swap: {sent:?}"
+        );
+        assert!(
+            sent.iter().any(|c| c.starts_with("CIN,9,")),
+            "the new priority channel must still be written: {sent:?}"
+        );
+        // The old channel is re-read AFTER the set, so the shadow cache does
+        // not keep showing a priority channel the radio already cleared.
+        let set_at = sent.iter().position(|c| c.starts_with("CIN,9,")).unwrap();
+        let reread_at = sent.iter().rposition(|c| c == "CIN,2");
+        assert!(
+            reread_at.is_some_and(|at| at > set_at),
+            "the auto-cleared channel must be re-read after the set: {sent:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn priority_swap_still_clears_where_bearpaw_owns_it() {
+        let sent = priority_swap_transcript(BC125AT_FAMILY).await;
+        assert!(
+            sent.iter().any(|c| c.starts_with("DCH,2")),
+            "a BC125AT firmware does not auto-swap; the old channel must be \
+             explicitly cleared or the bank keeps two: {sent:?}"
         );
     }
 
