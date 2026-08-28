@@ -267,14 +267,20 @@ def main():
         # A just-written flag might behave differently from a factory one. Worth
         # knowing either way, and free to try.
         write_priority(fd, partner, partner_fields, "0")
-        final_partner = read_ch(fd, partner, f"CIN,{partner}")
+        cleared_directly = read_ch(fd, partner, f"CIN,{partner} after the clear attempt")
         write_priority(fd, holder, holder_fields, "1")
+        # Read the partner AFTER restoring the holder, not before. On an
+        # auto-swapping radio the holder's write is what clears the partner, so
+        # reading first reports a state that the very next command undoes -- the
+        # first hardware run printed "both hold priority" when the radio had
+        # already swapped correctly.
         final_holder = read_ch(fd, holder, f"CIN,{holder}")
-        if final_partner and final_partner[6] == "0":
+        final_partner = read_ch(fd, partner, f"CIN,{partner}")
+        if cleared_directly and cleared_directly[6] == "0":
             print("--- NOTE: the in-place clear WORKED on a just-set flag, though it is")
             print("--- refused on a factory one (findings.md §7). Worth a follow-up.")
         else:
-            print(f"--- CIN,{partner} still holds priority, as expected -- the clear is refused.")
+            print(f"--- the direct clear of CIN,{partner} was refused, as expected.")
         print(f"--- left as: CIN,{holder}={final_holder}, CIN,{partner}={final_partner}")
         print(f"--- Bank {SCRATCH_BANK} is the scratch bank; no recovery needed.")
     finally:

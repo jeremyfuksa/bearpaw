@@ -236,7 +236,63 @@ See #479.
 
 ---
 
+## 8. The firmware moves the priority flag by itself
+
+**Transcript:** [priority-swap-probe.txt](priority-swap-probe.txt) · **Script:** [priority-swap-probe.py](priority-swap-probe.py)
+
+Run in bank 9, which the owner designates a scratch bank.
+
+```
+CIN,241                       -> CIN,241,,01451300,,,0,0,1   (holds priority)
+CIN,242,,01605300,,,1,0,1     -> CIN,OK
+CIN,242                       -> CIN,242,,01605300,,,1,0,1   <-- took priority
+CIN,241                       -> CIN,241,,01451300,,,0,0,0   <-- dropped it, unasked
+```
+
+**One priority channel per bank is enforced by the radio.** Designating a new
+one clears the old one automatically, which is exactly what the owner's manual
+describes from the keypad — select the channel, Func+Pgm, Func+Pri, and no
+clear step anywhere.
+
+Confirmed in both directions. Writing priority back to 241 cleared 242 again; a
+separate read-only pass afterwards showed `241 priority=1, 242 priority=0`.
+
+So §7's conclusion stands but its consequence does not. Bearpaw's
+clear-then-set swap is imposing a rule this hardware already keeps, and the
+clear is precisely the step that cannot work. **The fix is to skip it and SET
+directly** — see #479.
+
+### Three more things this run settled
+
+**`CIN` writes work.** Programming channel 241 from empty took immediately. That
+closes the last open item in #478.
+
+**Writing frequency `00000000` clears a channel.** Restoring 241 to
+`,00000000,,,0,1,1` read back byte-identical. This is the `DCH` substitute this
+model needs, and it means a channel clear does not depend on a command the
+BC75XLT lacks.
+
+**A refused priority clear does not block the rest of the write.** Phase 2 sent
+`CIN,241,,01451300,,,0,0,0` to a channel that held priority. The frequency
+landed and the priority field did not move — `CIN,OK`, then
+`CIN,241,,01451300,,,0,0,1`. So the silent refusal in §7 is scoped to the one
+field, not the whole command, which is *unlike* the format-error case that
+aborts everything.
+
+### A probe bug worth recording
+
+The first run's Phase 4 reported "both channels hold priority" when the radio
+had already swapped correctly. It read the partner channel *before* writing the
+holder — and on an auto-swapping radio the holder's write is what clears the
+partner. Reading first reports a state the very next command undoes. Fixed by
+reading both after the last write.
+
+The bank was verified by an independent read-only pass, not by trusting that
+line, which is the only reason the mistake surfaced.
+
+---
+
 ## Still untested on this model
 
-`CLR` (destructive, deliberately not sent), `SSP`, `BPL` writes, `DCH`, and
-`CIN` writes beyond the single priority field exercised in §7.
+`CLR` (destructive, deliberately not sent), `SSP`, and `BPL` writes. `DCH`
+does not exist here (§7) and `CIN` writes are confirmed (§8).
