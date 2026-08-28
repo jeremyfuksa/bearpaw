@@ -80,6 +80,8 @@ capabilities are always read under one lock.
 | `has_backlight_control` | true | false (no `BLT` command) |
 | `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) |
 | `has_service_search_groups` | true | false (no `SSG` command) |
+| `close_call_bands` | VHF Low, Air, VHF High, UHF, 800 MHz | VHF Low, Air, VHF High, **reserved**, UHF |
+| `has_close_call_hit_scan` | true | false (`CLC` field 5 is `[RSV]`) |
 | `has_key_beep` | true | false (`KBP` beep field is `[RSV]`) |
 | `key_beep_needs_program_mode` | false | true (`KBP,NG` outside PRG) |
 | `valid_delays` | `-10,-5,0,1,2,3,4,5` (seconds) | `0,1` (boolean) |
@@ -101,6 +103,12 @@ capabilities are always read under one lock.
    before the wire, never "sent and hope".
 4. **Adding a model means adding a descriptor.** `every_accepted_model_resolves_to_capabilities`
    fails otherwise; without it a new model silently inherits BC125AT constants.
+5. **A half-fix can be worse than none.** `close_call_bands` is a labels list,
+   not a "position 4 is reserved" flag, because the families swap TWO facts at
+   once: which slot is dead, and what slot 5 is called. Hiding only the
+   obviously-wrong 800 MHz row on a BC75XLT would leave a "UHF" switch writing
+   the reserved slot — a control that looks right, reads back plausibly, and
+   does nothing. The visibly-absurd row at least prompts someone to look.
 
 The TypeScript mirror is verified against real Rust output: a backend test writes
 `frontend/src/test/fixtures/scanner-capabilities.json` from the actual allowlist

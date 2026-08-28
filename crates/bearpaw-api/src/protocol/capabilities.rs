@@ -118,6 +118,35 @@ pub struct ScannerCapabilities {
     /// it and there is no `Military Air` -- so the BC125AT band names are
     /// wrong here even where the mask would fit.
     pub has_service_search_groups: bool,
+    /// Close Call band labels, indexed by their position in the `CLC` mask.
+    ///
+    /// `None` marks a reserved position -- present in the 5-character mask,
+    /// but not a band. The families disagree on positions 4 and 5:
+    ///
+    /// | Pos | BC125AT | BC75XLT |
+    /// |---|---|---|
+    /// | 4 | UHF | reserved |
+    /// | 5 | 800 MHz | UHF |
+    ///
+    /// Verified on hardware 2026-08-28: writing `11111` to a BC75XLT reads
+    /// back `11101` -- position 4 is forced to 0. Bearpaw used the BC125AT
+    /// order for both, so on that radio the "UHF" switch wrote the reserved
+    /// slot while "800 MHz" -- a band it cannot even receive -- was the real
+    /// UHF control. See `docs/wire_captures/2026-08-28/findings.md`.
+    ///
+    /// A labels list rather than a "position 4 is reserved" bool because the
+    /// swap changes two facts at once: which slot is dead AND what slot 5 is
+    /// called. Fixing only the first leaves a "UHF" switch that writes
+    /// nothing and looks correct -- worse than the visibly-wrong 800 MHz row
+    /// that would at least prompt someone to check.
+    pub close_call_bands: &'static [Option<&'static str>],
+    /// Whether `CLC` field 5 (`hit_scan`, "Lockout Hits While Scanning") is
+    /// settable.
+    ///
+    /// Reserved on the BC75XLT: written `1`, it reads back empty (hardware
+    /// 2026-08-28). Accepted without an error, then silently discarded -- so
+    /// nothing surfaces the failure except reading the field back.
+    pub has_close_call_hit_scan: bool,
     /// Whether the `KBP` key-beep field is settable on this model.
     ///
     /// The BC125AT's `KBP` is `[BEEP],[LOCK]`; the BC75XLT's is `[RSV],[LOCK]`
@@ -189,6 +218,14 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     has_contrast: true,
     has_weather_alert: true,
     has_service_search_groups: true,
+    close_call_bands: &[
+        Some("VHF Low"),
+        Some("Air"),
+        Some("VHF High"),
+        Some("UHF"),
+        Some("800 MHz"),
+    ],
+    has_close_call_hit_scan: true,
     has_key_beep: true,
     key_beep_needs_program_mode: false,
     // Per docs/BC125AT_PROTOCOL.md §5.3. Negatives are pre-delays.
@@ -222,6 +259,14 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_contrast: false,
     has_weather_alert: false,
     has_service_search_groups: false,
+    close_call_bands: &[
+        Some("VHF Low"),
+        Some("Air"),
+        Some("VHF High"),
+        None,
+        Some("UHF"),
+    ],
+    has_close_call_hit_scan: false,
     has_key_beep: false,
     key_beep_needs_program_mode: true,
     // Vendor spec: `[DLY] : Delay Time (0:OFF / 1:ON)`.
@@ -375,6 +420,9 @@ mod tests {
         assert!(c.has_contrast);
         assert!(c.has_weather_alert);
         assert!(c.has_service_search_groups);
+        assert!(c.has_close_call_hit_scan);
+        assert_eq!(c.close_call_bands[3], Some("UHF"));
+        assert_eq!(c.close_call_bands[4], Some("800 MHz"));
         assert!(c.has_key_beep);
         assert!(!c.key_beep_needs_program_mode);
     }
@@ -412,6 +460,11 @@ mod tests {
         assert!(!c.has_contrast);
         assert!(!c.has_weather_alert);
         assert!(!c.has_service_search_groups);
+        assert!(!c.has_close_call_hit_scan);
+        // Position 4 is reserved and 5 is UHF -- the reverse of the BC125AT.
+        // Hardware 2026-08-28: writing 11111 reads back 11101.
+        assert_eq!(c.close_call_bands[3], None);
+        assert_eq!(c.close_call_bands[4], Some("UHF"));
         // KBP,NG outside program mode; KBP,,0 inside.
         assert!(!c.has_key_beep);
         assert!(c.key_beep_needs_program_mode);

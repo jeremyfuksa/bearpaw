@@ -50,6 +50,36 @@ describe('DeviceTab', () => {
     await userEvent.click(screen.getByRole('button', { name: label }));
   };
 
+  /**
+   * Turn Close Call on, toggle one band, and return the WIRE POSITION that
+   * moved (1-based, as the mask is written).
+   *
+   * Reads the index that changed rather than an absolute value: the band's
+   * starting state comes from hydration, so asserting `true` or `false`
+   * pins the fixture instead of the mapping. What matters is which slot the
+   * click reached.
+   *
+   * The switches are disabled while the mode is 'off' — the default until
+   * hydration — so the mode has to move first. That write is itself a
+   * setCloseCallSettings call, hence the before/after pair.
+   */
+  const bandPositionMovedBy = async (label: string): Promise<number[]> => {
+    await userEvent.click(screen.getByLabelText('Mode'));
+    await userEvent.click(await screen.findByRole('option', { name: 'CC Priority' }));
+    await waitFor(() => expect(mockApiClient.setCloseCallSettings).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByLabelText(label));
+    await waitFor(() =>
+      expect(mockApiClient.setCloseCallSettings.mock.calls.length).toBeGreaterThan(1),
+    );
+    const payloads = mockApiClient.setCloseCallSettings.mock.calls.map(
+      (call) => (call[0] as { band: boolean[] }).band,
+    );
+    const before = payloads[0];
+    const after = payloads[payloads.length - 1];
+    return after.map((_, i) => i).filter((i) => before[i] !== after[i]);
+  };
+
   describe('Device Config category', () => {
     it('should render device config by default', () => {
       renderDeviceTab();
@@ -412,6 +442,8 @@ describe('DeviceTab', () => {
       has_contrast: false,
       has_weather_alert: false,
       has_service_search_groups: false,
+      close_call_bands: ['VHF Low', 'Air', 'VHF High', null, 'UHF'],
+      has_close_call_hit_scan: false,
       has_key_beep: false,
       key_beep_needs_program_mode: true,
       valid_delays: [0, 1],
@@ -514,6 +546,68 @@ describe('DeviceTab', () => {
       renderDeviceTab();
 
       expect(screen.getByRole('button', { name: /Service Search/i })).toBeInTheDocument();
+    });
+
+    // REGRESSION GUARD: the Close Call band switch writes the WIRE position
+    // its label names. Positions 4 and 5 are swapped between families —
+    // BC125AT is [.., UHF, 800 MHz], BC75XLT is [.., reserved, UHF], verified
+    // on hardware 2026-08-28 (writing 11111 reads back 11101). Bearpaw used
+    // the BC125AT order for both, so on a BC75XLT the "UHF" switch wrote the
+    // reserved slot and "800 MHz" — a band that radio cannot receive — was
+    // the real UHF control.
+    //
+    // Asserting the label list alone is NOT enough: hiding the 800 MHz row
+    // while leaving UHF at index 3 passes a label check and still writes
+    // nothing. The payload index is the assertion that matters.
+    it('maps UHF to wire position 5 on a BC75XLT', async () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Close Call/i);
+
+      expect(screen.queryByLabelText('800 MHz')).not.toBeInTheDocument();
+
+      // Index 4 is the fifth mask character. Index 3 is reserved here and must
+      // never move.
+      expect(await bandPositionMovedBy('UHF')).toEqual([4]);
+    });
+
+    // Paired half. Same click, different radio, different wire slot.
+    it('maps UHF to wire position 4 on a BC125AT-family scanner', async () => {
+      renderDeviceTab();
+      await selectCategory(/Close Call/i);
+
+      expect(screen.getByLabelText('800 MHz')).toBeInTheDocument();
+
+      expect(await bandPositionMovedBy('UHF')).toEqual([3]);
+    });
+
+    // CLC field 5 is reserved on a BC75XLT: written 1, it reads back empty.
+    // Accepted without an error and silently discarded, so nothing but a
+    // read-back would ever reveal it.
+    it('hides Lockout Hits While Scanning on a BC75XLT', async () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Close Call/i);
+
+      expect(screen.queryByLabelText(/Lockout Hits While Scanning/i)).not.toBeInTheDocument();
+    });
+
+    // CC Only (mode 3) is absent from the BC75XLT vendor spec AND its owner's
+    // manual, but the radio accepts and retains it (hardware 2026-08-28).
+    // Captures win — this option must NOT be hidden on that model.
+    it('still offers CC Only on a BC75XLT', async () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Close Call/i);
+      await userEvent.click(screen.getByLabelText('Mode'));
+
+      expect(await screen.findByRole('option', { name: 'CC Only' })).toBeInTheDocument();
     });
   });
 });

@@ -40,6 +40,8 @@ const EXPECTED_KEYS = [
   'has_contrast',
   'has_weather_alert',
   'has_service_search_groups',
+  'close_call_bands',
+  'has_close_call_hit_scan',
   'has_key_beep',
   'key_beep_needs_program_mode',
   'valid_delays',
@@ -77,6 +79,9 @@ describe('ScannerCapabilities contract', () => {
     expect(typeof caps.has_contrast).toBe('boolean');
     expect(typeof caps.has_weather_alert).toBe('boolean');
     expect(typeof caps.has_service_search_groups).toBe('boolean');
+    expect(Array.isArray(caps.close_call_bands)).toBe(true);
+    expect(caps.close_call_bands).toHaveLength(5);
+    expect(typeof caps.has_close_call_hit_scan).toBe('boolean');
     expect(typeof caps.has_key_beep).toBe('boolean');
     expect(typeof caps.key_beep_needs_program_mode).toBe('boolean');
     expect(Array.isArray(caps.valid_delays)).toBe(true);

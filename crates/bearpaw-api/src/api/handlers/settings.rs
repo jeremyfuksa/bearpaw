@@ -462,6 +462,22 @@ pub(crate) async fn set_close_call(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if command_sender(&state).is_ok() {
+        // Field 5 (`hit_scan`) is reserved on some models -- written `1` on a
+        // BC75XLT it reads back empty (hardware 2026-08-28). A reserved field
+        // goes out EMPTY, per CLAUDE.md pitfall #9: an empty field means
+        // "leave unchanged", while a value in a reserved slot risks the
+        // format error that aborts the whole set command. The UI hides the
+        // control on such a model, so `lockout` there is a default, not a
+        // user choice -- writing it would be inventing an answer.
+        let hit_scan = if state.capabilities().has_close_call_hit_scan {
+            if lockout {
+                "1"
+            } else {
+                "0"
+            }
+        } else {
+            ""
+        };
         let _prg = ProgramModeGuard::enter(&state).await?;
         let response = send_raw_command(
             &state,
@@ -471,7 +487,7 @@ pub(crate) async fn set_close_call(
                 if alert_beep { 1 } else { 0 },
                 if alert_light { 1 } else { 0 },
                 band_str,
-                if lockout { 1 } else { 0 }
+                hit_scan
             ),
             false,
         )
