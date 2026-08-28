@@ -23,6 +23,8 @@ const POLL_INTERVAL_MS: u64 = 200;
 const PWR_INTERVAL_TICKS: u32 = 3;
 /// Query squelch level every Nth tick (200ms × 10 = ~2s cadence).
 const SQL_INTERVAL_TICKS: u32 = 10;
+/// Query volume every Nth tick (200ms × 10 = ~2s cadence).
+const VOL_INTERVAL_TICKS: u32 = 10;
 /// First reconnect attempt fires this many ms after a disconnect is
 /// detected. Subsequent attempts back off via `next_backoff` up to
 /// `RECONNECT_BACKOFF_MAX_MS`.
@@ -350,6 +352,20 @@ fn run_poll_loop(
                 }
             }
 
+            // Periodic volume refresh (~2s). Catches changes made on the radio
+            // itself, which no frame broadcasts.
+            if tick.is_multiple_of(VOL_INTERVAL_TICKS)
+                && !state.program_mode_active.load(Ordering::Relaxed)
+            {
+                if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
+                    if let Some(v) = parse_vol_response(&vol_resp) {
+                        if let Ok(mut live) = state.live.write() {
+                            live.volume = v;
+                        }
+                    }
+                }
+            }
+
             process_poll_tick(
                 &state,
                 &mut poll_state,
@@ -641,6 +657,20 @@ fn run_poll_loop_usb(
                     if let Some(v) = parse_sql_response(&sql_resp) {
                         if let Ok(mut live) = state.live.write() {
                             live.squelch_level = v;
+                        }
+                    }
+                }
+            }
+
+            // Periodic volume refresh (~2s). Catches changes made on the radio
+            // itself, which no frame broadcasts.
+            if tick.is_multiple_of(VOL_INTERVAL_TICKS)
+                && !state.program_mode_active.load(Ordering::Relaxed)
+            {
+                if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
+                    if let Some(v) = parse_vol_response(&vol_resp) {
+                        if let Ok(mut live) = state.live.write() {
+                            live.volume = v;
                         }
                     }
                 }
