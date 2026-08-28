@@ -361,54 +361,91 @@ describe('DeviceTab', () => {
       expect(mockApiClient.setCustomSearchSettings).toHaveBeenCalled();
     });
 
-    it('should update range values', async () => {
+    // Editing moved from inline table inputs into a dialog (click the row,
+    // edit, Save). The inline inputs wrote to the radio from `onChange`, so
+    // every keystroke that left both fields parseable sent a `CSP` write --
+    // typing `146.5` into an empty lower limit sent `1`, `14`, `146`, `146.5`,
+    // three of them values nobody chose, each opening a program-mode bracket.
+    const openRangeEditor = async (id: number) => {
+      await userEvent.click(screen.getByRole('button', { name: `Edit search range ${id}` }));
+    };
+
+    it('saves a range only when Save is pressed', async () => {
       mockApiClient.setCustomSearchRange = vi.fn().mockResolvedValue(undefined);
 
       renderDeviceTab();
       await selectCategory(/Custom Search/i);
+      await openRangeEditor(1);
 
-      const startInput = screen.getByDisplayValue('140.0000');
-      fireEvent.change(startInput, { target: { value: '141.0000' } });
+      const lower = screen.getByLabelText('Lower (MHz)');
+      fireEvent.change(lower, { target: { value: '141.0000' } });
 
+      // The whole point: typing has not touched the scanner.
+      expect(mockApiClient.setCustomSearchRange).not.toHaveBeenCalled();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
       await waitFor(() => {
-        expect(mockApiClient.setCustomSearchRange).toHaveBeenLastCalledWith(1, 141, 149);
+        expect(mockApiClient.setCustomSearchRange).toHaveBeenCalledWith(1, 141, 149);
       });
     });
 
-    // Regression guard (#264): the range MHz inputs are controlled, so
-    // updateRange must always write the raw typed string to state — otherwise
-    // clearing the field (or typing a leading '.') parses to NaN, the state
-    // write is skipped, and React snaps the input back to its old value,
-    // visibly swallowing the keystroke.
-    it('lets you clear a range input without snapping back', async () => {
+    it('discards edits on Cancel without writing', async () => {
       mockApiClient.setCustomSearchRange = vi.fn().mockResolvedValue(undefined);
 
       renderDeviceTab();
       await selectCategory(/Custom Search/i);
+      await openRangeEditor(1);
 
-      const startInput = screen.getByDisplayValue('140.0000');
-      fireEvent.change(startInput, { target: { value: '' } });
+      fireEvent.change(screen.getByLabelText('Lower (MHz)'), { target: { value: '141.0000' } });
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-      await waitFor(() => {
-        expect(startInput).toHaveValue('');
-      });
-      // An empty bound must NOT reach the wire — the parse guard still holds.
       expect(mockApiClient.setCustomSearchRange).not.toHaveBeenCalled();
     });
 
-    it('lets you type a leading decimal into a range input', async () => {
+    // Regression guard (#264), carried over from the inline inputs: the fields
+    // are controlled, so the raw typed string must always reach state.
+    // Otherwise clearing the field (or typing a leading '.') parses to NaN, the
+    // state write is skipped, and React snaps the input back — visibly
+    // swallowing the keystroke. Validation gates the SAVE, not the keystroke.
+    it.each([
+      ['cleared', ''],
+      ['a leading decimal', '.'],
+    ])('lets you type %s without snapping back', async (_label, typed) => {
       mockApiClient.setCustomSearchRange = vi.fn().mockResolvedValue(undefined);
 
       renderDeviceTab();
       await selectCategory(/Custom Search/i);
+      await openRangeEditor(1);
 
-      const startInput = screen.getByDisplayValue('140.0000');
-      fireEvent.change(startInput, { target: { value: '.' } });
+      const lower = screen.getByLabelText('Lower (MHz)');
+      fireEvent.change(lower, { target: { value: typed } });
 
-      await waitFor(() => {
-        expect(startInput).toHaveValue('.');
-      });
+      await waitFor(() => expect(lower).toHaveValue(typed));
       expect(mockApiClient.setCustomSearchRange).not.toHaveBeenCalled();
+    });
+
+    it('refuses to save a limit the scanner cannot tune', async () => {
+      mockApiClient.setCustomSearchRange = vi.fn().mockResolvedValue(undefined);
+
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
+      await openRangeEditor(1);
+
+      fireEvent.change(screen.getByLabelText('Lower (MHz)'), { target: { value: '900.0000' } });
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText(/Must be in a covered band/i)).toBeInTheDocument();
+      expect(mockApiClient.setCustomSearchRange).not.toHaveBeenCalled();
+    });
+
+    // `CSP` has no name field on either model, so a label could never be saved.
+    // The old one wrote to local state and vanished on reload.
+    it('has no label column', async () => {
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
+
+      expect(screen.queryByText('Label')).not.toBeInTheDocument();
+      expect(screen.getByText('R-1')).toBeInTheDocument();
     });
   });
 
