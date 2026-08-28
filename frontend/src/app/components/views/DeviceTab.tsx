@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import {
@@ -33,6 +33,20 @@ type DeviceCategory =
   | 'Service Search'
   | 'Custom Search'
   | 'Preferences';
+
+/**
+ * Categories whose contents are read from the scanner and can therefore drift.
+ *
+ * Locked Channels is absent because it already refetches whenever it is
+ * selected and shows its own sync time. Preferences is absent because it is
+ * app state in SQLite, not device state -- nothing on the radio can change it.
+ */
+const REFRESHABLE_CATEGORIES: DeviceCategory[] = [
+  'Device Config',
+  'Close Call',
+  'Service Search',
+  'Custom Search',
+];
 
 interface SearchRange {
   id: number;
@@ -348,15 +362,23 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     };
   }, [api, activeCategory]);
 
-  const programModeSettingsLoaded = useRef(false);
-
-  // Load all device settings when component mounts
-  useEffect(() => {
-    let active = true;
-    const loadAllSettings = async () => {
+  /**
+   * Read every device setting in one pass.
+   *
+   * Runs on mount and from the Refresh control. Deliberately NOT polled: the
+   * backend answers this by opening a program-mode bracket, which parks the
+   * scanner in HOLD at channel 1 for the duration. On a timer that would make
+   * the radio unusable.
+   *
+   * `shouldContinue` lets the mount effect abandon a load whose component has
+   * unmounted; the Refresh path passes nothing and always applies.
+   */
+  const loadAllSettings = useCallback(
+    async (shouldContinue: () => boolean = () => true) => {
       try {
         const settings = await api.getAllSettings();
 
+        const active = shouldContinue();
         if (!active) return;
 
         // Firmware comes from the settings snapshot (VER), not DeviceInfo —
@@ -442,20 +464,43 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
             })),
           );
         }
-
-        programModeSettingsLoaded.current = true;
       } catch (error) {
         console.error('Failed to load all settings', error);
         toast.error('Failed to load device settings');
       }
-    };
+    },
+    [api],
+  );
 
-    loadAllSettings();
-
+  useEffect(() => {
+    let mounted = true;
+    // `loadAllSettings` is async and every setState inside it happens after an
+    // await, so nothing is set synchronously here -- the rule cannot see past
+    // the call. The `mounted` flag is what actually prevents a late response
+    // from setting state on an unmounted component.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAllSettings(() => mounted);
     return () => {
-      active = false;
+      mounted = false;
     };
-  }, [api]);
+  }, [loadAllSettings]);
+
+  // The scanner has no change notification -- it answers questions and never
+  // volunteers that something moved. So anything changed on the front panel
+  // stays invisible here until this runs again. Refresh makes that recoverable
+  // and, via the timestamp, visible.
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [settingsReadAt, setSettingsReadAt] = useState<number | null>(null);
+
+  const handleRefreshSettings = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await loadAllSettings();
+      setSettingsReadAt(Date.now());
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [loadAllSettings]);
 
   const toggleSelection = useCallback((channelId: number) => {
     setSelectedChannels((prev) =>
@@ -859,13 +904,37 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
       {/* Content */}
       <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-6 h-full overflow-y-auto">
         {activeCategory !== 'Locked Channels' && (
-          <h2 className="text-lg font-bold mb-6 border-b border-white/10 pb-2 flex items-center justify-between">
+          <h2 className="text-lg font-bold mb-6 border-b border-white/10 pb-2 flex items-center justify-between gap-4">
             <span>{selectedCategory}</span>
-            {activeCategory === 'Custom Search' && (
-              <span className="text-sm font-normal text-white/50">
-                {activeRangeCount} of 10 active
-              </span>
-            )}
+            <span className="flex items-center gap-4">
+              {activeCategory === 'Custom Search' && (
+                <span className="text-sm font-normal text-white/50">
+                  {activeRangeCount} of 10 active
+                </span>
+              )}
+              {REFRESHABLE_CATEGORIES.includes(activeCategory) && (
+                <>
+                  {settingsReadAt && (
+                    <span className="text-sm font-normal text-white/40">
+                      Read {new Date(settingsReadAt).toLocaleTimeString()}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleRefreshSettings}
+                    disabled={isRefreshing}
+                    className="flex items-center gap-1.5 rounded border border-white/5 bg-black/20 px-2.5 py-1 text-sm font-normal text-white/70 transition-colors hover:bg-black/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      size={14}
+                      aria-hidden
+                      className={cn(isRefreshing && 'animate-spin')}
+                    />
+                    {isRefreshing ? 'Reading…' : 'Refresh'}
+                  </button>
+                </>
+              )}
+            </span>
           </h2>
         )}
 
