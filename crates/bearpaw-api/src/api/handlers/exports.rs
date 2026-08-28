@@ -275,21 +275,42 @@ pub(crate) async fn export_bc125at_ss_file(
             on_off(&search_code)
         ));
 
+        // Banks and channels INTERLEAVE: each `Conventional` line is followed
+        // by that bank's own 50 channels, not ten bank lines and then all 500.
+        //
+        // Bearpaw emitted them grouped. It survived review of three real files
+        // because the analysis aggregated lines by section NAME regardless of
+        // position, which makes grouped and interleaved indistinguishable --
+        // only a sequence-exact comparison shows the difference. Confirmed
+        // against `fixtures/blank.bc125at_ss`, saved by Uniden's own tool.
         let scan_enabled = flags_to_bools(&scan_flags);
-        for idx in 1..=10 {
-            let enabled = if scan_enabled.get(idx - 1).copied().unwrap_or(false) {
+        let by_index: std::collections::HashMap<u16, &SsChannelRow> =
+            channels.iter().map(|row| (row.0, row)).collect();
+        for bank in 1..=caps.bank_count {
+            let enabled = if scan_enabled
+                .get(usize::from(bank - 1))
+                .copied()
+                .unwrap_or(false)
+            {
                 "On"
             } else {
                 "Off"
             };
-            lines.push(format!("Conventional\t{}\tBank {}\t{}", idx, idx, enabled));
-        }
-
-        for (idx, name, frequency_hz, modulation, tone, lockout, delay, priority) in channels {
             lines.push(format!(
-                "C-Freq\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                idx, name, frequency_hz, modulation, tone, lockout, delay, priority
+                "Conventional\t{}\tBank {}\t{}",
+                bank, bank, enabled
             ));
+            let first = u16::from(bank - 1) * caps.channels_per_bank + 1;
+            for idx in first..first + caps.channels_per_bank {
+                if let Some((i, name, frequency_hz, modulation, tone, lockout, delay, priority)) =
+                    by_index.get(&idx)
+                {
+                    lines.push(format!(
+                        "C-Freq\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                        i, name, frequency_hz, modulation, tone, lockout, delay, priority
+                    ));
+                }
+            }
         }
 
         Ok::<String, ApiError>(join_ss_lines(&lines))

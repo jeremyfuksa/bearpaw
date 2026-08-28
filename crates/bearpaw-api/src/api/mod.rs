@@ -3663,6 +3663,104 @@ mod tests {
         assert_ne!(channel.bank, 0, "bank 0 is the parser's placeholder");
     }
 
+    /// GOLDEN TEST: the `.bc125at_ss` we write must match the shape of a file
+    /// written by Uniden's own tool.
+    ///
+    /// `fixtures/blank.bc125at_ss` is a `New` -> `Save As` from the real
+    /// software: 500 empty channels and nothing else, so it is pure structure
+    /// with no operator data in it at all.
+    ///
+    /// REGRESSION GUARD: banks and channels INTERLEAVE. Bearpaw emitted all ten
+    /// `Conventional` lines and then all 500 `C-Freq` lines. That survived
+    /// review of three real files because the analysis aggregated lines by
+    /// section NAME regardless of position, which makes grouped and
+    /// interleaved indistinguishable. Only a sequence-exact comparison shows
+    /// it -- which is what this test is.
+    #[tokio::test]
+    async fn bc125at_ss_export_matches_the_reference_file_shape() {
+        let state = default_state();
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for idx in 1..=500u16 {
+                shadow.channels.insert(
+                    idx,
+                    ChannelData {
+                        index: idx,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        let _scanner = FakeScanner::attach(&state, |cmd: &str| {
+            Ok(match cmd {
+                "BLT" => "BLT,AF".to_string(),
+                "KBP" => "KBP,99,0".to_string(),
+                "BSV" => "BSV,2".to_string(),
+                "PRI" => "PRI,0".to_string(),
+                "SCG" => "SCG,1111111111".to_string(),
+                "SCO" => "SCO,1,0".to_string(),
+                "CLC" => "CLC,0,0,0,11111,0".to_string(),
+                "WXS" => "WXS,0".to_string(),
+                "CNT" => "CNT,8".to_string(),
+                "VOL" => "VOL,14".to_string(),
+                "SQL" => "SQL,6".to_string(),
+                c if c.starts_with("CSP,") => format!("{c},25000000,27995000"),
+                c if c.starts_with("SSP,") => format!("{c},0"),
+                _ => "OK".to_string(),
+            })
+        });
+
+        let response =
+            super::handlers::exports::export_bc125at_ss_file(axum::extract::State(state.clone()))
+                .await
+                .map_err(|e| format!("{e:?}"))
+                .expect("export should succeed");
+        let body = axum::response::IntoResponse::into_response(response);
+        let bytes = axum::body::to_bytes(body.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let ours = String::from_utf8(bytes.to_vec()).expect("utf8");
+
+        let reference = include_str!("../../fixtures/blank.bc125at_ss");
+
+        // Run-length encoded so a mismatch prints a readable diff.
+        let shape = |text: &str| -> Vec<(String, usize, usize)> {
+            let mut out: Vec<(String, usize, usize)> = Vec::new();
+            for l in text.split("\r\n").filter(|l| !l.is_empty()) {
+                let f: Vec<&str> = l.split('\t').collect();
+                let key = f[0].to_string();
+                match out.last_mut() {
+                    Some((k, n, run)) if *k == key && *n == f.len() => *run += 1,
+                    _ => out.push((key, f.len(), 1)),
+                }
+            }
+            out
+        };
+
+        let ours_shape = shape(&ours);
+        let ref_shape = shape(reference);
+
+        // The load-bearing assertion: ten Conventional RUNS, not one.
+        let conventional_runs = ours_shape
+            .iter()
+            .filter(|(k, _, _)| k == "Conventional")
+            .count();
+        assert_eq!(
+            conventional_runs, 10,
+            "each bank line must be followed by its own channels, not batched"
+        );
+
+        // `AvoidFreqs` is absent from a file with no lockouts (confirmed by the
+        // blank), and Bearpaw never emits it (#459), so the shapes line up.
+        assert_eq!(
+            ours_shape, ref_shape,
+            "section order and per-section field counts must match the reference"
+        );
+
+        // Uniden's own typo, present in every real file. It must NOT be fixed.
+        assert!(ours.contains("Custom\t1\tSearch Bnak1\t"));
+    }
+
     /// GOLDEN TEST: the `.bc75xlt_ss` we write must match the shape of a file
     /// written by Uniden's own tool.
     ///
