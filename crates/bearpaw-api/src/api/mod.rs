@@ -2652,16 +2652,34 @@ mod tests {
         assert_eq!(payload, "Test Chan,01451300,FM,0,-10,0,1");
     }
 
-    /// What the scanner reads back for any empty slot: the factory-empty
-    /// signature `AUTO,00000000,AUTO,0,2,1,0` as parse_cin_response produces it
-    /// (alpha_tag="AUTO", delay=2, lockout=1, priority=0, no tone).
-    fn factory_empty_readback() -> ChannelData {
+    /// What the scanner reads back for an empty slot, as `parse_cin_response`
+    /// produces it -- per model, because the two families do not agree.
+    ///
+    /// ```text
+    /// BC125AT  CIN,10,AUTO,00000000,AUTO,0,2,1,0  -> alpha "AUTO", mod "AUTO", delay 2
+    /// BC75XLT  CIN,299,,00000000,,,0,1,0          -> alpha "",     mod "",     delay 0
+    /// ```
+    ///
+    /// This used to hardcode the BC125AT signature, so every test built on it
+    /// asserted BC125AT behaviour only and the BC75XLT path through
+    /// `readback_matches` was unguarded -- the #435 pattern exactly. Lockout is
+    /// `true` on both, so it stays a literal.
+    fn factory_empty_readback(caps: &ScannerCapabilities) -> ChannelData {
         ChannelData {
             index: 10,
             frequency: 0.0,
-            modulation: "AUTO".to_string(),
-            alpha_tag: "AUTO".to_string(),
-            delay: 2,
+            // An empty CIN field stays empty; it is `[RSV]` on a BC75XLT.
+            modulation: if caps.has_per_channel_modulation {
+                "AUTO".to_string()
+            } else {
+                String::new()
+            },
+            alpha_tag: if caps.has_alpha_tags {
+                "AUTO".to_string()
+            } else {
+                String::new()
+            },
+            delay: caps.cleared_delay,
             lockout: true,
             priority: false,
             tone_squelch: None,
@@ -2670,6 +2688,10 @@ mod tests {
             bank: 1,
         }
     }
+
+    /// Both descriptors, for tests that must not pass by agreeing with one.
+    const BOTH_MODELS: [ScannerCapabilities; 2] =
+        [BC125AT_FAMILY, crate::protocol::capabilities::BC75XLT];
 
     fn empty_channel_readback() -> ChannelData {
         let mut c = test_channel();
@@ -2732,11 +2754,28 @@ mod tests {
     fn readback_accepts_factory_empty_ignoring_sent_delay_and_lockout() {
         // Live repro: wrote CIN,10,...,0,0,0 (delay 0, lockout 0, prio 0),
         // scanner forced ...,2,1,0. Both delay AND lockout diverge.
-        let mut wrote = factory_empty_readback();
-        wrote.delay = 0;
-        wrote.lockout = false;
-        let readback = factory_empty_readback(); // delay=2, lockout=1
-        assert!(readback_matches(&wrote, &readback, "AUTO", &BC125AT_FAMILY));
+        //
+        // Run against BOTH models. The delay we "send" is picked as any valid
+        // value that is NOT this model's cleared delay, so it genuinely
+        // diverges on each -- hardcoding 0 would make the BC75XLT case a
+        // no-divergence test, since 0 IS its cleared delay.
+        for caps in BOTH_MODELS {
+            let sent_delay = *caps
+                .valid_delays
+                .iter()
+                .find(|d| **d != caps.cleared_delay)
+                .expect("every model has a delay other than its cleared one");
+            let mut wrote = factory_empty_readback(&caps);
+            wrote.delay = sent_delay;
+            wrote.lockout = false;
+            let readback = factory_empty_readback(&caps);
+            let alpha = readback.alpha_tag.clone();
+            assert!(
+                readback_matches(&wrote, &readback, &alpha, &caps),
+                "cleared slot must verify on a scanner with cleared_delay={}",
+                caps.cleared_delay
+            );
+        }
     }
 
     #[test]
@@ -2759,16 +2798,22 @@ mod tests {
     fn readback_rejects_empty_write_that_did_not_go_factory_empty() {
         // Freq 0 but the read-back is NOT the factory signature (delay 5) —
         // something genuinely wrong; do not silently pass it.
-        let mut wrote = factory_empty_readback();
-        wrote.delay = 0;
-        let mut readback = factory_empty_readback();
-        readback.delay = 5;
-        assert!(!readback_matches(
-            &wrote,
-            &readback,
-            "AUTO",
-            &BC125AT_FAMILY
-        ));
+        //
+        // 5 is not a valid delay on either model's cleared slot, so this reads
+        // the same on both -- and running both proves the rejection is not an
+        // accident of the BC125AT's cleared_delay being 2.
+        for caps in BOTH_MODELS {
+            let mut wrote = factory_empty_readback(&caps);
+            wrote.delay = caps.cleared_delay;
+            let mut readback = factory_empty_readback(&caps);
+            readback.delay = 5;
+            let alpha = readback.alpha_tag.clone();
+            assert!(
+                !readback_matches(&wrote, &readback, &alpha, &caps),
+                "a non-factory delay must not pass as cleared (cleared_delay={})",
+                caps.cleared_delay
+            );
+        }
     }
 
     // REGRESSION GUARD (#198): priority is bank-exclusive — a programmed
