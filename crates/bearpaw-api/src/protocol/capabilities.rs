@@ -147,6 +147,23 @@ pub struct ScannerCapabilities {
     /// 2026-08-28). Accepted without an error, then silently discarded -- so
     /// nothing surfaces the failure except reading the field back.
     pub has_close_call_hit_scan: bool,
+    /// Whether Bearpaw can clear a channel's priority flag on this model.
+    ///
+    /// The BC125AT family refuses an in-place priority `1`->`0` `CIN` write
+    /// (#203), so the only mechanism is `DCH,<n>` plus a full rewrite -- what
+    /// `clear_channel_priority_locked` does, verified on hardware 2026-08-03
+    /// (#251).
+    ///
+    /// A BC75XLT refuses the same in-place write AND has no `DCH` at all
+    /// (hardware 2026-08-28). It needs neither: its firmware moves the flag
+    /// within a bank by itself, so designating a new priority channel clears
+    /// the old one as a side effect -- measured in both directions, and the
+    /// behaviour its owner's manual implies by having no keypad clear step.
+    ///
+    /// Named for what Bearpaw can do, like `has_backlight_control`. False here
+    /// does NOT mean priority cannot be moved; it means the *clear* is the
+    /// radio's job rather than ours, and attempting one would fail.
+    pub has_priority_clear: bool,
     /// Whether the `KBP` key-beep field is settable on this model.
     ///
     /// The BC125AT's `KBP` is `[BEEP],[LOCK]`; the BC75XLT's is `[RSV],[LOCK]`
@@ -226,6 +243,7 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
         Some("800 MHz"),
     ],
     has_close_call_hit_scan: true,
+    has_priority_clear: true,
     has_key_beep: true,
     key_beep_needs_program_mode: false,
     // Per docs/BC125AT_PROTOCOL.md §5.3. Negatives are pre-delays.
@@ -267,6 +285,7 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
         Some("UHF"),
     ],
     has_close_call_hit_scan: false,
+    has_priority_clear: false,
     has_key_beep: false,
     key_beep_needs_program_mode: true,
     // Vendor spec: `[DLY] : Delay Time (0:OFF / 1:ON)`.
@@ -421,6 +440,7 @@ mod tests {
         assert!(c.has_weather_alert);
         assert!(c.has_service_search_groups);
         assert!(c.has_close_call_hit_scan);
+        assert!(c.has_priority_clear);
         assert_eq!(c.close_call_bands[3], Some("UHF"));
         assert_eq!(c.close_call_bands[4], Some("800 MHz"));
         assert!(c.has_key_beep);
@@ -461,6 +481,7 @@ mod tests {
         assert!(!c.has_weather_alert);
         assert!(!c.has_service_search_groups);
         assert!(!c.has_close_call_hit_scan);
+        assert!(!c.has_priority_clear);
         // Position 4 is reserved and 5 is UHF -- the reverse of the BC125AT.
         // Hardware 2026-08-28: writing 11111 reads back 11101.
         assert_eq!(c.close_call_bands[3], None);
