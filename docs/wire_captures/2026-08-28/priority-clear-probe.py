@@ -51,9 +51,19 @@ import time
 # tty.* node -- it blocks on carrier detect, which a scanner never asserts.
 PORT_GLOBS = ["/dev/cu.usbserial-*", "/dev/cu.SLAB_USBtoUART*"]
 
-# How many channels to scan looking for suitable targets. The factory layout
-# puts priority channels low, and this is a round-trip each.
-SCAN_LIMIT = 60
+# Where to look for each target, and why the two searches run in opposite
+# directions.
+#
+# The first run of this probe scanned 1..60 for both and found no empty slot:
+# every channel in that range is programmed on the dev unit, so the DCH test
+# skipped and the question went unanswered. Empty slots live at the TOP of
+# memory -- the 2026-08-26 capture shows 299 and 300 factory-empty -- while the
+# factory layout puts priority channels low. Search each from the end it is
+# actually likely to be found, and the whole probe costs a couple of dozen
+# round-trips instead of hundreds.
+CHANNEL_COUNT = 300  # BC75XLT; the probe refuses to run against anything else
+PRIORITY_SCAN_LIMIT = 60  # searched upward from 1
+EMPTY_SCAN_DEPTH = 60  # searched downward from CHANNEL_COUNT
 
 
 def find_port():
@@ -147,29 +157,40 @@ def main():
         os.close(fd)
         return 1
     try:
-        print(f"\n=== Phase 1: find targets (scanning 1..{SCAN_LIMIT}) ===")
+        print("\n=== Phase 1: find targets ===")
         priority_target = None
         empty_target = None
-        for idx in range(1, SCAN_LIMIT + 1):
+
+        # Priority channels sit low in the factory layout.
+        print(f"--- searching 1..{PRIORITY_SCAN_LIMIT} upward for a priority channel")
+        for idx in range(1, PRIORITY_SCAN_LIMIT + 1):
             fields = cin_fields(send(fd, f"CIN,{idx}"), idx)
             if fields is None:
                 continue
-            freq, priority = fields[1], fields[6]
-            programmed = freq.strip("0") != ""
-            if priority_target is None and programmed and priority == "1":
+            if fields[1].strip("0") != "" and fields[6] == "1":
                 priority_target = (idx, fields)
                 print(f"CIN,{idx:<3} priority channel  -> {fields}")
-            if empty_target is None and not programmed:
+                break
+
+        # Empty slots sit at the top: 299 and 300 were factory-empty on
+        # 2026-08-26. Searching upward from 1 found none in 60 tries.
+        low = max(1, CHANNEL_COUNT - EMPTY_SCAN_DEPTH + 1)
+        print(f"--- searching {CHANNEL_COUNT}..{low} downward for an empty slot")
+        for idx in range(CHANNEL_COUNT, low - 1, -1):
+            fields = cin_fields(send(fd, f"CIN,{idx}"), idx)
+            if fields is None:
+                continue
+            if fields[1].strip("0") == "":
                 empty_target = (idx, fields)
                 print(f"CIN,{idx:<3} empty slot        -> {fields}")
-            if priority_target and empty_target:
                 break
 
         print("\n=== Phase 2: does DCH exist? ===")
         # Targets an ALREADY-EMPTY slot, so a working DCH destroys nothing and a
         # rejected one changes nothing.
         if empty_target is None:
-            print(f"SKIP: no empty channel in 1..{SCAN_LIMIT}; refusing to DCH a programmed one.")
+            print(f"SKIP: no empty channel in the top {EMPTY_SCAN_DEPTH}; refusing to DCH a programmed one.")
+            print("SKIP: free one slot from the scanner's keypad and re-run.")
         else:
             idx, before = empty_target
             resp = show(fd, f"DCH,{idx}")
@@ -182,7 +203,7 @@ def main():
         print("\n=== Phase 3: can priority be cleared IN PLACE? ===")
         # The BC125AT refuses this, which is the whole reason DCH is used there.
         if priority_target is None:
-            print(f"SKIP: no programmed priority channel in 1..{SCAN_LIMIT}.")
+            print(f"SKIP: no programmed priority channel in 1..{PRIORITY_SCAN_LIMIT}.")
             print("SKIP: not creating one -- the radio may enforce one-per-bank itself.")
         else:
             idx, original = priority_target
