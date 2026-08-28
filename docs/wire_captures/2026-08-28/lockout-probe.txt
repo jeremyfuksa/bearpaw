@@ -1,0 +1,38 @@
+# port: /dev/cu.usbserial-020D43D8  baud: 57600
+
+=== Phase 0: identity ===
+MDL                  -> 'MDL,BC75XLT'
+VER                  -> 'VER,Version 1.02.04'
+
+=== Phase 1: is GLF program-mode only? ===
+GLF                  -> 'GLF,-1'
+PRG                  -> 'PRG,OK'
+
+=== Phase 2: the bare-GLF walk, as Bearpaw sends it ===
+GLF                  -> 'GLF,-1'
+--- walk A: 0 entries []
+
+=== Phase 3: CONTROL -- does the cursor auto-reset? ===
+--- walk B: 0 entries []
+--- cursor rewinds after -1; the walk is repeatable.
+
+=== Phase 4: does the parameterized GLF form iterate? ===
+GLF,***              -> 'GLF,OK'
+--- payload-less OK: does NOT iterate. Same as the BC125AT;
+--- Bearpaw's bare-GLF walk is correct for this model.
+--- walk C (list intact after the parameterized read?): 0 entries []
+
+=== Phase 5: LOF -- add a synthetic lockout ===
+--- using 00250000 (25.0000 MHz), not currently locked out
+LOF,00250000         -> 'LOF,OK'
+--- walk D (after LOF): 1 entry ['00250000']
+--- LOF: WORKS ('LOF,OK')
+
+=== Phase 6: ULF -- remove it again ===
+ULF,00250000         -> 'ULF,OK'
+--- walk E (after ULF): 0 entries []
+--- ULF: WORKS ('ULF,OK')
+
+=== Phase 7: verify net zero ===
+--- lockout list is back to its original 0 entries: []
+EPG                  -> 'EPG,OK'

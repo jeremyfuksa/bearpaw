@@ -136,7 +136,74 @@ Accepted without error, then silently discarded. The BC125AT's `hit_scan`
 
 ---
 
+## 6. Global lockouts: `GLF` / `LOF` / `ULF` all work, and Bearpaw walks them correctly
+
+**Transcript:** [lockout-probe.txt](lockout-probe.txt) · **Script:** [lockout-probe.py](lockout-probe.py)
+
+The Device tab audit passed Locked Channels on the strength of the vendor
+command table alone — weaker evidence than the rest of it used, and two of the
+three commands are writes. Now measured.
+
+```
+GLF            -> GLF,-1        (outside program mode -- answers, does not NG)
+PRG            -> PRG,OK
+GLF            -> GLF,-1        walk A: 0 entries
+                                walk B: 0 entries   (cursor rewinds)
+GLF,***        -> GLF,OK        payload-less: does NOT iterate
+LOF,00250000   -> LOF,OK        walk D: ['00250000']
+ULF,00250000   -> ULF,OK        walk E: []          (net zero)
+```
+
+**Bearpaw's bare-`GLF` walk is correct for this model.** The parameterized
+`GLF,***` form the vendor spec documents answers a payload-less `GLF,OK` and
+does not iterate — exactly as on a BC125AT. #142 has not recurred here: had the
+two families wanted different forms, the Locked Channels page would have shown a
+silently truncated list.
+
+`LOF` and `ULF` both work, and the list returned to its original state.
+
+Two caveats worth stating rather than glossing:
+
+- **The list was empty**, so iteration was exercised across 0 entries and then
+  1 (after `LOF`). That is enough to show the bare form *advances* and
+  terminates — a non-iterating form returns no payload at all — but a
+  multi-entry walk on this model has still not been seen.
+- **`GLF` answered `GLF,-1` outside program mode** rather than `NG`, despite
+  the spec marking it program-mode only. Harmless for Bearpaw, which brackets
+  the walk regardless, but it means an out-of-bracket `GLF` here reports "no
+  lockouts" rather than "wrong mode".
+
+No code change follows from this: the existing implementation is right.
+
+## 7. Priority clear: refused in place, and it reports success
+
+**Transcript:** [priority-clear-probe.txt](priority-clear-probe.txt) · **Script:** [priority-clear-probe.py](priority-clear-probe.py)
+
+Partial — see the caveat below.
+
+```
+CIN,1                     -> CIN,1,,01451300,,,1,0,1
+CIN,1,,01451300,,,1,0,0   -> CIN,OK      <-- reports success
+CIN,1                     -> CIN,1,,01451300,,,1,0,1   <-- priority still 1
+```
+
+**The BC75XLT refuses an in-place priority `1`→`0` write, exactly as the
+BC125AT does** — and the refusal is silent. The write is answered `CIN,OK` and
+then ignored. Nothing but a read-back reveals it, which is the same failure
+shape as the reserved `CLC` field 5 in §5.
+
+So this model does need a separate clear mechanism. Whether it *has* one is
+still open: **`DCH` was not tested.** The probe declines to `DCH` a programmed
+channel and found no empty slot in 1–60 — every channel in that range is
+programmed on this unit. The 2026-08-26 capture shows 299 and 300 are empty, so
+the probe searches the wrong end of memory. Fixed by searching downward from
+the top; a re-run settles it.
+
+See #479.
+
+---
+
 ## Still untested on this model
 
-`CLR` (destructive, deliberately not sent), `SSP`, `BPL` writes, and
-`GLF`/`LOF`/`ULF`.
+`CLR` (destructive, deliberately not sent), `SSP`, `BPL` writes, `DCH`, and
+`CIN` writes beyond the single priority field exercised in §7.

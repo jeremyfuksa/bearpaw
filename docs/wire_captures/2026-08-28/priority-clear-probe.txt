@@ -1,0 +1,26 @@
+# port: /dev/cu.usbserial-020D43D8  baud: 57600
+
+=== Phase 0: identity ===
+MDL                                -> 'MDL,BC75XLT'
+VER                                -> 'VER,Version 1.02.04'
+PRG                                -> 'PRG,OK'
+
+=== Phase 1: find targets (scanning 1..60) ===
+CIN,1   priority channel  -> ['', '01451300', '', '', '1', '0', '1']
+
+=== Phase 2: does DCH exist? ===
+SKIP: no empty channel in 1..60; refusing to DCH a programmed one.
+
+=== Phase 3: can priority be cleared IN PLACE? ===
+CIN,1,,01451300,,,1,0,0            -> 'CIN,OK'
+CIN,1                              -> 'CIN,1,,01451300,,,1,0,1'
+--- in-place priority 1->0: REFUSED
+--- ACCEPTED means this model needs no DCH: clear in place.
+--- REFUSED means it behaves like a BC125AT and needs DCH,
+--- which phase 2 says whether it even has.
+
+=== Phase 4: restore ===
+CIN,1,,01451300,,,1,0,1            -> 'CIN,OK'
+CIN,1                              -> 'CIN,1,,01451300,,,1,0,1'
+--- CIN,1 holds its original values: ['', '01451300', '', '', '1', '0', '1']
+EPG                                -> 'EPG,OK'
