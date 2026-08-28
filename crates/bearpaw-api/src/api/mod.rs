@@ -4917,6 +4917,73 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD: the `CSG` write echoes the field count the READ
+    /// reported.
+    ///
+    /// A BC125AT answers a bare mask; a BC75XLT answers
+    /// `CSG,<mask>,[DLY],[DIR]` and rejects the bare form -- `CSG,0111010101`
+    /// -> `CSG,ERR`, hardware 2026-08-28. Because a format error aborts the
+    /// whole set command, sending the BC125AT shape made every custom-search
+    /// bank toggle a silent no-op on that model: the API returned 200 and
+    /// nothing changed on the radio.
+    ///
+    /// Both shapes are pinned. Either alone passes while the other is broken,
+    /// and the trailing fields carry a search delay and direction Bearpaw does
+    /// not model -- write back anything but what was read and they are lost.
+    fn csg_responder(
+        read: &'static str,
+    ) -> impl Fn(&str) -> Result<String, String> + Send + 'static {
+        move |cmd: &str| {
+            if cmd == "CSG" {
+                Ok(read.to_string())
+            } else {
+                Ok("OK".to_string())
+            }
+        }
+    }
+
+    async fn csg_write_for(read: &'static str) -> Vec<String> {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, csg_responder(read));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/settings/custom-search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"groups":[true,false,false,false,true,false,true,false,true,false]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        settings_payload(&fake.transcript_with_closed_bracket())
+            .into_iter()
+            .filter(|c| c != "CSG")
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn set_custom_search_sends_the_bare_mask_when_the_read_is_bare() {
+        assert_eq!(
+            csg_write_for("CSG,0111010101").await,
+            vec!["CSG,0111010101"],
+            "a BC125AT-shaped read must produce a BC125AT-shaped write"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_custom_search_carries_the_trailing_fields_the_read_reported() {
+        assert_eq!(
+            csg_write_for("CSG,0111010101,1,0").await,
+            vec!["CSG,0111010101,1,0"],
+            "a BC75XLT-shaped read must produce a BC75XLT-shaped write, \
+             delay and direction preserved"
+        );
+    }
+
     /// REGRESSION GUARD: a reserved `CLC` field goes out EMPTY, never `0`.
     ///
     /// Field 5 (`hit_scan`) is reserved on a BC75XLT -- written `1` it reads
