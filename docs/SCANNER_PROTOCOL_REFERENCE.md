@@ -365,7 +365,7 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 
 | Command | Purpose | Notes |
 |---|---|---|
-| `DCH,n` | Delete channel `n` | |
+| `DCH,n` | Delete channel `n` | **BC125AT family only, as far as anyone has checked** -- absent from the BC75XLT's 20-command table and not yet probed there (#479). |
 | `CLR` | Factory-reset all 500 channels + settings | **Takes ~30 s; scanner unresponsive during it.** Extend read timeout to 45–60 s for this command only. |
 | `SCG` / `SCG,<mask>` | Get/set channel-storage bank mask | 10-digit string; **`0` = bank enabled, `1` = bank disabled** (inverted from intuition). Order matches LCD icons 1,2,…,9,0 (bank "0" is bank 10). **Write persistence verified 2026-07-08** on firmware 1.06.06 via live write→read-back inside one PRG bracket (`SCG,0000111110` → `SCG,OK` → read-back matched, both directions); Bearpaw's `set_banks` re-verifies on every write regardless. |
 | `SSG` / `SSG,<mask>` | Service-search bank mask | Same 0=on / 1=off convention. Banks: Police, Fire/Emerg, Ham, Marine, Railroad, Civil Air, Mil Air, CB, FRS/GMRS/MURS, Racing. **BC125AT family only** — absent from the BC75XLT's command table; that model has service search but no remote enable, and its band list differs (`WX` first, no Mil Air). |
@@ -378,7 +378,7 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 | `WXS` | Weather alert priority | |
 | `CNT` | LCD contrast | 1–15 |
 | `BLT` | Backlight behavior | `AO` always on / `AF` off / `KY` on keypress / `SQ` on squelch / `KS` keypress+squelch |
-| `GLF` | Walk the global lockout list | Returns one freq per call until end |
+| `GLF` | Walk the global lockout list | Returns one freq per call until end. **The BARE form is the iterator on BOTH families** -- the parameterized `GLF,***` documented in the BC75XLT spec answers a payload-less `GLF,OK` and does not iterate, same as on a BC125AT (#142). Verified on a BC75XLT 2026-08-28; `LOF` and `ULF` round-tripped an entry to net zero in the same run. The cursor rewinds after `-1`. Note it answers `GLF,-1` OUTSIDE program mode on a BC75XLT rather than `NG`, so an unbracketed walk reports "no lockouts" instead of "wrong mode". |
 | `LOF,freq` | Add frequency to lockout list | Up to 200 entries |
 | `ULF,freq` | Remove from lockout list | |
 
