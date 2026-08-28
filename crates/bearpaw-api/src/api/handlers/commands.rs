@@ -377,9 +377,14 @@ pub(crate) async fn set_squelch(
     if body.level > 15 {
         return Err(ApiError::BadRequest("squelch_out_of_range".to_string()));
     }
-    let _prg = ProgramModeGuard::enter(&state).await?;
     let response = send_raw_command(&state, &format!("SQL,{}", body.level), false).await;
-    let response = response?;
+    let response = match response {
+        Ok(r) => r,
+        Err(_) => {
+            let _prg = ProgramModeGuard::enter(&state).await?;
+            send_raw_command(&state, &format!("SQL,{}", body.level), false).await?
+        }
+    };
     match classify_response(&response) {
         ScannerReply::Ok => {}
         // Some firmwares echo `SQL,<n>` back instead of `SQL,OK`.
@@ -394,5 +399,19 @@ pub(crate) async fn set_squelch(
         _ => return Err(ApiError::BadRequest("squelch_failed".to_string())),
     }
     set_setting_section(&state, "squelch", json!({ "level": body.level }));
+    let timestamp = {
+        let mut live = state.live.write().unwrap();
+        live.squelch_level = body.level;
+        live.timestamp
+    };
+    let _send_guard = state.sequence_send.lock().unwrap();
+    let seq = state.sequence.fetch_add(1, Ordering::Relaxed);
+    let msg = json!({
+        "type": "state_update",
+        "timestamp": timestamp,
+        "sequence": seq,
+        "data": { "squelch_level": body.level }
+    });
+    let _ = state.ws_tx.send(msg.to_string());
     Ok(Json(json!({ "status": "ok" })))
 }
