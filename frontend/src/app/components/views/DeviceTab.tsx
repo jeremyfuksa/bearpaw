@@ -1515,7 +1515,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   and `R` is the Srch button. */}
               <p className="text-base text-white/60 mb-4">
                 Service Search runs on the scanner itself. Bank toggles are written to the scanner
-                immediately — but each write leaves it in Hold, so press{' '}
+                immediately, but each write leaves it in Hold. Press{' '}
                 <span className="font-bold text-white/80">Func</span> then{' '}
                 <span className="font-bold text-white/80">Srch</span> on the scanner to resume
                 searching with the new settings.
@@ -1600,7 +1600,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 start searching your custom search range". */}
             <p className="text-base text-white/60">
               Custom Search runs on the scanner itself. Range edits and Active toggles are written
-              to the scanner immediately — but each write leaves it in Hold, so press{' '}
+              to the scanner immediately, but each write leaves it in Hold. Press{' '}
               <span className="font-bold text-white/80">Srch</span> on the scanner to resume
               searching with the new settings.
             </p>
