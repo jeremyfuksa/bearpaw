@@ -78,6 +78,14 @@ export interface ScannerCapabilities {
    * other the live frame. False on a BC75XLT, whose GLG field 11 is empty.
    */
   reports_live_channel: boolean;
+  /**
+   * Whether this model exchanges settings as a Uniden `.bc125at_ss` file.
+   * Named for the FORMAT: the BC75XLT has its own layout, which Bearpaw does
+   * not implement because we have no spec for it.
+   */
+  has_bc125at_ss_format: boolean;
+  /** Region stamped into the `.bc125at_ss` file: 'USA' or 'EUR'. */
+  ss_region: string;
   /** False on the BC75XLT, where modulation is a global band-plan setting. */
   has_per_channel_modulation: boolean;
   /** False on the BC75XLT, where the CIN tone field is reserved. */
