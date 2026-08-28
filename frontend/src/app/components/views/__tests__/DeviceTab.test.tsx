@@ -11,6 +11,7 @@ import {
 } from '../DeviceTab';
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import {
+  BC75XLT_CAPS,
   createTestChannel,
   createTestDeviceInfo,
   createTestLiveState,
@@ -427,35 +428,6 @@ describe('DeviceTab', () => {
   });
 
   describe('capability-gated controls (#404/#405)', () => {
-    const BC75XLT_CAPS = {
-      channel_count: 300,
-      channels_per_bank: 30,
-      bank_count: 10,
-      has_alpha_tags: false,
-      reports_live_channel: false,
-      ss_format: 'bc75xlt',
-      ss_region: 'USA',
-      has_per_channel_modulation: false,
-      has_tone_squelch: false,
-      has_backlight_control: false,
-      has_battery_save: false,
-      has_contrast: false,
-      has_weather_alert: false,
-      has_service_search_groups: false,
-      close_call_bands: ['VHF Low', 'Air', 'VHF High', null, 'UHF'],
-      has_close_call_hit_scan: false,
-      has_key_beep: false,
-      key_beep_needs_program_mode: true,
-      valid_delays: [0, 1],
-      cleared_delay: 0,
-      default_baud: 57600,
-      coverage_bands: [
-        [25, 54],
-        [108, 174],
-        [406, 512],
-      ] as Array<[number, number]>,
-    };
-
     // Verified on hardware 2026-08-26: BLT, BSV, CNT and WXS all reply ERR on a
     // BC75XLT, in and out of program mode. A visible control that cannot work is
     // worse than an absent one — it invites a click that silently fails and logs
