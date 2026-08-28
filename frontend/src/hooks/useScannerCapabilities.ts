@@ -21,7 +21,7 @@ export const DEFAULT_CAPABILITIES: ScannerCapabilities = {
   bank_count: 10,
   has_alpha_tags: true,
   reports_live_channel: true,
-  has_bc125at_ss_format: true,
+  ss_format: 'bc125at',
   ss_region: 'USA',
   has_per_channel_modulation: true,
   has_tone_squelch: true,

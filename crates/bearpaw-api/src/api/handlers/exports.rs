@@ -26,7 +26,7 @@ pub(crate) async fn export_bc125at_ss_file(
     // that Bearpaw has no spec for, so it is refused here rather than handed
     // a BC125AT-shaped file its own software would reject.
     let caps = state.capabilities();
-    if !caps.has_bc125at_ss_format {
+    if caps.ss_format != "bc125at" {
         return Err(ApiError::BadRequest("unsupported_model".to_string()));
     }
     let region = caps.ss_region;
@@ -307,6 +307,231 @@ pub(crate) async fn export_bc125at_ss_file(
         ],
         payload,
     ))
+}
+
+/// Service-search band names, in the order the BC75XLT tool writes them.
+///
+/// `WX` is first and the BC125AT list does not have it -- taken verbatim from
+/// real files written by Uniden's own tool (2026-08-27).
+const BC75XLT_SERVICE_NAMES: [&str; 10] = [
+    "WX",
+    "Police",
+    "Fire/Emergency",
+    "Marine",
+    "Racing",
+    "Civil Air",
+    "HAM Radio",
+    "Railroad",
+    "CB Radio",
+    "Other (FRS/GMRS/MURS)",
+];
+
+/// Custom-search ranges as the BC75XLT tool writes them, in Hz.
+///
+/// `CSP` has never been probed on this model, so Bearpaw does not send it --
+/// an unanswered command inside the PRG bracket is the #436 failure again.
+/// These are the values present in real exported files; they are the radio's
+/// factory ranges and differ from the BC125AT's.
+const BC75XLT_CUSTOM_RANGES: [(u32, u32); 10] = [
+    (25_000_000, 27_995_000),
+    (28_000_000, 29_695_000),
+    (29_700_000, 49_995_000),
+    (50_000_000, 54_000_000),
+    (108_000_000, 136_991_666),
+    (137_000_000, 143_995_000),
+    (144_000_000, 147_995_000),
+    (406_000_000, 449_993_750),
+    (450_000_000, 469_993_750),
+    (470_000_000, 512_000_000),
+];
+
+/// Export the connected BC75XLT's memory and settings as a `.bc75xlt_ss` file.
+///
+/// The layout was recovered from real files written by Uniden's own tool
+/// (2026-08-27). It is the same tab-delimited, CRLF, section-keyword format as
+/// `.bc125at_ss`, with these differences, each confirmed by comparing
+/// same-day exports of both radios from one owner:
+///
+/// ```text
+///                 BC125AT   BC75XLT
+///   WxPri         present   absent      (no weather alert)
+///   Service       4 fields  6 fields    (gains delay + direction)
+///   CustomSearch  absent    3 fields
+///   GeneralSearch 3 fields  4 fields
+///   AvoidFreqs    optional  absent
+///   C-Freq        x500      x300
+///   Custom name   "Bnak"    "Bank"      (Uniden fixed their typo)
+/// ```
+///
+/// Only commands this model is known to answer are sent -- `KBP` (inside PRG),
+/// `SQL`, `PRI`, `SCO`, `CLC`, `SCG`, per the wire capture in
+/// `docs/wire_captures/2026-08-26/`. `BLT`/`BSV`/`CNT`/`WXS` reply `ERR` here
+/// and are never sent; their `Misc` slots go out empty, which is exactly what
+/// the real files contain.
+pub(crate) async fn export_bc75xlt_ss_file(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
+    let _ = command_sender(&state)?;
+    if state.sync_task_id.lock().unwrap().is_some() {
+        return Err(ApiError::Conflict("sync_in_progress".to_string()));
+    }
+    let caps = state.capabilities();
+    if caps.ss_format != "bc75xlt" {
+        return Err(ApiError::BadRequest("unsupported_model".to_string()));
+    }
+
+    let result = async {
+        let _prg = ProgramModeGuard::enter(&state).await?;
+
+        // `KBP` answers `NG` outside PRG on this model, hence inside the
+        // bracket. Field 2 is the key lock.
+        let kbp = split_command_parts(&send_raw_command(&state, "KBP", false).await?);
+        let key_lock = kbp.get(1).cloned().unwrap_or_else(|| "0".to_string());
+        let squelch = split_command_parts(&send_raw_command(&state, "SQL", false).await?)
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "0".to_string());
+        let priority = split_command_parts(&send_raw_command(&state, "PRI", false).await?)
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "0".to_string());
+        let sco = split_command_parts(&send_raw_command(&state, "SCO", false).await?);
+        let search_delay = sco.first().cloned().unwrap_or_else(|| "2".to_string());
+        let search_code = sco.get(1).cloned().unwrap_or_default();
+        let clc = split_command_parts(&send_raw_command(&state, "CLC", false).await?);
+        let scan_flags = split_command_parts(&send_raw_command(&state, "SCG", false).await?)
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "1111111111".to_string());
+
+        let mut lines = Vec::new();
+
+        // Backlight, beep, contrast and volume are empty in every real file
+        // from this model -- the tool does not read them here even though
+        // `VOL` works on the wire. Charge time is a constant 2 in every
+        // sample of both models. Emitting what the tool emits, not what the
+        // radio could tell us, is the point: this file is read by Uniden's
+        // software, not by us.
+        lines.push(format!(
+            "Misc\t\t\t{}\t\t\t{}\t2\t{}",
+            on_off(&key_lock),
+            squelch,
+            caps.ss_region
+        ));
+        lines.push(format!("Priority\t{}", on_off(&priority)));
+
+        // Direction is "Up" in every observed file and has no confirmed wire
+        // source on this model; the delay column mirrors the search delay.
+        for (idx, name) in BC75XLT_SERVICE_NAMES.iter().enumerate() {
+            lines.push(format!(
+                "Service\t{}\t{}\t\t{}\tUp",
+                idx + 1,
+                name,
+                search_delay
+            ));
+        }
+        lines.push(format!("CustomSearch\t{}\tUp", search_delay));
+
+        // "Search Bank", not the BC125AT's "Search Bnak" -- Uniden fixed the
+        // typo in this tool, and the real files prove it.
+        for (idx, (lower, upper)) in BC75XLT_CUSTOM_RANGES.iter().enumerate() {
+            lines.push(format!(
+                "Custom\t{}\tSearch Bank{}\t{}\t{}\tOff",
+                idx + 1,
+                idx + 1,
+                lower,
+                upper
+            ));
+        }
+
+        let cc_mode = match clc.first().map(String::as_str) {
+            Some("1") => "Pri",
+            Some("2") => "Pri",
+            _ => "Off",
+        };
+        lines.push(format!(
+            "CloseCall\t{}\t{}\t{}\t",
+            cc_mode,
+            on_off(clc.get(1).map(String::as_str).unwrap_or("0")),
+            on_off(clc.get(2).map(String::as_str).unwrap_or("0"))
+        ));
+        // Band 4 is empty rather than "Off": this model has no 225-380 MHz
+        // band at all, and the real files leave that slot blank.
+        let cc_bands = flags_to_bools(clc.get(3).map(String::as_str).unwrap_or("11111"));
+        lines.push(format!(
+            "CloseCallBands\t{}\t{}\t{}\t\t{}",
+            on_off_bool(cc_bands.first().copied().unwrap_or(false)),
+            on_off_bool(cc_bands.get(1).copied().unwrap_or(false)),
+            on_off_bool(cc_bands.get(2).copied().unwrap_or(false)),
+            on_off_bool(cc_bands.get(4).copied().unwrap_or(false))
+        ));
+        lines.push(format!(
+            "GeneralSearch\t{}\t{}\tUp",
+            search_delay, search_code
+        ));
+
+        // Banks and channels INTERLEAVE: each `Conventional` line is followed
+        // by that bank's own channels, not all ten bank lines and then all 300
+        // channels. Caught by the golden test against a real file -- reading
+        // each section in isolation would never have revealed the ordering.
+        //
+        // Name, modulation and tone are `[RSV]` on this model, so those
+        // columns go out empty, which is what the real files contain.
+        let scan_enabled = flags_to_bools(&scan_flags);
+        let shadow = state.shadow.read().unwrap();
+        for bank in 1..=caps.bank_count {
+            lines.push(format!(
+                "Conventional\t{}\tBank {}\t{}",
+                bank,
+                bank,
+                on_off_bool(
+                    scan_enabled
+                        .get(usize::from(bank - 1))
+                        .copied()
+                        .unwrap_or(false)
+                )
+            ));
+            let first = u16::from(bank - 1) * caps.channels_per_bank + 1;
+            for idx in first..first + caps.channels_per_bank {
+                let ch = shadow.channels.get(&idx);
+                let hz = ch
+                    .map(|c| (c.frequency * 1_000_000.0).round() as u64)
+                    .unwrap_or(0);
+                lines.push(format!(
+                    "C-Freq\t{}\t\t{}\t\t\t{}\t{}\t{}",
+                    idx,
+                    hz,
+                    on_off_bool(ch.map(|c| c.lockout).unwrap_or(false)),
+                    ch.map(|c| c.delay).unwrap_or(caps.cleared_delay),
+                    on_off_bool(ch.map(|c| c.priority).unwrap_or(false))
+                ));
+            }
+        }
+
+        Ok::<String, ApiError>(join_ss_lines(&lines))
+    }
+    .await;
+    let payload = result?;
+
+    Ok((
+        [
+            ("content-type", "text/plain"),
+            (
+                "content-disposition",
+                "attachment; filename=scanner.bc75xlt_ss",
+            ),
+        ],
+        payload,
+    ))
+}
+
+/// `true`/`false` -> the `On`/`Off` the settings file uses.
+fn on_off_bool(v: bool) -> &'static str {
+    if v {
+        "On"
+    } else {
+        "Off"
+    }
 }
 
 pub(crate) async fn export_csv(State(state): State<AppState>) -> impl IntoResponse {

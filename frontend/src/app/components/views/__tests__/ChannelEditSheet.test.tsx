@@ -350,7 +350,7 @@ describe('ChannelEditSheet', () => {
       bank_count: 10,
       has_alpha_tags: false,
       reports_live_channel: false,
-      has_bc125at_ss_format: false,
+      ss_format: 'bc75xlt',
       ss_region: 'USA',
       has_per_channel_modulation: false,
       has_tone_squelch: false,

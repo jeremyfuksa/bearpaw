@@ -994,6 +994,28 @@ export function ChannelsTab() {
     }
   };
 
+  const handleExportBc75xltSs = async () => {
+    if (isExportingSs) return;
+    setIsExportingSs(true);
+    const toastId = toast.loading('Exporting BC75XLT format…');
+    try {
+      const response = await fetch(`${API_BASE}/memory/export/bc75xlt_ss`);
+      if (!response.ok) throw new Error(String(response.status));
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const where = await saveExport('scanner.bc75xlt_ss', bytes);
+      toast.dismiss(toastId);
+      if (where !== 'cancelled') {
+        toast.success('Exported BC75XLT settings file');
+      }
+    } catch (error) {
+      console.error('Failed to export BC75XLT settings file', error);
+      toast.dismiss(toastId);
+      toast.error('Failed to export BC75XLT settings file');
+    } finally {
+      setIsExportingSs(false);
+    }
+  };
+
   const handleExportBc125atSs = async () => {
     if (isExportingSs) return;
     // The .ss export reads live scanner settings (~5s), so show a loading
@@ -1175,7 +1197,10 @@ export function ChannelsTab() {
                   BC75XLT has its own settings-file layout that Bearpaw has no
                   spec for, so offering the item would produce a file its own
                   software would reject. The backend refuses it too. */}
-                {capabilities.has_bc125at_ss_format && (
+                {capabilities.ss_format === 'bc75xlt' && (
+                  <DropdownMenuItem onSelect={handleExportBc75xltSs}>BC75XLT</DropdownMenuItem>
+                )}
+                {capabilities.ss_format === 'bc125at' && (
                   <DropdownMenuItem onSelect={handleExportBc125atSs}>BC125AT</DropdownMenuItem>
                 )}
               </DropdownMenuContent>

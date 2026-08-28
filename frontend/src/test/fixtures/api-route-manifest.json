@@ -178,6 +178,10 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/memory/export/bc75xlt_ss"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/preferences"
     },
     {

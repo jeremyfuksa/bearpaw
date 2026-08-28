@@ -268,7 +268,7 @@ pub(crate) async fn import_bc125at_ss(
     // ENTIRE set command on one, so the import would write partial channels
     // over real memory before anything surfaced as an error.
     let caps = state.capabilities();
-    if !caps.has_bc125at_ss_format {
+    if caps.ss_format != "bc125at" {
         return Err(ApiError::BadRequest("unsupported_model".to_string()));
     }
 
