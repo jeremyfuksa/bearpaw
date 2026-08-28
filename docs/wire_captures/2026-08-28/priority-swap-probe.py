@@ -13,24 +13,31 @@ moves the flag within a bank itself. If it does, Bearpaw's clear-then-set swap
 is imposing a rule the hardware already enforces, and the clear is exactly the
 step that cannot work. The fix would be to skip it.
 
-Three outcomes, and only one of them costs anything:
+EVERYTHING HERE HAPPENS IN BANK 9 -- channels 241-270 on this model, which the
+owner has designated a scratch bank. That is what makes the probe possible in
+this form. An earlier draft worked only with state it happened to find, which
+meant hunting for a spare priority channel and accepting an unrecoverable
+two-priority bank if the firmware turned out not to auto-swap. Given a bank it
+may freely write, the probe instead CONSTRUCTS its own precondition and does not
+care how it is left.
+
+Three outcomes:
 
   A. SET REFUSED -- priority is read-only on this model. Nothing changed.
-  B. SET ACCEPTED, old channel cleared -- the firmware auto-swaps. Restoring is
-     the same operation in reverse, so the probe undoes itself.
-  C. SET ACCEPTED, old channel NOT cleared -- the bank now holds two priority
-     channels, and per the finding above Bearpaw cannot clear either. Recovery
-     is the scanner's own keypad.
+  B. SET ACCEPTED, old channel cleared -- the firmware auto-swaps. Bearpaw's
+     clear-then-set is imposing a rule the hardware already keeps.
+  C. SET ACCEPTED, old channel KEPT it -- no auto-swap. Priority is
+     write-once from the app on this model.
 
-READ THIS BEFORE RUNNING. Outcome C leaves a state this probe cannot undo. It
-is run with that understood. Everything else is arranged to make C both
-unlikely to be misread and loud when it happens: the probe prints the full
-before-state, attempts every restore avenue it has, and re-reads at the end
-rather than assuming a write took.
+It still prints the full before-state and attempts a restore. A disposable bank
+is not a reason to be sloppy, and the transcript is the record -- but no outcome
+here is a problem, so nothing shouts.
 
-The two channels are chosen in the SAME bank -- 30 channels per bank on this
-model -- because the manual's rule is one priority channel per bank. A pair
-straddling a bank boundary would prove nothing either way.
+Both channels are in the SAME bank because the manual's rule is one priority
+channel per bank; a pair straddling a boundary would prove nothing either way.
+
+It also incidentally answers whether `CIN` writes work at all on this model
+(#478): programming a bank 9 channel from scratch is the first thing it does.
 
 Usage:
     python3 priority-swap-probe.py [/dev/cu.xxx] | tee priority-swap-probe.txt
@@ -47,7 +54,14 @@ import time
 PORT_GLOBS = ["/dev/cu.usbserial-*", "/dev/cu.SLAB_USBtoUART*"]
 
 CHANNELS_PER_BANK = 30  # BC75XLT; the probe refuses to run against anything else
-SCAN_LIMIT = 60
+SCRATCH_BANK = 9  # 1-based. Designated disposable by the owner; see the header.
+
+# Written into bank 9 if it has too few programmed channels to work with. Both
+# are frequencies this radio already holds in bank 1, so both are on-step under
+# whatever band plan is active -- a made-up frequency could be off-step, and the
+# resulting ERR would read as "CIN writes are broken" rather than "that value
+# was illegal".
+SEED_FREQUENCIES = ["01451300", "01469550"]
 
 
 def find_port():
@@ -158,98 +172,111 @@ def main():
         os.close(fd)
         return 1
     try:
-        print("\n=== Phase 1: find a priority channel and a partner in the SAME bank ===")
-        holder = holder_fields = None
-        for idx in range(1, SCAN_LIMIT + 1):
-            fields = read_ch(fd, idx)
-            if fields and fields[1].strip("0") != "" and fields[6] == "1":
-                holder, holder_fields = idx, fields
-                break
-        if holder is None:
-            print(f"ABORT: no programmed priority channel in 1..{SCAN_LIMIT}. Nothing written.")
-            return 1
-
-        bank = (holder - 1) // CHANNELS_PER_BANK
-        partner = partner_fields = None
-        for idx in range(bank * CHANNELS_PER_BANK + 1, (bank + 1) * CHANNELS_PER_BANK + 1):
-            if idx == holder:
+        first = (SCRATCH_BANK - 1) * CHANNELS_PER_BANK + 1
+        last = SCRATCH_BANK * CHANNELS_PER_BANK
+        print(f"\n=== Phase 1: survey bank {SCRATCH_BANK} (channels {first}-{last}) ===")
+        bank = {}
+        for idx in range(first, last + 1):
+            fields = cin_fields(send(fd, f"CIN,{idx}"), idx)
+            if fields is None:
                 continue
-            fields = read_ch(fd, idx)
-            if fields and fields[1].strip("0") != "" and fields[6] == "0":
-                partner, partner_fields = idx, fields
-                break
-        if partner is None:
-            print(f"ABORT: no programmed non-priority partner in bank {bank + 1}. Nothing written.")
+            bank[idx] = fields
+            programmed = fields[1].strip("0") != ""
+            if programmed or fields[6] == "1":
+                print(f"CIN,{idx:<4} {fields}")
+        if len(bank) < 2:
+            print(f"ABORT: could not read bank {SCRATCH_BANK}. Nothing written.")
             return 1
+        programmed = [i for i, f in bank.items() if f[1].strip("0") != ""]
+        holders = [i for i, f in bank.items() if f[6] == "1"]
+        print(f"--- {len(programmed)} programmed, priority on {holders or 'none'}")
 
-        print(f"\n--- BEFORE (bank {bank + 1}, channels "
-              f"{bank * CHANNELS_PER_BANK + 1}-{(bank + 1) * CHANNELS_PER_BANK})")
+        print("\n=== Phase 2: build the precondition ===")
+        # Two programmed channels, exactly one of them holding priority. Bank 9
+        # is disposable, so this is constructed rather than searched for.
+        targets = sorted(programmed)[:2]
+        for offset, idx in enumerate(range(first, first + 2)):
+            if idx in targets:
+                continue
+            seed = list(bank[idx])
+            seed[1] = SEED_FREQUENCIES[offset % len(SEED_FREQUENCIES)]
+            # An empty slot reports lockout=1 on this model, and inheriting that
+            # would leave a locked-out channel behind for no reason. Delay is a
+            # boolean here, so 0 is valid.
+            seed[4] = "0"
+            seed[5] = "0"
+            seed[6] = "0"
+            print(f"--- programming CIN,{idx} with {seed[1]} (was empty)")
+            show(fd, f"CIN,{idx}," + ",".join(seed))
+            back = read_ch(fd, idx)
+            if back is None or back[1] != seed[1]:
+                print(f"!!! CIN write did not take on channel {idx}: {back}")
+                print("!!! That is a finding in itself -- CIN writes may not work here.")
+                return 1
+            bank[idx] = back
+            targets = sorted(set(targets) | {idx})
+        targets = sorted(targets)[:2]
+        holder, partner = targets[0], targets[1]
+        holder_fields, partner_fields = bank[holder], bank[partner]
+
+        if holder_fields[6] != "1":
+            print(f"--- designating CIN,{holder} as the bank's priority channel")
+            write_priority(fd, holder, holder_fields, "1")
+            holder_fields = read_ch(fd, holder, f"CIN,{holder}")
+            if holder_fields is None or holder_fields[6] != "1":
+                print("\n=== OUTCOME A: SET REFUSED ===")
+                print("--- The priority field cannot be SET over the wire either, so it")
+                print("--- is read-only on this model: Bearpaw should hide the control.")
+                print("--- Nothing else to test.")
+                return 0
+        # Any other priority channel in this bank would confound the result.
+        for idx in sorted(bank):
+            if idx != holder and bank[idx][6] == "1":
+                print(f"--- note: CIN,{idx} also holds priority; clearing is known to fail,")
+                print("--- so the auto-swap reading below is about the FIRST holder only.")
+
+        print(f"\n--- BEFORE")
         print(f"    CIN,{holder}  holds priority : {holder_fields}")
         print(f"    CIN,{partner}  partner        : {partner_fields}")
-        print("--- If anything below goes wrong, those two lines are the state to restore.")
 
-        print(f"\n=== Phase 2: designate CIN,{partner} as the bank's priority channel ===")
+        print(f"\n=== Phase 3: designate CIN,{partner} as the bank's priority channel ===")
         write_priority(fd, partner, partner_fields, "1")
         after_partner = read_ch(fd, partner, f"CIN,{partner} after the write")
         after_holder = read_ch(fd, holder, f"CIN,{holder} after the write")
 
-        partner_set = bool(after_partner) and after_partner[6] == "1"
-        holder_kept = bool(after_holder) and after_holder[6] == "1"
-
-        if not partner_set:
+        if not (after_partner and after_partner[6] == "1"):
             print("\n=== OUTCOME A: SET REFUSED ===")
-            print("--- The priority field is read-only on this model: neither set nor")
-            print("--- cleared over the wire. Bearpaw should hide the priority control.")
-            print("--- Nothing changed; no restore needed.")
+            print("--- Priority is read-only on this model: it can be neither set nor")
+            print("--- cleared over the wire. Bearpaw should hide the control.")
             return 0
 
-        if not holder_kept:
+        if not (after_holder and after_holder[6] == "1"):
             print("\n=== OUTCOME B: THE FIRMWARE AUTO-SWAPS ===")
             print(f"--- CIN,{holder} dropped priority on its own when CIN,{partner} took it.")
-            print("--- One per bank is enforced by the radio. Bearpaw's clear-then-set")
-            print("--- is imposing a rule the hardware already keeps, and the clear is")
-            print("--- exactly the step that cannot work here. Skip it: just SET.")
-
-            print("\n=== Phase 3: restore (the same operation in reverse) ===")
-            write_priority(fd, holder, holder_fields, "1")
-            final_holder = read_ch(fd, holder, f"CIN,{holder} restored")
-            final_partner = read_ch(fd, partner, f"CIN,{partner} restored")
-            ok = (
-                final_holder == holder_fields
-                and final_partner is not None
-                and final_partner[6] == "0"
-            )
-            if ok:
-                print(f"--- restored: CIN,{holder} priority=1, CIN,{partner} priority=0")
-            else:
-                print(f"!!! RESTORE INCOMPLETE. CIN,{holder}={final_holder}, "
-                      f"CIN,{partner}={final_partner}")
-                print(f"!!! Wanted CIN,{holder}={holder_fields} and CIN,{partner} priority=0.")
-                print(f"!!! Designate channel {holder} from the keypad: select it, "
-                      "Func+Pgm, then Func+Pri.")
-            return 0
-
-        print("\n=== OUTCOME C: TWO PRIORITY CHANNELS IN ONE BANK ===")
-        print(f"--- CIN,{partner} took priority and CIN,{holder} KEPT it. The firmware")
-        print("--- does not auto-swap, so Bearpaw must clear -- and it cannot.")
-        print("--- Priority is effectively write-once from the app on this model.")
-
-        print("\n=== Phase 3: attempting every restore avenue there is ===")
-        print("--- (an in-place clear is known to be refused; trying anyway, since a")
-        print("---  just-written flag might behave differently from a factory one)")
-        write_priority(fd, partner, partner_fields, "0")
-        recheck = read_ch(fd, partner, f"CIN,{partner} after the clear attempt")
-        if recheck and recheck[6] == "0":
-            print(f"--- UNEXPECTED: the clear WORKED on CIN,{partner}.")
-            print("--- A just-set priority flag can be cleared even though a factory one")
-            print("--- cannot. Worth a follow-up probe; the bank is back to one channel.")
+            print("--- One per bank is enforced by the radio. Bearpaw's clear-then-set is")
+            print("--- imposing a rule the hardware already keeps, and the clear is exactly")
+            print("--- the step that cannot work here. Skip it: just SET.")
         else:
-            print(f"!!! Could not clear CIN,{partner}. Bank {bank + 1} now has TWO")
-            print(f"!!! priority channels: {holder} and {partner}.")
-            print(f"!!! FIX ON THE SCANNER: select channel {holder}, press Func+Pgm,")
-            print("!!! then Func+Pri to re-designate it as the bank's priority channel.")
-            print(f"!!! Original state was CIN,{holder}={holder_fields}")
-            print(f"!!!                    CIN,{partner}={partner_fields}")
+            print("\n=== OUTCOME C: NO AUTO-SWAP ===")
+            print(f"--- CIN,{partner} took priority and CIN,{holder} KEPT it. The firmware")
+            print("--- does not enforce one-per-bank, so Bearpaw must clear -- and cannot.")
+            print("--- Priority is write-once from the app on this model.")
+            print("--- (Harmless here: this is the scratch bank.)")
+
+        print("\n=== Phase 4: restore, best effort ===")
+        # A just-written flag might behave differently from a factory one. Worth
+        # knowing either way, and free to try.
+        write_priority(fd, partner, partner_fields, "0")
+        final_partner = read_ch(fd, partner, f"CIN,{partner}")
+        write_priority(fd, holder, holder_fields, "1")
+        final_holder = read_ch(fd, holder, f"CIN,{holder}")
+        if final_partner and final_partner[6] == "0":
+            print("--- NOTE: the in-place clear WORKED on a just-set flag, though it is")
+            print("--- refused on a factory one (findings.md §7). Worth a follow-up.")
+        else:
+            print(f"--- CIN,{partner} still holds priority, as expected -- the clear is refused.")
+        print(f"--- left as: CIN,{holder}={final_holder}, CIN,{partner}={final_partner}")
+        print(f"--- Bank {SCRATCH_BANK} is the scratch bank; no recovery needed.")
     finally:
         show(fd, "EPG")
         os.close(fd)
