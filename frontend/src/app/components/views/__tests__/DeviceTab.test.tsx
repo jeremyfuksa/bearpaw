@@ -449,6 +449,44 @@ describe('DeviceTab', () => {
     });
   });
 
+  // The scanner has no change notification, so anything changed on its front
+  // panel stays invisible until the settings read runs again. Refresh makes
+  // that recoverable; the timestamp makes it visible. Not polled on purpose --
+  // the backend answers this inside a program-mode bracket, which parks the
+  // scanner in HOLD at channel 1.
+  describe('Refresh control', () => {
+    it.each([['Device Config'], ['Close Call'], ['Service Search'], ['Custom Search']])(
+      'offers Refresh on %s, which reads device state',
+      async (category) => {
+        renderDeviceTab();
+        await selectCategory(new RegExp(category, 'i'));
+
+        expect(screen.getByRole('button', { name: /Refresh/i })).toBeInTheDocument();
+      },
+    );
+
+    it.each([['Locked Channels'], ['Preferences']])(
+      'omits Refresh on %s, which does not read drifting device state',
+      async (category) => {
+        renderDeviceTab();
+        await selectCategory(new RegExp(category, 'i'));
+
+        expect(screen.queryByRole('button', { name: /^Refresh$/i })).not.toBeInTheDocument();
+      },
+    );
+
+    it('re-reads settings and stamps the time', async () => {
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
+      mockApiClient.getAllSettings.mockClear();
+
+      await userEvent.click(screen.getByRole('button', { name: /Refresh/i }));
+
+      await waitFor(() => expect(mockApiClient.getAllSettings).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText(/^Read /)).toBeInTheDocument();
+    });
+  });
+
   describe('Preferences category', () => {
     it('should render preference controls', async () => {
       renderDeviceTab();
