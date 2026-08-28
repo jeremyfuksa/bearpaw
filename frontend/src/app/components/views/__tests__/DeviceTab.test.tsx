@@ -411,6 +411,7 @@ describe('DeviceTab', () => {
       has_battery_save: false,
       has_contrast: false,
       has_weather_alert: false,
+      has_service_search_groups: false,
       key_beep_needs_program_mode: true,
       valid_delays: [0, 1],
       cleared_delay: 0,
@@ -475,6 +476,27 @@ describe('DeviceTab', () => {
       expect(screen.getByLabelText('Backlight')).toBeInTheDocument();
       expect(screen.getByLabelText('Contrast')).toBeInTheDocument();
       expect(screen.getByLabelText('Battery Saver')).toBeInTheDocument();
+    });
+
+    // The BC75XLT has service search on its `Svc` key but no `SSG` command, so
+    // none of the ten toggles on that page can write. The whole subtab goes,
+    // not the switches: a page of dead controls asks the same question on
+    // every visit. Its band names are wrong for this model as well — `WX`
+    // leads its list and it has no Military Air.
+    it('hides the Service Search page on a BC75XLT', () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+
+      expect(screen.queryByRole('button', { name: /Service Search/i })).not.toBeInTheDocument();
+    });
+
+    // Paired half — a gate that hid it from everyone would pass the test above.
+    it('keeps the Service Search page on a BC125AT-family scanner', () => {
+      renderDeviceTab();
+
+      expect(screen.getByRole('button', { name: /Service Search/i })).toBeInTheDocument();
     });
   });
 });

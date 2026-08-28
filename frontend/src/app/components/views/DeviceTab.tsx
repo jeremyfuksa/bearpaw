@@ -166,6 +166,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>('Device Config');
+
   const [firmware, setFirmware] = useState<string | null>(null);
   const [selectedChannels, setSelectedChannels] = useState<number[]>([]);
   const [isClearing, setIsClearing] = useState(false);
@@ -197,6 +198,34 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // 2026-08-26, docs/wire_captures/2026-08-26/). A visible control that cannot
   // work is worse than an absent one -- it invites a click that silently fails.
   const capabilities = useScannerCapabilities();
+
+  // Service Search is hidden on a scanner with no `SSG` command. The BC75XLT
+  // HAS service search -- ten bands on the `Svc` key -- but no way to enable or
+  // disable one remotely, so all ten toggles here would be dead. Hidden rather
+  // than disabled: a page of controls the scanner cannot honour asks the same
+  // question on every visit (CLAUDE.md frontend pitfall #5). The band names are
+  // wrong for that model too -- `WX` leads its list and it has no Military Air.
+  const categories = useMemo<DeviceCategory[]>(() => {
+    const all: DeviceCategory[] = [
+      'Device Config',
+      'Close Call',
+      'Service Search',
+      'Custom Search',
+      'Locked Channels',
+    ];
+    return capabilities.has_service_search_groups
+      ? all
+      : all.filter((cat) => cat !== 'Service Search');
+  }, [capabilities.has_service_search_groups]);
+
+  // Derived during render rather than corrected by an effect: swapping scanners
+  // can strip the category the user is standing on, and an effect-synced copy is
+  // stale for the render in which capabilities changed -- one frame of a page
+  // with no content. Same reasoning as `visibleSelectedChannels` below.
+  const activeCategory: DeviceCategory =
+    selectedCategory === 'Preferences' || categories.includes(selectedCategory)
+      ? selectedCategory
+      : 'Device Config';
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState('AO');
   const [contrast, setContrast] = useState(7);
@@ -290,7 +319,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     filteredLockedChannels.every((channel) => visibleSelectedChannels.includes(channel.index));
 
   useEffect(() => {
-    if (selectedCategory !== 'Locked Channels') return;
+    if (activeCategory !== 'Locked Channels') return;
     let active = true;
     api
       .getLockouts({ includeFrequencies: false })
@@ -305,7 +334,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     return () => {
       active = false;
     };
-  }, [api, selectedCategory]);
+  }, [api, activeCategory]);
 
   const programModeSettingsLoaded = useRef(false);
 
@@ -802,31 +831,29 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full gap-6">
       {/* Side Nav */}
       <div className="scanner-surface flex h-full w-[var(--layout-sidebar-device-width)] flex-col p-2">
-        {['Device Config', 'Close Call', 'Service Search', 'Custom Search', 'Locked Channels'].map(
-          (cat) => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat as DeviceCategory)}
-              aria-current={selectedCategory === cat ? 'page' : undefined}
-              className={cn(
-                'text-left px-3 py-2 rounded text-sm font-medium transition-colors',
-                selectedCategory === cat
-                  ? 'bg-brand-hover/20 text-brand-hover'
-                  : 'text-white/60 hover:bg-white/5 hover:text-white',
-              )}
-            >
-              {cat}
-            </button>
-          ),
-        )}
+        {categories.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            aria-current={activeCategory === cat ? 'page' : undefined}
+            className={cn(
+              'text-left px-3 py-2 rounded text-sm font-medium transition-colors',
+              activeCategory === cat
+                ? 'bg-brand-hover/20 text-brand-hover'
+                : 'text-white/60 hover:bg-white/5 hover:text-white',
+            )}
+          >
+            {cat}
+          </button>
+        ))}
 
         {/* Preferences at bottom */}
         <button
           onClick={() => setSelectedCategory('Preferences')}
-          aria-current={selectedCategory === 'Preferences' ? 'page' : undefined}
+          aria-current={activeCategory === 'Preferences' ? 'page' : undefined}
           className={cn(
             'text-left px-3 py-2 rounded text-sm font-medium transition-colors mt-auto border-t border-white/10 pt-3',
-            selectedCategory === 'Preferences'
+            activeCategory === 'Preferences'
               ? 'bg-brand-hover/20 text-brand-hover'
               : 'text-white/60 hover:bg-white/5 hover:text-white',
           )}
@@ -837,10 +864,10 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
 
       {/* Content */}
       <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-6 h-full overflow-y-auto">
-        {selectedCategory !== 'Locked Channels' && (
+        {activeCategory !== 'Locked Channels' && (
           <h2 className="text-lg font-bold mb-6 border-b border-white/10 pb-2 flex items-center justify-between">
             <span>{selectedCategory}</span>
-            {selectedCategory === 'Custom Search' && (
+            {activeCategory === 'Custom Search' && (
               <span className="text-sm font-normal text-white/50">
                 {activeRangeCount} of 10 active
               </span>
@@ -849,7 +876,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         )}
 
         {/* Locked Channels */}
-        {selectedCategory === 'Locked Channels' && (
+        {activeCategory === 'Locked Channels' && (
           <div className="flex flex-col h-full gap-4">
             <div className="flex flex-col gap-4 rounded-lg border border-white/5 bg-white/5 p-4">
               <div className="flex flex-wrap items-center gap-4">
@@ -1009,7 +1036,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         )}
 
         {/* Device Config */}
-        {selectedCategory === 'Device Config' && (
+        {activeCategory === 'Device Config' && (
           <div className="space-y-4 max-w-4xl">
             <div className="grid grid-cols-2 gap-6">
               {/* Audio Control */}
@@ -1247,7 +1274,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         )}
 
         {/* Close Call */}
-        {selectedCategory === 'Close Call' && (
+        {activeCategory === 'Close Call' && (
           <div className="grid grid-cols-2 gap-8 max-w-4xl">
             <div className="space-y-8">
               <section className="space-y-4">
@@ -1370,7 +1397,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         )}
 
         {/* Service Search */}
-        {selectedCategory === 'Service Search' && (
+        {activeCategory === 'Service Search' && (
           <div className="max-w-3xl">
             <div className="bg-white/5 rounded-lg border border-white/10 p-6">
               <p className="text-base text-white/60 mb-4">
@@ -1445,7 +1472,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         )}
 
         {/* Custom Search */}
-        {selectedCategory === 'Custom Search' && (
+        {activeCategory === 'Custom Search' && (
           <div className="flex flex-col max-w-5xl mx-auto overflow-hidden gap-4">
             <p className="text-base text-white/60">
               Custom Search runs on the scanner itself. Configure these ranges here, then start
@@ -1536,7 +1563,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         )}
 
         {/* Preferences */}
-        {selectedCategory === 'Preferences' && (
+        {activeCategory === 'Preferences' && (
           <div className="flex h-[calc(100%-4rem)] gap-6 overflow-hidden">
             {/* Info Sidebar (Left) */}
             <div className="w-[var(--layout-detail-sidebar-width)] shrink-0 space-y-4 overflow-y-auto border-r border-white/5 pb-4 pr-4">

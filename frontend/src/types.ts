@@ -105,6 +105,15 @@ export interface ScannerCapabilities {
   /** False on the BC75XLT: `WXS` replies ERR in both modes. */
   has_weather_alert: boolean;
   /**
+   * Whether `SSG` (the service-search avoid mask) exists on this model.
+   *
+   * Named for the mask, not the feature: the BC75XLT HAS service search, but
+   * no command to enable or disable a band remotely — its `SSP` carries only
+   * a per-service delay and direction. False there, so the UI hides the whole
+   * Service Search page rather than showing ten toggles that cannot write.
+   */
+  has_service_search_groups: boolean;
+  /**
    * True on the BC75XLT, where `KBP` replies `KBP,NG` outside program mode.
    * The BC125AT accepts it in either mode.
    */

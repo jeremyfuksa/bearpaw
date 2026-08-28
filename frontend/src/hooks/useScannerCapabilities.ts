@@ -29,6 +29,7 @@ export const DEFAULT_CAPABILITIES: ScannerCapabilities = {
   has_battery_save: true,
   has_contrast: true,
   has_weather_alert: true,
+  has_service_search_groups: true,
   key_beep_needs_program_mode: false,
   valid_delays: [-10, -5, 0, 1, 2, 3, 4, 5],
   cleared_delay: 2,

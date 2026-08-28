@@ -525,6 +525,15 @@ pub(crate) async fn set_service_search(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // Refuse before the wire when the scanner has no `SSG` command. The UI
+    // hides the whole Service Search page on such a model, so reaching here
+    // means an API client or a stale frontend -- and a bare ERR from the radio
+    // is not something either can act on. Same guard as `set_weather` (#432).
+    if !state.capabilities().has_service_search_groups {
+        return Err(ApiError::BadRequest(
+            "service_search_unsupported".to_string(),
+        ));
+    }
     let groups = body
         .get("groups")
         .and_then(Value::as_array)
