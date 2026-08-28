@@ -1566,9 +1566,19 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         {/* Custom Search */}
         {activeCategory === 'Custom Search' && (
           <div className="flex flex-col max-w-5xl mx-auto overflow-hidden gap-4">
+            {/* Both halves of this are load-bearing. Writes ARE immediate --
+                a range edit or an Active toggle reaches the scanner as soon as
+                it is made -- but every write runs inside a PRG/EPG bracket, and
+                the vendor spec is explicit that EPG leaves the scanner in Scan
+                Hold. So the change lands and then appears to do nothing, which
+                reads as a failed write rather than a parked radio. Naming Srch
+                is the recovery; the manual's own procedure is "Press Srch to
+                start searching your custom search range". */}
             <p className="text-base text-white/60">
-              Custom Search runs on the scanner itself. Configure these ranges here, then start
-              Custom Search directly on the device.
+              Custom Search runs on the scanner itself. Range edits and Active toggles are written
+              to the scanner immediately — but each write leaves it in Hold, so press{' '}
+              <span className="font-bold text-white/80">Srch</span> on the scanner to resume
+              searching with the new settings.
             </p>
             <div className="flex-1 h-full bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner">
               {/* Table Header */}
