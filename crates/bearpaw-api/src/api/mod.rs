@@ -308,6 +308,10 @@ pub fn router(state: AppState) -> Router {
             post(handlers::import_ss::import_bc125at_ss),
         )
         .route(
+            "/api/v1/memory/import/bc75xlt_ss",
+            post(handlers::import_ss::import_bc75xlt_ss),
+        )
+        .route(
             "/api/v1/preferences",
             get(handlers::preferences::get_preferences).put(handlers::preferences::put_preferences),
         )
@@ -4209,6 +4213,10 @@ mod tests {
         ("POST", "/api/v1/settings/search"),
         ("POST", "/api/v1/settings/weather"),
         ("POST", "/api/v1/memory/import/csv"),
+        // Both SS import routes were absent from this list -- the manifest
+        // never covered them, so route drift on either would have gone unseen.
+        ("POST", "/api/v1/memory/import/bc125at_ss"),
+        ("POST", "/api/v1/memory/import/bc75xlt_ss"),
         ("GET", "/api/v1/preferences/theme"),
         ("PUT", "/api/v1/preferences/theme"),
         ("PUT", "/api/v1/preferences"),

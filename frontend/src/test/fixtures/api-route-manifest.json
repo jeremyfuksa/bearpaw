@@ -245,6 +245,14 @@
       "path": "/api/v1/memory/import/csv"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/memory/import/bc125at_ss"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/import/bc75xlt_ss"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/preferences/theme"
     },

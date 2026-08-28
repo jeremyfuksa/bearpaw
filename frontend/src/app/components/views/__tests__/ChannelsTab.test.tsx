@@ -375,7 +375,10 @@ describe('ChannelsTab', () => {
       render(<ChannelsTab />);
       await userEvent.click(screen.getByRole('button', { name: /Import/i }));
 
-      expect(pickAndReadFile).toHaveBeenCalledWith(['csv', 'bc125at_ss']);
+      // Both settings-file formats are offered; the endpoint is chosen from
+      // the extension, not from the connected model, so a file can be opened
+      // and rejected with a clear error rather than silently mis-routed.
+      expect(pickAndReadFile).toHaveBeenCalledWith(['csv', 'bc125at_ss', 'bc75xlt_ss']);
     });
 
     it('should dispatch a .csv file to the csv import endpoint', async () => {
