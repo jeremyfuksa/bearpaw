@@ -1647,7 +1647,14 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
                 _ => Value::Null,
             }
         }
-        let service_search = {
+        // `SSG` is absent from the BC75XLT's command table -- that model has
+        // service search but no way to enable or disable a band remotely. Skip
+        // the read rather than burn a guaranteed-ERR round-trip inside the
+        // bracket, the same reasoning as the `KBP` skip above. This runs on
+        // every Device tab visit.
+        let service_search = if !caps.has_service_search_groups {
+            Value::Null
+        } else {
             let resp = send_raw_command(state, "SSG", false).await?;
             if usable(&resp) {
                 group_mask(&resp, "SSG")
@@ -4283,6 +4290,10 @@ mod tests {
     /// sending them meant four guaranteed-failing round-trips and four logged
     /// errors each time — and KBP is program-mode-only on that model, which
     /// `get_config` does not bracket.
+    ///
+    /// `SSG` joined the list for a different reason: it is absent from the
+    /// BC75XLT's command table entirely, so that model has no service-search
+    /// avoid mask to read.
     #[tokio::test]
     async fn settings_snapshot_skips_commands_the_scanner_lacks() {
         use crate::protocol::capabilities::BC75XLT;
@@ -4294,7 +4305,7 @@ mod tests {
         let _ = read_settings_snapshot_from_scanner(&state).await;
         let sent = fake.transcript();
 
-        for cmd in ["BLT", "BSV", "CNT", "WXS", "KBP"] {
+        for cmd in ["BLT", "BSV", "CNT", "WXS", "KBP", "SSG"] {
             assert!(
                 !sent.iter().any(|c| c == cmd),
                 "{cmd} must not be sent to a scanner that cannot answer it: {sent:?}"
@@ -4318,7 +4329,7 @@ mod tests {
         let _ = read_settings_snapshot_from_scanner(&state).await;
         let sent = fake.transcript();
 
-        for cmd in ["BLT", "BSV", "CNT", "WXS", "KBP"] {
+        for cmd in ["BLT", "BSV", "CNT", "WXS", "KBP", "SSG"] {
             assert!(
                 sent.iter().any(|c| c == cmd),
                 "{cmd} must still be read on a BC125AT: {sent:?}"
@@ -4845,6 +4856,36 @@ mod tests {
         assert!(
             payload[0].starts_with("SSG,"),
             "expected an SSG write: {payload:?}"
+        );
+    }
+
+    /// The write half of the same guard: a stale client that still POSTs the
+    /// service-search mask gets a named error instead of a bare `ERR` off the
+    /// wire, and nothing reaches the scanner.
+    #[tokio::test]
+    async fn set_service_search_is_refused_without_ssg() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        let fake = FakeScanner::attach(&state, |_| Ok("OK".to_string()));
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/settings/service-search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"groups":[true,false,true,false,true,false,true,false,true,false]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            settings_payload(&fake.transcript()).is_empty(),
+            "nothing may reach a scanner with no SSG command"
         );
     }
 

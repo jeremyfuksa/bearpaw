@@ -79,6 +79,7 @@ capabilities are always read under one lock.
 | `has_tone_squelch` | true | false (`[RSV]`) |
 | `has_backlight_control` | true | false (no `BLT` command) |
 | `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) |
+| `has_service_search_groups` | true | false (no `SSG` command) |
 | `key_beep_needs_program_mode` | false | true (`KBP,NG` outside PRG) |
 | `valid_delays` | `-10,-5,0,1,2,3,4,5` (seconds) | `0,1` (boolean) |
 | `cleared_delay` | 2 | 0 |
@@ -201,6 +202,7 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 | `PRI` | Priority mode | PRG |
 | `KBP` | Key beep | either on the BC125AT family; **PRG only** on a BC75XLT (`KBP,NG` outside) |
 | `BLT`, `BSV`, `CNT`, `WXS` | Backlight, battery save, contrast, weather alert | either — **absent on the BC75XLT**, all reply `ERR` |
+| `SSG` | Service-search avoid mask (10 chars) | PRG — **absent on the BC75XLT**, which has service search but no way to enable a band remotely |
 | `BPL` | Band plan (USA/Canada). Where modulation lives on a BC75XLT | PRG |
 
 CTCSS/DCS codes (0–231) are decoded to Hz in [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs).

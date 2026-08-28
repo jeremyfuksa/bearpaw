@@ -103,6 +103,21 @@ pub struct ScannerCapabilities {
     pub has_contrast: bool,
     /// Whether `WXS` (weather alert priority) works. Absent on the BC75XLT.
     pub has_weather_alert: bool,
+    /// Whether `SSG` (the service-search avoid mask) exists on this model.
+    ///
+    /// Named for the mask, not the feature: the BC75XLT HAS service search --
+    /// its owner's manual documents ten service bands on the `Svc` key -- but
+    /// no command to enable or disable one remotely. Its settings command is
+    /// `SSP,[SVC_INDEX],[DLY],[DIR]`, which carries a per-service delay and
+    /// direction and no enable flag, and `SSG` is absent from the vendor
+    /// spec's command table entirely.
+    ///
+    /// Uniden's own tool agrees: in a real `.bc75xlt_ss` the `Service` row's
+    /// on/off slot is empty, while the BC125AT's carries `On|Off` (see
+    /// `docs/SS_FILE_FORMAT.md`). The service list also differs -- `WX` leads
+    /// it and there is no `Military Air` -- so the BC125AT band names are
+    /// wrong here even where the mask would fit.
+    pub has_service_search_groups: bool,
     /// Whether `KBP` (key beep) is accepted outside program mode.
     ///
     /// The BC125AT takes it in either mode. The BC75XLT replies `KBP,NG`
@@ -157,6 +172,7 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     has_battery_save: true,
     has_contrast: true,
     has_weather_alert: true,
+    has_service_search_groups: true,
     key_beep_needs_program_mode: false,
     // Per docs/BC125AT_PROTOCOL.md §5.3. Negatives are pre-delays.
     valid_delays: &[-10, -5, 0, 1, 2, 3, 4, 5],
@@ -188,6 +204,7 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_battery_save: false,
     has_contrast: false,
     has_weather_alert: false,
+    has_service_search_groups: false,
     key_beep_needs_program_mode: true,
     // Vendor spec: `[DLY] : Delay Time (0:OFF / 1:ON)`.
     valid_delays: &[0, 1],
@@ -339,6 +356,7 @@ mod tests {
         assert!(c.has_battery_save);
         assert!(c.has_contrast);
         assert!(c.has_weather_alert);
+        assert!(c.has_service_search_groups);
         assert!(!c.key_beep_needs_program_mode);
     }
 
@@ -374,6 +392,7 @@ mod tests {
         assert!(!c.has_battery_save);
         assert!(!c.has_contrast);
         assert!(!c.has_weather_alert);
+        assert!(!c.has_service_search_groups);
         // KBP,NG outside program mode; KBP,,0 inside.
         assert!(c.key_beep_needs_program_mode);
     }
