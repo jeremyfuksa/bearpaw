@@ -290,6 +290,7 @@ Gated by the `check_updates_on_launch` preference (default `true`, toggled on th
 - [`docs/API_SPEC.md`](docs/API_SPEC.md) — REST + WebSocket API contract
 - [`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) — WS message shapes
 - [`docs/BACKEND_LOGGING.md`](docs/BACKEND_LOGGING.md), [`docs/DATA_LIFECYCLE.md`](docs/DATA_LIFECYCLE.md)
+- [`docs/SS_FILE_FORMAT.md`](docs/SS_FILE_FORMAT.md) — the `.bc125at_ss` / `.bc75xlt_ss` settings-file format, recovered from real files written by Uniden's tools. Reference files live in [`crates/bearpaw-api/fixtures/`](crates/bearpaw-api/fixtures/) and back two golden tests.
 - [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — decompiled Uniden reference. Second source only — where it disagrees with our wire captures, the captures win.
 - [`docs/wire_captures/`](docs/wire_captures/) — real BC125AT wire traffic + audit reconciliation (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`)
 - **End-user guide** — lives on the marketing site at [bearpaw.app/docs](https://bearpaw.app/docs/), hand-authored HTML in [`site/docs/`](site/docs/) (getting started, scan, channels, device, glossary, troubleshooting). Not in `docs/` — that holds developer/protocol docs only.
