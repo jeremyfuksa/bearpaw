@@ -1,0 +1,51 @@
+# port: /dev/cu.usbserial-020D43D8  baud: 57600
+
+=== Phase 0: identity ===
+MDL                                -> 'MDL,BC75XLT'
+VER                                -> 'VER,Version 1.02.04'
+
+=== Phase 1: is CSG program-mode only? ===
+CSG                                -> 'CSG,NG'
+
+=== Phase 2: read everything first (restore depends on this) ===
+PRG                                -> 'PRG,OK'
+CSG                                -> 'CSG,0111010101,1,0'
+CSP,1                              -> 'CSP,1,00250000,00279950'
+CSP,2                              -> 'CSP,2,00280000,00296950'
+CSP,3                              -> 'CSP,3,00297000,00499950'
+CSP,4                              -> 'CSP,4,00500000,00540000'
+CSP,5                              -> 'CSP,5,01080000,01369916'
+CSP,6                              -> 'CSP,6,01370000,01439950'
+CSP,7                              -> 'CSP,7,01440000,01479950'
+CSP,8                              -> 'CSP,8,04060000,04499937'
+CSP,9                              -> 'CSP,9,04500000,04699937'
+CSP,10                             -> 'CSP,10,04700000,05120000'
+
+--- parsed ---
+CSG fields: ['0111010101', '1', '0']   (1 field = BC125AT shape, 3 = BC75XLT spec shape)
+CSP,1  -> ['00250000', '00279950']
+CSP,2  -> ['00280000', '00296950']
+CSP,3  -> ['00297000', '00499950']
+CSP,4  -> ['00500000', '00540000']
+CSP,5  -> ['01080000', '01369916']
+CSP,6  -> ['01370000', '01439950']
+CSP,7  -> ['01440000', '01479950']
+CSP,8  -> ['04060000', '04499937']
+CSP,9  -> ['04500000', '04699937']
+CSP,10 -> ['04700000', '05120000']
+
+=== Phase 3: CSG write shape ===
+CSG,0111010101                     -> 'CSG,ERR'
+CSG,0111010101,1,0                 -> 'CSG,OK'
+CSG                                -> 'CSG,0111010101,1,0'
+
+=== Phase 4: CSP write + read back ===
+CSP,10,04500000,04699937           -> 'CSP,OK'
+CSP,10                             -> 'CSP,10,04500000,04699937'
+--- write ['04500000', '04699937'] -> read back ['04500000', '04699937'] : MATCH
+
+=== Phase 5: restore ===
+CSP,10,04700000,05120000           -> 'CSP,OK'
+CSP,10                             -> 'CSP,10,04700000,05120000'
+--- CSP,10 holds its original limits: ['04700000', '05120000']
+EPG                                -> 'EPG,OK'
