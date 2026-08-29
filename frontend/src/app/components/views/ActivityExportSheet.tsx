@@ -54,6 +54,39 @@ function getStartOfMonth(): number {
   return Math.floor(start.getTime() / 1000);
 }
 
+// Every timeframe boundary above is built from LOCAL calendar accessors, so
+// "Today" already means the user's today. The rows it selected were then
+// stamped with toISOString(), which is always UTC — so a Pacific user's
+// "today" export carried tomorrow's dates (#498). Output now agrees with the
+// selection that produced it.
+//
+// ISO 8601 with an explicit offset rather than a bare local wall-clock: it
+// reads as local time AND still names the instant, so an export shared across
+// zones, or read back later, is never ambiguous about which moment it means.
+function pad(value: number, width = 2): string {
+  return String(Math.trunc(Math.abs(value))).padStart(width, '0');
+}
+
+// Exported for tests (#498). Asserting the format through the component would
+// only ever prove the runner's own zone, and a hand-rolled copy in the test
+// file would pass whether or not it matched what the export actually writes —
+// the same trap `buildEmptyDraft` documents in ChannelsTab.
+export function formatExportTimestamp(date: Date): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes < 0 ? '-' : '+';
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+    `${sign}${pad(offsetMinutes / 60)}:${pad(offsetMinutes % 60)}`
+  );
+}
+
+// Same defect, second site: the filename dated the export in UTC, so exporting
+// after 4pm Pacific produced a file named for tomorrow.
+export function formatExportDate(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityExportSheetProps) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<Timeframe>('today');
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
@@ -112,8 +145,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   };
 
   const generateFilename = (): string => {
-    const now = new Date();
-    const date = now.toISOString().slice(0, 10);
+    const date = formatExportDate(new Date());
     return `activity-log-${date}.csv`;
   };
 
@@ -130,7 +162,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
       const data = await response.json();
       const header = ['timestamp', 'frequency', 'tag', 'channel', 'rssi', 'duration'].join(',');
       const rows = data.map((entry: any) => {
-        const timestamp = new Date(entry.timestamp * 1000).toISOString();
+        const timestamp = formatExportTimestamp(new Date(entry.timestamp * 1000));
         const frequency = entry.frequency.toFixed(4);
         const tag = entry.alpha_tag ?? '';
         const channel = entry.channel ?? '';

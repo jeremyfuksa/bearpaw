@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ActivityExportSheet } from '../ActivityExportSheet';
+import {
+  ActivityExportSheet,
+  formatExportTimestamp,
+  formatExportDate,
+} from '../ActivityExportSheet';
 import { getAPI } from '../../../../api/useApi';
 import { saveExport } from '../../../../tauri-shell';
 import type { ActivityLogEntry } from '../../../../types';
@@ -715,6 +719,48 @@ describe('ActivityExportSheet', () => {
       await waitFor(() => {
         expect(getSavedCsvContent()).toContain(',,75');
       });
+    });
+  });
+  describe('Local time (#498)', () => {
+    // Dates built from LOCAL components read the same wall-clock in every
+    // timezone, so these assertions are exact without pinning TZ on the
+    // runner — and they are not vacuous under a UTC CI box either, because
+    // the old toISOString() path rendered this same Date as 2026-01-16 for
+    // any zone west of UTC.
+    const localEvening = new Date(2026, 0, 15, 23, 30, 45);
+
+    it('stamps rows with the local wall-clock, not UTC', () => {
+      expect(formatExportTimestamp(localEvening)).toMatch(/^2026-01-15T23:30:45[+-]\d{2}:\d{2}$/);
+    });
+
+    it('carries an explicit UTC offset rather than a Z suffix', () => {
+      const formatted = formatExportTimestamp(localEvening);
+      expect(formatted).not.toMatch(/Z$/);
+      expect(formatted).toMatch(/[+-]\d{2}:\d{2}$/);
+    });
+
+    it('still names the same instant, so the export stays unambiguous', () => {
+      // The offset has to be right, not merely present: re-parsing must land
+      // back on the original moment.
+      const formatted = formatExportTimestamp(localEvening);
+      expect(Date.parse(formatted)).toBe(Math.floor(localEvening.getTime() / 1000) * 1000);
+    });
+
+    it('agrees with the platform local accessors', () => {
+      const formatted = formatExportTimestamp(localEvening);
+      expect(Number(formatted.slice(0, 4))).toBe(localEvening.getFullYear());
+      expect(Number(formatted.slice(11, 13))).toBe(localEvening.getHours());
+    });
+
+    it('dates the filename by the local day', () => {
+      // Second site of the same defect: exporting late in the evening west of
+      // UTC produced a file named for tomorrow.
+      expect(formatExportDate(localEvening)).toBe('2026-01-15');
+    });
+
+    it('zero-pads single-digit months, days and times', () => {
+      expect(formatExportDate(new Date(2026, 8, 5))).toBe('2026-09-05');
+      expect(formatExportTimestamp(new Date(2026, 8, 5, 4, 7, 9))).toMatch(/^2026-09-05T04:07:09/);
     });
   });
 });
