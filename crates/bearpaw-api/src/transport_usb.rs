@@ -67,12 +67,57 @@ impl UsbTransport {
             if desc.vendor_id() == self.vid && desc.product_id() == self.pid {
                 let handle = dev.open()?;
                 let _ = handle.set_active_configuration(1);
+                // REGRESSION GUARD (#428): record only the interfaces whose
+                // detach actually SUCCEEDED, and put exactly those back if the
+                // claim below fails. Guarded by
+                // `open_restores_only_the_interfaces_it_detached`.
+                //
+                // A detach is a one-way door we own. The Linux kernel never
+                // re-probes an interface a usbfs client disconnected, and
+                // libusb re-attaches only from `release_interface` -- which
+                // never runs here, because a failed claim leaves nothing to
+                // release. So a claim that failed busy or permission-denied
+                // used to strip `cdc_acm`, and with it `/dev/ttyACM*`, until
+                // the user physically replugged. Restarting Bearpaw did not
+                // heal it: the reconnect loop just re-detached on the next
+                // open. config.rs's CP210x guard documents the same leak
+                // reached via a bridge instead of a Uniden VID.
+                //
+                // Two details that look redundant and are not:
+                //
+                // 1. `is_ok()`, not "we tried". macOS `detach_kernel_driver`
+                //    is device-wide and refcounted, and every 0<->1 transition
+                //    of that count RE-ENUMERATES the device. Nothing binds the
+                //    BC125AT on macOS, so this list stays empty there and that
+                //    path is byte-identical to before. Recording an ATTEMPT
+                //    instead would let a failed claim re-enumerate the scanner
+                //    out from under the open handle on every reconnect.
+                // 2. `.rev()` unwinds the detaches in the order taken, so that
+                //    macOS refcount stays balanced.
+                //
+                // Do NOT "simplify" this to `set_auto_detach_kernel_driver`.
+                // Read against the libusb 1.0.27 that rusb 0.9.4 vendors, it
+                // fails four ways: it detaches only the interface being
+                // CLAIMED (never interface 0), it is not inert on macOS
+                // (Darwin advertises the capability and returns SUCCESS), it
+                // does not re-attach on a failed claim anyway, and it DOES
+                // re-attach on release -- which rusb's `Drop` calls on every
+                // teardown, handing the port back to the kernel between
+                // reconnects.
+                let mut detached: Vec<u8> = Vec::new();
                 for intf in [0u8, self.data_interface] {
-                    if handle.kernel_driver_active(intf).unwrap_or(false) {
-                        let _ = handle.detach_kernel_driver(intf);
+                    if handle.kernel_driver_active(intf).unwrap_or(false)
+                        && handle.detach_kernel_driver(intf).is_ok()
+                    {
+                        detached.push(intf);
                     }
                 }
-                handle.claim_interface(self.data_interface)?;
+                if let Err(e) = handle.claim_interface(self.data_interface) {
+                    for intf in detached.iter().rev() {
+                        let _ = handle.attach_kernel_driver(*intf);
+                    }
+                    return Err(UsbTransportError::Usb(e));
+                }
                 // REGRESSION GUARD (USB STALL recovery): clear any halted state
                 // on both bulk endpoints before handing back the session. A
                 // pipe error mid-command (seen 2026-07-23 on a PRG bracket)
@@ -261,6 +306,28 @@ mod tests {
         assert_eq!(
             t.ep_out, 0x02,
             "OUT endpoint changed — update open()'s clear_halt"
+        );
+    }
+
+    #[test]
+    fn open_restores_only_the_interfaces_it_detached() {
+        // REGRESSION GUARD (#428): a failed `claim_interface` must leave kernel
+        // drivers as it found them. `open()` detaches interface 0 (CDC control)
+        // AND `data_interface` before claiming, so the restore path has to put
+        // back exactly that set -- and only the members whose detach actually
+        // succeeded.
+        //
+        // Same limitation as `open_clears_halt_on_both_bulk_endpoints`: rusb's
+        // DeviceHandle is a thin FFI wrapper with no injectable backend, so
+        // forcing a claim failure needs a real device with a competing claimer.
+        // We cannot drive `open()` here, but we CAN pin the interface set the
+        // restore has to cover. If `data_interface` changes, or a third
+        // interface joins the detach loop, the restore loop must change with
+        // it -- a detach with no matching re-attach is the whole bug.
+        let t = UsbTransport::new(crate::config::UNIDEN_VID, 0x0017);
+        assert_eq!(
+            t.data_interface, 1,
+            "data interface changed — revisit open()'s detach/restore set"
         );
     }
 
