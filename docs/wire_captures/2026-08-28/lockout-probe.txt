@@ -22,16 +22,36 @@ GLF,***              -> 'GLF,OK'
 --- Bearpaw's bare-GLF walk is correct for this model.
 --- walk C (list intact after the parameterized read?): 0 entries []
 
-=== Phase 5: LOF -- add a synthetic lockout ===
---- using 00250000 (25.0000 MHz), not currently locked out
+=== Phase 5: LOF -- build a MULTI-ENTRY list ===
+--- adding 6: 25.0000, 54.0000, 108.0000, 174.0000, 406.0000, 512.0000
 LOF,00250000         -> 'LOF,OK'
---- walk D (after LOF): 1 entry ['00250000']
---- LOF: WORKS ('LOF,OK')
+LOF,00540000         -> 'LOF,OK'
+LOF,01080000         -> 'LOF,OK'
+LOF,01740000         -> 'LOF,OK'
+LOF,04060000         -> 'LOF,OK'
+LOF,05120000         -> 'LOF,OK'
+GLF                  -> 'GLF,00250000'
+GLF                  -> 'GLF,00540000'
+GLF                  -> 'GLF,01080000'
+GLF                  -> 'GLF,01740000'
+GLF                  -> 'GLF,04060000'
+GLF                  -> 'GLF,05120000'
+GLF                  -> 'GLF,-1'
+--- walk D (after LOF): 6 entries ['00250000', '00540000', '01080000', '01740000', '04060000', '05120000']
+--- LOF: added 6 of 6
+--- list length 0 -> 6
+--- MULTI-ENTRY WALK: 6 entries returned, then -1.
+--- order returned: insertion
 
-=== Phase 6: ULF -- remove it again ===
+=== Phase 6: ULF -- remove them again ===
 ULF,00250000         -> 'ULF,OK'
+ULF,00540000         -> 'ULF,OK'
+ULF,01080000         -> 'ULF,OK'
+ULF,01740000         -> 'ULF,OK'
+ULF,04060000         -> 'ULF,OK'
+ULF,05120000         -> 'ULF,OK'
 --- walk E (after ULF): 0 entries []
---- ULF: WORKS ('ULF,OK')
+--- ULF: 6 of 6 gone from the walk
 
 === Phase 7: verify net zero ===
 --- lockout list is back to its original 0 entries: []

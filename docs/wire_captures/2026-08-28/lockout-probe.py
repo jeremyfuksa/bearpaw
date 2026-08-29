@@ -48,11 +48,13 @@ PORT_GLOBS = ["/dev/cu.usbserial-*", "/dev/cu.SLAB_USBtoUART*"]
 # The firmware caps the list at 100 on a BC125AT; 110 bounds a runaway loop.
 WALK_LIMIT = 110
 
-# Candidate frequencies for the synthetic lockout, in units of 100 Hz. All are
+# Candidate frequencies for the synthetic lockouts, in units of 100 Hz. All are
 # band edges inside this model's coverage (25-54, 108-174, 406-512 MHz) AND
 # appear verbatim in the factory custom-search ranges read off real hardware,
-# so each is representable under either band plan. The first one not already
-# locked out is used.
+# so each is representable under either band plan. Every one not already locked
+# out is used, because a MULTI-entry list is the point: the first run of this
+# probe found an empty list, so the cursor was only ever seen advancing across
+# one entry. That proves it advances; it does not prove it walks a list.
 CANDIDATES = ["00250000", "00540000", "01080000", "01740000", "04060000", "05120000"]
 
 
@@ -192,17 +194,29 @@ def main():
             print("--- Bearpaw's bare-GLF walk may need the parameterized form on this model.")
         walk(fd, "walk C (list intact after the parameterized read?)")
 
-        print("\n=== Phase 5: LOF -- add a synthetic lockout ===")
-        target = next((c for c in CANDIDATES if c not in original), None)
-        if target is None:
+        print("\n=== Phase 5: LOF -- build a MULTI-ENTRY list ===")
+        targets = [c for c in CANDIDATES if c not in original]
+        if not targets:
             print(f"SKIP: every candidate is already locked out ({CANDIDATES}).")
             print("SKIP: refusing to touch an existing entry to make room.")
             return 0
-        print(f"--- using {target} ({int(target) / 10000.0:.4f} MHz), not currently locked out")
-        lof = show(fd, f"LOF,{target}")
-        after_lof = walk(fd, "walk D (after LOF)")
-        added = target in after_lof
-        print(f"--- LOF: {'WORKS' if added else 'DID NOT ADD'} ({lof!r})")
+        print(f"--- adding {len(targets)}: " +
+              ", ".join(f"{int(t) / 10000.0:.4f}" for t in targets))
+        for t in targets:
+            show(fd, f"LOF,{t}")
+        after_lof = walk(fd, "walk D (after LOF)", verbose=True)
+        added = [t for t in targets if t in after_lof]
+        print(f"--- LOF: added {len(added)} of {len(targets)}")
+        print(f"--- list length {len(original)} -> {len(after_lof)}")
+        if len(after_lof) < 2:
+            print("!!! Fewer than two entries; the multi-entry walk is still unproven.")
+        else:
+            # The whole point of this run. A cursor that returns one entry and
+            # stops would look identical to a working walk on a 1-entry list.
+            print(f"--- MULTI-ENTRY WALK: {len(after_lof)} entries returned, then -1.")
+            order = "insertion" if after_lof[-len(added):] == added else (
+                "sorted" if after_lof == sorted(after_lof) else "neither")
+            print(f"--- order returned: {order}")
 
         if not added:
             print("\n=== Phase 6: ULF -- SKIPPED ===")
@@ -210,11 +224,16 @@ def main():
             print("SKIP: not testing ULF against a real lockout -- that would destroy one.")
             return 0
 
-        print("\n=== Phase 6: ULF -- remove it again ===")
-        ulf = show(fd, f"ULF,{target}")
+        print("\n=== Phase 6: ULF -- remove them again ===")
+        # Every target this run ADDED, not just the ones the walk reported back.
+        # If the walk under-reports -- which is precisely the failure this run
+        # exists to detect -- trusting it for cleanup would leave the entries it
+        # could not see behind on the radio.
+        for t in targets:
+            show(fd, f"ULF,{t}")
         after_ulf = walk(fd, "walk E (after ULF)")
-        removed = target not in after_ulf
-        print(f"--- ULF: {'WORKS' if removed else 'DID NOT REMOVE'} ({ulf!r})")
+        leftover = [t for t in targets if t in after_ulf]
+        print(f"--- ULF: {len(targets) - len(leftover)} of {len(targets)} gone from the walk")
 
         print("\n=== Phase 7: verify net zero ===")
         if after_ulf == original:
@@ -222,7 +241,8 @@ def main():
                   f"{'y' if len(original) == 1 else 'ies'}: {original}")
         else:
             print(f"!!! LIST CHANGED. Now {after_ulf}, was {original}.")
-            print(f"!!! Remove {target} from the scanner's own lockout list if it remains.")
+            print("!!! Remove any of these from the scanner's own lockout list if they remain:")
+            print(f"!!!   {targets}")
     finally:
         show(fd, "EPG")
         os.close(fd)

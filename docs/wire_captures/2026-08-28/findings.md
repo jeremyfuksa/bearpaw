@@ -162,12 +162,32 @@ silently truncated list.
 
 `LOF` and `ULF` both work, and the list returned to its original state.
 
-Two caveats worth stating rather than glossing:
+### Multi-entry walk, confirmed
 
-- **The list was empty**, so iteration was exercised across 0 entries and then
-  1 (after `LOF`). That is enough to show the bare form *advances* and
-  terminates — a non-iterating form returns no payload at all — but a
-  multi-entry walk on this model has still not been seen.
+The first run found an empty list, so iteration was only ever seen across 0
+entries and then 1 — enough to show the cursor *advances*, not that it walks a
+list. Re-run after building a real list with `LOF`:
+
+```
+LOF x6       -> LOF,OK
+GLF          -> GLF,00250000
+GLF          -> GLF,00540000
+GLF          -> GLF,01080000
+GLF          -> GLF,01740000
+GLF          -> GLF,04060000
+GLF          -> GLF,05120000
+GLF          -> GLF,-1
+ULF x6       -> ULF,OK      walk E: 0 entries      (net zero)
+```
+
+Six entries, returned in **insertion order**, terminated with `-1`, all six
+removed. Bearpaw's `read_frequency_lockouts_walk` is correct on this model for
+a real list, not just a degenerate one.
+
+Order is worth recording even though the walk does not depend on it: the list
+comes back in the order entries were added, not sorted. `LOF` appends.
+
+One caveat remains:
 - **`GLF` answered `GLF,-1` outside program mode** rather than `NG`, despite
   the spec marking it program-mode only. Harmless for Bearpaw, which brackets
   the walk regardless, but it means an out-of-bracket `GLF` here reports "no
