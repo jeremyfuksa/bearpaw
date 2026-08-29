@@ -280,6 +280,83 @@ fn finalize_read_line(out: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    /// DIAGNOSTIC for #513, run by hand against a WEDGED device:
+    ///   cargo test -p bearpaw-api --lib wedge_recovery -- --ignored --nocapture
+    ///
+    /// Reproduce the wedge first by killing the backend mid-poll. Then this
+    /// walks the candidate recoveries in increasing bluntness and reports the
+    /// first that makes a bulk read work again. Ignored because it needs a
+    /// specific broken hardware state that cannot be manufactured in CI.
+    #[test]
+    #[ignore]
+    fn wedge_recovery_probe() {
+        let vid = crate::config::UNIDEN_VID;
+        let pid = 0x0017u16;
+        let t = UsbTransport::new(vid, pid);
+
+        let try_mdl = |label: &str, session: &mut UsbSession| -> bool {
+            match t.send(session, "MDL") {
+                Ok(r) => {
+                    println!("  [{label}] MDL -> {r:?}  <-- WORKS");
+                    true
+                }
+                Err(e) => {
+                    println!("  [{label}] MDL -> ERR {e:?}");
+                    false
+                }
+            }
+        };
+
+        println!("\n=== baseline: plain open() ===");
+        let mut session = match t.open() {
+            Ok(s) => s,
+            Err(e) => {
+                println!("open() failed outright: {e:?} — device absent, not wedged");
+                return;
+            }
+        };
+        if try_mdl("baseline", &mut session) {
+            println!("\nDevice is NOT wedged. Reproduce first, then re-run.");
+            return;
+        }
+
+        println!("\n=== strategy 1: drain_input then retry ===");
+        t.drain_input(&mut session);
+        if try_mdl("after drain", &mut session) {
+            println!("\nHEALED BY: drain_input");
+            return;
+        }
+
+        println!("\n=== strategy 2: release + re-claim interface ===");
+        let _ = session.handle.release_interface(1);
+        match session.handle.claim_interface(1) {
+            Ok(()) => {
+                let _ = session.handle.clear_halt(0x81);
+                let _ = session.handle.clear_halt(0x02);
+                if try_mdl("after re-claim", &mut session) {
+                    println!("\nHEALED BY: release + re-claim");
+                    return;
+                }
+            }
+            Err(e) => println!("  re-claim failed: {e:?}"),
+        }
+
+        // STRATEGY 3 (handle.reset()) IS DELIBERATELY NOT ATTEMPTED.
+        //
+        // Measured on macOS 2026-08-29 against a genuinely wedged BC125AT:
+        // `reset()` returned Timeout and the device then vanished from the USB
+        // bus entirely -- `ioreg` count went to 0 and every subsequent open()
+        // returned NotFound. It did not re-enumerate on its own. So reset is
+        // not a software replug here; it is strictly worse than the wedge,
+        // because it removes the option of the device healing itself and
+        // forces the physical unplug it was meant to avoid.
+        //
+        // Recorded in #513. Do not re-add it without a way to bring the device
+        // back, and never in the reconnect path.
+
+        println!("\nNOT HEALED by any strategy. Physical replug is the only recovery.");
+    }
+
     #[test]
     fn is_device_gone_classifies_unplug_errors() {
         assert!(UsbTransportError::NotFound(crate::config::UNIDEN_VID, 0x0017).is_device_gone());
