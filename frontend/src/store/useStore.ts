@@ -112,6 +112,43 @@ const defaultPreferences: Preferences = {
   activityExportTimezone: 'local',
 };
 
+/**
+ * Map the backend's stored preferences onto the store's shape.
+ *
+ * REGRESSION GUARD (#509): the return type is `Preferences`, NOT
+ * `Partial<Preferences>`. That `Partial` is what let `analyticsScope` be
+ * omitted here for its whole life: it was wired into PREFERENCE_KEY_MAP so it
+ * SAVED correctly, and the backend honoured it when scoping /activity-log, but
+ * nothing ever read it back. Every launch reset the store to 'scanner' while
+ * the API kept returning every scanner's hits, so the data and the toggle
+ * disagreed and neither looked broken alone.
+ *
+ * A preference needs both halves. Requiring the full type means the compiler
+ * refuses the next omission instead of a person having to notice it.
+ *
+ * Deliberately NOT derived from PREFERENCE_KEY_MAP. This is not a key rename:
+ * each line carries its own coercion and default, and `checkUpdatesOnLaunch`
+ * documents why `??` and `||` are not interchangeable. A generic mapping would
+ * erase exactly the per-key logic that matters.
+ */
+export function mapStoredPreferences(stored: Record<string, unknown>): Preferences {
+  const prefs = stored as Record<string, any>;
+  return {
+    theme: prefs.theme === 'field' ? 'field' : 'night',
+    displayMode: prefs.displayMode || 'frequency',
+    reducedMotion: prefs.reduced_motion || false,
+    hitMinDuration: prefs.hit_min_duration || 2,
+    dataRetentionDays: prefs.data_retention_days || 30,
+    audioOutputDevice: prefs.audio_output_device || 'default',
+    // `??`, not `||`: this defaults to true, so `||` would coerce a stored
+    // `false` back to `true` and the toggle would silently revert on every
+    // launch. Only null/undefined mean "unset".
+    checkUpdatesOnLaunch: prefs.check_updates_on_launch ?? true,
+    analyticsScope: prefs.analytics_scope === 'all' ? 'all' : 'scanner',
+    activityExportTimezone: prefs.activity_export_timezone === 'utc' ? 'utc' : 'local',
+  };
+}
+
 const defaultLiveState: LiveState = {
   timestamp: 0,
   frequency: 0,

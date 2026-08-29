@@ -6,7 +6,7 @@ import { ImportProgressOverlay } from './components/ImportProgressOverlay';
 import { StatusBar } from './components/ScannerUI';
 import { ScanAnnouncer } from './components/ScanAnnouncer';
 import { getAPI, API_BASE } from '../api/useApi';
-import { useStore, type Preferences } from '../store/useStore';
+import { useStore, mapStoredPreferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
 import { useActivityLogHydrate } from '../hooks/useActivityLogHydrate';
 import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
@@ -221,23 +221,7 @@ export default function App() {
         if (response.ok) {
           const prefs = await response.json();
           console.log('[Preferences] Loaded from backend:', prefs);
-          const frontendPrefs: Partial<Preferences> = {
-            theme: prefs.theme === 'field' ? 'field' : 'night',
-            displayMode: prefs.displayMode || 'frequency',
-            reducedMotion: prefs.reduced_motion || false,
-            hitMinDuration: prefs.hit_min_duration || 2,
-            dataRetentionDays: prefs.data_retention_days || 30,
-            audioOutputDevice: prefs.audio_output_device || 'default',
-            // `??`, not `||`: this defaults to true, so `||` would coerce a
-            // stored `false` back to `true` and the toggle would silently
-            // revert on every launch. Only null/undefined mean "unset".
-            checkUpdatesOnLaunch: prefs.check_updates_on_launch ?? true,
-            // A preference needs BOTH halves wired or it silently does not
-            // persist: PREFERENCE_KEY_MAP for the write, this block for the
-            // read. Missing either one still works for the rest of the
-            // session, which is what makes it easy to ship broken.
-            activityExportTimezone: prefs.activity_export_timezone === 'utc' ? 'utc' : 'local',
-          };
+          const frontendPrefs = mapStoredPreferences(prefs);
           console.log('[Preferences] Setting in store:', frontendPrefs);
           updatePreferences(frontendPrefs);
           console.log(
