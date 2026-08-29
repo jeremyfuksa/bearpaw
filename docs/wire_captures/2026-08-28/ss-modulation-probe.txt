@@ -1,0 +1,77 @@
+BC125AT, firmware 1.06.06, usb:1965:0017 (macOS direct-USB path)
+2026-08-28
+
+PURPOSE
+  The bearpaw-export -> BC125AT SS -> re-save round-trip earlier today showed
+  Bearpaw writes `AUTO` where Uniden writes `Auto`, on all 500 rows. The tool
+  accepted our file, but every channel on this unit is AUTO with tone Off, so
+  that result cannot distinguish the tool PARSING our value from the tool
+  DISCARDING it and writing its own default. Both give identical output on
+  uniform data.
+
+  This probe creates rows that disagree with their neighbours.
+
+BANK 9 (401-450) is the designated scratch bank. 27 of its 50 slots are
+programmed; 428-450 are empty. The probe writes ONLY empty slots, so nothing
+programmed was touched and restore is just clearing them back.
+
+=== BEFORE ===
+  before     ch428         0.0  mod=AUTO  tag=''  tone=none
+  before     ch429         0.0  mod=AUTO  tag=''  tone=none
+  before     ch430         0.0  mod=AUTO  tag=''  tone=none
+
+=== WRITE ===
+  PUT /memory/channels/428  {FM,  154.0000, "PROBE FM",       tone none}   -> 200
+  PUT /memory/channels/429  {AM,  123.0000, "PROBE AM CTCSS", CTCSS 100.0} -> 200
+  PUT /memory/channels/430  {NFM, 462.5625, "PROBE NFM DCS",  DCS code 128} -> 200
+
+  Two failures on the way, both mine, both worth recording:
+
+    tone_dcs_code=23   -> 400 {"error":"tone_invalid"}
+        The field is the RAW PROTOCOL CODE (128-231), not the Motorola number.
+        DCS 023 is 128. See protocol/tones.rs::dcs_code_to_number.
+
+    body without `bank` -> 422 Unprocessable Entity
+        ChannelData.bank has no #[serde(default)], so it is required on the
+        PUT body. 422 arrives before any readable validation message.
+
+=== READ BACK (from the radio) ===
+  {"index":428,"frequency":154.0,"modulation":"FM","alpha_tag":"PROBE FM",
+   "delay":2,"lockout":false,"priority":false,"tone_squelch_kind":"none","bank":9}
+  {"index":429,"frequency":123.0,"modulation":"AM","alpha_tag":"PROBE AM CTCSS",
+   "delay":2,"lockout":false,"priority":false,"tone_squelch":100.0,
+   "tone_squelch_kind":"ctcss","bank":9}
+  {"index":430,"frequency":462.5625,"modulation":"NFM","alpha_tag":"PROBE NFM DCS",
+   "delay":2,"lockout":false,"priority":false,"tone_squelch_kind":"dcs",
+   "tone_dcs_code":128,"bank":9}
+
+--- CIN WRITES CONFIRMED ON THE BC125AT: non-AUTO modulation, CTCSS, and DCS
+--- all round-trip through the radio correctly. Bank derives to 9 for all three.
+
+=== EXPORT ===
+  GET /memory/export/bc125at_ss -> 536 lines
+
+  C-Freq  428  PROBE FM        154000000  FM   Off      Off  2  Off
+  C-Freq  429  PROBE AM CTCSS  123000000  AM   100.0    Off  2  Off
+  C-Freq  430  PROBE NFM DCS   462562500  NFM  DCS 023  Off  2  Off
+
+  modulation distribution: {AUTO: 497, FM: 1, AM: 1, NFM: 1}
+  tone distribution:       {Off: 498, "100.0": 1, "DCS 023": 1}
+
+=== STILL OPEN ===
+  Load this file in BC125AT SS and re-save. Then:
+
+    modulation survives  -> 428/429/430 stay FM/AM/NFM
+    modulation flattened -> all three become Auto, and #507 is a real data-loss
+                            bug rather than a cosmetic casing difference
+
+    tone format correct  -> 429 shows CTCSS 100.0, 430 shows DCS 023
+    tone format wrong    -> the tool rewrites them, and the correct spelling is
+                            readable directly in the diff
+
+  The tone column's value format has NEVER been verified: every reference file
+  in fixtures/ is `Off` on all 500 rows, so `100.0` and `DCS 023` are guesses.
+  docs/SS_FILE_FORMAT.md documents the column's position but not its values.
+
+  Tracked in #464 (export verification) and #507 (casing + the golden test's
+  blindness to value-level drift).
