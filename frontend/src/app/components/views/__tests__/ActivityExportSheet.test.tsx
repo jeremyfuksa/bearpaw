@@ -5,7 +5,9 @@ import {
   ActivityExportSheet,
   formatExportTimestamp,
   formatExportDate,
+  localOffsetLabel,
 } from '../ActivityExportSheet';
+import { useStore } from '../../../../store/useStore';
 import { getAPI } from '../../../../api/useApi';
 import { saveExport } from '../../../../tauri-shell';
 import type { ActivityLogEntry } from '../../../../types';
@@ -40,9 +42,22 @@ describe('ActivityExportSheet', () => {
     hasActivity: true,
   };
 
+  const updatePreferences = vi.fn();
+
+  // The store mock ships unconfigured (`useStore: vi.fn()`), so every selector
+  // returned undefined and the component fell through to its default
+  // parameters. Tests passed while exercising nothing. Drive it with a real
+  // state object so the timezone preference is actually under test.
+  const mockStore = (activityExportTimezone: 'local' | 'utc' = 'local') => {
+    vi.mocked(useStore).mockImplementation((selector: any) =>
+      selector({ preferences: { activityExportTimezone }, updatePreferences }),
+    );
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getAPI).mockReturnValue({} as any);
+    mockStore();
     mockFetch([]);
   });
 
@@ -761,6 +776,78 @@ describe('ActivityExportSheet', () => {
     it('zero-pads single-digit months, days and times', () => {
       expect(formatExportDate(new Date(2026, 8, 5))).toBe('2026-09-05');
       expect(formatExportTimestamp(new Date(2026, 8, 5, 4, 7, 9))).toMatch(/^2026-09-05T04:07:09/);
+    });
+  });
+  describe('UTC option (#498 follow-up)', () => {
+    // Amateur radio logs in UTC by convention, so the two audiences want
+    // opposite things and neither can be derived from the other without work.
+    const localEvening = new Date(2026, 0, 15, 23, 30, 45);
+    const entry = { timestamp: localEvening.getTime() / 1000, frequency: 146.52, alpha_tag: 'X' };
+
+    it('formats UTC as Zulu with no milliseconds', () => {
+      const formatted = formatExportTimestamp(localEvening, 'utc');
+      expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+      expect(formatted).toBe(localEvening.toISOString().replace(/\.\d{3}Z$/, 'Z'));
+    });
+
+    it('defaults to local when no timezone is given', () => {
+      expect(formatExportTimestamp(localEvening)).toBe(
+        formatExportTimestamp(localEvening, 'local'),
+      );
+      expect(formatExportDate(localEvening)).toBe(formatExportDate(localEvening, 'local'));
+    });
+
+    it('dates the filename by the UTC day in UTC mode', () => {
+      expect(formatExportDate(localEvening, 'utc')).toBe(localEvening.toISOString().slice(0, 10));
+    });
+
+    it('shows the local offset on the Local button', () => {
+      render(<ActivityExportSheet {...mockProps} />);
+      expect(
+        screen.getByRole('button', { name: new RegExp(`Local time \\${localOffsetLabel()}`) }),
+      ).toBeInTheDocument();
+    });
+
+    it('reflects the stored preference in the pressed state', () => {
+      mockStore('utc');
+      render(<ActivityExportSheet {...mockProps} />);
+      expect(screen.getByRole('button', { name: 'UTC' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: /Local time/ })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+
+    it('persists the choice under the key App.tsx reads back', async () => {
+      // REGRESSION GUARD: the backend key must match PREFERENCE_KEY_MAP and
+      // App.tsx's load mapping. Saving under the camelCase key instead looks
+      // fine all session and silently resets on the next launch -- which is
+      // exactly what analyticsScope does today (#509).
+      render(<ActivityExportSheet {...mockProps} />);
+      await userEvent.click(screen.getByRole('button', { name: 'UTC' }));
+
+      await waitFor(() => {
+        const put = vi
+          .mocked(global.fetch)
+          .mock.calls.find(([, init]: any) => init?.method === 'PUT');
+        expect(put).toBeDefined();
+        expect(JSON.parse((put![1] as any).body)).toEqual({ activity_export_timezone: 'utc' });
+      });
+      expect(updatePreferences).toHaveBeenCalledWith({ activityExportTimezone: 'utc' });
+    });
+
+    it('stamps CSV rows in UTC when the preference is utc', async () => {
+      mockStore('utc');
+      mockFetch([entry]);
+      render(<ActivityExportSheet {...mockProps} />);
+      await userEvent.click(screen.getByRole('button', { name: /download/i }));
+
+      await waitFor(() => {
+        expect(getSavedCsvContent()).toContain(
+          localEvening.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+        );
+      });
+      expect(getSavedCsvContent()).not.toMatch(/[+-]\d{2}:\d{2}/);
     });
   });
 });

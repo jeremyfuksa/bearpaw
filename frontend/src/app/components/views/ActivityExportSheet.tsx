@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { cn } from '../../../lib/utils';
 import { API_BASE } from '../../../api/useApi';
 import { saveExport } from '../../../tauri-shell';
+import { useStore } from '../../../store/useStore';
 
 interface ActivityExportSheetProps {
   isOpen: boolean;
@@ -13,6 +14,8 @@ interface ActivityExportSheetProps {
 }
 
 type Timeframe = 'today' | 'week' | 'month' | 'all' | 'custom';
+
+export type ExportTimezone = 'local' | 'utc';
 
 // The backend applies no hard cap on `limit` (analytics.rs defaults to 100 when
 // omitted), so request a high ceiling to avoid silently truncating "All Time".
@@ -67,23 +70,41 @@ function pad(value: number, width = 2): string {
   return String(Math.trunc(Math.abs(value))).padStart(width, '0');
 }
 
+/** The viewer's UTC offset as `+HH:MM`, for both the stamp and its UI label. */
+export function localOffsetLabel(date: Date = new Date()): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes < 0 ? '-' : '+';
+  return `${sign}${pad(offsetMinutes / 60)}:${pad(offsetMinutes % 60)}`;
+}
+
 // Exported for tests (#498). Asserting the format through the component would
 // only ever prove the runner's own zone, and a hand-rolled copy in the test
 // file would pass whether or not it matched what the export actually writes —
 // the same trap `buildEmptyDraft` documents in ChannelsTab.
-export function formatExportTimestamp(date: Date): string {
-  const offsetMinutes = -date.getTimezoneOffset();
-  const sign = offsetMinutes < 0 ? '-' : '+';
+//
+// UTC is offered because amateur radio logs in it by convention, so `Z` rather
+// than `+00:00`: Zulu is the spelling that audience reads. Both modes drop
+// milliseconds. Hits are second-resolution and the extra digits are noise in a
+// log a person reads.
+export function formatExportTimestamp(date: Date, timezone: ExportTimezone = 'local'): string {
+  if (timezone === 'utc') {
+    return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+  }
   return (
     `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
     `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
-    `${sign}${pad(offsetMinutes / 60)}:${pad(offsetMinutes % 60)}`
+    `${localOffsetLabel(date)}`
   );
 }
 
 // Same defect, second site: the filename dated the export in UTC, so exporting
 // after 4pm Pacific produced a file named for tomorrow.
-export function formatExportDate(date: Date): string {
+// It follows the same preference, so the filename never disagrees with the
+// rows inside it.
+export function formatExportDate(date: Date, timezone: ExportTimezone = 'local'): string {
+  if (timezone === 'utc') {
+    return date.toISOString().slice(0, 10);
+  }
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
@@ -92,6 +113,26 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const exportTimezone = useStore((state) => state.preferences.activityExportTimezone);
+  const updatePreferences = useStore((state) => state.updatePreferences);
+
+  // Written straight through rather than reusing DeviceTab's
+  // handlePreferenceChange: that one is a closure over its own component. The
+  // backend key must match PREFERENCE_KEY_MAP's entry, and App.tsx must read
+  // the same key back on load, or the choice survives only this session.
+  const setExportTimezone = async (timezone: ExportTimezone) => {
+    updatePreferences({ activityExportTimezone: timezone });
+    try {
+      await fetch(`${API_BASE}/preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activity_export_timezone: timezone }),
+      });
+    } catch (error) {
+      console.error('Failed to save preference', error);
+      toast.error('Failed to save timestamp preference');
+    }
+  };
 
   const getTimeframeLabel = (timeframe: Timeframe): string => {
     switch (timeframe) {
@@ -145,7 +186,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
   };
 
   const generateFilename = (): string => {
-    const date = formatExportDate(new Date());
+    const date = formatExportDate(new Date(), exportTimezone);
     return `activity-log-${date}.csv`;
   };
 
@@ -162,7 +203,7 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
       const data = await response.json();
       const header = ['timestamp', 'frequency', 'tag', 'channel', 'rssi', 'duration'].join(',');
       const rows = data.map((entry: any) => {
-        const timestamp = formatExportTimestamp(new Date(entry.timestamp * 1000));
+        const timestamp = formatExportTimestamp(new Date(entry.timestamp * 1000), exportTimezone);
         const frequency = entry.frequency.toFixed(4);
         const tag = entry.alpha_tag ?? '';
         const channel = entry.channel ?? '';
@@ -267,6 +308,40 @@ export function ActivityExportSheet({ isOpen, onClose, hasActivity }: ActivityEx
               </div>
             </div>
           )}
+
+          <div className="space-y-3 border-t border-white/10 pt-4">
+            <span
+              id="activity-export-tz-label"
+              className="block text-xs font-medium uppercase tracking-wider text-white/70"
+            >
+              Timestamps
+            </span>
+            <div
+              className="grid grid-cols-2 gap-2"
+              role="group"
+              aria-labelledby="activity-export-tz-label"
+            >
+              {(['local', 'utc'] as ExportTimezone[]).map((timezone) => (
+                <button
+                  key={timezone}
+                  type="button"
+                  aria-pressed={exportTimezone === timezone}
+                  onClick={() => void setExportTimezone(timezone)}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded px-4 py-3 text-sm font-medium transition-colors',
+                    exportTimezone === timezone
+                      ? 'border border-brand-primary/30 bg-brand-primary/20 text-brand-primary'
+                      : 'scanner-button-muted border',
+                  )}
+                >
+                  {timezone === 'local' ? `Local time ${localOffsetLabel()}` : 'UTC'}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-white/50">
+              Changes how rows are stamped, not which rows are included.
+            </p>
+          </div>
         </div>
 
         <div className="px-6 py-4 border-t border-white/10 shrink-0 space-y-3">

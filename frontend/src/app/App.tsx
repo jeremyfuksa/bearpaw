@@ -232,6 +232,11 @@ export default function App() {
             // stored `false` back to `true` and the toggle would silently
             // revert on every launch. Only null/undefined mean "unset".
             checkUpdatesOnLaunch: prefs.check_updates_on_launch ?? true,
+            // A preference needs BOTH halves wired or it silently does not
+            // persist: PREFERENCE_KEY_MAP for the write, this block for the
+            // read. Missing either one still works for the rest of the
+            // session, which is what makes it easy to ship broken.
+            activityExportTimezone: prefs.activity_export_timezone === 'utc' ? 'utc' : 'local',
           };
           console.log('[Preferences] Setting in store:', frontendPrefs);
           updatePreferences(frontendPrefs);
