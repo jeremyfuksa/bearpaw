@@ -18,7 +18,20 @@ jobs:
     # CLAUDE_CODE_OAUTH_TOKEN) from Dependabot-authored PRs, so the review step
     # can't authenticate and the job would always fail. A skipped job reports as
     # neutral/success, so this keeps Dependabot PRs green without reviewing them.
-    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    #
+    # The same is true of PRs from FORKS, for the same reason: GitHub withholds
+    # secrets from `pull_request` runs whose head is another repository. Without
+    # this second clause every outside contributor gets a guaranteed red check
+    # and a review that silently never ran -- which reads as "your PR is bad"
+    # rather than "this check cannot run here". Observed on #467 (dan-r/bearpaw),
+    # where claude-review failed in 28s while every real check passed.
+    #
+    # Skipping is the honest report. Reviewing a fork PR safely needs
+    # `pull_request_target`, which runs the BASE repo's workflow with secrets
+    # against the fork's code -- a much larger security decision than this.
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
 
     runs-on: ubuntu-latest
     permissions:
