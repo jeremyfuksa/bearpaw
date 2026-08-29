@@ -378,7 +378,7 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 | `WXS` | Weather alert priority | |
 | `CNT` | LCD contrast | 1–15 |
 | `BLT` | Backlight behavior | `AO` always on / `AF` off / `KY` on keypress / `SQ` on squelch / `KS` keypress+squelch |
-| `GLF` | Walk the global lockout list | Returns one freq per call until end. **The BARE form is the iterator on BOTH families** -- the parameterized `GLF,***` documented in the BC75XLT spec answers a payload-less `GLF,OK` and does not iterate, same as on a BC125AT (#142). Verified on a BC75XLT 2026-08-28; `LOF` and `ULF` round-tripped an entry to net zero in the same run. The cursor rewinds after `-1`. Note it answers `GLF,-1` OUTSIDE program mode on a BC75XLT rather than `NG`, so an unbracketed walk reports "no lockouts" instead of "wrong mode". |
+| `GLF` | Walk the global lockout list | Returns one freq per call until end. **The BARE form is the iterator on BOTH families** -- the parameterized `GLF,***` documented in the BC75XLT spec answers a payload-less `GLF,OK` and does not iterate, same as on a BC125AT (#142). Verified on a BC75XLT 2026-08-28 across a **six-entry** list built with `LOF`: six frequencies returned in insertion order, then `-1`, and all six removed to net zero. `LOF` appends rather than sorting. The cursor rewinds after `-1`. Note it answers `GLF,-1` OUTSIDE program mode on a BC75XLT rather than `NG`, so an unbracketed walk reports "no lockouts" instead of "wrong mode". |
 | `LOF,freq` | Add frequency to lockout list | Up to 200 entries |
 | `ULF,freq` | Remove from lockout list | |
 
