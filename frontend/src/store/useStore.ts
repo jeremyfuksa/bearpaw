@@ -19,6 +19,19 @@ export interface Preferences {
    * rather than a choice.
    */
   analyticsScope: 'scanner' | 'all';
+  /**
+   * Timezone the activity-log CSV is stamped in (#498).
+   *
+   * Local is the default because the export sheet already SELECTS in local
+   * time. UTC exists because amateur radio logs in it by convention, so the
+   * two constituencies want genuinely opposite things and neither can be
+   * derived from the other without work in a spreadsheet.
+   *
+   * Labelling only. It deliberately does NOT move the timeframe filters: a
+   * display preference that silently changed which rows you got would be a
+   * worse surprise than a UTC-stamped export of your local day.
+   */
+  activityExportTimezone: 'local' | 'utc';
 }
 
 /**
@@ -96,6 +109,7 @@ const defaultPreferences: Preferences = {
   audioOutputDevice: 'default',
   checkUpdatesOnLaunch: true,
   analyticsScope: 'scanner',
+  activityExportTimezone: 'local',
 };
 
 const defaultLiveState: LiveState = {

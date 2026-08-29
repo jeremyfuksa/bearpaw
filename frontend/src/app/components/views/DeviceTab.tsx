@@ -65,6 +65,7 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   dataRetentionDays: 'data_retention_days',
   checkUpdatesOnLaunch: 'check_updates_on_launch',
   analyticsScope: 'analytics_scope',
+  activityExportTimezone: 'activity_export_timezone',
 };
 
 // Close Call (CLC) mode: UI value -> wire digit. Digits confirmed on hardware
