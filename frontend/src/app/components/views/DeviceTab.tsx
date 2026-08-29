@@ -241,6 +241,16 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // what a BC75XLT got once #471 gated Key Beep alongside BLT and CNT. Gate the
   // card on its own contents rather than adding a fourth ungated control to
   // justify it.
+  // The Locked Channels table drops its Tag column on a scanner that has no
+  // alpha tags, rather than rendering a full column of "Untitled" and a search
+  // box advertising something it cannot do (#434). Same reasoning #404 applied
+  // to the channel table, in a table #404 did not touch: with no tag, a
+  // fabricated placeholder is noise on every row and tells a screen reader
+  // nothing that distinguishes one row from the next.
+  const lockedGridCols = capabilities.has_alpha_tags
+    ? 'grid-cols-[40px_60px_120px_1fr_80px_100px]'
+    : 'grid-cols-[40px_60px_1fr_80px_100px]';
+
   const showDisplayCard =
     capabilities.has_backlight_control || capabilities.has_contrast || capabilities.has_key_beep;
 
@@ -981,7 +991,9 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search frequency or tag"
+                    placeholder={
+                      capabilities.has_alpha_tags ? 'Search frequency or tag' : 'Search frequency'
+                    }
                     className="w-56 bg-black/30 border border-white/40 rounded px-3 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-brand-primary"
                   />
                   <Select
@@ -1026,14 +1038,17 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
             >
               <div
                 role="row"
-                className="grid grid-cols-[40px_60px_120px_1fr_80px_100px] text-sm font-bold uppercase tracking-wider text-white/60 bg-white/5 border-b border-white/10 px-3 py-2"
+                className={cn(
+                  'grid text-sm font-bold uppercase tracking-wider text-white/60 bg-white/5 border-b border-white/10 px-3 py-2',
+                  lockedGridCols,
+                )}
               >
                 <div role="columnheader">Select</div>
                 <div role="columnheader" className="text-center">
                   CH
                 </div>
                 <div role="columnheader">Freq (MHz)</div>
-                <div role="columnheader">Tag</div>
+                {capabilities.has_alpha_tags && <div role="columnheader">Tag</div>}
                 <div role="columnheader" className="text-center">
                   Bank
                 </div>
@@ -1050,7 +1065,11 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                       key={channel.index}
                       role="row"
                       className={cn(
-                        'grid grid-cols-[40px_60px_120px_1fr_80px_100px] items-center px-3 py-2 text-base',
+                        'grid items-center px-3 py-2 text-base',
+                        // Must be the SAME track list as the header above, or
+                        // the columns drift apart the moment one of them drops
+                        // the Tag column.
+                        lockedGridCols,
                         isSelected ? 'bg-brand-primary/10' : 'hover:bg-white/5',
                       )}
                     >
@@ -1069,9 +1088,11 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                       <div role="cell" className="text-sm font-mono text-white">
                         {channel.frequency.toFixed(4)}
                       </div>
-                      <div role="cell" className="text-sm text-white/80 truncate">
-                        {channel.alpha_tag || 'Untitled'}
-                      </div>
+                      {capabilities.has_alpha_tags && (
+                        <div role="cell" className="text-sm text-white/80 truncate">
+                          {channel.alpha_tag || 'Untitled'}
+                        </div>
+                      )}
                       <div role="cell" className="text-center text-sm text-white/60">
                         {channel.bank}
                       </div>
