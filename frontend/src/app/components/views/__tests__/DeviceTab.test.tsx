@@ -454,6 +454,33 @@ describe('DeviceTab', () => {
   // that recoverable; the timestamp makes it visible. Not polled on purpose --
   // the backend answers this inside a program-mode bracket, which parks the
   // scanner in HOLD at channel 1.
+  // #434: the Locked Channels table always rendered a Tag column, labelled
+  // every empty tag "Untitled", and advertised tag search. On a BC75XLT that
+  // is a full column of "Untitled" and a search box promising something the
+  // hardware cannot do. Same fix #404 made to the channel table, in a table
+  // #404 did not touch -- and partly an accessibility one: with no tag, every
+  // row announces identically.
+  describe('Locked Channels tag column (#434)', () => {
+    it('hides the Tag column and its search promise on a BC75XLT', async () => {
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
+
+      expect(screen.queryByRole('columnheader', { name: 'Tag' })).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search frequency')).toBeInTheDocument();
+    });
+
+    it('keeps them on a BC125AT-family scanner', async () => {
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
+
+      expect(screen.getByRole('columnheader', { name: 'Tag' })).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search frequency or tag')).toBeInTheDocument();
+    });
+  });
+
   describe('Refresh control', () => {
     it.each([['Device Config'], ['Close Call'], ['Service Search'], ['Custom Search']])(
       'offers Refresh on %s, which reads device state',
