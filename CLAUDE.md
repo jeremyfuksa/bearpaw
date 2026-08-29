@@ -268,7 +268,6 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs) — STS/GLG/CIN/PWR parsers
 - [`crates/bearpaw-api/src/protocol/capabilities.rs`](crates/bearpaw-api/src/protocol/capabilities.rs) — `ScannerCapabilities`: per-model memory model and feature set
 - [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs) — CTCSS/DCS code → Hz
-- [`crates/bearpaw-api/src/protocol/defaults.rs`](crates/bearpaw-api/src/protocol/defaults.rs) — factory-default custom-search ranges (read-only; no `CSP` write path)
 - [`crates/bearpaw-api/src/logging.rs`](crates/bearpaw-api/src/logging.rs) — tracing setup, file + error log appenders
 - [`crates/bearpaw-api/src/transport.rs`](crates/bearpaw-api/src/transport.rs), [`transport_usb.rs`](crates/bearpaw-api/src/transport_usb.rs)
 - [`crates/bearpaw-api/src/state.rs`](crates/bearpaw-api/src/state.rs) — `LiveState`, `ChannelData`, `DeviceInfo`
