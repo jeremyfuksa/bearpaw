@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import bearpawLogo from '@/assets/bearpaw-logo.svg';
 import type { Tab } from '../App';
 
 const TABS: Tab[] = ['Scan', 'Channels', 'Device'];
@@ -49,37 +50,49 @@ export function TabBar({ currentTab, onTabChange }: TabBarProps) {
   };
 
   return (
-    <div
-      role="tablist"
-      aria-label="Views"
-      className="flex shrink-0 items-center gap-1 border-b border-scanner-bg-dark bg-scanner-bg-dark/40 px-4 py-1.5"
-    >
-      {TABS.map((tab, index) => {
-        const active = tab === currentTab;
-        return (
-          <button
-            key={tab}
-            ref={(el) => {
-              tabRefs.current[index] = el;
-            }}
-            type="button"
-            role="tab"
-            id={`tab-${tab.toLowerCase()}`}
-            aria-selected={active}
-            aria-controls="view-panel"
-            tabIndex={active ? 0 : -1}
-            onClick={() => onTabChange(tab)}
-            onKeyDown={(e) => handleKeyDown(e, index)}
-            className={`rounded-md px-3 py-1 font-sans text-xs transition-colors ${
-              active
-                ? 'bg-white/10 text-scanner-text-light'
-                : 'text-white/60 hover:bg-white/5 hover:text-white/80'
-            }`}
-          >
-            {tab}
-          </button>
-        );
-      })}
+    // The logo is a SIBLING of the tablist, not a child. `role="tablist"` may
+    // only contain tabs; an image inside it is an ARIA violation and would be
+    // announced as part of the tab set. The border and background move to this
+    // wrapper so the bar still reads as one strip.
+    <div className="flex shrink-0 items-center border-b border-scanner-bg-dark bg-scanner-bg-dark/40 px-4 py-1.5">
+      <div role="tablist" aria-label="Views" className="flex items-center gap-1">
+        {TABS.map((tab, index) => {
+          const active = tab === currentTab;
+          return (
+            <button
+              key={tab}
+              ref={(el) => {
+                tabRefs.current[index] = el;
+              }}
+              type="button"
+              role="tab"
+              id={`tab-${tab.toLowerCase()}`}
+              aria-selected={active}
+              aria-controls="view-panel"
+              tabIndex={active ? 0 : -1}
+              onClick={() => onTabChange(tab)}
+              onKeyDown={(e) => handleKeyDown(e, index)}
+              className={`rounded-md px-3 py-1 font-sans text-xs transition-colors ${
+                active
+                  ? 'bg-white/10 text-scanner-text-light'
+                  : 'text-white/60 hover:bg-white/5 hover:text-white/80'
+              }`}
+            >
+              {tab}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Decorative: the window already carries an h1 "Bearpaw", so the
+          wordmark repeats a name the page has stated. alt="" keeps it out of
+          the accessibility tree rather than announcing it twice. */}
+      <img
+        src={bearpawLogo}
+        alt=""
+        aria-hidden
+        className="ml-auto h-4 w-auto select-none opacity-70"
+      />
     </div>
   );
 }
