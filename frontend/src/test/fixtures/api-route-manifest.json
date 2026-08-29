@@ -221,10 +221,6 @@
       "path": "/api/v1/settings/custom-search/ranges/1"
     },
     {
-      "method": "GET",
-      "path": "/api/v1/settings/custom-search/defaults"
-    },
-    {
       "method": "POST",
       "path": "/api/v1/settings/custom-search/ranges/1"
     },

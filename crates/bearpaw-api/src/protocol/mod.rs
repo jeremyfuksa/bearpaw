@@ -7,7 +7,6 @@
 //! research doc's 1.04.02.
 
 pub mod capabilities;
-pub mod defaults;
 pub mod tones;
 
 use crate::state::{ChannelData, LiveState, ScannerMode, ToneSquelchKind};

@@ -2,8 +2,6 @@ use axum::extract::{Path, State};
 use axum::response::Json;
 use serde_json::{json, Value};
 
-use crate::protocol::defaults::CUSTOM_SEARCH_DEFAULTS;
-
 use crate::protocol::{classify_response, ScannerReply};
 
 use super::super::{
@@ -745,22 +743,6 @@ pub(crate) async fn get_custom_range(
 /// Read-only seed: the 10 factory-default custom-search ranges Uniden
 /// preloads on `CLR`. See `docs/BC125AT_PROTOCOL.md` §5.5. No scanner
 /// round-trip — this is a constant table.
-pub(crate) async fn get_custom_search_defaults() -> Json<Value> {
-    let ranges: Vec<Value> = CUSTOM_SEARCH_DEFAULTS
-        .iter()
-        .enumerate()
-        .map(|(i, (lower, upper, label))| {
-            json!({
-                "index": i + 1,
-                "lower": lower,
-                "upper": upper,
-                "label": label,
-            })
-        })
-        .collect();
-    Json(json!({ "ranges": ranges }))
-}
-
 pub(crate) async fn set_custom_range(
     State(state): State<AppState>,
     Path(index): Path<u8>,

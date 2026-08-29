@@ -231,10 +231,6 @@ pub fn router(state: AppState) -> Router {
             get(handlers::settings::get_custom_range).post(handlers::settings::set_custom_range),
         )
         .route(
-            "/api/v1/settings/custom-search/defaults",
-            get(handlers::settings::get_custom_search_defaults),
-        )
-        .route(
             "/api/v1/settings/weather",
             get(handlers::settings::get_weather).post(handlers::settings::set_weather),
         )
@@ -3105,29 +3101,6 @@ mod tests {
         assert!(body.as_array().is_some());
     }
 
-    #[tokio::test]
-    async fn custom_search_defaults_returns_ten_ranges() {
-        let app = router(default_state());
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method(Method::GET)
-                    .uri("/api/v1/settings/custom-search/defaults")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = json_body(response).await;
-        let ranges = body.get("ranges").and_then(|v| v.as_array()).unwrap();
-        assert_eq!(ranges.len(), 10);
-        // Spot-check the first entry (25.0–27.995 MHz, "CB / 11m").
-        assert_eq!(ranges[0].get("index"), Some(&serde_json::json!(1)));
-        assert_eq!(ranges[0].get("lower"), Some(&serde_json::json!(25.0)));
-        assert_eq!(ranges[0].get("label"), Some(&serde_json::json!("CB / 11m")));
-    }
-
     fn temp_db_file(name: &str) -> PathBuf {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -4460,7 +4433,6 @@ mod tests {
         ("GET", "/api/v1/memory/channels/1"),
         ("POST", "/api/v1/memory/channels/1/priority"),
         ("GET", "/api/v1/settings/custom-search/ranges/1"),
-        ("GET", "/api/v1/settings/custom-search/defaults"),
         ("POST", "/api/v1/settings/custom-search/ranges/1"),
         ("PUT", "/api/v1/memory/channels/1"),
         ("POST", "/api/v1/settings/search"),
