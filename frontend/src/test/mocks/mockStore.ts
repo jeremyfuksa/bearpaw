@@ -20,6 +20,17 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     memoryDrafts: overrides.memoryDrafts ?? {},
     memoryEditingIndex: overrides.memoryEditingIndex ?? null,
     importProgress: overrides.importProgress ?? { active: false, percent: 0, message: '' },
+    // Mirrors `defaultSync`. Components read `state.sync.*`, so omitting this
+    // makes every test using them throw on an undefined slice rather than fail
+    // on the behaviour under test.
+    sync: overrides.sync ?? {
+      inProgress: false,
+      hasSyncedInitially: false,
+      taskId: null,
+      message: 'Loading channels from device...',
+      percent: 0,
+      syncedAt: null,
+    },
 
     updateLiveState: vi.fn(),
     setImportProgress: vi.fn(),
@@ -30,6 +41,7 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
     setMemoryEditingIndex: vi.fn(),
     setMemoryDraft: vi.fn(),
     clearMemoryDrafts: vi.fn(),
+    updateSync: vi.fn(),
   };
 
   return mockStore;
