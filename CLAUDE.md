@@ -341,9 +341,21 @@ This resolves a long-standing note in [`docs/SCANNER_PROTOCOL_REFERENCE.md`](doc
 ## Testing and CI
 
 - **Backend:** `cargo test -p bearpaw-api --lib` and `cargo fmt --all -- --check`. Fixtures driven by captures in `docs/wire_captures/`.
-- **Frontend:** `npm test -- --run` (vitest), `npm run lint`, `npm run type-check`, `npm run format:check`. All four run on every PR via [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
-- **CI also runs `cargo check --workspace --all-targets`** in the backend job — a deliberate guard against silent drift in the Tauri crate (see the comment in `tests.yml` citing PR #80). Run it locally if your change touches anything the Tauri shell links against.
+- **Frontend:** `npm test -- --run` (vitest), `npm run lint`, `npm run type-check`, `npm run format:check`.
+- **CI also runs `cargo check --workspace --all-targets`** in the backend job — a deliberate guard against silent drift in the Tauri crate (see the comment in `tests.yml` citing PR #80). Run it locally if your change touches anything the Tauri shell links against. It needs `frontend/dist` to exist: `tauri::generate_context!` reads `frontendDist` at **compile** time and panics if the directory is missing, which reads like a Rust regression and is not one. CI builds the frontend first for exactly this reason; in a fresh worktree you must too (`cd frontend && npm ci && npm run build`).
 - [`.github/workflows/build.yml`](.github/workflows/build.yml) is the release pipeline: tag-triggered (`v*`), multi-platform Tauri bundles (macOS aarch64/x86_64, Windows, Linux). It does not run on PRs.
+
+### The five required checks, and why `tests.yml` has no `paths:` filter
+
+As of 2026-08-29 `main` is branch-protected, and [`tests.yml`](.github/workflows/tests.yml)'s five jobs are **required status checks**:
+
+`Backend Tests` · `Frontend Tests` · `Frontend Lint` · `Frontend Type Check` · `Frontend Format Check`
+
+No required reviews (solo maintainer), `strict` off, `enforce_admins` off. CodeQL and `claude-review` deliberately are **not** required — `Analyze (rust)` alone takes ~7 min against ~3 for all of Tests, and `claude-review` is skipped on Dependabot and fork PRs, where a skipped required check would block the merge.
+
+**These two settings are coupled, and the coupling is easy to miss.** `tests.yml` used to carry a `paths:` allowlist so docs-only PRs skipped ~9 minutes of pointless build. That was correct while its stated premise held — the comment said so plainly: *"`main` has no branch protection, so a PR reporting zero checks is still mergeable."* Adding protection silently invalidated it: **a required check that never runs never reports, so a filtered-out PR becomes permanently unmergeable**, not fast. Every docs-only, `site/**`-only and workflow-bump PR was affected, Dependabot's included. Removed in #535.
+
+If a path filter is ever wanted back, it must ship together with a companion workflow reporting those same five job names for the excluded paths — and that companion is its own landmine, because renaming a job here without renaming it there blocks every PR with no visible cause.
 
 ## Definition of done / PR discipline
 
@@ -355,6 +367,18 @@ Every change lands via a PR to `main` — never push to `main` directly, even fo
 
    Run `cargo fmt --all` (no `--check`) to fix Rust formatting. It is safe to run repo-wide: the drift that made it produce unreviewable diffs was cleared in #394, and CI now keeps it clean.
 4. **Never push to retry CI.** If a check fails, reproduce and fix locally first.
+5. **Merging is deliberate.** `allow_auto_merge` is `false` on this repo, and `--auto` does not fail cleanly when it is off — it silently degrades to merge-now, with no output that reliably signals which happened. Never pass `--auto`. Wait for the checks, confirm, then `gh pr merge <n> --squash`. See the `bearpaw-pr` skill.
+
+### Verify the setting before acting on the procedure that depends on it
+
+Every rule here was true when written. Some stopped being true without anyone editing the sentence — and a stale *procedure* is more dangerous than a stale *fact*, because a procedure gets followed rather than read.
+
+Two instances, both on 2026-08-29, both one API call away from being caught:
+
+- The `bearpaw-pr` skill instructed enabling auto-merge on every PR. The repo setting had since flipped off, so the flag degraded to merge-now and landed a PR **seven seconds** after opening, before any check started. `gh api repos/jeremyfuksa/bearpaw --jq .allow_auto_merge` says `false`.
+- Branch protection was added without checking what depended on the old unprotected state. `tests.yml`'s `paths:` filter — whose own comment named that dependency in plain English — would have made every docs-only PR unmergeable.
+
+So: before following a documented procedure that turns on a repo, service, or tool setting, **check the setting**. Docs are evidence; the API is truth. And when you find a conflict between two rules here, **surface it rather than silently picking a side** — picking quietly is what turned both of the above from a contradiction into an incident.
 
 ## Third-rail flows
 
