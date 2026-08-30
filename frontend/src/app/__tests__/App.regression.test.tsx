@@ -235,4 +235,68 @@ describe('App.tsx regression guards', () => {
       expect(APP_SOURCE).not.toMatch(/<TabBar[^>]*onTabChange=\{setCurrentTab\}/);
     });
   });
+
+  describe('cached channels suppress the startup memory sync', () => {
+    // History: before #413 every launch paid a blocking 30-45 s
+    // PRG/CIN/EPG walk behind a full-screen overlay, because channel memory
+    // lived only in RAM. #534/#537/#538 persist it and #540 adopts it back
+    // into `shadow.channels` at connect, so the mount-time GET
+    // /memory/channels now returns a full list on a warm cache.
+    //
+    // The ONLY thing that turns that into "no startup sync" is the
+    // `channels.length > 0` early return in the auto-sync effect. There is
+    // no WS message meaning "channels changed", and the connect-edge
+    // device_info broadcast never fires (#539), so nothing else can suppress
+    // the sync. Dropping the check -- or dropping `channels.length` from the
+    // deps array, which stops the effect re-evaluating when the fetch lands
+    // -- restores the blocking overlay for every user with a warm cache,
+    // with no error and no visible cause.
+    //
+    // This is asserted at source level for the reason given at the top of
+    // this file: mounting App needs mocks for the WS context, Tauri shell,
+    // store, menu bus, API client, toasts and routing.
+
+    /**
+     * Body of the auto-sync useEffect, anchored on the unique
+     * `startMemorySync` identifier declared inside it.
+     */
+    function extractAutoSyncEffect(source: string): { body: string; deps: string } {
+      const anchor = source.indexOf('const startMemorySync = async () => {');
+      if (anchor === -1) throw new Error('Could not locate startMemorySync declaration');
+      const effectOpen = source.lastIndexOf('useEffect(() => {', anchor);
+      if (effectOpen === -1) throw new Error('Could not locate the auto-sync useEffect');
+      const depsOpen = source.indexOf('}, [', anchor);
+      if (depsOpen === -1) throw new Error('Could not locate auto-sync deps array open');
+      const depsClose = source.indexOf(']);', depsOpen);
+      if (depsClose === -1) throw new Error('Could not locate auto-sync deps array close');
+      return {
+        body: stripComments(source.slice(effectOpen, depsOpen)),
+        deps: source.slice(depsOpen + 3, depsClose + 1),
+      };
+    }
+
+    it('the auto-sync effect returns early when channels are already loaded', () => {
+      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      expect(body).toMatch(/if\s*\(\s*channels\.length\s*>\s*0\s*\)\s*return\s*;/);
+    });
+
+    it('the auto-sync effect re-evaluates when the channel count changes', () => {
+      // Without `channels.length` in deps the effect runs once, before the
+      // mount fetch resolves, and syncs anyway -- the check above would be
+      // present and useless.
+      const { deps } = extractAutoSyncEffect(APP_SOURCE);
+      expect(deps).toMatch(/\bchannels\.length\b/);
+    });
+
+    it('the early return precedes the syncMemory call', () => {
+      // Ordering matters: a guard placed after `api.syncMemory()` reads as a
+      // guard and suppresses nothing.
+      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const guard = body.search(/if\s*\(\s*channels\.length\s*>\s*0\s*\)\s*return\s*;/);
+      const call = body.indexOf('api.syncMemory()');
+      expect(guard).toBeGreaterThanOrEqual(0);
+      expect(call).toBeGreaterThanOrEqual(0);
+      expect(guard).toBeLessThan(call);
+    });
+  });
 });
