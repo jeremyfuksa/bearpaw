@@ -1459,7 +1459,7 @@ pub(crate) async fn read_frequency_lockouts_from_scanner(
     result
 }
 
-async fn read_frequency_lockouts_walk(state: &AppState) -> Result<Vec<u32>, ApiError> {
+pub(crate) async fn read_frequency_lockouts_walk(state: &AppState) -> Result<Vec<u32>, ApiError> {
     // GLF is a bare-command cursor iterator: send `GLF` repeatedly and the
     // scanner steps through its lockout list, replying `GLF,<freq8>` per
     // entry and `GLF,-1` at the end. Verified on hardware 2026-07-08
@@ -3786,6 +3786,105 @@ mod tests {
             "the wire read must derive the bank, like the list endpoint does"
         );
         assert_ne!(channel.bank, 0, "bank 0 is the parser's placeholder");
+    }
+
+    /// REGRESSION GUARD (#459): `AvoidFreqs` must reach the file, and must sit
+    /// BETWEEN `GeneralSearch` and the first `Conventional`.
+    ///
+    /// Position is load-bearing in this format -- #461 was a pure ordering bug
+    /// that no field-count comparison could see -- so a builder that emits the
+    /// right line in the wrong place is still a broken file. The unit tests
+    /// next to `build_avoid_freqs_line` cover the field packing; this covers
+    /// that it is called at all, and where.
+    #[tokio::test]
+    async fn bc125at_ss_export_writes_avoid_freqs_between_search_and_banks() {
+        let state = default_state();
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for idx in 1..=500u16 {
+                shadow.channels.insert(
+                    idx,
+                    ChannelData {
+                        index: idx,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        // GLF is a cursor: successive bare calls step the list, then -1 ends it.
+        // A stateless fake would loop until the 110-iteration bound.
+        let glf_calls = std::sync::Mutex::new(0usize);
+        let _scanner = FakeScanner::attach(&state, move |cmd: &str| {
+            Ok(match cmd {
+                "GLF" => {
+                    let mut n = glf_calls.lock().unwrap();
+                    *n += 1;
+                    match *n {
+                        1 => "GLF,01167333".to_string(),
+                        2 => "GLF,01228833".to_string(),
+                        _ => "GLF,-1".to_string(),
+                    }
+                }
+                "BLT" => "BLT,AF".to_string(),
+                "KBP" => "KBP,99,0".to_string(),
+                "BSV" => "BSV,2".to_string(),
+                "PRI" => "PRI,0".to_string(),
+                "SCG" => "SCG,1111111111".to_string(),
+                "SCO" => "SCO,1,0".to_string(),
+                "CLC" => "CLC,0,0,0,11111,0".to_string(),
+                "WXS" => "WXS,0".to_string(),
+                "CNT" => "CNT,8".to_string(),
+                "VOL" => "VOL,14".to_string(),
+                "SQL" => "SQL,6".to_string(),
+                c if c.starts_with("CSP,") => format!("{c},25000000,27995000"),
+                c if c.starts_with("SSP,") => format!("{c},0"),
+                _ => "OK".to_string(),
+            })
+        });
+
+        let response =
+            super::handlers::exports::export_bc125at_ss_file(axum::extract::State(state.clone()))
+                .await
+                .expect("export should succeed");
+        let body = axum::response::IntoResponse::into_response(response);
+        let bytes = axum::body::to_bytes(body.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let out = String::from_utf8(bytes.to_vec()).expect("utf8");
+
+        let keys: Vec<&str> = out
+            .split("\r\n")
+            .filter(|l| !l.is_empty())
+            .map(|l| l.split('\t').next().unwrap_or(""))
+            .collect();
+
+        let avoid = keys
+            .iter()
+            .position(|k| *k == "AvoidFreqs")
+            .expect("AvoidFreqs must be emitted when the lockout list is non-empty");
+        let search = keys
+            .iter()
+            .position(|k| *k == "GeneralSearch")
+            .expect("GeneralSearch");
+        let first_bank = keys
+            .iter()
+            .position(|k| *k == "Conventional")
+            .expect("Conventional");
+
+        assert!(
+            search < avoid && avoid < first_bank,
+            "AvoidFreqs must sit between GeneralSearch and the first Conventional, got \
+             GeneralSearch={search} AvoidFreqs={avoid} Conventional={first_bank}"
+        );
+        assert_eq!(
+            keys.iter().filter(|k| **k == "AvoidFreqs").count(),
+            1,
+            "exactly one AvoidFreqs line"
+        );
+        assert!(
+            out.contains("AvoidFreqs\t\t116733300\t122883300\t"),
+            "values packed from field 2 in walk order, integer Hz"
+        );
     }
 
     /// REGRESSION GUARD (#516): the tone column must reach the FILE, not just

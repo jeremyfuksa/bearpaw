@@ -9,9 +9,61 @@ use crate::state::{ChannelData, ToneSquelchKind};
 
 use super::super::security::validate_wire_field;
 use super::super::{
-    command_sender, csv_escape, flags_to_bools, on_off, send_raw_command, split_command_parts,
-    write_channel_no_readback, ApiError, AppState, ProgramModeGuard,
+    command_sender, csv_escape, flags_to_bools, on_off, read_frequency_lockouts_walk,
+    send_raw_command, split_command_parts, write_channel_no_readback, ApiError, AppState,
+    ProgramModeGuard,
 };
+
+/// Number of frequency slots in an `AvoidFreqs` line.
+///
+/// The line is 18 tab-separated fields: the keyword, then 17. Field 1 is never
+/// a frequency -- every observed file leaves it empty -- so values occupy
+/// fields 2..=17.
+const AVOID_FREQS_SLOTS: usize = 16;
+
+/// Build the `AvoidFreqs` line, or `None` when there are no global lockouts.
+///
+/// Measured 2026-08-29 (#459): two lockouts set on a real BC125AT in a known
+/// order, read back by BC125AT SS, produced
+///
+/// ```text
+/// AvoidFreqs<TAB><TAB>116733300<TAB>122883300<TAB>...14 empties
+///            fld1  fld2       fld3
+/// ```
+///
+/// So it is a PACKED list offset by one: values start at field 2 and fill
+/// forward in the order `GLF` returned them, which is insertion order because
+/// `LOF` appends rather than sorting (#502). Frequencies are integer Hz, the
+/// same encoding `C-Freq` uses; the walk yields 100 Hz units, hence `* 100`.
+///
+/// The section is ABSENT ENTIRELY at zero lockouts -- confirmed by the blank
+/// reference file -- which is why this returns Option rather than an empty
+/// line. Emitting an all-empty `AvoidFreqs` would be a shape no real file has.
+fn build_avoid_freqs_line(raw_100hz: &[u32]) -> Option<String> {
+    if raw_100hz.is_empty() {
+        return None;
+    }
+    // No silent truncation: every observed file has exactly 17 trailing fields
+    // and none has ever carried more than one value, so behaviour past 16 is
+    // unobserved. The radio holds far more than that, so a wide list is
+    // reachable -- log rather than quietly drop, and keep the line the shape
+    // Uniden writes instead of guessing at a longer one.
+    if raw_100hz.len() > AVOID_FREQS_SLOTS {
+        tracing::warn!(
+            total = raw_100hz.len(),
+            written = AVOID_FREQS_SLOTS,
+            "AvoidFreqs holds {} slots; {} global lockouts were not exported",
+            AVOID_FREQS_SLOTS,
+            raw_100hz.len() - AVOID_FREQS_SLOTS
+        );
+    }
+    let mut fields: Vec<String> = vec![String::new(); AVOID_FREQS_SLOTS + 1];
+    for (i, raw) in raw_100hz.iter().take(AVOID_FREQS_SLOTS).enumerate() {
+        // field 1 stays empty; values begin at field 2
+        fields[i + 1] = (u64::from(*raw) * 100).to_string();
+    }
+    Some(format!("AvoidFreqs\t{}", fields.join("\t")))
+}
 
 /// Format a channel's tone for the `C-Freq` tone column of a `.bc125at_ss`.
 ///
@@ -300,6 +352,17 @@ pub(crate) async fn export_bc125at_ss_file(
             search_delay,
             on_off(&search_code)
         ));
+
+        // `AvoidFreqs` sits between GeneralSearch and the first Conventional
+        // line, and only when the list is non-empty (#459). Read here rather
+        // than from a cache because nothing caches it -- and we are already
+        // inside this export's ProgramModeGuard, so the walk needs no bracket
+        // of its own. `read_frequency_lockouts_walk` is the UNBRACKETED helper
+        // on purpose; `read_frequency_lockouts_from_scanner` sends its own
+        // PRG/EPG and would nest program mode inside this one.
+        if let Some(line) = build_avoid_freqs_line(&read_frequency_lockouts_walk(&state).await?) {
+            lines.push(line);
+        }
 
         // Banks and channels INTERLEAVE: each `Conventional` line is followed
         // by that bank's own 50 channels, not ten bank lines and then all 500.
@@ -1036,6 +1099,61 @@ mod tests {
             out.matches("\r\n").count(),
             "no bare LF may survive -- the real files contain none"
         );
+    }
+
+    /// REGRESSION GUARD (#459): `AvoidFreqs` is a PACKED list OFFSET BY ONE.
+    ///
+    /// Measured 2026-08-29: two global lockouts set on a real BC125AT in a
+    /// known order, read back by BC125AT SS. Values landed in fields 2 and 3
+    /// with field 1 empty:
+    ///
+    /// ```text
+    /// AvoidFreqs<TAB><TAB>116733300<TAB>122883300<TAB>...14 empties
+    /// ```
+    ///
+    /// The single pre-existing sample had its one value at field 2 too, which
+    /// alone could not distinguish this from fixed positions. Two values in a
+    /// known order settle it. Writing from field 1 instead would shift every
+    /// entry by one slot -- a file Uniden's tool would read as a different set
+    /// of frequencies, not as an error.
+    #[test]
+    fn avoid_freqs_packs_from_field_two() {
+        // 100 Hz units, as the GLF walk yields them.
+        let line = build_avoid_freqs_line(&[1_167_333, 1_228_833]).expect("non-empty");
+        let f: Vec<&str> = line.split('\t').collect();
+
+        assert_eq!(f.len(), 18, "keyword plus 17 slots");
+        assert_eq!(f[0], "AvoidFreqs");
+        assert_eq!(f[1], "", "field 1 is never a frequency");
+        assert_eq!(f[2], "116733300", "first value at field 2, in integer Hz");
+        assert_eq!(f[3], "122883300", "second at field 3, insertion order");
+        assert!(f[4..].iter().all(|v| v.is_empty()), "rest empty");
+
+        // Byte-exact against the measured line.
+        assert_eq!(
+            line,
+            "AvoidFreqs\t\t116733300\t122883300\t\t\t\t\t\t\t\t\t\t\t\t\t\t"
+        );
+    }
+
+    /// The section is ABSENT at zero lockouts -- confirmed by the blank
+    /// reference file. An all-empty `AvoidFreqs` line is a shape no real file
+    /// has, so this must be None rather than a padded line.
+    #[test]
+    fn avoid_freqs_is_absent_when_there_are_no_lockouts() {
+        assert!(build_avoid_freqs_line(&[]).is_none());
+    }
+
+    /// Over-long lists are truncated to the slots the format has, not silently
+    /// widened into a line shape nothing has ever produced.
+    #[test]
+    fn avoid_freqs_truncates_to_the_slots_the_format_has() {
+        let many: Vec<u32> = (1..=20).map(|i| 1_000_000 + i).collect();
+        let line = build_avoid_freqs_line(&many).expect("non-empty");
+        let f: Vec<&str> = line.split('\t').collect();
+        assert_eq!(f.len(), 18, "line stays 18 fields no matter the input");
+        assert_eq!(f[2], "100000100", "first written");
+        assert_eq!(f[17], "100001600", "16th written, last slot");
     }
 
     /// REGRESSION GUARD (#516): the `.bc125at_ss` tone column uses Uniden's
