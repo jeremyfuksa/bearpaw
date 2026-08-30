@@ -576,11 +576,21 @@ in-progress flag is stale until it queries this endpoint.
 ```json
 {
   "in_progress": true,
-  "task_id": "sync-abc123"
+  "task_id": "sync-abc123",
+  "synced_at": 1756500000.0
 }
 ```
 
 When no sync is running, `in_progress` is `false` and `task_id` is `null`.
+
+`synced_at` is epoch seconds for when channel memory was last read from the
+scanner, or `null` if it never has been. It survives a restart: channel memory
+is cached in SQLite (#413) and the timestamp is restored along with it, so a
+client can render "last synced 3 days ago" for memory adopted from cache rather
+than walked over the wire this session.
+
+It reports when the **radio** was read, not when the cache was last written —
+the periodic cache flush does not move it.
 
 ---
 

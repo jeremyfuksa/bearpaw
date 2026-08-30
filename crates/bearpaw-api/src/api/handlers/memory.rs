@@ -224,11 +224,32 @@ pub(crate) async fn post_memory_sync(
 /// frontend can re-check after a WebSocket reconnect: if "Sync complete" was
 /// broadcast into a dead socket, the client's `inProgress` flag is stale and
 /// the full-screen overlay would otherwise stay up forever (#137).
+///
+/// Also carries `synced_at` (#413): epoch seconds for when channel memory was
+/// last read from the radio, or `null` if it never has been. This endpoint
+/// rather than `GET /memory/channels` because that one is a documented BARE
+/// ARRAY -- adding a field there means an envelope, which breaks every existing
+/// client. "How stale is this memory" belongs beside "is a sync running"
+/// anyway, and the frontend already calls this on every WS connect.
+///
+/// Read from `shadow.last_sync`, not from SQLite: it is the same value the
+/// cache stores (`flush_channel_cache` persists it, `load_channel_cache`
+/// restores it), and reading memory keeps this handler off blocking I/O.
 pub(crate) async fn get_memory_sync_status(State(state): State<AppState>) -> Json<Value> {
     let task_id = state.sync_task_id.lock().unwrap().clone();
+    // 0.0 is `ShadowState`'s default and means "never synced". Serialize it as
+    // null rather than as a timestamp -- 0.0 renders as 1 January 1970, which
+    // is not a staleness report, it is a bug that looks like data.
+    let synced_at = state
+        .shadow
+        .read()
+        .ok()
+        .map(|shadow| shadow.last_sync)
+        .filter(|ts| *ts > 0.0);
     Json(json!({
         "in_progress": task_id.is_some(),
         "task_id": task_id,
+        "synced_at": synced_at,
     }))
 }
 
@@ -378,5 +399,48 @@ mod tests {
         assert!(result.is_ok());
         assert!(state.program_mode_active.load(Ordering::Relaxed));
         assert_eq!(state.live.read().unwrap().mode, ScannerMode::Programming);
+    }
+
+    /// REGRESSION GUARD: sync status reports WHEN memory was last read.
+    ///
+    /// #413 wants "last synced 3 days ago" on screen, and this endpoint is the
+    /// only memory endpoint that can carry it: `GET /memory/channels` is a
+    /// documented bare JSON array, so adding a field there means an envelope
+    /// and a breaking change for every existing client.
+    #[tokio::test]
+    async fn sync_status_reports_when_memory_was_last_read() {
+        let state = default_state();
+        state.shadow.write().unwrap().last_sync = 1_000_000_000.0;
+
+        let Json(body) = get_memory_sync_status(State(state)).await;
+
+        assert_eq!(
+            body["synced_at"].as_f64(),
+            Some(1_000_000_000.0),
+            "the endpoint must surface shadow.last_sync: {body}"
+        );
+    }
+
+    /// REGRESSION GUARD: never-synced reports `null`, not the epoch.
+    ///
+    /// `ShadowState::default` leaves `last_sync` at 0.0. Passing that through
+    /// renders as 1 January 1970 in any client that formats it as a date --
+    /// which is not a staleness report, it is a bug that looks like data.
+    /// Paired with the guard above: asserting only that a real timestamp
+    /// survives would also pass for a build that emits 0.0 here.
+    #[tokio::test]
+    async fn sync_status_reports_null_when_memory_has_never_been_read() {
+        let state = default_state();
+
+        let Json(body) = get_memory_sync_status(State(state)).await;
+
+        assert!(
+            body["synced_at"].is_null(),
+            "a never-synced scanner must report null, not the 1970 epoch: {body}"
+        );
+        // The pre-existing fields must keep working -- this endpoint is what
+        // clears the stuck sync overlay after a WS reconnect (#137).
+        assert_eq!(body["in_progress"], serde_json::json!(false));
+        assert!(body["task_id"].is_null());
     }
 }
