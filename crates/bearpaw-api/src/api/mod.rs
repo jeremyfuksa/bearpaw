@@ -20,7 +20,7 @@ pub use poll::spawn_poll_loop;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use serde::Serialize;
@@ -241,8 +241,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/lockouts", get(handlers::lockouts::get_lockouts))
         .route(
             "/api/v1/lockouts/frequencies",
-            post(handlers::lockouts::add_global_lockout)
-                .delete(handlers::lockouts::remove_global_lockout),
+            delete(handlers::lockouts::remove_global_lockout),
         )
         .route(
             "/api/v1/lockouts/temporary/clear",
@@ -4696,7 +4695,6 @@ mod tests {
         ("POST", "/api/v1/lockouts/clear"),
         ("POST", "/api/v1/lockouts/channels/clear"),
         ("GET", "/api/v1/lockouts"),
-        ("POST", "/api/v1/lockouts/frequencies"),
         ("DELETE", "/api/v1/lockouts/frequencies"),
         ("GET", "/api/v1/memory/channels"),
         ("POST", "/api/v1/memory/sync"),
@@ -5255,17 +5253,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_global_lockout_sends_lof_in_the_wire_encoding() {
-        let (status, t) =
-            post_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":146.52}"#).await;
-        assert_eq!(status, StatusCode::OK);
-        // 8-digit zero-padded, units of 100 Hz: 146.52 MHz -> 1465200.
-        assert_eq!(settings_payload(&t), vec!["LOF,01465200"]);
-        assert_eq!(t.first().map(String::as_str), Some("PRG"));
-        assert_eq!(t.last().map(String::as_str), Some("EPG"));
-    }
-
-    #[tokio::test]
     async fn remove_global_lockout_sends_ulf_in_the_wire_encoding() {
         let (status, t) =
             delete_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":146.52}"#).await;
@@ -5282,8 +5269,11 @@ mod tests {
     #[tokio::test]
     async fn a_frequency_outside_coverage_never_reaches_the_wire() {
         // 700 MHz is outside every BC125AT band (25-54, 108-174, 225-380, 400-512).
+        // Asserted on DELETE because that is the only verb this route has: the
+        // add path was removed in #531, and the guard lives in the shared
+        // `lockout_wire_value`.
         let (status, t) =
-            post_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":700.0}"#).await;
+            delete_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":700.0}"#).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(t.is_empty(), "nothing may be sent: {t:?}");
     }
@@ -5296,12 +5286,12 @@ mod tests {
     #[tokio::test]
     async fn zero_is_rejected_rather_than_inherited_as_the_clear_sentinel() {
         let (status, t) =
-            post_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":0}"#).await;
+            delete_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":0}"#).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(t.is_empty(), "nothing may be sent for 0: {t:?}");
 
         let (status, t) =
-            post_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":-5.0}"#).await;
+            delete_json_capture("/api/v1/lockouts/frequencies", r#"{"frequency":-5.0}"#).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(t.is_empty(), "nothing may be sent for a negative: {t:?}");
     }

@@ -153,9 +153,8 @@
         <p>
           <strong>Lockout</strong> tells the scanner to skip something, which is
           handy for a frequency you don't care about. The <strong>L/O</strong>
-          button opens a small menu with three choices. The first two act on the
-          <em>channel</em> you're stopped on; the third acts on the
-          <em>frequency</em>.
+          button opens a small menu with two choices. Both act on the
+          <em>channel</em> you're stopped on.
         </p>
         <ul>
           <li>
@@ -166,23 +165,18 @@
             <strong>Permanent</strong>: writes the lockout into the channel's
             memory, so it stays skipped across power cycles.
           </li>
-          <li>
-            <strong>Avoid frequency</strong>: adds the frequency to the
-            scanner's global avoid list. Unlike the two above, this isn't
-            attached to a channel — it's what Search and Close Call skip.
-          </li>
         </ul>
         <p>
-          The first two are toggles. Pick the same option again to remove the
-          lockout. A message at the top of the screen confirms each action,
-          naming the channel and whether it was enabled or cleared.
+          Both are toggles. Pick the same option again to remove the lockout. A
+          message at the top of the screen confirms each action, naming the
+          channel and whether it was enabled or cleared.
         </p>
         <p>
-          The distinction matters more than it looks. If a pager or a data
-          carrier keeps stopping a search, locking out the <em>channel</em> won't
-          help, because a search isn't on a channel. <strong>Avoid
-          frequency</strong> is the one that makes it stop. To see what's on that
-          list, or take something off it, go to
+          Note that both of these act on a <em>channel</em>. If a pager or a data
+          carrier keeps stopping a <em>search</em>, neither will help — a search
+          isn't on a channel. For that you want the scanner's avoid list: press
+          L/O on the scanner itself while a search is stopped on the frequency.
+          Bearpaw shows that list, and can remove entries from it, under
           <a href="locked-channels.html">Device → Locked Channels</a>.
         </p>
         <p>

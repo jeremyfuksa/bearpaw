@@ -339,19 +339,6 @@ export class ScannerAPIClient {
     return this.request<LockoutsResponse>(`/lockouts${query}`);
   }
 
-  /**
-   * Add one frequency to the GLOBAL avoid list (`LOF`).
-   *
-   * Not the same as a channel lockout: this list is what Search and Close Call
-   * consult, and it is not attached to any channel. See #522.
-   */
-  async addGlobalLockout(frequency: number): Promise<{ status: string; frequency: number }> {
-    return this.request<{ status: string; frequency: number }>('/lockouts/frequencies', {
-      method: 'POST',
-      body: JSON.stringify({ frequency }),
-    });
-  }
-
   /** Remove one frequency from the global avoid list (`ULF`). */
   async removeGlobalLockout(frequency: number): Promise<{ status: string; frequency: number }> {
     return this.request<{ status: string; frequency: number }>('/lockouts/frequencies', {

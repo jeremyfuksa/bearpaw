@@ -187,13 +187,14 @@ Two consequences worth keeping straight:
 
 - The section is safe to emit. It matches what the tool produces, and nothing
   downstream tries to apply it.
-- **Bearpaw can do what the vendor tool cannot.** Since #522 it authors the list
-  directly with `LOF`/`ULF`, so a Bearpaw export can be written from entries the
-  user created in Bearpaw — and in principle an import could restore them, which
-  SS has no way to do. Bearpaw's importer does not read the section today
-  (`import_ss.rs` handles `Misc`, `Service`, `Conventional`, `Custom`,
-  `CloseCall` and `C-Freq` only), so a settings file still round-trips lossily
-  in that one respect.
+- **Entries are created on the radio, in both tools.** Bearpaw can *remove* one
+  (`ULF`, #522) and reads the list for display and export, but it does not add
+  them: the L/O menu could not carry the distinction between a channel lockout
+  and a frequency avoid, so the add path was dropped in #531. So the export
+  reflects a list the user built on the scanner, exactly as SS's does.
+- The importer does not read the section either (`import_ss.rs` handles `Misc`,
+  `Service`, `Conventional`, `Custom`, `CloseCall` and `C-Freq` only), so a
+  settings file round-trips lossily in that one respect — the same way SS's does.
 
 Bearpaw writes this section as of #523.
 

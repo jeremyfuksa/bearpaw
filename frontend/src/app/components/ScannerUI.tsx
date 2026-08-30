@@ -120,11 +120,16 @@ export function StatusBar({
 // --- Display: control mini-buttons (top-right of the orange panel) ---
 
 /**
- * What the L/O menu can do. `temporary` and `permanent` act on the CHANNEL the
- * scanner is stopped on; `avoid` adds the current FREQUENCY to the global list
- * Search and Close Call consult, which is not attached to any channel (#522).
+ * What the L/O menu can do. Both act on the CHANNEL the scanner is stopped on.
+ *
+ * There is deliberately no entry here for the global avoid list, even though
+ * Bearpaw can write it (#522). This menu could not carry the distinction: the
+ * two below are already easy to confuse, and a third item that looks like a
+ * lockout but touches an entirely different list made it worse rather than
+ * better. The avoid list is viewed and edited on Device -> Locked Channels,
+ * where there is room to say what it is.
  */
-export type LockoutKind = 'temporary' | 'permanent' | 'avoid';
+export type LockoutKind = 'temporary' | 'permanent';
 
 interface ScannerControlsProps {
   volume: number;
@@ -192,18 +197,6 @@ function ScannerControls({
             onSelect={() => onLockout('permanent')}
           >
             Permanent
-          </DropdownMenuItem>
-          {/* Separated from the two above because it acts on a different thing:
-              those flag the CHANNEL, this adds the FREQUENCY to the global
-              avoid list Search and Close Call consult (#522). Labelled "Avoid
-              frequency" rather than a third kind of "lockout" so the noun says
-              which list it touches. */}
-          <DropdownMenuSeparator className="mx-1 bg-[rgba(28,31,38,0.35)]" />
-          <DropdownMenuItem
-            className="cursor-pointer justify-start rounded-scanner-xs px-3 py-2 font-mono text-sm text-[rgba(28,31,38,0.9)] focus:bg-[rgba(28,31,38,0.1)] focus:text-[rgba(28,31,38,0.9)]"
-            onSelect={() => onLockout('avoid')}
-          >
-            Avoid frequency
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

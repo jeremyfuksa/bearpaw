@@ -1164,9 +1164,8 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 </span>
               </div>
               <p className="text-xs text-white/50">
-                Skipped during Search and Close Call, regardless of channel. Add one with
-                <span className="font-mono"> L/O &rarr; Avoid frequency </span>
-                on the Scan page.
+                Skipped during Search and Close Call, regardless of channel. Add one on the scanner
+                itself: start a Search, then press L/O when it stops on the frequency.
               </p>
               <div
                 role="table"
