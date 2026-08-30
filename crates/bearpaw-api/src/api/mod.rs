@@ -3,6 +3,10 @@
 //! Compatibility-first API surface so the Rust backend can replace the Python backend
 //! without frontend contract regressions.
 
+// Lands inert: PR 2 wires the flush and PR 3 the load. The allow goes away
+// with the first real caller.
+#[allow(dead_code)]
+mod channel_cache;
 mod control;
 mod handlers;
 mod memory_sync;
@@ -161,7 +165,7 @@ pub struct ActiveHit {
     pub bank: Option<u8>,
 }
 
-const PREFERENCES_SCHEMA_VERSION: i32 = 1;
+const PREFERENCES_SCHEMA_VERSION: i32 = 2;
 const ANALYTICS_SCHEMA_VERSION: i32 = 2;
 
 pub fn router(state: AppState) -> Router {
@@ -1269,6 +1273,29 @@ fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) -> Result<(),
             conn,
             1,
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL);",
+        )?;
+    }
+    if current < 2 {
+        run_migration_step(
+            conn,
+            2,
+            "
+            CREATE TABLE IF NOT EXISTS channel_memory (
+                scanner_id       TEXT NOT NULL,
+                channel_index    INTEGER NOT NULL,
+                frequency        REAL NOT NULL,
+                modulation       TEXT NOT NULL DEFAULT '',
+                alpha_tag        TEXT NOT NULL DEFAULT '',
+                delay            INTEGER NOT NULL,
+                lockout          INTEGER NOT NULL,
+                priority         INTEGER NOT NULL,
+                tone_kind        TEXT NOT NULL DEFAULT 'none',
+                tone_squelch_hz  REAL,
+                tone_dcs_code    INTEGER,
+                synced_at        REAL NOT NULL,
+                PRIMARY KEY (scanner_id, channel_index)
+            );
+            ",
         )?;
     }
     Ok(())
@@ -3294,6 +3321,90 @@ mod tests {
         assert!(check_not_from_the_future(p, 0, 1).is_ok());
         assert!(check_not_from_the_future(p, 1, 1).is_ok(), "equal is fine");
         assert!(check_not_from_the_future(p, 2, 1).is_err());
+    }
+
+    /// A v1 preferences database gains `channel_memory` and reports v2, and
+    /// existing preference rows survive the step.
+    ///
+    /// The columns are asserted by name because the schema is the contract
+    /// Task 2 and #414 both build on: a silently renamed column would not fail
+    /// a round-trip test that uses the same names on both sides.
+    #[test]
+    fn preferences_v1_migrates_to_channel_memory_v2() {
+        let path = temp_db_file("channel-memory-v1-to-v2");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.execute_batch(
+                "CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL);",
+            )
+            .expect("v1 schema");
+            conn.execute(
+                "INSERT INTO preferences (key, value, updated_at) VALUES ('theme', '\"dark\"', 0)",
+                [],
+            )
+            .expect("seed a preference");
+            conn.pragma_update(None, "user_version", 1)
+                .expect("mark as v1");
+        }
+
+        init_preferences_db(path.to_str().unwrap()).expect("migration must succeed");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        assert_eq!(schema_version(&conn), 2, "version must advance to 2");
+
+        let cols: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('channel_memory')")
+            .expect("table must exist")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query columns")
+            .flatten()
+            .collect();
+        for expected in [
+            "scanner_id",
+            "channel_index",
+            "frequency",
+            "modulation",
+            "alpha_tag",
+            "delay",
+            "lockout",
+            "priority",
+            "tone_kind",
+            "tone_squelch_hz",
+            "tone_dcs_code",
+            "synced_at",
+        ] {
+            assert!(
+                cols.iter().any(|c| c == expected),
+                "missing column {expected}: {cols:?}"
+            );
+        }
+        assert!(
+            !cols.iter().any(|c| c == "bank"),
+            "bank must NOT be persisted -- it is derived per connected model by \
+             channels_with_banks, and a stored bank reproduces the bank-derivation \
+             bug when a cache is read under a different model: {cols:?}"
+        );
+
+        let theme: String = conn
+            .query_row(
+                "SELECT value FROM preferences WHERE key = 'theme'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("existing preferences must survive the migration");
+        assert_eq!(theme, "\"dark\"");
+    }
+
+    /// Running the migration twice is a no-op rather than an error.
+    #[test]
+    fn channel_memory_migration_is_idempotent() {
+        let path = temp_db_file("channel-memory-idempotent");
+        let p = path.to_str().unwrap();
+        init_preferences_db(p).expect("first run");
+        init_preferences_db(p).expect("second run must be a no-op");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        assert_eq!(schema_version(&conn), 2);
     }
 
     /// REGRESSION GUARD: a failed step must NOT bump `user_version`.
