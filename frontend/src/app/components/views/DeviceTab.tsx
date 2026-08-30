@@ -179,6 +179,11 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   const updatePreferences = useStore((state) => state.updatePreferences);
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
+  // The GLOBAL avoid list (#522). Separate state from `lockedChannelIds`
+  // because it is a separate list on the radio: these are bare frequencies
+  // that Search and Close Call skip, attached to no channel.
+  const [lockedFrequencies, setLockedFrequencies] = useState<number[]>([]);
+  const [removingFrequency, setRemovingFrequency] = useState<number | null>(null);
   const [lockedFetchedAt, setLockedFetchedAt] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<DeviceCategory>('Device Config');
 
@@ -358,11 +363,16 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   useEffect(() => {
     if (activeCategory !== 'Locked Channels') return;
     let active = true;
+    // `includeFrequencies` is ON here and nowhere else. It makes the backend
+    // walk `GLF`, which costs a program-mode bracket and parks the scanner --
+    // so it is scoped to this one category, where the list is actually shown,
+    // rather than paid by every consumer of /lockouts.
     api
-      .getLockouts({ includeFrequencies: false })
+      .getLockouts({ includeFrequencies: true })
       .then((result) => {
         if (!active) return;
         setLockedChannelIds(result.channels ?? []);
+        setLockedFrequencies(result.frequencies ?? []);
         setLockedFetchedAt(Date.now());
       })
       .catch((error) => {
@@ -526,6 +536,27 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
       setSelectedChannels(checked ? filteredLockedChannels.map((ch) => ch.index) : []);
     },
     [filteredLockedChannels],
+  );
+
+  const handleRemoveFrequency = useCallback(
+    async (frequency: number) => {
+      setRemovingFrequency(frequency);
+      try {
+        await api.removeGlobalLockout(frequency);
+        // Refetch rather than splicing local state: `ULF` can be refused, and
+        // the walk is the only thing that knows what the radio actually holds.
+        const result = await api.getLockouts({ includeFrequencies: true });
+        setLockedFrequencies(result.frequencies ?? []);
+        setLockedFetchedAt(Date.now());
+        toast.success(`Removed ${frequency.toFixed(4)} MHz from the avoid list`);
+      } catch (error) {
+        console.error('Failed to remove global lockout', error);
+        toast.error('Failed to remove frequency');
+      } finally {
+        setRemovingFrequency(null);
+      }
+    },
+    [api],
   );
 
   const handleUnlockSelected = useCallback(
@@ -1114,6 +1145,62 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   <div className="py-16 text-center text-white/60 text-base">
                     {lockedChannelIds.length === 0 ? 'No locked channels' : 'No matches'}
                   </div>
+                )}
+              </div>
+            </div>
+
+            {/* The GLOBAL avoid list (#522). A SECOND list, not a filter of the
+                one above: these are bare frequencies with no channel, and they
+                are what Search and Close Call skip. Kept visually separate for
+                that reason -- merging them into one table would imply a
+                relationship the radio does not have. */}
+            <div className="shrink-0 space-y-2">
+              <div className="flex items-baseline justify-between">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-white/60">
+                  Avoided frequencies
+                </h3>
+                <span className="text-xs text-white/50">
+                  {lockedFrequencies.length} on the global list
+                </span>
+              </div>
+              <p className="text-xs text-white/50">
+                Skipped during Search and Close Call, regardless of channel. Add one with
+                <span className="font-mono"> L/O &rarr; Avoid frequency </span>
+                on the Scan page.
+              </p>
+              <div
+                role="table"
+                aria-label="Avoided frequencies"
+                className="rounded-lg border border-white/5 bg-black/10 overflow-hidden"
+              >
+                {lockedFrequencies.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-white/50">
+                    No avoided frequencies
+                  </div>
+                ) : (
+                  lockedFrequencies.map((frequency) => (
+                    <div
+                      key={frequency}
+                      role="row"
+                      className="flex items-center justify-between border-b border-white/5 px-3 py-2 last:border-b-0"
+                    >
+                      <div role="cell" className="font-mono text-sm text-white">
+                        {frequency.toFixed(4)}
+                        <span className="ml-1 text-white/50">MHz</span>
+                      </div>
+                      <div role="cell">
+                        <button
+                          type="button"
+                          onClick={() => void handleRemoveFrequency(frequency)}
+                          disabled={removingFrequency !== null}
+                          aria-label={`Remove ${frequency.toFixed(4)} MHz from the avoid list`}
+                          className="rounded px-3 py-1 text-xs font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-40"
+                        >
+                          {removingFrequency === frequency ? 'Removing…' : 'Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>

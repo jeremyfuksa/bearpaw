@@ -240,6 +240,57 @@ describe('DeviceTab', () => {
       expect(screen.getByText(/151.2500/i)).toBeInTheDocument();
     });
 
+    it('renders the global avoid list as a separate table (#522)', async () => {
+      // The avoid list is a SECOND list, not a filter of the channel one:
+      // bare frequencies with no channel, which Search and Close Call skip.
+      useStore.setState({ channels: [createTestChannel({ index: 1 })] });
+      mockApiClient.getLockouts = vi.fn().mockResolvedValue({
+        channels: [1],
+        frequencies: [116.7333, 122.8833],
+        temporary_channels: [],
+      });
+
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
+
+      await waitFor(() => {
+        expect(screen.getByRole('table', { name: /avoided frequencies/i })).toBeInTheDocument();
+      });
+      expect(screen.getByText('116.7333')).toBeInTheDocument();
+      expect(screen.getByText('122.8833')).toBeInTheDocument();
+      expect(screen.getByText(/2 on the global list/i)).toBeInTheDocument();
+    });
+
+    it('removes one avoided frequency and refetches (#522)', async () => {
+      useStore.setState({ channels: [createTestChannel({ index: 1 })] });
+      mockApiClient.getLockouts = vi.fn().mockResolvedValue({
+        channels: [1],
+        frequencies: [116.7333],
+        temporary_channels: [],
+      });
+      mockApiClient.removeGlobalLockout = vi
+        .fn()
+        .mockResolvedValue({ status: 'ok', frequency: 116.7333 });
+
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
+      await waitFor(() => {
+        expect(screen.getByText('116.7333')).toBeInTheDocument();
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: /Remove 116.7333 MHz/i }));
+
+      // The MHz value goes to the API, not the wire encoding -- the backend
+      // does that conversion, and sending raw 100 Hz units here would be
+      // 10000x off with no type error to catch it.
+      await waitFor(() => {
+        expect(mockApiClient.removeGlobalLockout).toHaveBeenCalledWith(116.7333);
+      });
+      // Refetched rather than spliced locally: ULF can be refused, and only
+      // the walk knows what the radio actually holds.
+      expect(mockApiClient.getLockouts).toHaveBeenCalledTimes(2);
+    });
+
     it('should call unlock when Unlock Selected button clicked', async () => {
       const mockChannels = [createTestChannel({ index: 1 })];
       useStore.setState({ channels: mockChannels });
