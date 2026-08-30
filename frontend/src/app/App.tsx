@@ -557,6 +557,17 @@ export default function App() {
     };
   }, [api, deviceInfo, sync.inProgress, sync.hasSyncedInitially, setBanks]);
 
+  // REGRESSION GUARD (#413): `channels.length > 0` is the ONLY thing that
+  // stops a 30-45 s startup sync when the backend already has channel memory.
+  // Since #540 the backend adopts a cached channel map at connect, so on a
+  // normal launch this fetch returns a full list and this effect must decline
+  // to sync -- that decline IS the feature. Nothing else suppresses it: there
+  // is no WS message meaning "channels changed", and the connect-edge
+  // device_info broadcast does not fire (#539). Dropping this line, or
+  // dropping `channels.length` from the deps array, silently restores the
+  // blocking startup overlay for every user with a warm cache, with no visible
+  // error. Guarded by `App.regression.test.tsx :: cached channels suppress the
+  // startup memory sync`.
   useEffect(() => {
     if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
     if (useStore.getState().sync.inProgress) return;
