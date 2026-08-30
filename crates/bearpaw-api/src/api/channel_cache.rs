@@ -156,9 +156,16 @@ pub(crate) fn load_channels(path: &str, scanner_id: &str) -> HashMap<u16, Channe
 /// Cheap when there is nothing to persist: an empty map returns without opening
 /// the database, so a not-yet-synced session does not write an empty snapshot
 /// over a good one.
+///
+/// REGRESSION GUARD (`a_flush_records_the_sync_time_not_the_flush_time`): the
+/// stamp is `shadow.last_sync` -- when the SCANNER was read -- not the time of
+/// the flush. The periodic flush runs on a timer regardless of whether anything
+/// was read, so stamping `epoch_now()` unconditionally made `synced_at` mean
+/// "cache last written", which is always within one interval of now. #413 wants
+/// it to answer "last synced 3 days ago"; that answer has to survive a flush.
 pub(crate) fn flush_channel_cache(state: &AppState) {
-    let channels = match state.shadow.read() {
-        Ok(shadow) => shadow.channels.clone(),
+    let (channels, last_sync) = match state.shadow.read() {
+        Ok(shadow) => (shadow.channels.clone(), shadow.last_sync),
         // A poisoned lock means another thread panicked mid-write. Skip the
         // flush rather than persist a half-updated map; the next tick retries.
         Err(_) => return,
@@ -166,11 +173,21 @@ pub(crate) fn flush_channel_cache(state: &AppState) {
     if channels.is_empty() {
         return;
     }
+    // 0.0 is `ShadowState`'s default and means "no sync recorded this session".
+    // Reaching here with channels but no recorded sync means a handler read
+    // them one at a time straight off the wire, so they really are current --
+    // stamping now is the honest answer, and it is strictly better than
+    // writing the 0.0 sentinel into a column PR 4 will surface.
+    let synced_at = if last_sync > 0.0 {
+        last_sync
+    } else {
+        epoch_now()
+    };
     save_channels(
         &state.preferences_db_path,
         PLACEHOLDER_SCANNER_ID,
         &channels,
-        epoch_now(),
+        synced_at,
     );
 }
 
@@ -448,6 +465,61 @@ mod tests {
             survived.len(),
             2,
             "an empty shadow must leave the cache alone, not delete it: {survived:?}"
+        );
+    }
+
+    /// REGRESSION GUARD: a flush records when the RADIO was read, not when the
+    /// flush ran.
+    ///
+    /// `synced_at` exists to answer "how stale is this?" -- #413 wants "last
+    /// synced 3 days ago" on screen. The periodic flush fires every
+    /// CHANNEL_CACHE_FLUSH_SECS whether or not anything was read from the
+    /// scanner, so stamping the flush time made that answer "moments ago"
+    /// forever, for every running session. Worse, it would overwrite the real
+    /// timestamp a cache load restores within one flush interval of launch.
+    ///
+    /// `shadow.last_sync` is the honest value: `memory_sync` sets it after a
+    /// completed walk, and PR 3's cache load restores it from the database.
+    #[test]
+    fn a_flush_records_the_sync_time_not_the_flush_time() {
+        let state = crate::api::default_state();
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            shadow.channels = sample();
+            // A sync that completed long ago -- 2001-09-09, comfortably
+            // distinguishable from any plausible `epoch_now()`.
+            shadow.last_sync = 1_000_000_000.0;
+        }
+
+        flush_channel_cache(&state);
+
+        assert_eq!(
+            last_synced_at(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID),
+            Some(1_000_000_000.0),
+            "the cache must remember when the scanner was last read, not when \
+             the periodic flush last ran"
+        );
+    }
+
+    /// With no sync recorded this session, the flush falls back to now -- which
+    /// is honest, because the only way to hold channels without a sync is a
+    /// single-channel read that DID just come off the wire.
+    ///
+    /// Paired with the guard above on purpose: asserting only the preserved
+    /// timestamp would also pass for a build that stamped a hardcoded 0.0.
+    #[test]
+    fn a_flush_with_no_recorded_sync_stamps_now() {
+        let state = crate::api::default_state();
+        state.shadow.write().unwrap().channels = sample();
+
+        flush_channel_cache(&state);
+
+        let stamped = last_synced_at(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID)
+            .expect("a flush must stamp something");
+        assert!(
+            stamped > 1_600_000_000.0,
+            "with no recorded sync the stamp should be now, not the 0.0 \
+             default: got {stamped}"
         );
     }
 
