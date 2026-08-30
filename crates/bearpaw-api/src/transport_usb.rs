@@ -345,16 +345,22 @@ mod tests {
         //
         // Measured on macOS 2026-08-29 against a genuinely wedged BC125AT:
         // `reset()` returned Timeout and the device then vanished from the USB
-        // bus entirely -- `ioreg` count went to 0 and every subsequent open()
-        // returned NotFound. It did not re-enumerate on its own. So reset is
-        // not a software replug here; it is strictly worse than the wedge,
-        // because it removes the option of the device healing itself and
-        // forces the physical unplug it was meant to avoid.
+        // bus -- `ioreg` device count 0, every subsequent open() NotFound.
         //
-        // Recorded in #513. Do not re-add it without a way to bring the device
-        // back, and never in the reconnect path.
+        // What it takes to recover is the point. Replugging the cable did not
+        // bring it back. Power-cycling the SCANNER did not bring it back.
+        // Rebooting the Mac did, and the radio was undamaged. So `reset()` did
+        // not break the device: it wedged the HOST's USB stack for it, below
+        // anything the app or the peripheral can clear.
+        //
+        // That makes it strictly worse than the wedge it was meant to cure. The
+        // wedge costs a replug; this costs a reboot of the user's computer.
+        //
+        // Recorded in #513. Never in the reconnect path, and not worth
+        // re-testing without a host that is expendable.
 
-        println!("\nNOT HEALED by any strategy. Physical replug is the only recovery.");
+        println!("\nNOT HEALED by any strategy. See #513: a physical replug clears");
+        println!("this wedge; do NOT reach for handle.reset(), which needs a host reboot.");
     }
 
     #[test]
