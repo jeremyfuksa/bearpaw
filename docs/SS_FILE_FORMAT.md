@@ -176,8 +176,26 @@ order is meaningful because `LOF` appends rather than sorting (confirmed on a
 BC75XLT across a six-entry list, #502), so the file's order is the order the
 user added them.
 
-Bearpaw does not write this section, so exported global lockouts are still
-lost. See #459.
+**The section is a one-way snapshot.** BC125AT SS can read the avoid list off
+a radio and write it into the file, but it has no UI to author one and does not
+push it back on a Write — it is a device-only feature there (reported by the
+maintainer, 2026-08-29, from the software itself). That is why only one of three
+reference files has the section: it appears when the tool happened to read a
+radio that had entries, not because anyone chose to save them.
+
+Two consequences worth keeping straight:
+
+- The section is safe to emit. It matches what the tool produces, and nothing
+  downstream tries to apply it.
+- **Bearpaw can do what the vendor tool cannot.** Since #522 it authors the list
+  directly with `LOF`/`ULF`, so a Bearpaw export can be written from entries the
+  user created in Bearpaw — and in principle an import could restore them, which
+  SS has no way to do. Bearpaw's importer does not read the section today
+  (`import_ss.rs` handles `Misc`, `Service`, `Conventional`, `Custom`,
+  `CloseCall` and `C-Freq` only), so a settings file still round-trips lossily
+  in that one respect.
+
+Bearpaw writes this section as of #523.
 
 ### `Conventional` — 4, `C-Freq` — 9
 
@@ -253,13 +271,19 @@ inside the bracket.
 
 ## Known gaps
 
-- **`AvoidFreqs` is never written** (#459) — global lockouts do not survive an
-  export. The format itself is now fully known (see that section); what is
-  missing is the writer.
+- **The importer ignores `AvoidFreqs`** — `import_ss.rs` handles `Misc`,
+  `Service`, `Conventional`, `Custom`, `CloseCall` and `C-Freq` only, so a
+  settings file round-trips lossily in that one respect. BC125AT SS cannot
+  restore the list either, so this is not a regression against the vendor tool —
+  but since #522 Bearpaw *could*, which makes it a real gap rather than a
+  limitation of the format.
 - **No importer for `.bc75xlt_ss`** (#460) — Bearpaw writes it but cannot read it
 
 ### Closed
 
+- ~~**`AvoidFreqs` is never written** (#459).~~ Written as of #523, and verified
+  end-to-end on hardware: a `LOF`-created entry appears at field 2 in integer Hz,
+  and the section disappears again when the list is emptied.
 - ~~**The BC125AT export has not been opened in Uniden's software.**~~ Opened in
   BC125AT SS on 2026-08-29 (#464). It loads, and a round-trip preserves every
   field except the tone column, which was the bug that verification existed to
