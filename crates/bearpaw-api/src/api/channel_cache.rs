@@ -289,6 +289,62 @@ mod tests {
 
         assert!(load_channels(&path, "some-other-scanner").is_empty());
         assert_eq!(load_channels(&path, PLACEHOLDER_SCANNER_ID).len(), 2);
+
+        // The second save is what makes this a guard rather than a decoration.
+        //
+        // With only the first save above, this test exercises `load_channels`'
+        // WHERE clause and NOTHING on the write side. Measured by mutation:
+        // dropping the `scanner_id` predicate from `save_channels`' DELETE --
+        // so every flush wipes every OTHER profile's channels -- left the whole
+        // suite at 280/280 green, this test included. Hardcoding
+        // PLACEHOLDER_SCANNER_ID into the INSERT bind, and dropping the WHERE
+        // from `last_synced_at`, were equally invisible.
+        //
+        // Writing a second profile and re-reading the first catches all three:
+        // an unscoped DELETE empties `mine`, an unscoped INSERT lands the other
+        // profile's row in it, and an unscoped MAX(synced_at) returns 2.0.
+        //
+        // This matters most in #414/#415, where a second profile stops being
+        // hypothetical -- which is exactly when a silent write-side regression
+        // would destroy a real scanner's cached memory.
+        let mut other = HashMap::new();
+        other.insert(
+            5,
+            ChannelData {
+                index: 5,
+                frequency: 155.0,
+                ..Default::default()
+            },
+        );
+        save_channels(&path, "some-other-scanner", &other, 2.0);
+
+        let mine = load_channels(&path, PLACEHOLDER_SCANNER_ID);
+        assert_eq!(
+            mine.len(),
+            2,
+            "another profile's save must not touch this one: {mine:?}"
+        );
+        assert!(
+            mine.contains_key(&1) && mine.contains_key(&2),
+            "this profile's own channels must survive: {mine:?}"
+        );
+        assert!(
+            !mine.contains_key(&5),
+            "the other profile's channel must not land here: {mine:?}"
+        );
+        assert_eq!(
+            last_synced_at(&path, PLACEHOLDER_SCANNER_ID),
+            Some(1.0),
+            "synced_at must be per profile, not the newest row in the table"
+        );
+
+        let theirs = load_channels(&path, "some-other-scanner");
+        assert_eq!(
+            theirs.len(),
+            1,
+            "the other profile keeps its own: {theirs:?}"
+        );
+        assert_eq!(last_synced_at(&path, "some-other-scanner"), Some(2.0));
     }
 
     /// `synced_at` comes back for a written profile and is absent for one that
