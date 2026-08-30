@@ -85,21 +85,6 @@ describe('ScannerDisplay', () => {
       expect(onLockout).toHaveBeenCalledWith('temporary');
     });
 
-    it('opens the lockout dropdown and calls onLockout with avoid', async () => {
-      // REGRESSION GUARD (#522): the third item acts on a DIFFERENT list --
-      // the global avoid list Search and Close Call consult, not the channel
-      // flag the two above set. `tsconfig` has `strict: false`, so
-      // strictFunctionTypes is off and a handler typed for only the original
-      // two variants is accepted here with no error: the wrong action would
-      // fire while type-check stayed green. This asserts the argument.
-      const onLockout = vi.fn();
-      render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);
-      await userEvent.click(screen.getByRole('button', { name: /lockout/i }));
-      await userEvent.click(screen.getByRole('menuitem', { name: 'Avoid frequency' }));
-      expect(onLockout).toHaveBeenCalledWith('avoid');
-      expect(onLockout).not.toHaveBeenCalledWith('temporary');
-    });
-
     it('opens the lockout dropdown and calls onLockout with permanent', async () => {
       const onLockout = vi.fn();
       render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);

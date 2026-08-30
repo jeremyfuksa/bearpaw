@@ -131,33 +131,6 @@ fn lockout_wire_value(state: &AppState, mhz: f64) -> Result<u32, ApiError> {
     Ok((mhz * 10000.0).round() as u32)
 }
 
-/// Add one frequency to the global lockout (avoid) list via `LOF`.
-///
-/// Distinct from a CHANNEL lockout: this list is what Search and Close Call
-/// consult, and it is not attached to any channel. `LOF` appends rather than
-/// sorting, verified across a six-entry list on hardware (#502), so the walk
-/// order is insertion order -- which is what the `.bc125at_ss` `AvoidFreqs`
-/// section preserves (#459).
-pub(crate) async fn add_global_lockout(
-    State(state): State<AppState>,
-    Json(body): Json<FrequencyLockoutBody>,
-) -> Result<Json<Value>, ApiError> {
-    // Range-check BEFORE command_sender, matching put_memory_channel_priority's
-    // precedent (#143): a bad frequency is a 400 contract violation and must
-    // not depend on whether a scanner happens to be attached.
-    let raw = lockout_wire_value(&state, body.frequency)?;
-    let _ = command_sender(&state)?;
-    let _prg = ProgramModeGuard::enter(&state).await?;
-    let reply = send_raw_command(&state, &format!("LOF,{:08}", raw), false).await?;
-    if !matches!(classify_response(&reply), ScannerReply::Ok) {
-        return Err(ApiError::BadRequest("lockout_add_failed".to_string()));
-    }
-    state.frequency_lockouts.write().unwrap().insert(raw);
-    Ok(Json(
-        json!({ "status": "ok", "frequency": raw as f64 / 10000.0 }),
-    ))
-}
-
 /// Remove one frequency from the global lockout list via `ULF`.
 ///
 /// The counterpart to `clear_global_lockouts`, which removes every entry. A

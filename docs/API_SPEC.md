@@ -903,7 +903,7 @@ request/response shapes.
 | GET | `/api/v1/config` (alias `/api/v1/settings/all`) | Full settings snapshot read from the scanner. |
 | GET, POST | `/api/v1/settings/backlight`, `/battery`, `/close-call`, `/contrast`, `/custom-search`, `/custom-search/ranges/{index}`, `/key-beep`, `/priority`, `/search`, `/service-search`, `/weather` | Individual global-setting getters/setters (each brackets its work in PRG). |
 | GET | `/api/v1/lockouts` | Frequency + channel + temporary lockouts. |
-| POST, DELETE | `/api/v1/lockouts/frequencies` | Add (`LOF`) / remove (`ULF`) one entry in the GLOBAL avoid list, body `{"frequency": <MHz>}`. Distinct from a channel lockout: this list is what Search and Close Call consult. Validated against the connected scanner's coverage bands before the wire; 0 and negatives are rejected. |
+| DELETE | `/api/v1/lockouts/frequencies` | Remove (`ULF`) one entry from the GLOBAL avoid list, body `{"frequency": <MHz>}`. Distinct from a channel lockout: this list is what Search and Close Call consult. Validated against the connected scanner's coverage bands before the wire; 0 and negatives are rejected. There is deliberately no add verb — see #531. |
 | POST | `/api/v1/lockouts/clear`, `/lockouts/channels/clear`, `/lockouts/temporary/clear` | Clear the respective lockout sets. |
 | POST | `/api/v1/memory/program-mode/start`, `/memory/program-mode/end` | Open / close a manual program-mode session across requests. |
 | POST | `/api/v1/memory/import/csv` | Import channels from CSV. |

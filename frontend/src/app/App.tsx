@@ -946,33 +946,19 @@ export default function App() {
     setChannels,
   ]);
 
-  const triggerAvoidFrequency = useCallback(async () => {
-    if (!connected) return;
-    const frequency = useStore.getState().liveState?.frequency ?? 0;
-    if (!frequency) {
-      toast.error('No frequency to avoid');
-      return;
-    }
-    try {
-      await api.addGlobalLockout(frequency);
-      toast.info(`Avoiding ${frequency.toFixed(4)} MHz`);
-    } catch (error) {
-      console.warn('Failed to add global lockout', error);
-      toast.error('Failed to avoid frequency');
-    }
-  }, [api, connected]);
-
-  // REGRESSION GUARD (#522): switch on every variant explicitly.
+  // Switch on every variant explicitly rather than
+  // `if (permanent) ... else temporary`.
   //
   // `tsconfig` has `strict: false`, so `strictFunctionTypes` is off and
-  // function params compare BIVARIANTLY -- a handler typed for two variants is
-  // accepted where three are required, with no error. The previous shape was
-  // `if (permanent) ... else temporary`, so adding 'avoid' to the union made
-  // the new menu item silently perform a TEMPORARY CHANNEL LOCKOUT while
-  // `npm run type-check` stayed green.
+  // function params compare BIVARIANTLY: a handler typed for two variants is
+  // accepted where three are required, with NO type error. #522 briefly added
+  // a third L/O item and the else-branch shape silently routed it to a
+  // temporary channel lockout while `npm run type-check` stayed green. That
+  // item was removed again in #531, but the hazard is a property of the
+  // tsconfig, not of that item -- the next variant added here would hit it.
   //
-  // An exhaustive switch cannot fall through to the wrong action. Guarded by
-  // `handleLockout routes each menu item to its own action`.
+  // No test names this: the failure needs a variant that does not exist yet.
+  // The shape is the guard.
   const handleLockout = useCallback(
     (type: LockoutKind) => {
       switch (type) {
@@ -982,12 +968,9 @@ export default function App() {
         case 'temporary':
           void triggerTemporaryLockout();
           break;
-        case 'avoid':
-          void triggerAvoidFrequency();
-          break;
       }
     },
-    [triggerPermanentLockout, triggerTemporaryLockout, triggerAvoidFrequency],
+    [triggerPermanentLockout, triggerTemporaryLockout],
   );
 
   const flushBankWrite = useCallback(async () => {

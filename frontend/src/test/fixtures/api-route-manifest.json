@@ -145,10 +145,6 @@
       "path": "/api/v1/lockouts"
     },
     {
-      "method": "POST",
-      "path": "/api/v1/lockouts/frequencies"
-    },
-    {
       "method": "DELETE",
       "path": "/api/v1/lockouts/frequencies"
     },
