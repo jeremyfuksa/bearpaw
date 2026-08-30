@@ -387,6 +387,10 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     };
   }, [api, activeCategory]);
 
+  // Whether a settings read has EVER succeeded. Until it has, every control on
+  // this page is showing its useState default rather than the scanner's value.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
   /**
    * Read every device setting in one pass.
    *
@@ -502,10 +506,6 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     },
     [api],
   );
-
-  // Whether a settings read has EVER succeeded. Until it has, every control on
-  // this page is showing its useState default rather than the scanner's value.
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // REGRESSION GUARD (`retries once a blocking memory sync finishes`):
   // ONE effect loads the settings, on mount and again after a failure clears.
