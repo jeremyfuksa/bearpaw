@@ -5,18 +5,25 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    # Only run on changes that can actually break a check. A docs-only PR has
-    # no Rust to compile and no TypeScript to lint, so the ~9 minutes of build
-    # this workflow costs buys nothing. Inclusive allowlist rather than
-    # `paths-ignore` so a new top-level directory doesn't silently re-enable
-    # full CI. `main` has no branch protection, so a PR reporting zero checks
-    # is still mergeable.
-    paths:
-      - "crates/**"
-      - "frontend/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/tests.yml"
+    # NO `paths:` filter, deliberately. This workflow's five jobs are REQUIRED
+    # status checks on `main`, and a required check that never runs never
+    # reports — so a filtered-out PR is not "fast", it is permanently
+    # unmergeable.
+    #
+    # There used to be an allowlist here (crates/**, frontend/**, Cargo.*,
+    # this file) on the reasoning that a docs-only PR has no Rust to compile
+    # and no TypeScript to lint, so the ~9 minutes buys nothing. That was
+    # correct while its stated premise held — the old comment said so plainly:
+    # "`main` has no branch protection, so a PR reporting zero checks is still
+    # mergeable." Branch protection was added 2026-08-29 and silently
+    # invalidated it. Every docs-only, site-only and workflow-bump PR would
+    # have been blocked, Dependabot's included.
+    #
+    # So: spend the CI minutes (free on a public repo) rather than reintroduce
+    # the filter. If it ever comes back, it MUST come back together with a
+    # companion workflow reporting these five job names for the excluded
+    # paths — and that companion is a landmine, because renaming a job here
+    # without renaming it there blocks every PR with no visible cause.
 
 jobs:
   test-backend:
