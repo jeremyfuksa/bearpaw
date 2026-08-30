@@ -193,6 +193,14 @@ C-Freq  idx  name  freqHz  modulation  tone  lockout  delay  priority
 On a BC75XLT, `name`, `modulation` and `tone` are always **empty**: those `CIN`
 fields are `[RSV]` on that model.
 
+**The `modulation` column is `Auto` in title case**, with `FM` / `AM` / `NFM`
+upper case. Confirmed across three files Uniden's software produced (a blank, a
+round-trip, and a read-from-scanner). An unprogrammed channel takes `Auto`, not
+an empty column. Bearpaw wrote the raw `CIN` value (`AUTO`) until #524; that
+was cosmetic rather than lossy — a round-trip preserved `FM`, `AM` and `NFM`
+exactly — but it is matched now so the two columns agree about whose spelling
+they follow.
+
 **The `tone` column uses Uniden's own spellings, which are NOT the labels
 Bearpaw shows in the UI.** Measured 2026-08-29 by writing a CTCSS and a DCS
 channel to a real BC125AT and having BC125AT SS read the radio back:

@@ -3788,6 +3788,97 @@ mod tests {
         assert_ne!(channel.bank, 0, "bank 0 is the parser's placeholder");
     }
 
+    /// REGRESSION GUARD (#507): a VALUE-level guard on the `C-Freq` row.
+    ///
+    /// `bc125at_ss_export_matches_the_reference_file_shape` compares
+    /// run-length-encoded (section, field_count, run) triples and never looks
+    /// at values, which was the right call for the positional bug it was
+    /// written for (#461) and is why the tone column shipped broken for months
+    /// (#516): Bearpaw wrote `100.0`, Uniden reads `C100.0`, and every export
+    /// of a toned channel silently lost it while the golden test stayed green.
+    ///
+    /// This asserts ONE row with every column set to a distinct non-default
+    /// value, so a change to ANY of them has to update a test deliberately
+    /// rather than slipping through. Per-column bespoke tests were the previous
+    /// answer and only ever covered the column someone had already broken.
+    #[tokio::test]
+    async fn bc125at_ss_export_pins_every_c_freq_column() {
+        let state = default_state();
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for idx in 1..=500u16 {
+                shadow.channels.insert(
+                    idx,
+                    ChannelData {
+                        index: idx,
+                        ..Default::default()
+                    },
+                );
+            }
+            shadow.channels.insert(
+                250,
+                ChannelData {
+                    index: 250,
+                    frequency: 154.5,
+                    modulation: "NFM".to_string(),
+                    alpha_tag: "FULL FIELD".to_string(),
+                    tone_squelch_kind: crate::state::ToneSquelchKind::Ctcss,
+                    tone_squelch: Some(141.3),
+                    tone_dcs_code: None,
+                    lockout: true,
+                    delay: 5,
+                    priority: true,
+                    bank: 5,
+                },
+            );
+        }
+        let _scanner = FakeScanner::attach(&state, |cmd: &str| {
+            Ok(match cmd {
+                "BLT" => "BLT,AF".to_string(),
+                "KBP" => "KBP,99,0".to_string(),
+                "BSV" => "BSV,2".to_string(),
+                "PRI" => "PRI,0".to_string(),
+                "SCG" => "SCG,1111111111".to_string(),
+                "SCO" => "SCO,1,0".to_string(),
+                "CLC" => "CLC,0,0,0,11111,0".to_string(),
+                "WXS" => "WXS,0".to_string(),
+                "CNT" => "CNT,8".to_string(),
+                "VOL" => "VOL,14".to_string(),
+                "SQL" => "SQL,6".to_string(),
+                c if c.starts_with("CSP,") => format!("{c},25000000,27995000"),
+                c if c.starts_with("SSP,") => format!("{c},0"),
+                _ => "OK".to_string(),
+            })
+        });
+
+        let response =
+            super::handlers::exports::export_bc125at_ss_file(axum::extract::State(state.clone()))
+                .await
+                .expect("export should succeed");
+        let body = axum::response::IntoResponse::into_response(response);
+        let bytes = axum::body::to_bytes(body.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let out = String::from_utf8(bytes.to_vec()).expect("utf8");
+
+        // idx, name, freqHz, modulation, tone, lockout, delay, priority
+        assert!(
+            out.contains("C-Freq\t250\tFULL FIELD\t154500000\tNFM\tC141.3\tOn\t5\tOn\r\n"),
+            "every C-Freq column must serialise exactly as Uniden writes it"
+        );
+
+        // And the default row, which pins the `Auto` casing (#507) plus the
+        // cleared-slot shape every untouched channel takes.
+        assert!(
+            out.contains("C-Freq\t1\t\t0\tAuto\tOff\tOff\t0\tOff\r\n"),
+            "an unprogrammed channel must use Uniden's `Auto`, not the wire's `AUTO`"
+        );
+        assert!(
+            !out.contains("\tAUTO\t"),
+            "the wire's upper-case AUTO must never reach the file"
+        );
+    }
+
     /// REGRESSION GUARD (#459): `AvoidFreqs` must reach the file, and must sit
     /// BETWEEN `GeneralSearch` and the first `Conventional`.
     ///

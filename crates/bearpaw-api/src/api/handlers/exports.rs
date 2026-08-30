@@ -14,6 +14,32 @@ use super::super::{
     ProgramModeGuard,
 };
 
+/// Format a channel's modulation for the `C-Freq` modulation column.
+///
+/// Uniden writes `Auto` in title case and `FM` / `AM` / `NFM` in upper case.
+/// Confirmed across three files its own software produced (a blank, a
+/// round-trip, and a read-from-scanner): `Auto` x497-500, with the three
+/// explicit modulations upper case wherever they appear.
+///
+/// Bearpaw wrote the raw `CIN` value, which is `AUTO`. That is COSMETIC, not
+/// data loss -- a round-trip through BC125AT SS preserved `FM`, `AM` and `NFM`
+/// exactly, so the parser reads our casing and normalises on write (#507).
+/// Matched anyway, because since #520 and #521 the tone column reproduces
+/// Uniden's spellings exactly, and leaving modulation as the one deliberate
+/// mismatch invites someone to "fix" the wrong one.
+fn ss_modulation_label(modulation: &str) -> String {
+    // Empty maps to `Auto` too. A BC125AT `CIN` always reports a modulation, so
+    // empty only arises from a `ChannelData` that predates a memory sync -- and
+    // Uniden's own blank file writes `Auto` on all 500 unprogrammed rows, so
+    // that is the value an unset channel takes. Passing the empty string
+    // through would emit a column no real file has.
+    if modulation.is_empty() || modulation.eq_ignore_ascii_case("AUTO") {
+        "Auto".to_string()
+    } else {
+        modulation.to_ascii_uppercase()
+    }
+}
+
 /// Number of frequency slots in an `AvoidFreqs` line.
 ///
 /// The line is 18 tab-separated fields: the keyword, then 17. Field 1 is never
@@ -214,7 +240,7 @@ pub(crate) async fn export_bc125at_ss_file(
                         ch.index,
                         ch.alpha_tag,
                         (ch.frequency * 1_000_000.0).round() as i64,
-                        ch.modulation,
+                        ss_modulation_label(&ch.modulation),
                         tone,
                         on_off(if ch.lockout { "1" } else { "0" }).to_string(),
                         ch.delay.to_string(),
@@ -1099,6 +1125,27 @@ mod tests {
             out.matches("\r\n").count(),
             "no bare LF may survive -- the real files contain none"
         );
+    }
+
+    /// REGRESSION GUARD (#507): Uniden writes `Auto` in title case and the
+    /// three explicit modulations in upper case. Confirmed across three files
+    /// its own software produced -- a blank, a round-trip, and a
+    /// read-from-scanner -- all agreeing.
+    ///
+    /// Bearpaw wrote the raw `CIN` value (`AUTO`). Cosmetic rather than data
+    /// loss, since the parser preserved `FM`/`AM`/`NFM` through a round-trip,
+    /// but matched anyway so the tone and modulation columns are not
+    /// inconsistent about whose spelling they follow.
+    #[test]
+    fn ss_modulation_column_uses_unidens_casing() {
+        assert_eq!(ss_modulation_label("AUTO"), "Auto");
+        assert_eq!(ss_modulation_label("FM"), "FM");
+        assert_eq!(ss_modulation_label("AM"), "AM");
+        assert_eq!(ss_modulation_label("NFM"), "NFM");
+
+        // Only reachable from a ChannelData that predates a memory sync. The
+        // blank reference file writes `Auto` on all 500 unprogrammed rows.
+        assert_eq!(ss_modulation_label(""), "Auto");
     }
 
     /// REGRESSION GUARD (#459): `AvoidFreqs` is a PACKED list OFFSET BY ONE.
