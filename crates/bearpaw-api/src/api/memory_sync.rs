@@ -155,6 +155,13 @@ where
         shadow.channels = channels;
         shadow.last_sync = now;
     }
+    // Persist immediately rather than waiting up to CHANNEL_CACHE_FLUSH_SECS.
+    // A sync is the most expensive thing this app does (30–45 s of PRG/CIN/EPG
+    // with the radio deaf throughout), so the window where that work exists
+    // only in memory should be as close to zero as it can be. The periodic
+    // flush would get here eventually; this makes durability a property of
+    // finishing the sync rather than of timing.
+    super::channel_cache::flush_channel_cache(state);
     finish(state);
     progress(state, task_id, 100, "Sync complete");
     Ok(())
@@ -174,4 +181,77 @@ fn progress(state: &AppState, task_id: &str, percent: u8, message: &str) {
         "message": message,
     });
     let _ = state.ws_tx.send(msg.to_string());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::channel_cache::{load_channels, PLACEHOLDER_SCANNER_ID};
+    use crate::api::default_state;
+
+    fn respond(cmd: &str) -> SendOutcome {
+        match cmd {
+            "PRG" => SendOutcome::Reply("PRG,OK\r".to_string()),
+            "EPG" => SendOutcome::Reply("EPG,OK\r".to_string()),
+            other => match other.strip_prefix("CIN,") {
+                Some(idx) => SendOutcome::Reply(format!("CIN,{idx},,01465200,,,0,0,0\r")),
+                None => SendOutcome::Reply("OK\r".to_string()),
+            },
+        }
+    }
+
+    /// REGRESSION GUARD: a completed sync persists the cache BEFORE returning.
+    ///
+    /// The periodic flush would reach this eventually, so a test that only
+    /// exercised `flush_channel_cache` would pass whether or not the sync ever
+    /// called it. This asserts the WIRING: drive a full walk through `run`,
+    /// then read the database directly. Delete the `flush_channel_cache` call
+    /// in `run` and this goes red; nothing else in the suite does.
+    ///
+    /// It matters because a sync is the most expensive operation in the app --
+    /// 30-45 s with the radio in program mode and deaf throughout -- so the
+    /// window where that result exists only in memory should be near zero.
+    #[test]
+    fn a_completed_sync_writes_the_cache() {
+        let state = default_state();
+
+        let result = run(&state, "test-task", 3, respond);
+        assert!(result.is_ok(), "the walk must complete: {result:?}");
+
+        let cached = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+        assert_eq!(
+            cached.len(),
+            3,
+            "a completed sync must persist every channel it read, without \
+             waiting for the periodic flush: {cached:?}"
+        );
+        assert!(
+            cached.values().all(|c| (c.frequency - 146.52).abs() < 1e-6),
+            "the persisted rows must be the ones the walk read: {cached:?}"
+        );
+    }
+
+    /// A cancelled sync must NOT write a partial cache.
+    ///
+    /// `run` returns on cancel without touching `shadow.channels`, so the flush
+    /// never sees partial data. Paired with the guard above on purpose:
+    /// asserting only that a completed sync writes would also pass for a build
+    /// that wrote partial ones, and "never overwrite a good cache with a
+    /// partial walk" is the invariant this module is most careful about.
+    #[test]
+    fn a_cancelled_sync_does_not_write_a_partial_cache() {
+        let state = default_state();
+        state
+            .sync_cancel_requested
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
+        let result = run(&state, "test-cancel", 3, respond);
+        assert!(result.is_ok(), "cancel is a clean outcome: {result:?}");
+
+        let cached = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+        assert!(
+            cached.is_empty(),
+            "a cancelled walk must leave the cache untouched: {cached:?}"
+        );
+    }
 }

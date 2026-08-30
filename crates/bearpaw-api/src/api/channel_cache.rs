@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use crate::state::{ChannelData, ToneSquelchKind};
 
-use super::open_sqlite;
+use super::{epoch_now, open_sqlite, AppState};
 
 /// Profile key used until #414 introduces real scanner identity.
 ///
@@ -32,6 +32,9 @@ fn tone_kind_to_text(kind: &ToneSquelchKind) -> &'static str {
     }
 }
 
+/// Only reachable through `load_channels`, so it stays dead until PR 3 wires
+/// load-on-connect. The allow goes away with that caller, not before.
+#[allow(dead_code)]
 fn tone_kind_from_text(text: &str) -> ToneSquelchKind {
     match text {
         "ctcss" => ToneSquelchKind::Ctcss,
@@ -103,6 +106,9 @@ pub(crate) fn save_channels(
 /// `bank` is left at its default. Bank membership is derived per connected
 /// model by `channels_with_banks` and is deliberately not stored -- see the
 /// bank-derivation entry in CLAUDE.md's third-rail table.
+///
+/// Exercised by tests but not yet by production code — PR 3 wires load-on-connect.
+#[allow(dead_code)]
 pub(crate) fn load_channels(path: &str, scanner_id: &str) -> HashMap<u16, ChannelData> {
     let mut out = HashMap::new();
     let Some(conn) = open_sqlite(path) else {
@@ -140,9 +146,40 @@ pub(crate) fn load_channels(path: &str, scanner_id: &str) -> HashMap<u16, Channe
     out
 }
 
+/// Snapshot the live channel map to the cache.
+///
+/// The single flush entry point, called from three places: a periodic timer, the
+/// end of a completed memory sync, and server shutdown. Every caller writes the
+/// WHOLE map, which is what makes it impossible to miss one of the eleven sites
+/// that mutate `shadow.channels`.
+///
+/// Cheap when there is nothing to persist: an empty map returns without opening
+/// the database, so a not-yet-synced session does not write an empty snapshot
+/// over a good one.
+pub(crate) fn flush_channel_cache(state: &AppState) {
+    let channels = match state.shadow.read() {
+        Ok(shadow) => shadow.channels.clone(),
+        // A poisoned lock means another thread panicked mid-write. Skip the
+        // flush rather than persist a half-updated map; the next tick retries.
+        Err(_) => return,
+    };
+    if channels.is_empty() {
+        return;
+    }
+    save_channels(
+        &state.preferences_db_path,
+        PLACEHOLDER_SCANNER_ID,
+        &channels,
+        epoch_now(),
+    );
+}
+
 /// When this profile's cache was last written, if it has been.
 ///
 /// Every row in a snapshot carries the same value, so the max is that value.
+///
+/// Exercised by tests but not yet by production code — PR 4 exposes it via the API.
+#[allow(dead_code)]
 pub(crate) fn last_synced_at(path: &str, scanner_id: &str) -> Option<f64> {
     let conn = open_sqlite(path)?;
     conn.query_row(
@@ -356,6 +393,62 @@ mod tests {
 
         save_channels(&path, PLACEHOLDER_SCANNER_ID, &sample(), 9876.5);
         assert_eq!(last_synced_at(&path, PLACEHOLDER_SCANNER_ID), Some(9876.5));
+    }
+
+    /// The flush entry point persists whatever is currently in the shadow map.
+    ///
+    /// This is what makes the whole-map snapshot design work: no caller has to
+    /// know which of the eleven `shadow.channels` mutation sites ran.
+    #[test]
+    fn flush_writes_the_current_shadow_to_the_cache() {
+        let state = crate::api::default_state();
+        state.shadow.write().unwrap().channels = sample();
+
+        flush_channel_cache(&state);
+
+        let loaded = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+        assert_eq!(
+            loaded.len(),
+            2,
+            "flush must persist every channel: {loaded:?}"
+        );
+        assert!(
+            loaded.get(&1).is_some_and(|c| c.alpha_tag == "CALLING"),
+            "field values must survive the flush: {loaded:?}"
+        );
+        assert!(
+            last_synced_at(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).is_some(),
+            "a flush must stamp synced_at"
+        );
+    }
+
+    /// REGRESSION GUARD: an empty shadow map must NOT be flushed.
+    ///
+    /// `save_channels` deletes the profile's rows before inserting, so flushing
+    /// an empty map WIPES the cache. The periodic timer starts before the first
+    /// memory sync completes and fires again on every restart, so without this
+    /// check the normal startup sequence erases the very cache that exists to
+    /// make startup instant. The emptiness guard in `flush_channel_cache` is
+    /// load-bearing, not defensive — do not simplify it away.
+    #[test]
+    fn flushing_an_empty_shadow_does_not_wipe_a_good_cache() {
+        let state = crate::api::default_state();
+        state.shadow.write().unwrap().channels = sample();
+        flush_channel_cache(&state);
+        assert_eq!(
+            load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).len(),
+            2
+        );
+
+        state.shadow.write().unwrap().channels.clear();
+        flush_channel_cache(&state);
+
+        let survived = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+        assert_eq!(
+            survived.len(),
+            2,
+            "an empty shadow must leave the cache alone, not delete it: {survived:?}"
+        );
     }
 
     /// An unopenable path degrades to empty rather than panicking, matching
