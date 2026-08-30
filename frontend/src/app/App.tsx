@@ -322,6 +322,16 @@ export default function App() {
           setIsInProgramMode(normalizedMode === 'PGM');
         }, 500);
 
+        // The sync just moved `synced_at` forward; re-read it rather than
+        // stamping the client clock, so the status bar agrees with the value
+        // the cache actually persisted.
+        api
+          .getSyncStatus()
+          .then((status) => updateSync({ syncedAt: status.synced_at ?? null }))
+          .catch(() => {
+            /* a missing timestamp only blanks the label; never surface it */
+          });
+
         api
           .getChannels()
           .then((channelData) => setChannels(channelData))
@@ -434,6 +444,12 @@ export default function App() {
       .getSyncStatus()
       .then((status) => {
         if (!active) return;
+        // Record how old the channel memory is, on every connect. This is the
+        // one place the frontend learns it: channel memory persists across
+        // restarts (#413), so a session that adopted a cache has a real
+        // `synced_at` and no sync of its own. Set unconditionally, before the
+        // branching below, so it lands whichever branch runs.
+        updateSync({ syncedAt: status.synced_at ?? null });
         const currentSync = useStore.getState().sync;
         if (!currentSync.inProgress && status.in_progress) {
           updateSync({
@@ -1180,6 +1196,7 @@ export default function App() {
           currentTab={currentTab}
           sessionStats={currentTab === 'Scan' ? sessionStats : null}
           showChannelCount={capabilities.reports_live_channel}
+          syncedAt={sync.syncedAt}
         />
 
         {/* Announces scan-hit / scanning / connection transitions to screen
