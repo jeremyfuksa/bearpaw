@@ -2274,28 +2274,56 @@ pub(crate) async fn set_channel_priority(
     // -- and so the UI -- keeps showing a priority channel the radio has already
     // cleared, which is the same stale-view failure #402 produced by a different
     // route.
+    //
+    // REGRESSION GUARD (priority swap atomicity): this read is INFORMATIONAL and
+    // its error must not propagate. See
+    // `priority_swap_survives_a_failed_post_set_reread`. The write above
+    // has already been sent and verified by readback, so the swap is committed
+    // before this line runs -- a `?` here reports a failure for a change the
+    // scanner has made, on the one model whose bridge is documented to `ERR` a
+    // first command (CLAUDE.md backend pitfall #11). The clear-before-set read
+    // higher up is the opposite case and DOES propagate: nothing is committed
+    // yet there, so failing aborts the swap as the atomicity contract requires.
     if let Some(old) = old_to_clear {
         if !caps.has_priority_clear {
-            let cleared = read_channel_from_scanner(state, old).await?;
-            if cleared.priority {
-                // Contradicts the 2026-08-28 measurement. Report the truth
-                // rather than a tidy fiction: the requested channel DID get
-                // priority, so this is not a failed request, but the bank now
-                // holds two and nothing here can fix that.
-                tracing::warn!(
-                    old,
-                    new = new_to_set,
-                    "firmware did not clear the previous priority channel; bank now holds two"
-                );
+            match read_channel_from_scanner(state, old).await {
+                Ok(cleared) => {
+                    if cleared.priority {
+                        // Contradicts the 2026-08-28 measurement. Report the truth
+                        // rather than a tidy fiction: the requested channel DID get
+                        // priority, so this is not a failed request, but the bank now
+                        // holds two and nothing here can fix that.
+                        tracing::warn!(
+                            old,
+                            new = new_to_set,
+                            "firmware did not clear the previous priority channel; bank now holds two"
+                        );
+                    }
+                    state
+                        .shadow
+                        .write()
+                        .unwrap()
+                        .channels
+                        .insert(old, cleared.clone());
+                    // Contract: cleared-old first, then the new one.
+                    changed.insert(0, cleared);
+                }
+                Err(err) => {
+                    // Same principle as the branch above, one step further: we
+                    // cannot even observe the old channel. Leave its cache entry
+                    // alone and omit it from `changed` rather than writing a
+                    // cleared state the scanner never confirmed. The entry stays
+                    // stale until the next refresh, which is a visible and
+                    // recoverable view -- unlike a fabricated one.
+                    tracing::warn!(
+                        old,
+                        new = new_to_set,
+                        ?err,
+                        "could not re-read the previous priority channel after the swap; \
+                         its cached state may be stale until the next refresh"
+                    );
+                }
             }
-            state
-                .shadow
-                .write()
-                .unwrap()
-                .channels
-                .insert(old, cleared.clone());
-            // Contract: cleared-old first, then the new one.
-            changed.insert(0, cleared);
         }
     }
     Ok(changed)
@@ -4476,6 +4504,84 @@ mod tests {
             sent.iter().any(|c| c.starts_with("DCH,2")),
             "a BC125AT firmware does not auto-swap; the old channel must be \
              explicitly cleared or the bank keeps two: {sent:?}"
+        );
+    }
+
+    // REGRESSION GUARD (priority swap atomicity): where the FIRMWARE owns the
+    // swap, the post-set re-read of the old channel is informational -- it
+    // refreshes the shadow cache after the radio's own auto-clear. A failed
+    // re-read must not fail the swap. By the time it runs, the `CIN` write has
+    // already been sent AND verified by readback, so propagating its error
+    // reports a failure for a change the scanner has committed: the user sees
+    // the swap fail, retries, and the bank was right the first time.
+    //
+    // This mirrors the `warn!` in the same branch that declines to call a
+    // missed auto-clear a failed request. Both say the same thing: the
+    // requested channel DID get priority, so report the truth rather than a
+    // tidy fiction.
+    //
+    // The BC75XLT is the model where this bites, and not by coincidence -- it
+    // is the CP210x scanner, where a first-command-after-open `ERR` is
+    // documented behaviour (CLAUDE.md backend pitfall #11), so the transient
+    // this guards against is expected rather than hypothetical.
+    #[tokio::test]
+    async fn priority_swap_survives_a_failed_post_set_reread() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for (index, priority) in [(2u16, true), (9u16, false)] {
+                shadow.channels.insert(
+                    index,
+                    ChannelData {
+                        index,
+                        frequency: 146.52,
+                        priority,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        let _scanner = FakeScanner::attach(&state, |command: &str| match command {
+            "PRG" => Ok("PRG,OK\r".to_string()),
+            "EPG" => Ok("EPG,OK\r".to_string()),
+            // The informational re-read of the auto-cleared old channel: the
+            // one round-trip this test fails. `ERR` does not parse as a CIN
+            // frame, so `read_channel_from_scanner` gives `channel_read_failed`.
+            "CIN,2" => Ok("ERR\r".to_string()),
+            // Both the pre-read and the post-write readback of the new channel.
+            // A fixed reply is enough: the pre-read is only checked for a
+            // non-zero frequency, the readback only for the priority bit.
+            "CIN,9" => Ok("CIN,9,,01451300,,,0,0,1\r".to_string()),
+            _ => Ok("CIN,OK\r".to_string()),
+        });
+
+        let changed = set_channel_priority(&state, 9)
+            .await
+            .expect("a swap whose CIN write succeeded must not be reported as failed");
+
+        assert!(
+            changed.iter().any(|c| c.index == 9 && c.priority),
+            "the newly-set priority channel must still be reported: {changed:?}"
+        );
+        assert!(
+            !changed.iter().any(|c| c.index == 2),
+            "the old channel could not be read, so it must not be reported as \
+             changed -- fabricating a cleared state asserts something the \
+             scanner never confirmed: {changed:?}"
+        );
+        assert!(
+            state
+                .shadow
+                .read()
+                .unwrap()
+                .channels
+                .get(&9)
+                .is_some_and(|c| c.priority),
+            "the committed write must reach the shadow cache"
         );
     }
 
