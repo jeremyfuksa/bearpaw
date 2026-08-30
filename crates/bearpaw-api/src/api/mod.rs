@@ -3,6 +3,10 @@
 //! Compatibility-first API surface so the Rust backend can replace the Python backend
 //! without frontend contract regressions.
 
+// Lands inert: PR 2 wires the flush and PR 3 the load. The allow goes away
+// with the first real caller.
+#[allow(dead_code)]
+mod channel_cache;
 mod control;
 mod handlers;
 mod memory_sync;
