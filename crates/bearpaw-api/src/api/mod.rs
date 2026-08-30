@@ -2197,7 +2197,23 @@ async fn clear_channel_priority_locked(
     let current = read_channel_from_scanner(state, index).await?;
 
     // 2. No-op if nothing to clear.
+    //
+    // REGRESSION GUARD (`a_no_op_priority_clear_heals_a_stale_shadow`): store
+    // the read even though nothing is being changed. Reaching here means the
+    // radio says this channel does NOT hold priority -- which is exactly the
+    // state a stale shadow produces, because a plain `CIN` write can set
+    // priority and displace the bank's previous holder without naming it (the
+    // #198 guard above). The read is already paid for, and since #413 a stale
+    // flag is no longer cleared by the next launch's sync: it is flushed to
+    // SQLite and re-adopted at every connect. Storing it here is what makes
+    // this path self-healing rather than a permanent disagreement.
     if !needs_priority_clear(&current) {
+        state
+            .shadow
+            .write()
+            .unwrap()
+            .channels
+            .insert(index, current.clone());
         return Ok(current);
     }
 
@@ -2250,6 +2266,18 @@ async fn clear_channel_priority_locked(
             "priority_clear_not_persisted".to_string(),
         ));
     }
+    // REGRESSION GUARD (`a_priority_clear_updates_the_shadow`): store the
+    // verified readback. `set_channel_priority` inserts into the shadow at
+    // every step of a swap; this function returned the same class of value and
+    // dropped it, so the cache kept showing a priority flag the radio had just
+    // wiped. Under #413 that survives a restart instead of dying with the
+    // session.
+    state
+        .shadow
+        .write()
+        .unwrap()
+        .channels
+        .insert(index, readback.clone());
     Ok(readback)
 }
 
@@ -4618,6 +4646,124 @@ mod tests {
         });
         let _ = set_channel_priority(&state, 9).await;
         scanner.transcript_with_closed_bracket()
+    }
+
+    /// Seed one channel into the shadow with the given priority flag.
+    fn shadow_with_priority(state: &AppState, index: u16, priority: bool) {
+        state.shadow.write().unwrap().channels.insert(
+            index,
+            ChannelData {
+                index,
+                frequency: 145.13,
+                priority,
+                ..Default::default()
+            },
+        );
+    }
+
+    fn shadow_priority(state: &AppState, index: u16) -> Option<bool> {
+        state
+            .shadow
+            .read()
+            .unwrap()
+            .channels
+            .get(&index)
+            .map(|c| c.priority)
+    }
+
+    /// REGRESSION GUARD: a priority clear writes its verified result to the
+    /// shadow, so the cache stops disagreeing with the radio.
+    ///
+    /// `clear_channel_priority_locked` read the channel, ran DCH+rewrite,
+    /// read-back-verified, and then RETURNED the readback without storing it.
+    /// Its sibling `set_channel_priority` inserts into the shadow three times.
+    /// The asymmetry was invisible until #413: the stale flag used to be
+    /// cleared by the next launch's memory sync, and is now flushed to SQLite
+    /// within CHANNEL_CACHE_FLUSH_SECS and re-adopted at every connect.
+    #[tokio::test]
+    async fn a_priority_clear_updates_the_shadow() {
+        let state = default_state();
+        shadow_with_priority(&state, 5, true);
+
+        // Priority starts set on the radio and is cleared by the DCH+rewrite.
+        let cleared = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = cleared.clone();
+        let _scanner = FakeScanner::attach(&state, move |command: &str| {
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            if command.starts_with("DCH,") {
+                flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                return Ok("DCH,OK\r".to_string());
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let mut fields = rest.splitn(2, ',');
+                let index: u16 = fields.next().unwrap_or("").parse().unwrap_or(0);
+                if fields.next().is_some() {
+                    return Ok("CIN,OK\r".to_string());
+                }
+                let priority = !flag.load(std::sync::atomic::Ordering::Relaxed);
+                return Ok(format!(
+                    "CIN,{index},,01451300,,,0,0,{}\r",
+                    if priority { 1 } else { 0 }
+                ));
+            }
+            Ok("OK\r".to_string())
+        });
+
+        let result = clear_channel_priority(&state, 5).await;
+        assert!(result.is_ok(), "the clear must succeed: {result:?}");
+
+        assert_eq!(
+            shadow_priority(&state, 5),
+            Some(false),
+            "the verified readback must land in the shadow, not be returned and dropped"
+        );
+    }
+
+    /// REGRESSION GUARD: the no-op branch heals a shadow that is already stale.
+    ///
+    /// `needs_priority_clear` short-circuits when the radio says the channel
+    /// does not hold priority -- which is exactly the state a stale shadow
+    /// produces, because something else displaced the flag on hardware (a plain
+    /// `CIN` write can set priority and displace the bank's previous holder,
+    /// see the #198 guard). Returning early without storing that read leaves the
+    /// cache wrong forever under #413. The read is already paid for; storing it
+    /// is free.
+    #[tokio::test]
+    async fn a_no_op_priority_clear_heals_a_stale_shadow() {
+        let state = default_state();
+        // The shadow believes channel 5 holds priority; the radio disagrees.
+        shadow_with_priority(&state, 5, true);
+
+        let _scanner = FakeScanner::attach(&state, |command: &str| {
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            if command.starts_with("DCH,") {
+                panic!("a channel the radio does not flag must never be DCH-wiped");
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let index: u16 = rest.split(',').next().unwrap_or("").parse().unwrap_or(0);
+                return Ok(format!("CIN,{index},,01451300,,,0,0,0\r"));
+            }
+            Ok("OK\r".to_string())
+        });
+
+        let result = clear_channel_priority(&state, 5).await;
+        assert!(result.is_ok(), "a no-op clear is success: {result:?}");
+
+        assert_eq!(
+            shadow_priority(&state, 5),
+            Some(false),
+            "a clear that finds nothing to clear must still correct the cache"
+        );
     }
 
     #[tokio::test]
