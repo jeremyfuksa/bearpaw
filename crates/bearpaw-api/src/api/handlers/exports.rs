@@ -41,9 +41,10 @@ fn ss_tone_label(ch: &ChannelData) -> String {
             .and_then(dcs_code_to_number)
             .map(|n| format!("D{:03}", n))
             .unwrap_or_else(|| "Off".to_string()),
-        // UNVERIFIED. Uniden uses a one-letter prefix for the two tone kinds we
-        // have samples of, so "Srch" is a guess -- no reference file has ever
-        // carried a search-tone channel. Left as-is rather than invented.
+        // VERIFIED 2026-08-29: set a channel's tone to Search in BC125AT SS and
+        // saved -- exactly one line changed, and it wrote `Srch`. Notably NOT
+        // the one-letter-prefix scheme the other two kinds use (`C100.0`,
+        // `D023`), which is why it was worth measuring rather than deriving.
         ToneSquelchKind::Search => "Srch".to_string(),
         ToneSquelchKind::None => "Off".to_string(),
     }
@@ -1074,6 +1075,14 @@ mod tests {
 
         // Verified on every reference file: an untoned channel is `Off`.
         assert_eq!(ss_tone_label(&ChannelData::default()), "Off");
+
+        // Verified 2026-08-29 the same way as the other two: set to Search in
+        // BC125AT SS and saved. It does NOT take a one-letter prefix.
+        let search = ChannelData {
+            tone_squelch_kind: ToneSquelchKind::Search,
+            ..Default::default()
+        };
+        assert_eq!(ss_tone_label(&search), "Srch");
 
         // A kind set with its value missing must not emit a half-written tone.
         let broken = ChannelData {
