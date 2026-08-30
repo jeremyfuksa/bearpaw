@@ -8,7 +8,7 @@ import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
 import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import type { ActivityLogEntry } from '../../../types';
-import { ScannerDisplay } from '../ScannerUI';
+import { ScannerDisplay, type LockoutKind } from '../ScannerUI';
 import type { ScannerMode } from '../../App';
 
 /** Row order for the heatmap: Monday first, matching `computeLocalHeatmap`. */
@@ -167,7 +167,7 @@ export interface ScanViewProps {
   hourlyHeatmap: number[][];
   heatmapStats: HeatmapStats;
   onHoldToggle: () => void;
-  onLockout: (type: 'temporary' | 'permanent') => void;
+  onLockout: (type: LockoutKind) => void;
   onVolumeChange: (value: number) => void;
   onBankToggle: (index: number) => void;
   onOpenActivityExport: () => void;

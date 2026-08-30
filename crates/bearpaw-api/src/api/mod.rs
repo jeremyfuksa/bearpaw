@@ -4696,6 +4696,8 @@ mod tests {
         ("POST", "/api/v1/lockouts/clear"),
         ("POST", "/api/v1/lockouts/channels/clear"),
         ("GET", "/api/v1/lockouts"),
+        ("POST", "/api/v1/lockouts/frequencies"),
+        ("DELETE", "/api/v1/lockouts/frequencies"),
         ("GET", "/api/v1/memory/channels"),
         ("POST", "/api/v1/memory/sync"),
         ("POST", "/api/v1/memory/sync/cancel"),

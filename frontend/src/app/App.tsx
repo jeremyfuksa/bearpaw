@@ -3,7 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import { SyncSpinner } from './components/SyncSpinner';
 import { ImportProgressOverlay } from './components/ImportProgressOverlay';
-import { StatusBar } from './components/ScannerUI';
+import { StatusBar, type LockoutKind } from './components/ScannerUI';
 import { ScanAnnouncer } from './components/ScanAnnouncer';
 import { getAPI, API_BASE } from '../api/useApi';
 import { useStore, mapStoredPreferences } from '../store/useStore';
@@ -946,15 +946,48 @@ export default function App() {
     setChannels,
   ]);
 
+  const triggerAvoidFrequency = useCallback(async () => {
+    if (!connected) return;
+    const frequency = useStore.getState().liveState?.frequency ?? 0;
+    if (!frequency) {
+      toast.error('No frequency to avoid');
+      return;
+    }
+    try {
+      await api.addGlobalLockout(frequency);
+      toast.info(`Avoiding ${frequency.toFixed(4)} MHz`);
+    } catch (error) {
+      console.warn('Failed to add global lockout', error);
+      toast.error('Failed to avoid frequency');
+    }
+  }, [api, connected]);
+
+  // REGRESSION GUARD (#522): switch on every variant explicitly.
+  //
+  // `tsconfig` has `strict: false`, so `strictFunctionTypes` is off and
+  // function params compare BIVARIANTLY -- a handler typed for two variants is
+  // accepted where three are required, with no error. The previous shape was
+  // `if (permanent) ... else temporary`, so adding 'avoid' to the union made
+  // the new menu item silently perform a TEMPORARY CHANNEL LOCKOUT while
+  // `npm run type-check` stayed green.
+  //
+  // An exhaustive switch cannot fall through to the wrong action. Guarded by
+  // `handleLockout routes each menu item to its own action`.
   const handleLockout = useCallback(
-    (type: 'temporary' | 'permanent') => {
-      if (type === 'permanent') {
-        void triggerPermanentLockout();
-      } else {
-        void triggerTemporaryLockout();
+    (type: LockoutKind) => {
+      switch (type) {
+        case 'permanent':
+          void triggerPermanentLockout();
+          break;
+        case 'temporary':
+          void triggerTemporaryLockout();
+          break;
+        case 'avoid':
+          void triggerAvoidFrequency();
+          break;
       }
     },
-    [triggerPermanentLockout, triggerTemporaryLockout],
+    [triggerPermanentLockout, triggerTemporaryLockout, triggerAvoidFrequency],
   );
 
   const flushBankWrite = useCallback(async () => {
