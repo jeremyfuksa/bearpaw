@@ -175,6 +175,10 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // defeats that memo (react-hooks/exhaustive-deps).
   const channels = useStore((state) => state.channels);
   const setChannels = useStore((state) => state.setChannels);
+  // A memory sync 409s every settings read (`ProgramModeGuard` refuses while
+  // `sync_task_id` is set), so a sync running when this page mounts is the
+  // ordinary way the read fails. See the retry effect below.
+  const syncInProgress = useStore((state) => state.sync.inProgress);
   const preferences = useStore((state) => state.preferences);
   const updatePreferences = useStore((state) => state.updatePreferences);
 
@@ -485,15 +489,51 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
             })),
           );
         }
+        setSettingsLoaded(true);
       } catch (error) {
         console.error('Failed to load all settings', error);
-        toast.error('Failed to load device settings');
+        // Naming Refresh matters: on failure every control below keeps its
+        // useState default, and the first one the user touches writes that
+        // default to the scanner. The retry effect covers the common cause (a
+        // memory sync); this covers the rest, e.g. `PRG,NG` when the radio is
+        // sitting in its own menu.
+        toast.error('Could not read device settings. Press Refresh to try again.');
       }
     },
     [api],
   );
 
+  // Whether a settings read has EVER succeeded. Until it has, every control on
+  // this page is showing its useState default rather than the scanner's value.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // REGRESSION GUARD (`retries once a blocking memory sync finishes`):
+  // ONE effect loads the settings, on mount and again after a failure clears.
+  //
+  // The mount effect above runs EXACTLY ONCE -- `loadAllSettings` is
+  // `useCallback(..., [api])` and the effect depends only on it, so both are
+  // stable for the life of the page. A read that failed therefore stayed
+  // failed forever, and the failure is not exotic: every settings read 409s
+  // while a memory sync holds program mode, and since #413 a sync can start at
+  // connect. Opening Device during those seconds left all ~20 controls showing
+  // useState defaults, and the first one touched wrote its default to the
+  // radio.
+  //
+  // Mirrors the bank-refetch effect in App.tsx, which already uses this exact
+  // edge for the same reason.
+  //
+  // Deliberately ONE effect, not a mount effect plus a retry effect. Two would
+  // both fire on mount -- `setSettingsLoaded(true)` happens inside the async
+  // load, so the second effect sees `settingsLoaded: false` before the first
+  // has resolved -- and every visit to this page would open TWO program-mode
+  // brackets, parking the scanner in HOLD twice. Caught by `does not re-read
+  // once a read has succeeded`.
+  //
+  // `settingsLoaded` is terminal on purpose: the read parks the scanner in
+  // HOLD at channel 1 for its duration, so re-reading on every sync would make
+  // the radio unusable. Refresh is the deliberate re-read.
   useEffect(() => {
+    if (settingsLoaded || syncInProgress) return;
     let mounted = true;
     // `loadAllSettings` is async and every setState inside it happens after an
     // await, so nothing is set synchronously here -- the rule cannot see past
@@ -504,7 +544,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     return () => {
       mounted = false;
     };
-  }, [loadAllSettings]);
+  }, [settingsLoaded, syncInProgress, loadAllSettings]);
 
   // The scanner has no change notification -- it answers questions and never
   // volunteers that something moved. So anything changed on the front panel

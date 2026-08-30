@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 import {
   DeviceTab,
   PREFERENCE_KEY_MAP,
@@ -817,6 +818,84 @@ describe('DeviceTab', () => {
       await userEvent.click(screen.getByLabelText('Mode'));
 
       expect(await screen.findByRole('option', { name: 'CC Only' })).toBeInTheDocument();
+    });
+  });
+
+  describe('settings read recovers from a failure (#413 follow-on)', () => {
+    // The mount effect runs EXACTLY ONCE: `loadAllSettings` is
+    // useCallback(..., [api]) and the effect depends only on it, so both are
+    // stable for the life of the page. A read that failed stayed failed, and
+    // every control kept its useState default -- which the first click then
+    // wrote to the scanner.
+    //
+    // The failure is ordinary, not exotic: every settings read 409s while a
+    // memory sync holds program mode, and since #413 a sync can start at
+    // connect.
+
+    it('waits for a running sync, then reads once it ends', async () => {
+      // Better than retrying into a 409: with one effect, a sync in progress
+      // means the doomed read is never attempted. The page simply reads as
+      // soon as the radio is available.
+      useStore.setState({
+        sync: { ...useStore.getState().sync, inProgress: true },
+      });
+      mockApiClient.getAllSettings = vi.fn().mockResolvedValue({ squelch: { level: 5 } });
+
+      const { rerender } = renderDeviceTab();
+      expect(mockApiClient.getAllSettings).not.toHaveBeenCalled();
+
+      // The sync ends.
+      act(() => {
+        useStore.setState({
+          sync: { ...useStore.getState().sync, inProgress: false },
+        });
+      });
+      rerender(<DeviceTab />);
+
+      await waitFor(() => expect(mockApiClient.getAllSettings).toHaveBeenCalledTimes(1));
+    });
+
+    it('does not re-read once a read has succeeded', async () => {
+      // The read parks the scanner in HOLD at channel 1 for its duration, so a
+      // retry loop would make the radio unusable. Success is terminal; the
+      // Refresh control is the deliberate re-read.
+      useStore.setState({
+        sync: { ...useStore.getState().sync, inProgress: false },
+      });
+      mockApiClient.getAllSettings = vi.fn().mockResolvedValue({ squelch: { level: 5 } });
+
+      const { rerender } = renderDeviceTab();
+      await waitFor(() => expect(mockApiClient.getAllSettings).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        useStore.setState({
+          sync: { ...useStore.getState().sync, inProgress: true },
+        });
+      });
+      rerender(<DeviceTab />);
+      act(() => {
+        useStore.setState({
+          sync: { ...useStore.getState().sync, inProgress: false },
+        });
+      });
+      rerender(<DeviceTab />);
+
+      expect(mockApiClient.getAllSettings).toHaveBeenCalledTimes(1);
+    });
+
+    it('names Refresh when the read fails', async () => {
+      // On failure every control shows a default. The toast has to say what to
+      // do about it, because nothing on screen looks wrong.
+      useStore.setState({
+        sync: { ...useStore.getState().sync, inProgress: false },
+      });
+      mockApiClient.getAllSettings = vi.fn().mockRejectedValue(new Error('PRG,NG'));
+
+      renderDeviceTab();
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Refresh/i)),
+      );
     });
   });
 });
