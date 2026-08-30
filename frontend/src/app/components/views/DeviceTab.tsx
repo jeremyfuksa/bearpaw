@@ -947,7 +947,15 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
       <div className="flex-1 bg-black/20 rounded-lg border border-white/5 p-6 h-full overflow-y-auto">
         {activeCategory !== 'Locked Channels' && (
           <h2 className="text-lg font-bold mb-6 border-b border-white/10 pb-2 flex items-center justify-between gap-4">
-            <span>{selectedCategory}</span>
+            {/*
+              REGRESSION GUARD (#533): name the category being RENDERED, not the
+              one last clicked. `selectedCategory` survives a capability change
+              that removes it from `categories`; `activeCategory` is the
+              fallback that absorbs exactly that. Reading the raw value here put
+              Device Config's controls under a "Service Search" heading. See
+              `category heading follows the rendered panel (#533)`.
+            */}
+            <span>{activeCategory}</span>
             <span className="flex items-center gap-4">
               {activeCategory === 'Custom Search' && (
                 <span className="text-sm font-normal text-white/50">
