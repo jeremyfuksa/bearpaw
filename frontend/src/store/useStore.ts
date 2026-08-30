@@ -48,6 +48,15 @@ export interface SyncState {
   taskId: string | null;
   message: string;
   percent: number;
+  /**
+   * Epoch seconds for when channel memory was last read from the scanner, or
+   * null if it never has been. From `GET /memory/sync/status` (#413).
+   *
+   * NOT the same question as `hasSyncedInitially`, which means "a sync
+   * completed in THIS session". Channel memory persists across restarts, so a
+   * cache-loaded session has a real `syncedAt` and `hasSyncedInitially: false`.
+   */
+  syncedAt: number | null;
 }
 
 /**
@@ -171,6 +180,7 @@ const defaultSync: SyncState = {
   taskId: null,
   message: 'Loading channels from device...',
   percent: 0,
+  syncedAt: null,
 };
 
 const defaultImportProgress: ImportProgressState = {

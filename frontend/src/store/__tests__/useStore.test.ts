@@ -220,6 +220,7 @@ describe('useStore', () => {
           taskId: null,
           message: '',
           percent: 0,
+          syncedAt: null,
         },
       });
     });
