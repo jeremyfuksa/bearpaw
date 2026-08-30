@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 use crate::protocol::capabilities::ScannerCapabilities;
-use crate::protocol::tones::dcs_code_to_label;
+use crate::protocol::tones::dcs_code_to_number;
 use crate::state::{ChannelData, ToneSquelchKind};
 
 use super::super::security::validate_wire_field;
@@ -12,6 +12,42 @@ use super::super::{
     command_sender, csv_escape, flags_to_bools, on_off, send_raw_command, split_command_parts,
     write_channel_no_readback, ApiError, AppState, ProgramModeGuard,
 };
+
+/// Format a channel's tone for the `C-Freq` tone column of a `.bc125at_ss`.
+///
+/// REGRESSION GUARD (#516): these spellings are Uniden's, not ours, and they
+/// are NOT the labels the UI uses. Measured 2026-08-29 by writing a CTCSS and
+/// a DCS channel to a real BC125AT, then having BC125AT SS read the radio and
+/// save: it wrote `C100.0` and `D023`.
+///
+/// Bearpaw previously wrote `100.0` and `DCS 023`. Uniden's parser cannot read
+/// either and silently defaults the column to `Off` -- verified by round-
+/// tripping a Bearpaw file through the tool, where both tones came back `Off`
+/// while everything else survived. That is silent data loss on every export of
+/// a channel carrying a tone, and no golden test could see it: every reference
+/// file in `fixtures/` is `Off` on all 500 rows, so the column had never been
+/// exercised with a value.
+///
+/// Do NOT reuse `dcs_code_to_label` here. It renders `DCS 023` for the live
+/// display and is correct for that; this column needs `D023`.
+fn ss_tone_label(ch: &ChannelData) -> String {
+    match ch.tone_squelch_kind {
+        ToneSquelchKind::Ctcss => ch
+            .tone_squelch
+            .map(|hz| format!("C{:.1}", hz))
+            .unwrap_or_else(|| "Off".to_string()),
+        ToneSquelchKind::Dcs => ch
+            .tone_dcs_code
+            .and_then(dcs_code_to_number)
+            .map(|n| format!("D{:03}", n))
+            .unwrap_or_else(|| "Off".to_string()),
+        // UNVERIFIED. Uniden uses a one-letter prefix for the two tone kinds we
+        // have samples of, so "Srch" is a guess -- no reference file has ever
+        // carried a search-tone channel. Left as-is rather than invented.
+        ToneSquelchKind::Search => "Srch".to_string(),
+        ToneSquelchKind::None => "Off".to_string(),
+    }
+}
 
 pub(crate) async fn export_bc125at_ss_file(
     State(state): State<AppState>,
@@ -120,18 +156,7 @@ pub(crate) async fn export_bc125at_ss_file(
             cached
                 .into_iter()
                 .map(|ch| {
-                    let tone = match ch.tone_squelch_kind {
-                        ToneSquelchKind::Ctcss => ch
-                            .tone_squelch
-                            .map(|hz| format!("{:.1}", hz))
-                            .unwrap_or_else(|| "Off".to_string()),
-                        ToneSquelchKind::Dcs => ch
-                            .tone_dcs_code
-                            .and_then(dcs_code_to_label)
-                            .unwrap_or_else(|| "Off".to_string()),
-                        ToneSquelchKind::Search => "Srch".to_string(),
-                        ToneSquelchKind::None => "Off".to_string(),
-                    };
+                    let tone = ss_tone_label(&ch);
                     (
                         ch.index,
                         ch.alpha_tag,
@@ -1010,5 +1035,52 @@ mod tests {
             out.matches("\r\n").count(),
             "no bare LF may survive -- the real files contain none"
         );
+    }
+
+    /// REGRESSION GUARD (#516): the `.bc125at_ss` tone column uses Uniden's
+    /// spellings, which are NOT the UI's labels.
+    ///
+    /// Measured 2026-08-29: a CTCSS and a DCS channel were written to a real
+    /// BC125AT, then BC125AT SS read the radio and saved. It wrote `C100.0` and
+    /// `D023`. Bearpaw had been writing `100.0` and `DCS 023`; round-tripping a
+    /// Bearpaw file through the tool brought both back as `Off` while every
+    /// other field survived -- silent data loss on any channel with a tone.
+    ///
+    /// The golden test cannot catch this. It compares section/field-count
+    /// shape, and every reference file in `fixtures/` is `Off` on all 500 rows,
+    /// so the column has never been exercised with a value by anything else.
+    #[test]
+    fn ss_tone_column_uses_unidens_spellings() {
+        let ctcss = ChannelData {
+            tone_squelch_kind: ToneSquelchKind::Ctcss,
+            tone_squelch: Some(100.0),
+            ..Default::default()
+        };
+        assert_eq!(ss_tone_label(&ctcss), "C100.0", "CTCSS takes a C prefix");
+
+        // 128 is the wire code for DCS 023 (protocol/tones.rs). The column wants
+        // the Motorola number zero-padded to three digits, not the wire code and
+        // not the `DCS 023` display label.
+        let dcs = ChannelData {
+            tone_squelch_kind: ToneSquelchKind::Dcs,
+            tone_dcs_code: Some(128),
+            ..Default::default()
+        };
+        assert_eq!(
+            ss_tone_label(&dcs),
+            "D023",
+            "DCS takes a D prefix, no space"
+        );
+
+        // Verified on every reference file: an untoned channel is `Off`.
+        assert_eq!(ss_tone_label(&ChannelData::default()), "Off");
+
+        // A kind set with its value missing must not emit a half-written tone.
+        let broken = ChannelData {
+            tone_squelch_kind: ToneSquelchKind::Ctcss,
+            tone_squelch: None,
+            ..Default::default()
+        };
+        assert_eq!(ss_tone_label(&broken), "Off");
     }
 }
