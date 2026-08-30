@@ -713,16 +713,31 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // Priority is bank-exclusive but not bank-scoped for this precondition: one
   // flagged channel anywhere in memory satisfies the radio.
   //
-  // Gated on `hasSyncedInitially`, not on `channels.length`: before memory
-  // sync the channel list is empty, which is indistinguishable from "synced,
-  // nothing flagged" — warning then would be a false alarm on every cold
-  // start. This is the one place `hasSyncedInitially` means what it says
-  // ("has memory ever been read?"); do NOT copy this gate to the sync overlay,
-  // where it is the known #102 regression.
-  const hasSyncedInitially = useStore((state) => state.sync.hasSyncedInitially);
+  // REGRESSION GUARD (#413): gated on `channels.length`, NOT on
+  // `sync.hasSyncedInitially`. An empty channel list means "memory has not
+  // been read", and warning then would be a false alarm on every cold start —
+  // that part is unchanged, and `stays silent before memory sync` still pins
+  // it.
+  //
+  // This used to gate on `hasSyncedInitially` for exactly that reason, because
+  // an empty list was the only signal available. Channel memory now persists
+  // and is adopted from SQLite at connect (#540), so a session can hold real,
+  // read channel memory with no sync this session — and `hasSyncedInitially`
+  // is false for the whole of it. Gating on the flag made this hint vanish on
+  // precisely the fast-start launches the cache exists to create: the user
+  // picks a priority mode, the radio ignores it ("Priority Scan: No Channel",
+  // #346), and the one thing that explains why is absent.
+  //
+  // `hasSyncedInitially` still means "a sync completed this session". That is
+  // no longer the same question as "has memory ever been read", which is what
+  // this gate needs. Do NOT copy either gate to the sync overlay, where it is
+  // the known #102 regression.
+  //
+  // Test: `DeviceTab.test.tsx :: warns when channels came from the cache with
+  // no sync this session`.
   const noPriorityChannel = useMemo(
-    () => hasSyncedInitially && !channels.some((c) => c.priority),
-    [hasSyncedInitially, channels],
+    () => channels.length > 0 && !channels.some((c) => c.priority),
+    [channels],
   );
 
   const handlePriorityModeChange = useCallback(

@@ -182,6 +182,29 @@ describe('DeviceTab', () => {
         expect(screen.queryByText(/will not engage/i)).not.toBeInTheDocument();
       });
 
+      // REGRESSION GUARD (#413): channels adopted from the SQLite cache at
+      // connect are real, read channel memory -- but no sync ran this session,
+      // so `sync.hasSyncedInitially` is false and stays false for the whole
+      // session. Gating on it meant this hint silently vanished on exactly the
+      // fast-start launches the cache exists to create: the user picks a
+      // priority mode, the radio ignores it ("Priority Scan: No Channel"), and
+      // the one thing that explains why is absent.
+      //
+      // `channels.length > 0` is the right gate now. The original comment gave
+      // the reason it was not -- an empty list was indistinguishable from
+      // "synced, nothing flagged" -- and persistence is precisely what removed
+      // that ambiguity. The test above still pins the cold-start case.
+      it('warns when channels came from the cache with no sync this session', () => {
+        useStore.setState({
+          channels: [createTestChannel({ index: 1, priority: false })],
+          sync: { ...useStore.getState().sync, hasSyncedInitially: false },
+        });
+
+        renderDeviceTab();
+
+        expect(screen.getByText(/will not engage/i)).toBeInTheDocument();
+      });
+
       // The hint is only useful to a screen-reader user if it is associated
       // with the control it explains; visual adjacency does not carry over.
       it('associates the hint with the Priority Mode select', () => {
