@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { Search, Lock, GripVertical, ChevronDown } from 'lucide-react';
+import { Search, Lock, GripVertical, ChevronDown, RefreshCw } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 // TouchBackend, not HTML5Backend: the app ships in Tauri's WKWebView, where
 // react-dnd's HTML5 backend never fires dragover/drop — rows show the (+)
@@ -23,6 +23,7 @@ import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import { confirmDialog, saveExport, pickAndReadFile } from '../../../tauri-shell';
 import type { ChannelData, ChannelDraft } from '../../../types';
 import { ChannelEditSheet } from './ChannelEditSheet';
+import { formatSyncedAt } from '../ScannerUI';
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
 
@@ -540,6 +541,35 @@ export function ChannelsTab() {
   const setMemoryDraft = useStore((state) => state.setMemoryDraft);
   const clearMemoryDrafts = useStore((state) => state.clearMemoryDrafts);
   const setChannels = useStore((state) => state.setChannels);
+  // How old this channel list is, and whether a re-read is already running.
+  // The scanner has no change notification -- it answers questions and never
+  // volunteers that something moved (the same reasoning DeviceTab records for
+  // its own Refresh). Since #413 the list can be a cache of arbitrary age, so
+  // the page that edits channels is the page that has to show that age and
+  // offer to fix it.
+  const syncedAt = useStore((state) => state.sync.syncedAt);
+  const syncInProgress = useStore((state) => state.sync.inProgress);
+  const updateSync = useStore((state) => state.updateSync);
+  const syncedLabel = formatSyncedAt(syncedAt);
+
+  const handleRefreshChannels = useCallback(async () => {
+    try {
+      const result = await api.syncMemory();
+      if (result.status === 'started' || result.status === 'already_running') {
+        // Mirror App.tsx's own start path so the shared overlay comes up. The
+        // sync is ~5 s and holds the radio in program mode throughout, so the
+        // blocking overlay is the honest report -- not a thing to route around.
+        updateSync({
+          inProgress: true,
+          taskId: result.task_id || null,
+          message: 'Syncing scanner memory...',
+        });
+      }
+    } catch (error) {
+      console.warn('Failed to start memory sync', error);
+      toast.error('Unable to refresh channels');
+    }
+  }, [api, updateSync]);
   const setImportProgress = useStore((state) => state.setImportProgress);
 
   const capabilities = useScannerCapabilities();
@@ -1282,6 +1312,24 @@ export function ChannelsTab() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            {syncedLabel && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-normal text-white/40 text-nowrap">{syncedLabel}</span>
+                <button
+                  type="button"
+                  onClick={handleRefreshChannels}
+                  disabled={syncInProgress}
+                  className="flex items-center gap-1.5 rounded border border-white/5 bg-black/20 px-2.5 py-1 text-xs font-normal text-white/70 transition-colors hover:bg-black/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw
+                    size={12}
+                    aria-hidden
+                    className={cn(syncInProgress && 'animate-spin')}
+                  />
+                  {syncInProgress ? 'Reading…' : 'Refresh'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 shrink-0">

@@ -1148,6 +1148,66 @@ describe('ChannelsTab', () => {
       expect(screen.getByRole('button', { name: /reorder channel 1/i })).toBeDisabled();
     });
   });
+
+  describe('channel staleness and Refresh (#413)', () => {
+    // Since #413 the channel list can be a cache of arbitrary age, adopted at
+    // connect with no sync at all. The page where a user EDITS channels is
+    // where that age has to be visible and correctable -- the same reasoning
+    // DeviceTab records for its own Refresh control.
+
+    const withSync = (partial: Record<string, unknown>) => {
+      setMockStore(
+        createMockStore({
+          channels: mockChannels,
+          sync: {
+            inProgress: false,
+            hasSyncedInitially: false,
+            taskId: null,
+            message: '',
+            percent: 0,
+            syncedAt: null,
+            ...partial,
+          },
+        }),
+      );
+    };
+
+    it('shows how old the channel list is', () => {
+      withSync({ syncedAt: Date.now() / 1000 - 3 * 86400 });
+      render(<ChannelsTab />);
+      expect(screen.getByText('Synced 3d ago')).toBeInTheDocument();
+    });
+
+    it('offers a Refresh that re-reads the scanner', async () => {
+      withSync({ syncedAt: Date.now() / 1000 - 3 * 86400 });
+      mockApiClient.syncMemory = vi
+        .fn()
+        .mockResolvedValue({ status: 'started', task_id: 'sync-test' });
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Refresh/i }));
+
+      expect(mockApiClient.syncMemory).toHaveBeenCalled();
+    });
+
+    it('hides the control entirely when memory has never been read', () => {
+      // null is a fresh install, or a cache the capacity guard rejected. A
+      // sync is almost always already running then, so the affordance would
+      // offer to start something that is underway.
+      withSync({ syncedAt: null });
+      render(<ChannelsTab />);
+      expect(screen.queryByRole('button', { name: /Refresh/i })).not.toBeInTheDocument();
+    });
+
+    it('disables Refresh while a sync is already running', () => {
+      // A second POST returns already_running, so this is a UI-honesty guard
+      // rather than a correctness one -- but a button that appears to do
+      // nothing reads as broken.
+      withSync({ syncedAt: Date.now() / 1000 - 3 * 86400, inProgress: true });
+      render(<ChannelsTab />);
+      expect(screen.getByRole('button', { name: /Reading/i })).toBeDisabled();
+    });
+  });
 });
 
 describe('deriveBankFromIndex (#401)', () => {
