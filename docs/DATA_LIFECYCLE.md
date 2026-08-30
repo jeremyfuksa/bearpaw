@@ -15,8 +15,16 @@ Define how Bearpaw stores, migrates, retains, and cleans up local data so app up
 
 ## Databases
 
-- Preferences DB: `scanner.db` (key/value preferences)
+- Preferences DB: `scanner.db` — key/value preferences, plus the
+  `channel_memory` table (schema version 2, #413): cached channel memory keyed
+  by `(scanner_id, channel_index)`. `scanner_id` is the fixed placeholder
+  `_default` until #414 introduces real scanner identity.
 - Analytics DB: `analytics.db` (scan hit history and aggregates)
+
+Cached channel memory is **disposable**. It is a read accelerator; the scanner
+is the source of truth, and losing the cache costs a memory sync, never data.
+Deleting `scanner.db` therefore loses real preferences but only a convenience
+for channels.
 
 ## Update & Migration Rules
 

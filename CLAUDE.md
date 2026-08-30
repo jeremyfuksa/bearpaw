@@ -123,7 +123,7 @@ file. A hand-written fixture would pass whether or not it matched.
 - Live tone fields, populated only during a hit (`None` while squelch is closed): `tone_squelch_kind`, `tone_squelch`, `tone_dcs_code`, `tone_dcs_label`.
 - Updated by the poll loop in [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs).
 
-**Channel memory** — every channel read once during memory sync via `PRG` → `CIN,1` … `CIN,<channel_count>` → `EPG` (500 on the BC125AT family, 300 on a BC75XLT — the bound comes from `ScannerCapabilities`, not a constant). Cached in `AppState.shadow` (`ShadowState.channels`). Channel memory is **not** persisted across restarts — SQLite holds only preferences and analytics; every backend start needs a fresh memory sync.
+**Channel memory** — every channel read once during memory sync via `PRG` → `CIN,1` … `CIN,<channel_count>` → `EPG` (500 on the BC125AT family, 300 on a BC75XLT — the bound comes from `ScannerCapabilities`, not a constant). Cached in `AppState.shadow` (`ShadowState.channels`) and **persisted to SQLite** since #413 ([`channel_cache.rs`](crates/bearpaw-api/src/api/channel_cache.rs)), so a restart adopts the previous session's channels at connect instead of paying the walk again. The cache is a **read accelerator, not the source of truth** — the scanner is the truth, every user write reaches hardware first, and nothing may write to the cache and upload later. See **Channel-memory cache** below.
 
 **`DeviceInfo`** — static metadata: model name (from `MDL`), port, connection_status. Same module.
 
@@ -262,6 +262,7 @@ VITE_WS_URL=                # auto-detect from window.location if empty
 - [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs) — poll loop, hit detection
 - [`crates/bearpaw-api/src/api/program_mode.rs`](crates/bearpaw-api/src/api/program_mode.rs) — PRG/EPG RAII guard
 - [`crates/bearpaw-api/src/api/memory_sync.rs`](crates/bearpaw-api/src/api/memory_sync.rs) — `CIN,1..500` walker
+- [`crates/bearpaw-api/src/api/channel_cache.rs`](crates/bearpaw-api/src/api/channel_cache.rs) — channel-memory persistence: snapshot flush, guarded load
 - [`crates/bearpaw-api/src/api/ws.rs`](crates/bearpaw-api/src/api/ws.rs) — WebSocket broadcast
 - [`crates/bearpaw-api/src/api/security.rs`](crates/bearpaw-api/src/api/security.rs) — CORS + Host-header hardening. The API is an unauthenticated loopback server, so any web page the user visits is the threat; this closes the cross-origin-fetch and DNS-rebinding paths.
 - [`crates/bearpaw-api/src/api/handlers/`](crates/bearpaw-api/src/api/handlers/) — REST handlers (analytics, banks, commands, exports, import_ss, lockouts, memory, preferences, settings, status)
@@ -401,8 +402,58 @@ When you touch code near one of these guards, **read the comment**, run the name
 | Bank derivation follows the connected scanner | [`crates/bearpaw-api/src/protocol/mod.rs`](crates/bearpaw-api/src/protocol/mod.rs) `parse_cin_response` (leaves `bank: 0`) + `AppState::channels_with_banks` in [`api/mod.rs`](crates/bearpaw-api/src/api/mod.rs) + `deriveBankFromIndex` in [`ChannelsTab.tsx`](frontend/src/app/components/views/ChannelsTab.tsx) | `cin_does_not_derive_bank` **and** `channels_with_banks_derives_per_model` (+ `deriveBankFromIndex` suite in `ChannelsTab.test.tsx`) | Bank width is 50 channels on the BC125AT family and 30 on the BC75XLT, but a hardcoded `/ 50` lived in three places — the parser, the free function, and a frontend duplicate. All three agreed while all three were wrong: measured on hardware, 7 of 11 sampled BC75XLT channels were misfiled and channel 300 reported bank 6 instead of 10. Roughly a third of channels are correct by coincidence (channel 60 is bank 2 either way), which is why a spot check misses it. The parser CANNOT derive bank — it is pure, with no `AppState` and so no capability descriptor — and the wire carries no bank field at all (membership comes from `SCG`), so `bank: 0` there is an accurate statement rather than a placeholder. The two guards are paired on purpose: either alone passes while banks are broken. If the frontend and backend ever disagree, the UI files a channel in one bank while the scanner is told another — which is how a priority swap clears the wrong bank. |
 | A migration step is atomic and never bumps the version on failure | [`crates/bearpaw-api/src/api/mod.rs`](crates/bearpaw-api/src/api/mod.rs) `run_migration_step` | `a_failed_step_leaves_the_version_unchanged`, `a_partly_failing_step_rolls_back_entirely`, `a_failed_backup_aborts_the_migration` | Every migration statement was `let _ = conn.execute(...)` followed by an unconditional `set_schema_version`, so a failed step still marked the database migrated: the next launch read the new version, skipped the migration, and queried a schema that did not exist — invisible until a query hit a missing column. The version bump now lives INSIDE the step's transaction, so it cannot outlive a failure. Migrations are forward-only, which makes the pre-migration `.bak` the only recovery path — so a failed backup aborts rather than proceeding, and **nothing in Bearpaw deletes a `.bak`**. A database whose `user_version` is NEWER than this build is refused outright; running old code against a newer schema is silent misbehaviour. See `docs/DATA_LIFECYCLE.md`. |
 | Each test gets its own databases | [`crates/bearpaw-api/src/api/mod.rs`](crates/bearpaw-api/src/api/mod.rs) `fallback_db_path` (cfg-split) | `each_state_gets_its_own_databases` | `resolve_db_path` falls back to a fixed path when its env var is unset, and no test sets one — so all 29 `default_state()` calls opened the SAME two SQLite files and contended under parallel execution. `preferences_reset_alias_matches` deletes every preference row, which a concurrent test could observe mid-assertion. The suite passed with `--test-threads=1` and failed intermittently without it, and adding unrelated tests made it MORE likely to fire. That failure shape is the dangerous one: it trains people to rerun, and CLAUDE.md's "Never push to retry CI" depends on failures being real. |
+| The channel cache records when the RADIO was read | [`channel_cache.rs`](crates/bearpaw-api/src/api/channel_cache.rs) `flush_channel_cache` | `a_flush_records_the_sync_time_not_the_flush_time`, `a_flush_with_no_recorded_sync_stamps_now` | `flush_channel_cache` stamped `epoch_now()`. That was correct while the only caller was a completed sync — there, "now" and "when the radio was read" are the same instant — and #537 added a caller on a 30-second timer, which quietly broke the equivalence: a cache read three days ago relabelled itself as fresh twice a minute, and it overwrote the timestamp a cache load restores within one interval of launch. `synced_at` exists to answer "how stale is this?" (#413 wants "last synced 3 days ago" on screen), and an indicator that always reads "moments ago" is worse than none because it looks like it works. The stamp is `shadow.last_sync`, falling back to `epoch_now()` only when no sync is recorded. **Every test in #537 passed while this was broken** — they asserted `last_synced_at(...).is_some()`, and a guard that checks a value exists cannot notice the value is wrong. The two guards are paired: the first alone passes for a build stamping a hardcoded 0.0. |
+| A cached channel map is only adopted from the SAME scanner | [`channel_cache.rs`](crates/bearpaw-api/src/api/channel_cache.rs) `load_channel_cache` + the call site in [`poll.rs`](crates/bearpaw-api/src/api/poll.rs) `update_device_info_from_mdl` | `a_matching_cache_is_loaded_on_connect`, `a_cache_from_a_larger_scanner_is_discarded`, `a_cache_from_a_smaller_scanner_is_discarded`, `a_reconnect_does_not_overwrite_live_channels`, `a_loaded_cache_restores_the_sync_time` | Three separate traps. **(a)** The capacity comparison is `!=`, not `>`. Rejecting only the too-big direction still lets a BC75XLT's 300 rows load onto a 500-channel BC125AT, and because the frontend suppresses its startup sync whenever channels exist, the wrong radio's memory renders and never refreshes. Nothing panics either way — `index_to_bank` returns 0 above `channel_count` while the frontend's `deriveBankFromIndex` clamps to `bankCount`, so phantoms render in a bank the backend calls 0, and `export_csv` writes them to the user's file. **(b)** The load must run at the MDL chokepoint: before `MDL` is parsed `AppState::capabilities()` answers with the BC125AT default of 500, so an earlier load waves a 500-row cache onto a BC75XLT. Use the local `caps` — `state.capabilities()` takes `device.read()` and the function held `device.write()`. **(c)** It must NOT be gated on `transitioned_to_connected`, which is always false in production (#539) and true in tests: green CI, dead on hardware. Gate on an empty shadow instead — which is also what stops a reconnect (every few seconds on a flapping USB link, and nothing clears `shadow.channels` on disconnect) from stomping live edits with stale rows. The positive guard is not optional: with the load call removed, both discard guards stay green. |
+| Cached channels suppress the startup memory sync | [`frontend/src/app/App.tsx`](frontend/src/app/App.tsx) auto-sync `useEffect` | `frontend/src/app/__tests__/App.regression.test.tsx :: cached channels suppress the startup memory sync` | `if (channels.length > 0) return;` is the ONLY thing that turns "the backend already has channel memory" into "no 30–45 s blocking overlay" — the entire user-visible payoff of #413. There is no WS message meaning "channels changed", and the connect-edge `device_info` broadcast never fires (#539), so nothing else can suppress it. Deleting the line, dropping `channels.length` from the deps array (so the effect stops re-evaluating when the mount fetch lands), or moving the return below `api.syncMemory()` each restores the overlay for every user with a warm cache, silently. Three assertions because each mutation reddens a different one. |
 
 When you add a flow to this table, also add a `REGRESSION GUARD:` comment at the code site pointing back to the test name.
+
+## Channel-memory cache
+
+Channel memory is persisted to SQLite (`channel_memory`, keyed by `scanner_id`)
+so a restart does not pay the 30–45 s walk. Implementation in
+[`channel_cache.rs`](crates/bearpaw-api/src/api/channel_cache.rs); the schema
+arrived with `PREFERENCES_SCHEMA_VERSION` 1 → 2.
+
+**The cache is a read accelerator, not the source of truth.** The scanner is the
+truth. Every user-initiated write goes to hardware first and lands in the cache
+second. Nothing may write to the cache and upload later — that path diverges
+silently and is unrecoverable without a full re-read.
+
+### Writes are whole-map snapshots, never per-site write-through
+
+Eleven production sites across five files mutate `shadow.channels`, and the
+count grows with every handler. Per-site persistence means one missed site
+silently diverges the cache. `flush_channel_cache` writes the WHOLE map instead,
+from three callers — a periodic timer (`CHANNEL_CACHE_FLUSH_SECS`), the end of a
+completed sync, and clean shutdown. A snapshot cannot miss a site, and a
+redundant write costs a couple of milliseconds.
+
+### Rules
+
+1. **`save_channels`/`load_channels` are raw primitives; the guards live in
+   `flush_channel_cache`/`load_channel_cache`.** Production calls the guarded
+   pair. #414 adds a second caller, and a call-site check is a check someone
+   forgets.
+2. **Never flush an empty map.** `save_channels` DELETEs before inserting, so
+   flushing an empty shadow *wipes* the cache — and the periodic timer starts
+   before the first sync completes and fires again on every restart.
+3. **`synced_at` records when the RADIO was read, not when the cache was
+   written.** It comes from `shadow.last_sync`. Stamping the flush time made
+   every cache claim it was fresh within one flush interval, forever.
+4. **The load runs at the MDL chokepoint and nowhere earlier.** The capacity
+   guard needs `channel_count`; before `MDL` is parsed `AppState::capabilities()`
+   answers with the BC125AT default of 500, which would wave a 500-row cache
+   onto a BC75XLT. Use the local `caps`, never `state.capabilities()` — that
+   takes `device.read()` while `update_device_info_from_mdl` may hold
+   `device.write()`.
+5. **Never gate anything on `transitioned_to_connected`.** It is always false in
+   production (#539) and true in tests, so a feature gated on it passes CI and
+   is dead on hardware.
+6. **No `bank` column, ever.** Bank width differs per model and is derived from
+   the connected scanner by `channels_with_banks`. A persisted bank would let a
+   cache written under one model be read under another and reproduce the
+   bank-derivation third rail by a new route.
 
 ## Memory sync performance
 
