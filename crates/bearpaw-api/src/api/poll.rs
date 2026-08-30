@@ -93,21 +93,30 @@ fn run_poll_loop(
     let mut poll_state = PollState::new();
     let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
-    let mut first_open = true;
     loop {
         let mut port = match transport.open() {
             Ok(p) => p,
             Err(e) => {
-                if first_open {
-                    return Err(e.to_string().into());
-                }
+                // REGRESSION GUARD (#513): a failed FIRST open must retry like
+                // any other, not kill the thread. This used to `return Err` on
+                // `first_open`, so starting Bearpaw while the scanner was
+                // unplugged -- or wedged -- left the process serving a
+                // permanently disconnected API, recoverable only by relaunching.
+                // A device that vanished MID-session was handled correctly; the
+                // very first open was the one path with no retry.
+                //
+                // Nothing is lost by retrying. The old fatal path set
+                // connection_status and diagnostic_message via the caller;
+                // `mark_disconnected` sets both, plus `diagnostic_code` and the
+                // liveState `stale` flag the frontend keys its disconnect UI
+                // on. So the failure is MORE visible now, and it heals itself
+                // when the scanner appears.
                 mark_disconnected(&state, &format!("serial open failed: {}", e));
                 thread::sleep(reconnect_backoff);
                 reconnect_backoff = next_backoff(reconnect_backoff);
                 continue;
             }
         };
-        first_open = false;
         reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
         info!("Serial opened: {} @ {} baud", port_name, baud);
@@ -364,26 +373,25 @@ fn run_poll_loop_usb(
     let mut poll_state = PollState::new();
     let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
-    // Outer reconnect loop. Returns only if the initial open fails (so the
-    // caller's error path can surface it); otherwise loops forever, opening
-    // and re-opening the session as the scanner appears/disappears.
-    let mut first_open = true;
+    // Outer reconnect loop. Loops forever, opening and re-opening the session
+    // as the scanner appears and disappears -- including before it has ever
+    // appeared (#513).
     loop {
         let mut session = match transport.open() {
             Ok(s) => s,
             Err(e) => {
-                if first_open {
-                    return Err(e.to_string().into());
-                }
-                // Subsequent opens after a reconnect: device probably still
-                // gone. Mark disconnected, back off, retry.
+                // REGRESSION GUARD (#513): see the matching comment in
+                // `run_poll_loop`. A failed FIRST open retries like any other.
+                // Observed on macOS: with the scanner off the bus, this logged
+                // `Poll loop exited: usb device not found` once and the thread
+                // ended, so plugging the scanner back in did nothing until the
+                // app was relaunched.
                 mark_disconnected(&state, &format!("USB open failed: {}", e));
                 thread::sleep(reconnect_backoff);
                 reconnect_backoff = next_backoff(reconnect_backoff);
                 continue;
             }
         };
-        first_open = false;
         reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
         info!("USB opened: {:04x}:{:04x}", vid, pid);
