@@ -258,8 +258,31 @@ export default function App() {
 
     const unsubscribeDeviceInfo = ws.on('device_info', (message) => {
       const payload = message as unknown as { data?: import('../types').DeviceInfo };
-      if (payload?.data) {
-        setDeviceInfo(payload.data);
+      if (!payload?.data) return;
+      const wasConnected = useStore.getState().deviceInfo?.connection_status === 'connected';
+      setDeviceInfo(payload.data);
+
+      // REGRESSION GUARD (#413, check 1): refetch channels when the scanner
+      // becomes connected. The backend adopts cached channel memory during
+      // `update_device_info_from_mdl` and broadcasts AFTER that, so by the time
+      // this message arrives the channel list is already populated server-side.
+      // Without the refetch the store keeps whatever the mount fetch saw --
+      // usually nothing, because that fetch races the poll loop's connect --
+      // and the auto-sync effect then starts a full memory sync the cache
+      // exists to avoid.
+      //
+      // Deliberately gated on the EDGE. `broadcast_device_info` only fires on
+      // edges today, but a future caller that broadcast every tick would turn
+      // an unconditional refetch into a 5 Hz channel fetch.
+      //
+      // `useStore.getState()` rather than a closed-over value, and no new deps:
+      // this effect owns four WS subscriptions and re-registering it on store
+      // changes is the #144/#102-adjacent churn its guard exists to prevent.
+      if (payload.data.connection_status === 'connected' && !wasConnected) {
+        api
+          .getChannels()
+          .then((channelData) => setChannels(channelData))
+          .catch((error) => console.warn('Failed to refresh channels on connect', error));
       }
     });
 

@@ -299,4 +299,90 @@ describe('App.tsx regression guards', () => {
       expect(guard).toBeLessThan(call);
     });
   });
+
+  describe('channels are refetched when the scanner connects', () => {
+    // History: #413 made the backend adopt cached channel memory at connect,
+    // but the frontend fetches channels exactly once at mount — and that fetch
+    // races the poll loop's connect. Measured on hardware: sometimes the
+    // backend won and 500 cached channels rendered instantly; sometimes the
+    // frontend won, saw an empty list, and started a full memory sync the
+    // cache exists to avoid. Both outcomes were observed on the same machine
+    // minutes apart.
+    //
+    // #551 made the connect edge broadcast at all (it was dead code, #539).
+    // This is the other half: on that edge, re-ask for channels. The backend
+    // adopts the cache BEFORE broadcasting, so the list is already populated
+    // server-side when this arrives.
+
+    /**
+     * Body of the `device_info` WS handler, anchored on its unique
+     * `ws.on('device_info'` registration.
+     */
+    function extractDeviceInfoHandler(source: string): string {
+      const start = source.indexOf("ws.on('device_info'");
+      if (start === -1) throw new Error('Could not locate the device_info subscription');
+      const end = source.indexOf("ws.on('progress'", start);
+      if (end === -1) throw new Error('Could not locate the end of the device_info handler');
+      return stripComments(source.slice(start, end));
+    }
+
+    /**
+     * The condition of the `if` that guards the channel refetch — not merely
+     * the handler text around it.
+     *
+     * Asserting that the handler CONTAINS `wasConnected` passes for a build
+     * where the variable is still declared and the gate ignores it. Measured:
+     * replacing the whole condition with `if (true)` left all four guards
+     * green until this extractor existed.
+     */
+    function extractRefetchGate(source: string): string {
+      const handler = extractDeviceInfoHandler(source);
+      const call = handler.indexOf('.getChannels()');
+      if (call === -1) throw new Error('Could not locate the channel refetch');
+      const ifStart = handler.lastIndexOf('if (', call);
+      if (ifStart === -1) throw new Error('The channel refetch is not inside an if');
+      const open = handler.indexOf('(', ifStart);
+      let depth = 0;
+      for (let i = open; i < call; i += 1) {
+        if (handler[i] === '(') depth += 1;
+        if (handler[i] === ')') {
+          depth -= 1;
+          if (depth === 0) return handler.slice(open + 1, i);
+        }
+      }
+      throw new Error('Unbalanced parentheses in the refetch gate');
+    }
+
+    it('the device_info handler refetches channels', () => {
+      const handler = extractDeviceInfoHandler(APP_SOURCE);
+      expect(handler).toMatch(/getChannels\(\)/);
+      expect(handler).toMatch(/setChannels\(/);
+    });
+
+    it('the refetch is gated on the connected state', () => {
+      // An unconditional refetch would fire on the DISCONNECT broadcast too,
+      // asking a scanner that just vanished for its channel list.
+      expect(extractRefetchGate(APP_SOURCE)).toMatch(/connection_status === 'connected'/);
+    });
+
+    it('the refetch is gated on the EDGE, not on every connected message', () => {
+      // `broadcast_device_info` only fires on edges today, but a future caller
+      // that broadcast every tick would turn an unconditional refetch into a
+      // 5 Hz channel fetch against a 500-channel endpoint.
+      expect(extractRefetchGate(APP_SOURCE)).toMatch(/wasConnected/);
+    });
+
+    it('reads the previous status via getState, not a closed-over value', () => {
+      // Closing over `deviceInfo` would require adding it to this effect's
+      // deps, which re-registers all four WS subscriptions whenever device
+      // info changes — the churn the guard at the top of this file exists to
+      // prevent.
+      const handler = extractDeviceInfoHandler(APP_SOURCE);
+      expect(handler).toMatch(/useStore\.getState\(\)/);
+
+      const deps = extractWsEffectDepsArray(APP_SOURCE);
+      expect(deps).not.toMatch(/\bdeviceInfo\b/);
+      expect(deps).not.toMatch(/\bchannels\b/);
+    });
+  });
 });
