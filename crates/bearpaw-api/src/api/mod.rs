@@ -3,9 +3,6 @@
 //! Compatibility-first API surface so the Rust backend can replace the Python backend
 //! without frontend contract regressions.
 
-// Lands inert: PR 2 wires the flush and PR 3 the load. The allow goes away
-// with the first real caller.
-#[allow(dead_code)]
 mod channel_cache;
 mod control;
 mod handlers;
@@ -166,6 +163,21 @@ pub struct ActiveHit {
 }
 
 const PREFERENCES_SCHEMA_VERSION: i32 = 2;
+
+/// How often the channel cache is snapshotted to SQLite.
+///
+/// The flush writes the WHOLE map unconditionally — that is what makes it
+/// impossible to miss one of the eleven `shadow.channels` mutation sites — so
+/// the interval is the only lever on how much redundant writing an idle app
+/// does. At 5 s an 8-hour session would run ~5,760 transactions and keep the
+/// disk awake for nothing.
+///
+/// 30 s is safe because this is not the only flush: a completed memory sync
+/// persists immediately, and shutdown persists before exit. Those cover the two
+/// moments worth protecting. What this interval actually bounds is how much a
+/// *hard kill* (SIGKILL, panic, power loss) can lose — and losing it costs a
+/// re-sync, never data, because every write reaches the scanner first.
+const CHANNEL_CACHE_FLUSH_SECS: u64 = 30;
 const ANALYTICS_SCHEMA_VERSION: i32 = 2;
 
 pub fn router(state: AppState) -> Router {
@@ -580,6 +592,24 @@ pub async fn run_server_with_shutdown(
         }
     });
 
+    // Periodic channel-cache snapshot. Sleeps FIRST so a fresh start does not
+    // write before the first sync has produced anything; the flush's own
+    // empty-map guard makes that harmless either way, but there is no reason to
+    // open the database to learn there is nothing to write.
+    let flush_state = state.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(CHANNEL_CACHE_FLUSH_SECS)).await;
+            let s = flush_state.clone();
+            // spawn_blocking: this is synchronous SQLite on a runtime worker.
+            let _ =
+                tokio::task::spawn_blocking(move || channel_cache::flush_channel_cache(&s)).await;
+        }
+    });
+
+    // `router(state)` moves the state, so take the shutdown handle first.
+    let shutdown_state = state.clone();
+
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!("Bearpaw API listening on http://{}", bind);
     let allowed_hosts = security::allowed_hosts_for_bind(bind);
@@ -590,6 +620,11 @@ pub async fn run_server_with_shutdown(
     axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(shutdown)
         .await?;
+    // Final flush before exit. This is the one that makes a clean quit lose
+    // nothing: without it, up to CHANNEL_CACHE_FLUSH_SECS of channel edits
+    // would be absent from the cache on next launch, and the user would see
+    // stale values for changes they watched succeed.
+    channel_cache::flush_channel_cache(&shutdown_state);
     info!("Bearpaw API server shut down gracefully");
     Ok(())
 }
