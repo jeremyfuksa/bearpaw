@@ -202,6 +202,7 @@ channel to a real BC125AT and having BC125AT SS read the radio back:
 | none | `Off` |
 | CTCSS 100.0 Hz | `C100.0` |
 | DCS 023 | `D023` |
+| tone search | `Srch` |
 
 A one-letter prefix, no space, DCS zero-padded to three digits and given as the
 Motorola number rather than the wire code. Bearpaw wrote `100.0` and `DCS 023`
@@ -209,9 +210,11 @@ until #516; Uniden's parser reads neither and silently defaults the column to
 `Off`, which was verified by round-tripping a Bearpaw file through the tool —
 both tones came back `Off` while every other field survived.
 
-No reference file has ever carried a **search**-tone channel, so the spelling
-for `ToneSquelchKind::Search` remains a guess (`Srch`) and is flagged as such
-at the code site.
+Note that **tone search does not follow the prefix scheme** — it is `Srch`,
+not `S` plus something. That is why it was measured rather than derived: the
+obvious extrapolation from `C100.0` and `D023` would have been wrong.
+
+All four values are now measured. The tone column has no unknowns left.
 
 **`delay` is a constant `2` on the BC75XLT.** 600 of 600 channels across two
 real files, empty slots included. It cannot be echoing the radio — that model's
@@ -246,9 +249,6 @@ inside the bracket.
   export. The format itself is now fully known (see that section); what is
   missing is the writer.
 - **No importer for `.bc75xlt_ss`** (#460) — Bearpaw writes it but cannot read it
-- **The search-tone spelling is unverified.** `Off`, CTCSS and DCS are measured;
-  a channel using the scanner's tone-search mode has never appeared in any
-  reference file.
 
 ### Closed
 
