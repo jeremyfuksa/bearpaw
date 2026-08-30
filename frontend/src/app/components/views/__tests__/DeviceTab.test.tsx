@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   DeviceTab,
@@ -396,6 +396,39 @@ describe('DeviceTab', () => {
       await userEvent.click(serviceSwitch);
 
       expect(mockApiClient.setServiceSearchSettings).toHaveBeenCalled();
+    });
+  });
+
+  // REGRESSION GUARD (#533): the panel heading must name the category the panel
+  // is actually rendering. `categories` shrinks when capabilities arrive or
+  // change — a BC75XLT has no `SSG` command, so Service Search leaves the list —
+  // and `activeCategory` exists precisely to absorb that, per its derivation
+  // comment ("swapping scanners can strip the category the user is standing
+  // on"). The heading alone still read `selectedCategory`, so a user standing on
+  // Service Search when a BC75XLT identified itself got Device Config's controls
+  // under a "Service Search" heading.
+  //
+  // Asserting the heading alone would pass for a build that renamed the heading
+  // while rendering the wrong panel, so this pins BOTH: the Service-Search-only
+  // control goes away AND the heading follows it.
+  describe('category heading follows the rendered panel (#533)', () => {
+    it('renames the heading when capabilities strip the selected category', async () => {
+      renderDeviceTab();
+      await selectCategory(/Service Search/i);
+
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Service Search');
+      expect(screen.getByRole('switch', { name: /Police/i })).toBeInTheDocument();
+
+      act(() => {
+        useStore.setState({
+          deviceInfo: { ...createTestDeviceInfo(), capabilities: BC75XLT_CAPS },
+        });
+      });
+
+      // The panel fell back to Device Config. The heading must say so.
+      expect(screen.queryByRole('switch', { name: /Police/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Device Config');
+      expect(screen.getByRole('heading', { level: 2 })).not.toHaveTextContent('Service Search');
     });
   });
 
