@@ -119,12 +119,19 @@ export function StatusBar({
 
 // --- Display: control mini-buttons (top-right of the orange panel) ---
 
+/**
+ * What the L/O menu can do. `temporary` and `permanent` act on the CHANNEL the
+ * scanner is stopped on; `avoid` adds the current FREQUENCY to the global list
+ * Search and Close Call consult, which is not attached to any channel (#522).
+ */
+export type LockoutKind = 'temporary' | 'permanent' | 'avoid';
+
 interface ScannerControlsProps {
   volume: number;
   onVolumeChange: (volume: number) => void;
   isHolding: boolean;
   onHoldToggle: () => void;
-  onLockout: (type: 'temporary' | 'permanent') => void;
+  onLockout: (type: LockoutKind) => void;
 }
 
 const CONTROL_BUTTON_CLASSES =
@@ -185,6 +192,18 @@ function ScannerControls({
             onSelect={() => onLockout('permanent')}
           >
             Permanent
+          </DropdownMenuItem>
+          {/* Separated from the two above because it acts on a different thing:
+              those flag the CHANNEL, this adds the FREQUENCY to the global
+              avoid list Search and Close Call consult (#522). Labelled "Avoid
+              frequency" rather than a third kind of "lockout" so the noun says
+              which list it touches. */}
+          <DropdownMenuSeparator className="mx-1 bg-[rgba(28,31,38,0.35)]" />
+          <DropdownMenuItem
+            className="cursor-pointer justify-start rounded-scanner-xs px-3 py-2 font-mono text-sm text-[rgba(28,31,38,0.9)] focus:bg-[rgba(28,31,38,0.1)] focus:text-[rgba(28,31,38,0.9)]"
+            onSelect={() => onLockout('avoid')}
+          >
+            Avoid frequency
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -257,7 +276,7 @@ export interface ScannerDisplayProps {
   isHolding: boolean;
   onVolumeChange: (volume: number) => void;
   onHoldToggle: () => void;
-  onLockout: (type: 'temporary' | 'permanent') => void;
+  onLockout: (type: LockoutKind) => void;
   banks: boolean[];
   banksKnown?: boolean;
   onBankToggle: (index: number) => void;

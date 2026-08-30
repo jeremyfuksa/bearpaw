@@ -85,6 +85,21 @@ describe('ScannerDisplay', () => {
       expect(onLockout).toHaveBeenCalledWith('temporary');
     });
 
+    it('opens the lockout dropdown and calls onLockout with avoid', async () => {
+      // REGRESSION GUARD (#522): the third item acts on a DIFFERENT list --
+      // the global avoid list Search and Close Call consult, not the channel
+      // flag the two above set. `tsconfig` has `strict: false`, so
+      // strictFunctionTypes is off and a handler typed for only the original
+      // two variants is accepted here with no error: the wrong action would
+      // fire while type-check stayed green. This asserts the argument.
+      const onLockout = vi.fn();
+      render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);
+      await userEvent.click(screen.getByRole('button', { name: /lockout/i }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Avoid frequency' }));
+      expect(onLockout).toHaveBeenCalledWith('avoid');
+      expect(onLockout).not.toHaveBeenCalledWith('temporary');
+    });
+
     it('opens the lockout dropdown and calls onLockout with permanent', async () => {
       const onLockout = vi.fn();
       render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);
@@ -106,15 +121,22 @@ describe('ScannerDisplay', () => {
     it('opens and selects a lockout item by keyboard alone', async () => {
       // Keyboard-only path: the click tests never exercise arrow-key
       // navigation, which is the whole reason the L/O control uses a real
-      // DropdownMenu rather than a Popover. Focus the trigger, open with
-      // Enter, arrow to the second item (Permanent), and select with Enter.
+      // DropdownMenu rather than a Popover.
+      //
+      // This used to send {ArrowDown}{ArrowDown} and assert 'permanent'. Radix
+      // CLAMPS at the last item rather than wrapping, so two presses landed on
+      // whatever was last -- which was Permanent only because there were two
+      // items. Adding a third (#522) silently moved this test onto the new
+      // item while it kept passing its old name. Stepping ONE item and
+      // asserting the middle one is count-independent: a fourth item cannot
+      // quietly change what this exercises.
       const onLockout = vi.fn();
       render(<ScannerDisplay {...defaultProps} onLockout={onLockout} />);
       const trigger = screen.getByRole('button', { name: /lockout/i });
       trigger.focus();
       await userEvent.keyboard('{Enter}');
       expect(await screen.findByRole('menuitem', { name: 'Permanent' })).toBeInTheDocument();
-      await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+      await userEvent.keyboard('{ArrowDown}{Enter}');
       expect(onLockout).toHaveBeenCalledWith('permanent');
     });
 
