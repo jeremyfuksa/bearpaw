@@ -61,6 +61,7 @@
           <figcaption>Locked Channels — review and clear the skip list.</figcaption>
         </figure>
 
+        <h2 id="locked-channels">Locked channels</h2>
         <p>
           The list is read from the scanner when you open this page, with a
           timestamp showing when.
@@ -86,6 +87,26 @@
           <a href="scan.html#lo-lock-out-a-frequency">Scan tab</a> or the Lockout
           switch when
           <a href="channels.html#editing-a-channel">editing the channel</a>.)
+        </p>
+
+        <h2 id="avoided-frequencies">Avoided frequencies</h2>
+        <p>
+          Below the channel list is a second, shorter table:
+          <strong>Avoided frequencies</strong>. This is a different list on the
+          scanner, not a filter of the one above.
+        </p>
+        <p>
+          The channels above are memory slots you've told the scanner to skip.
+          These are bare frequencies with no channel attached, and they're what
+          <a href="scan.html">Search</a> and Close Call skip. If a pager or a
+          data carrier keeps stopping a search, this is the list that makes it
+          stop — locking out a channel won't, because a search isn't on a
+          channel.
+        </p>
+        <p>
+          Add one with <strong>L/O → Avoid frequency</strong> on the Scan tab
+          while the scanner is stopped on it. Each row here has its own
+          <strong>Remove</strong> button to take it back off.
         </p>
         <nav class="docs-pagination" aria-label="Guide pages">
           <a class="page-prev" href="custom-search.html"><span class="page-dir">← Previous</span><span class="page-title">Custom Search</span></a>
