@@ -120,11 +120,7 @@ fn run_poll_loop(
         reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
         info!("Serial opened: {} @ {} baud", port_name, baud);
-        if let Ok(mut d) = state.device.write() {
-            d.port = Some(port_name.to_string());
-            d.connection_status = "connected".to_string();
-            d.clear_connection_diagnostic();
-        }
+        mark_port_opened(&state, port_name);
 
         // Device info: model from MDL (with retry because some scanners can return
         // stale command echoes immediately after connection).
@@ -154,6 +150,11 @@ fn run_poll_loop(
         }
         if !mdl_set {
             warn!("Unable to read valid MDL response after retries (serial)");
+            // The port is open and the loop is about to poll it, so connected
+            // is the honest status even with no model. Without this a scanner
+            // whose MDL is garbled would read as permanently disconnected --
+            // a worse bug than the one #539 fixes.
+            mark_connected_without_model(&state, port_name);
         }
 
         // Initial volume query. Writes to `state.live.volume` so the first
@@ -395,11 +396,7 @@ fn run_poll_loop_usb(
         reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
         info!("USB opened: {:04x}:{:04x}", vid, pid);
-        if let Ok(mut d) = state.device.write() {
-            d.port = Some(port_label.clone());
-            d.connection_status = "connected".to_string();
-            d.clear_connection_diagnostic();
-        }
+        mark_port_opened(&state, &port_label);
 
         let mut mdl_set = false;
         for attempt in 1..=5 {
@@ -427,6 +424,7 @@ fn run_poll_loop_usb(
         }
         if !mdl_set {
             warn!("Unable to read valid MDL response after retries (usb)");
+            mark_connected_without_model(&state, &port_label);
         }
 
         // Initial volume query. Writes to `state.live.volume` so the first
@@ -626,6 +624,57 @@ fn run_poll_loop_usb(
         mark_disconnected(&state, "scanner disconnected");
         thread::sleep(reconnect_backoff);
         reconnect_backoff = next_backoff(reconnect_backoff);
+    }
+}
+
+/// Record that a port opened, WITHOUT claiming the scanner is connected.
+///
+/// REGRESSION GUARD (#539, `opening_a_port_does_not_claim_connected`): this
+/// function must never set `connection_status`. It used to, inline in both
+/// poll loops, and that made the connect-side broadcast in
+/// `update_device_info_from_mdl` dead code -- the flag it gates on asks whether
+/// the status was already "connected", which this write guaranteed. The
+/// user-visible result was that a replug never told the frontend the scanner
+/// came back, so the UI read "disconnected" for the rest of the session.
+///
+/// The status now flips when the `MDL` reply lands, so "connected" means "we
+/// know which radio this is" rather than "a file descriptor opened" -- which is
+/// also what the channel-cache capacity guard needs, since it cannot run
+/// before the model is known.
+///
+/// Extracted from the two loops rather than left inline SO THAT it is
+/// testable: a guard that rebuilds this sequence by hand passes whether or not
+/// the loops still set the status.
+fn mark_port_opened(state: &AppState, port_label: &str) {
+    if let Ok(mut d) = state.device.write() {
+        d.port = Some(port_label.to_string());
+        d.clear_connection_diagnostic();
+    }
+}
+
+/// Report connected when the port is open but `MDL` never answered.
+///
+/// The #539 fix moved the "connected" flip to the MDL chokepoint so the
+/// connect edge is a real edge. That leaves the five-failed-attempts path with
+/// no one to set the status, and the poll loop is about to start polling
+/// regardless -- so a scanner whose MDL is garbled would read as permanently
+/// disconnected. Connected with no model is the honest answer there, and it is
+/// what the code did before #539.
+///
+/// Broadcasts on the edge, for the same reason the MDL path does.
+///
+/// Test: `an_unidentified_scanner_still_reports_connected`.
+fn mark_connected_without_model(state: &AppState, port_label: &str) {
+    let mut changed = false;
+    if let Ok(mut d) = state.device.write() {
+        if d.connection_status != "connected" {
+            d.connection_status = "connected".to_string();
+            changed = true;
+        }
+        d.port = Some(port_label.to_string());
+    }
+    if changed {
+        broadcast_device_info(state);
     }
 }
 
@@ -1534,5 +1583,118 @@ mod tests {
             "a flush in the new session must preserve the original sync time, \
              not stamp the restart"
         );
+    }
+
+    /// REGRESSION GUARD (#539): reconnecting must broadcast that the scanner
+    /// came back.
+    ///
+    /// `broadcast_device_info` has two callers: `mark_disconnected` and this
+    /// one, gated on `transitioned_to_connected`. Both poll loops used to set
+    /// `connection_status = "connected"` when the PORT OPENED, before the MDL
+    /// probe -- so by the time this function tested the flag it was always
+    /// already "connected", the gate was always false, and the connect-side
+    /// broadcast was dead code.
+    ///
+    /// The user-visible result: after any unplug/replug, the frontend kept the
+    /// "disconnected" value it received on the disconnect edge. Both of its
+    /// `getDeviceInfo` fetches are mount-only, and `useConnectionStatus`
+    /// returns 'disconnected' whenever `deviceInfo.connection_status` says so
+    /// -- regardless of WebSocket health or `stale` clearing. The UI read
+    /// disconnected for the rest of the session while the radio worked fine.
+    ///
+    /// Proven by running this sequence against the old code: the disconnect
+    /// broadcast fired and the reconnect produced `[]`.
+    #[test]
+    fn a_reconnect_broadcasts_that_the_scanner_came_back() {
+        let state = crate::api::default_state();
+
+        // A live session.
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+        assert_eq!(
+            state.device.read().unwrap().connection_status,
+            "connected",
+            "precondition: connected after the first MDL"
+        );
+
+        let mut rx = state.ws_tx.subscribe();
+
+        // The scanner is unplugged.
+        mark_disconnected(&state, "unplugged");
+        let first = rx.try_recv().expect("a disconnect must broadcast");
+        assert!(
+            first.contains("\"connection_status\":\"disconnected\""),
+            "expected a disconnect broadcast, got {first}"
+        );
+        while rx.try_recv().is_ok() {} // drain state_stale
+
+        // It comes back. This mirrors what both poll loops do on a successful
+        // open -- port and diagnostics, but NOT the status -- and then the MDL
+        // reply arrives.
+        mark_port_opened(&state, "/dev/cu.test");
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+
+        let mut msgs = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            msgs.push(m);
+        }
+        assert!(
+            msgs.iter()
+                .any(|m| m.contains("\"connection_status\":\"connected\"")),
+            "the frontend must be told the scanner came back; broadcasts: {msgs:?}"
+        );
+    }
+
+    /// REGRESSION GUARD (#539): opening a port must NOT claim connected.
+    ///
+    /// This is the half the reconnect guard above cannot cover. That test
+    /// drives `mark_port_opened` too, but a test that instead rebuilt the
+    /// port-open sequence by hand would pass whether or not the real loops
+    /// still set the status -- measured: reintroducing
+    /// `connection_status = "connected"` into the serial loop left the whole
+    /// suite green until this assertion existed.
+    ///
+    /// "connected" has to mean "we know which radio this is". The channel-cache
+    /// capacity guard depends on it too: it cannot run before the model is
+    /// known, and `AppState::capabilities()` answers with the BC125AT default
+    /// until then.
+    #[test]
+    fn opening_a_port_does_not_claim_connected() {
+        let state = crate::api::default_state();
+        assert_eq!(
+            state.device.read().unwrap().connection_status,
+            "disconnected",
+            "precondition"
+        );
+
+        mark_port_opened(&state, "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(
+            d.connection_status, "disconnected",
+            "an open file descriptor is not a known scanner"
+        );
+        assert_eq!(
+            d.port.as_deref(),
+            Some("/dev/cu.test"),
+            "the port is recorded"
+        );
+    }
+
+    /// A scanner that never answers `MDL` still reports connected.
+    ///
+    /// Paired with the guard above so the fix cannot be "only announce a model
+    /// we recognise". The port is open and the poll loop is running, so the
+    /// honest status is connected even though the model is unknown -- that is
+    /// the pre-#539 behaviour and it must survive. Without this, a scanner
+    /// whose MDL is garbled reads as permanently disconnected, which is a
+    /// worse bug than the one being fixed.
+    #[test]
+    fn an_unidentified_scanner_still_reports_connected() {
+        let state = crate::api::default_state();
+        mark_connected_without_model(&state, "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(d.connection_status, "connected");
+        assert_eq!(d.port.as_deref(), Some("/dev/cu.test"));
     }
 }
