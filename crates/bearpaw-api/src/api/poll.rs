@@ -1300,6 +1300,18 @@ mod tests {
     /// shadow and passes for a build with no load at all. That is the shape of
     /// the two failed `buildEmptyDraft` guard attempts recorded in CLAUDE.md.
     fn seed_cache(state: &AppState, count: u16, synced_at: f64) {
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            crate::api::channel_cache::PLACEHOLDER_SCANNER_ID,
+            &channel_map(count),
+            synced_at,
+        );
+    }
+
+    /// `count` channels, indexed 1..=count, as a completed walk would leave
+    /// them: every slot the radio has gets a row, which is what makes
+    /// `max(index) == channel_count` the capacity signal the guard relies on.
+    fn channel_map(count: u16) -> std::collections::HashMap<u16, crate::state::ChannelData> {
         use crate::state::ChannelData;
         let mut map = std::collections::HashMap::new();
         for index in 1..=count {
@@ -1314,12 +1326,7 @@ mod tests {
                 },
             );
         }
-        crate::api::channel_cache::save_channels(
-            &state.preferences_db_path,
-            crate::api::channel_cache::PLACEHOLDER_SCANNER_ID,
-            &map,
-            synced_at,
-        );
+        map
     }
 
     fn shadow_len(state: &AppState) -> usize {
@@ -1459,6 +1466,73 @@ mod tests {
             state.shadow.read().unwrap().last_sync,
             1_000_000_000.0,
             "the adopted cache's sync time must survive into the shadow"
+        );
+    }
+
+    /// REGRESSION GUARD: channels survive a restart, and the app does not
+    /// reset how old it says they are.
+    ///
+    /// This is #413's headline acceptance criterion -- "channels survive a
+    /// restart with no memory sync" -- and it is the one thing none of the
+    /// other guards actually prove. `each_state_gets_its_own_databases` gives
+    /// every test state a private database, which is what keeps the suite
+    /// parallel-safe, but it also means the flush and the load are only ever
+    /// exercised against files the other never sees. Both halves can be green
+    /// while the pair is broken.
+    ///
+    /// So this drives the real sequence: session A completes a sync and
+    /// flushes; session B -- a fresh process pointed at the SAME database --
+    /// connects and adopts.
+    ///
+    /// Then B flushes again, because that is what a running app does every
+    /// CHANNEL_CACHE_FLUSH_SECS, and the recorded age has to survive it.
+    /// Without that last assertion the app reports "synced moments ago" 30
+    /// seconds after every launch -- the #538 bug arriving by a different
+    /// route, and invisible to every other guard here.
+    #[test]
+    fn channels_survive_a_restart_and_keep_their_age() {
+        use crate::api::channel_cache::{
+            flush_channel_cache, last_synced_at, PLACEHOLDER_SCANNER_ID,
+        };
+        const SYNCED_AT: f64 = 1_000_000_000.0;
+
+        // --- Session A: a completed sync, then a flush. ---
+        let a = crate::api::default_state();
+        {
+            let mut shadow = a.shadow.write().unwrap();
+            shadow.channels = channel_map(300);
+            shadow.last_sync = SYNCED_AT;
+        }
+        flush_channel_cache(&a);
+
+        // --- Session B: a fresh process on the same database. ---
+        let mut b = crate::api::default_state();
+        b.preferences_db_path = a.preferences_db_path.clone();
+        assert!(
+            b.shadow.read().unwrap().channels.is_empty(),
+            "precondition: a new session starts with no channel memory"
+        );
+
+        update_device_info_from_mdl(&b, "MDL,BC75XLT", "/dev/cu.test");
+
+        assert_eq!(
+            shadow_len(&b),
+            300,
+            "a restart must adopt the previous session's channels with no sync"
+        );
+        assert_eq!(
+            b.shadow.read().unwrap().last_sync,
+            SYNCED_AT,
+            "the restored memory must carry the time the RADIO was read"
+        );
+
+        // --- And the periodic flush must not relabel it as fresh. ---
+        flush_channel_cache(&b);
+        assert_eq!(
+            last_synced_at(&b.preferences_db_path, PLACEHOLDER_SCANNER_ID),
+            Some(SYNCED_AT),
+            "a flush in the new session must preserve the original sync time, \
+             not stamp the restart"
         );
     }
 }
