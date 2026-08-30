@@ -348,6 +348,22 @@ export const createMockApiClient = () => {
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return mockApiResponses.clearGlobalLockouts;
     }),
+    addGlobalLockout: vi.fn(async (frequency: number) => {
+      const response = responses.get('/lockouts/frequencies');
+      if (response?.error) {
+        throw new APIError(response.error.message, response.error.status, response.error);
+      }
+      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
+      return { status: 'ok', frequency };
+    }),
+    removeGlobalLockout: vi.fn(async (frequency: number) => {
+      const response = responses.get('/lockouts/frequencies');
+      if (response?.error) {
+        throw new APIError(response.error.message, response.error.status, response.error);
+      }
+      await new Promise((r) => setTimeout(r, response?.delay ?? 0));
+      return { status: 'ok', frequency };
+    }),
     clearChannelLockouts: vi.fn(async (_channels?: number[]) => {
       const response = responses.get('/lockouts/channels/clear');
       if (response?.error) {
