@@ -383,6 +383,93 @@ export function deriveBankFromIndex(index: number, channelsPerBank: number, bank
 // Exported for tests only (#272). The guard on buildEmptyDraft has to assert
 // the REAL function's output — earlier attempts asserted a hand-built copy in
 // the test file and passed happily with the bug reintroduced.
+/**
+ * Prefer the scanner's value for any field the user did NOT edit.
+ *
+ * A `CIN` write is all-or-nothing: every field goes out on every write. So
+ * "leave this field alone" can only be expressed as "send its current value",
+ * and the question is current according to WHOM. It should always have been
+ * the scanner. It was the cache, which was harmless only while the cache was
+ * re-read every launch -- #413 made channel memory persist, and the latent
+ * assumption became a bug: editing an alpha tag on a channel whose frequency
+ * was changed at the radio's keypad wrote the stale frequency back, silently
+ * reverting the user's work.
+ *
+ * `base` is the pre-edit channel the draft was built from, so a field where
+ * `payload` and `base` agree is one the user did not touch. Only those adopt
+ * the scanner's value; an edited field always wins, because that edit is the
+ * entire point of the upload.
+ *
+ * Normalisation mirrors `draftChanges`' own `hasChanges` comparison exactly --
+ * `?? ''` for alpha, `|| 'AUTO'` for modulation, `?? null` for tone. Getting
+ * that wrong in either direction marks untouched fields as edited (#272) or
+ * edited fields as untouched, and the second silently discards user input.
+ *
+ * Tone is reconciled as a UNIT, never field by field: kind, Hz and DCS code
+ * interlock (#132), and adopting one without the others produces a combination
+ * the scanner never reported.
+ *
+ * Exported for its test: asserting the real function is the point (see
+ * CLAUDE.md "Third-rail flows" on guards that hand-rebuilt the shape they meant
+ * to check and passed while the bug was live).
+ */
+export function reconcileUntouchedFields(
+  payload: Omit<ChannelData, 'index'>,
+  base: ChannelData,
+  latest: ChannelData,
+): { payload: Omit<ChannelData, 'index'>; reconciled: string[] } {
+  const reconciled: string[] = [];
+  const next = { ...payload };
+
+  if (next.frequency === base.frequency && latest.frequency !== next.frequency) {
+    next.frequency = latest.frequency;
+    reconciled.push('frequency');
+  }
+
+  const baseAlpha = base.alpha_tag ?? '';
+  const latestAlpha = latest.alpha_tag ?? '';
+  if (next.alpha_tag === baseAlpha && latestAlpha !== next.alpha_tag) {
+    next.alpha_tag = latestAlpha;
+    reconciled.push('alpha_tag');
+  }
+
+  const baseMod = base.modulation || 'AUTO';
+  const latestMod = latest.modulation || 'AUTO';
+  if (next.modulation === baseMod && latestMod !== next.modulation) {
+    next.modulation = latestMod;
+    reconciled.push('modulation');
+  }
+
+  if (next.delay === base.delay && latest.delay !== next.delay) {
+    next.delay = latest.delay;
+    reconciled.push('delay');
+  }
+
+  // Tone as one unit. `tone_squelch` is the only tone field the edit sheet
+  // exposes, so it alone decides whether the user touched the group.
+  const baseTone = base.tone_squelch ?? null;
+  const latestTone = latest.tone_squelch ?? null;
+  const latestKind = latest.tone_squelch_kind ?? 'none';
+  const latestDcs = latest.tone_dcs_code ?? null;
+  // Both sides normalised. Comparing a normalised scanner value against a raw
+  // draft value made 'none' !== undefined fire a reconcile on every channel
+  // that had no tone at all -- caught by `reports nothing when the scanner
+  // agrees with the cache`.
+  const nextKind = next.tone_squelch_kind ?? 'none';
+  const nextDcs = next.tone_dcs_code ?? null;
+  if (
+    next.tone_squelch === baseTone &&
+    (latestTone !== next.tone_squelch || latestKind !== nextKind || latestDcs !== nextDcs)
+  ) {
+    next.tone_squelch = latestTone;
+    next.tone_squelch_kind = latestKind;
+    next.tone_dcs_code = latestDcs;
+    reconciled.push('tone');
+  }
+
+  return { payload: next, reconciled };
+}
+
 export function buildDraft(channel: ChannelData, clearedDelay = 2): ChannelDraft {
   if (channel.frequency === 0) {
     return buildEmptyDraft(clearedDelay);
@@ -823,6 +910,11 @@ export function ChannelsTab() {
     setIsUploading(true);
     const failed: Array<{ index: number; detail?: string }> = [];
     const warnings: Array<{ index: number; detail: string }> = [];
+    // Channels where the scanner's value replaced the draft's for a field the
+    // user never touched. Reported rather than applied silently: this changes
+    // which side wins a conflict, and an invisible reconciliation trades a bug
+    // you can describe for one you cannot.
+    const reconciledChannels: number[] = [];
 
     try {
       await api.startProgramMode();
@@ -844,6 +936,17 @@ export function ChannelsTab() {
                 priority: latest.priority,
                 bank: latest.bank || payload.bank,
               };
+              // Every OTHER field the user did not edit also comes from the
+              // scanner, not from the draft's cached basis. See
+              // `reconcileUntouchedFields`. Only reachable when the read
+              // succeeded: the catch below leaves `payload` on the draft, so a
+              // marginal read degrades to today's behaviour rather than
+              // reverting a staged edit.
+              const outcome = reconcileUntouchedFields(payload, change.channel, latest);
+              payload = outcome.payload;
+              if (outcome.reconciled.length > 0) {
+                reconciledChannels.push(change.channelIndex);
+              }
             } catch (refreshError) {
               console.warn('Failed to refresh channel before upload', refreshError);
             }
@@ -946,8 +1049,11 @@ export function ChannelsTab() {
       console.warn('Failed to refresh channels after upload', error);
     }
 
+    const reconciledNote =
+      reconciledChannels.length > 0 ? ` (${reconciledChannels.length} refreshed from scanner)` : '';
+
     if (failed.length === 0 && warnings.length === 0) {
-      toast.success(`Uploaded ${draftChanges.length} channel edits`);
+      toast.success(`Uploaded ${draftChanges.length} channel edits${reconciledNote}`);
     } else if (failed.length === 0 && warnings.length > 0) {
       toast.error(`Uploaded with ${warnings.length} warnings (lockout not applied)`);
     } else if (failed.length > 0) {

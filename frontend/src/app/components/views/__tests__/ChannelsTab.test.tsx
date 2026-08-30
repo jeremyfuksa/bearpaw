@@ -9,6 +9,7 @@ import {
   deriveBankFromIndex,
   visibleChannelColumns,
   channelGridTemplate,
+  reconcileUntouchedFields,
 } from '../ChannelsTab';
 import capabilityFixture from '../../../../test/fixtures/scanner-capabilities.json';
 import { createTestChannel, createTestChannelDraft } from '../../../../test/fixtures';
@@ -1353,5 +1354,116 @@ describe('remaining model assumptions (#398 audit)', () => {
     expect(fromDraft).toBe('AUTO');
     expect(fromBackend || 'AUTO').toBe(fromDraft);
     expect(fromBackend ?? 'AUTO').not.toBe(fromDraft);
+  });
+
+  describe('reconcileUntouchedFields (#413 stale write-back)', () => {
+    // A CIN write is all-or-nothing: every field goes out on every write, so
+    // "leave this alone" can only be expressed as "send its current value".
+    // That value used to come from the cache, which was safe only while the
+    // cache was re-read every launch. #413 made channel memory persist, so a
+    // channel edited at the radio's keypad could have its stale frequency
+    // written back by a Bearpaw edit to an unrelated field.
+
+    const base = createTestChannel({
+      index: 7,
+      frequency: 146.52,
+      alpha_tag: 'OLD TAG',
+      modulation: 'FM',
+      delay: 2,
+    });
+
+    // What the draft produces when the user edits ONLY the alpha tag.
+    const draftPayload = () => {
+      const { index: _index, ...rest } = base;
+      return { ...rest, alpha_tag: 'NEW TAG' };
+    };
+
+    it('takes the scanner value for a field the user did not edit', () => {
+      // The frequency was changed on the keypad while Bearpaw was closed.
+      const latest = createTestChannel({ ...base, frequency: 147.36 });
+
+      const { payload, reconciled } = reconcileUntouchedFields(draftPayload(), base, latest);
+
+      expect(payload.frequency).toBe(147.36);
+      expect(reconciled).toContain('frequency');
+    });
+
+    it('keeps the user edit for a field they DID change', () => {
+      // The scanner disagrees about the alpha tag too, but the user typed this
+      // one -- their edit is the entire point of the upload.
+      const latest = createTestChannel({ ...base, alpha_tag: 'SCANNER TAG' });
+
+      const { payload, reconciled } = reconcileUntouchedFields(draftPayload(), base, latest);
+
+      expect(payload.alpha_tag).toBe('NEW TAG');
+      expect(reconciled).not.toContain('alpha_tag');
+    });
+
+    it('keeps a user-edited FREQUENCY over the scanner value', () => {
+      // The alpha-tag case above passes even if the untouched-check is deleted
+      // entirely, because that test never edits a field the scanner disagrees
+      // about. Measured by mutation: removing `next.frequency ===
+      // base.frequency` left all four other guards green. Retuning a channel
+      // in Bearpaw while it also moved on the keypad is the collision that
+      // matters -- the user's number must win, or Bearpaw silently discards
+      // what they typed.
+      const edited = { ...draftPayload(), frequency: 151.625 };
+      const latest = createTestChannel({ ...base, frequency: 147.36 });
+
+      const { payload, reconciled } = reconcileUntouchedFields(edited, base, latest);
+
+      expect(payload.frequency).toBe(151.625);
+      expect(reconciled).not.toContain('frequency');
+    });
+
+    it('reports nothing when the scanner agrees with the cache', () => {
+      const { payload, reconciled } = reconcileUntouchedFields(draftPayload(), base, base);
+
+      expect(reconciled).toEqual([]);
+      expect(payload.frequency).toBe(146.52);
+      expect(payload.alpha_tag).toBe('NEW TAG');
+    });
+
+    it('normalises modulation the way draftChanges does', () => {
+      // A BC75XLT reserves the CIN modulation field, so the backend reports an
+      // EMPTY STRING. `draftChanges` normalises that to 'AUTO' with `||`. If
+      // this function used `??` instead, '' would survive on one side and
+      // 'AUTO' on the other, and every channel on that model would look
+      // reconciled on every upload -- the #272 failure by a new route.
+      const emptyMod = createTestChannel({ ...base, modulation: '' });
+      const payloadFromEmpty = { ...draftPayload(), modulation: 'AUTO' };
+
+      const { reconciled } = reconcileUntouchedFields(payloadFromEmpty, emptyMod, emptyMod);
+
+      expect(reconciled).not.toContain('modulation');
+    });
+
+    it('reconciles tone as one unit, never field by field', () => {
+      // kind, Hz and DCS code interlock (#132). Adopting one without the
+      // others produces a combination the scanner never reported.
+      const dcsBase = createTestChannel({
+        ...base,
+        tone_squelch: null,
+        tone_squelch_kind: 'dcs',
+        tone_dcs_code: 23,
+      });
+      const { index: _i, ...rest } = dcsBase;
+      const untouchedDraft = { ...rest, alpha_tag: 'NEW TAG' };
+
+      // The keypad changed it to a CTCSS tone.
+      const latest = createTestChannel({
+        ...dcsBase,
+        tone_squelch: 103.5,
+        tone_squelch_kind: 'ctcss',
+        tone_dcs_code: null,
+      });
+
+      const { payload, reconciled } = reconcileUntouchedFields(untouchedDraft, dcsBase, latest);
+
+      expect(reconciled).toContain('tone');
+      expect(payload.tone_squelch).toBe(103.5);
+      expect(payload.tone_squelch_kind).toBe('ctcss');
+      expect(payload.tone_dcs_code).toBeNull();
+    });
   });
 });
