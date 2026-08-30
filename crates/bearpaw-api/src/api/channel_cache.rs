@@ -32,9 +32,7 @@ fn tone_kind_to_text(kind: &ToneSquelchKind) -> &'static str {
     }
 }
 
-/// Only reachable through `load_channels`, so it stays dead until PR 3 wires
-/// load-on-connect. The allow goes away with that caller, not before.
-#[allow(dead_code)]
+/// Only reachable through `load_channels`.
 fn tone_kind_from_text(text: &str) -> ToneSquelchKind {
     match text {
         "ctcss" => ToneSquelchKind::Ctcss,
@@ -107,8 +105,9 @@ pub(crate) fn save_channels(
 /// model by `channels_with_banks` and is deliberately not stored -- see the
 /// bank-derivation entry in CLAUDE.md's third-rail table.
 ///
-/// Exercised by tests but not yet by production code — PR 3 wires load-on-connect.
-#[allow(dead_code)]
+/// The raw primitive. `load_channel_cache` is the guarded entry point that
+/// production calls; this one applies no capacity or emptiness rules, exactly
+/// as `save_channels` applies none for writes.
 pub(crate) fn load_channels(path: &str, scanner_id: &str) -> HashMap<u16, ChannelData> {
     let mut out = HashMap::new();
     let Some(conn) = open_sqlite(path) else {
@@ -191,12 +190,91 @@ pub(crate) fn flush_channel_cache(state: &AppState) {
     );
 }
 
+/// Populate the shadow from the cache, if the cache belongs to THIS scanner.
+///
+/// The mirror of `flush_channel_cache`, and shaped the same way on purpose:
+/// `load_channels`/`save_channels` are the raw primitives, and the guards live
+/// here in the entry point that production actually calls -- so #414's second
+/// caller cannot forget them.
+///
+/// Returns how many channels were adopted; 0 means "nothing usable", which the
+/// caller treats exactly like a cold start.
+///
+/// Two guards, both load-bearing:
+///
+/// 1. **A populated shadow wins.** Nothing clears `shadow.channels` on
+///    disconnect, so a reconnect -- and a flapping USB link reconnects every
+///    few seconds -- arrives with a map that is newer than the cache. Loading
+///    unconditionally would stomp live edits with rows up to
+///    CHANNEL_CACHE_FLUSH_SECS old.
+///
+/// 2. **The cache must be a complete image of THIS radio.** See
+///    `CAPACITY GUARD` below.
+pub(crate) fn load_channel_cache(state: &AppState, channel_count: u16) -> usize {
+    // Cheap pre-check without holding a lock across SQLite I/O.
+    match state.shadow.read() {
+        Ok(shadow) if !shadow.channels.is_empty() => return 0,
+        Ok(_) => {}
+        Err(_) => return 0,
+    }
+
+    let cached = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+    if cached.is_empty() {
+        return 0;
+    }
+
+    // CAPACITY GUARD: a completed walk writes exactly one row per channel the
+    // radio has (`memory_sync` inserts for every index whose CIN parses, and a
+    // cleared slot parses fine), so the highest cached index IS the capacity of
+    // whichever scanner wrote it. Anything else is a different radio's memory,
+    // or a partial write from a handler that read one channel off the wire.
+    //
+    // Deliberately `!=`, not `>`. Rejecting only the too-big direction leaves
+    // the too-small one wide open: a 300-row BC75XLT cache loads happily onto a
+    // 500-channel BC125AT, and because the frontend suppresses its startup sync
+    // whenever channels exist, the wrong radio's memory would render and never
+    // refresh. Both directions are the same mistake.
+    //
+    // Nothing here deletes the rejected rows. They are the other radio's
+    // memory, and the next completed sync's snapshot replaces them anyway
+    // (`save_channels` DELETEs then INSERTs per profile). Under one shared
+    // placeholder profile the two scanners take turns; #414 gives them their
+    // own keys and the discard stops happening at all.
+    let max_index = cached.keys().max().copied().unwrap_or(0);
+    if max_index != channel_count {
+        tracing::info!(
+            max_index,
+            channel_count,
+            "cached channel memory does not match this scanner's capacity; \
+             discarding it and starting cold"
+        );
+        return 0;
+    }
+
+    let synced_at = last_synced_at(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+
+    let Ok(mut shadow) = state.shadow.write() else {
+        return 0;
+    };
+    // Re-check under the write lock: a handler may have inserted a channel
+    // while SQLite was being read, and a live read off the wire outranks the
+    // cache.
+    if !shadow.channels.is_empty() {
+        return 0;
+    }
+    let adopted = cached.len();
+    shadow.channels = cached;
+    // Carry the real sync time forward so the next flush re-persists it
+    // unchanged, and so PR 4 can report how stale this memory actually is.
+    if let Some(ts) = synced_at {
+        shadow.last_sync = ts;
+    }
+    adopted
+}
+
 /// When this profile's cache was last written, if it has been.
 ///
 /// Every row in a snapshot carries the same value, so the max is that value.
-///
-/// Exercised by tests but not yet by production code — PR 4 exposes it via the API.
-#[allow(dead_code)]
 pub(crate) fn last_synced_at(path: &str, scanner_id: &str) -> Option<f64> {
     let conn = open_sqlite(path)?;
     conn.query_row(

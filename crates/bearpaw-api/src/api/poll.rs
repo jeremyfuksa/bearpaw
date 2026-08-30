@@ -778,6 +778,37 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
                 crate::config::save_last_scanner_cache(&serial, port_label, &model);
             }
         }
+        // Adopt cached channel memory now that we know WHICH radio this is.
+        //
+        // REGRESSION GUARD (`a_cache_from_a_larger_scanner_is_discarded`,
+        // `a_cache_from_a_smaller_scanner_is_discarded`,
+        // `a_matching_cache_is_loaded_on_connect`,
+        // `a_reconnect_does_not_overwrite_live_channels`): this must run HERE
+        // and nowhere earlier. The capacity guard compares the cache against
+        // `channel_count`, and before the `MDL` reply is parsed there is no
+        // model -- `AppState::capabilities()` answers with the BC125AT default
+        // of 500, which would wave a 500-row cache onto a BC75XLT.
+        //
+        // Use the local `caps`, never `state.capabilities()`: that takes
+        // `device.read()`, and this function held `device.write()` until the
+        // block above closed. Same-thread read-while-write on a std `RwLock`
+        // deadlocks.
+        //
+        // Deliberately NOT gated on `transitioned_to_connected`. That flag is
+        // always false in production -- both poll loops set
+        // `connection_status = "connected"` when the port opens, before the
+        // MDL probe -- so gating on it would pass every unit test and never
+        // fire on hardware. See #539. `load_channel_cache` does its own
+        // gating on an empty shadow, which is the honest condition anyway:
+        // load only when there is nothing live to lose.
+        let adopted = super::channel_cache::load_channel_cache(state, caps.channel_count);
+        if adopted > 0 {
+            info!(
+                "Adopted {} cached channels for {}; no memory sync needed to \
+                 render the channel list",
+                adopted, model
+            );
+        }
         // Push the new state to the frontend so its indicator flips back
         // to green without waiting for a REST poll. Only broadcast on
         // edge transitions so we don't spam the WS with identical messages
@@ -1257,5 +1288,177 @@ mod tests {
         }
         // After enough doublings we should be sitting at the cap.
         assert_eq!(current.as_millis(), RECONNECT_BACKOFF_MAX_MS as u128);
+    }
+
+    // ---- Channel-cache adoption on connect (#413 PR 3) --------------------
+
+    /// Write `count` channels into THIS state's own cache database.
+    ///
+    /// Seeding `state.preferences_db_path` rather than a private temp file is
+    /// the whole point: the connect path reads that path and nothing else, so a
+    /// test that seeds a `migrated_db()`-style path of its own asserts an empty
+    /// shadow and passes for a build with no load at all. That is the shape of
+    /// the two failed `buildEmptyDraft` guard attempts recorded in CLAUDE.md.
+    fn seed_cache(state: &AppState, count: u16, synced_at: f64) {
+        use crate::state::ChannelData;
+        let mut map = std::collections::HashMap::new();
+        for index in 1..=count {
+            map.insert(
+                index,
+                ChannelData {
+                    index,
+                    frequency: 146.0 + (index as f64) / 1000.0,
+                    modulation: "FM".to_string(),
+                    alpha_tag: format!("CH{index}"),
+                    ..Default::default()
+                },
+            );
+        }
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            crate::api::channel_cache::PLACEHOLDER_SCANNER_ID,
+            &map,
+            synced_at,
+        );
+    }
+
+    fn shadow_len(state: &AppState) -> usize {
+        state.shadow.read().unwrap().channels.len()
+    }
+
+    /// REGRESSION GUARD: a cache matching the connected scanner is adopted,
+    /// so the channel list renders without a 30-45 s memory sync.
+    ///
+    /// This is the positive half of the capacity guard and it is not optional:
+    /// every negative assertion below ("this cache is discarded") also passes
+    /// for a build that never loads anything at all.
+    #[test]
+    fn a_matching_cache_is_loaded_on_connect() {
+        let state = crate::api::default_state();
+        seed_cache(&state, 300, 1_000_000_000.0);
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        assert_eq!(
+            shadow_len(&state),
+            300,
+            "a 300-channel cache must be adopted by a 300-channel scanner"
+        );
+        let shadow = state.shadow.read().unwrap();
+        assert_eq!(
+            shadow.channels.get(&1).map(|c| c.alpha_tag.as_str()),
+            Some("CH1"),
+            "the adopted rows must be the cached ones"
+        );
+    }
+
+    /// REGRESSION GUARD: a cache written by a BIGGER scanner is discarded.
+    ///
+    /// Without this, a BC125AT's 500-row cache loads onto a BC75XLT and 200
+    /// channels the radio does not have render as real. Nothing panics --
+    /// `index_to_bank` returns 0 above `channel_count` while the frontend's
+    /// `deriveBankFromIndex` clamps to `bankCount`, so the phantoms land in
+    /// bank 10 of a radio whose bank 10 holds 30 channels -- and `export_csv`
+    /// writes all 500 rows to the user's file. Plausible-looking and silent,
+    /// which is exactly what the bank-derivation third rail warns about.
+    #[test]
+    fn a_cache_from_a_larger_scanner_is_discarded() {
+        let state = crate::api::default_state();
+        seed_cache(&state, 500, 1_000_000_000.0);
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        assert_eq!(
+            shadow_len(&state),
+            0,
+            "a 500-channel cache must not render on a 300-channel scanner"
+        );
+    }
+
+    /// REGRESSION GUARD: a cache written by a SMALLER scanner is discarded too.
+    ///
+    /// Paired with the test above on purpose, and it is the one that pins the
+    /// guard to `!=` rather than `>`. A `>` comparison passes the larger-cache
+    /// test and silently admits this one: a BC75XLT's 300 rows load onto a
+    /// BC125AT, and because the frontend suppresses its startup sync whenever
+    /// channels exist, the wrong radio's memory renders and never refreshes.
+    /// Both directions are the same mistake.
+    #[test]
+    fn a_cache_from_a_smaller_scanner_is_discarded() {
+        let state = crate::api::default_state();
+        seed_cache(&state, 300, 1_000_000_000.0);
+
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+
+        assert_eq!(
+            shadow_len(&state),
+            0,
+            "a 300-channel cache must not render on a 500-channel scanner"
+        );
+    }
+
+    /// REGRESSION GUARD: a reconnect must not overwrite live channel memory.
+    ///
+    /// Nothing clears `shadow.channels` on disconnect (`mark_disconnected`
+    /// touches `DeviceInfo` and `live.stale` only), and the reconnect loop
+    /// re-runs this function on every successful reopen -- every few seconds
+    /// for a flapping USB link. An unconditional load would stomp edits made
+    /// this session with rows up to CHANNEL_CACHE_FLUSH_SECS old.
+    #[test]
+    fn a_reconnect_does_not_overwrite_live_channels() {
+        use crate::state::ChannelData;
+        let state = crate::api::default_state();
+        seed_cache(&state, 300, 1_000_000_000.0);
+
+        // First connect adopts the cache.
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        assert_eq!(shadow_len(&state), 300, "precondition: cache adopted");
+
+        // The user edits a channel; it is on the radio but not yet flushed.
+        state.shadow.write().unwrap().channels.insert(
+            1,
+            ChannelData {
+                index: 1,
+                alpha_tag: "EDITED".to_string(),
+                ..Default::default()
+            },
+        );
+
+        // The scanner drops and comes back.
+        mark_disconnected(&state, "unplugged");
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        assert_eq!(
+            state
+                .shadow
+                .read()
+                .unwrap()
+                .channels
+                .get(&1)
+                .map(|c| c.alpha_tag.as_str()),
+            Some("EDITED"),
+            "a reconnect must not replace live memory with the older cache"
+        );
+    }
+
+    /// REGRESSION GUARD: adopting a cache restores WHEN the radio was read.
+    ///
+    /// `shadow.last_sync` is what the periodic flush re-persists and what PR 4
+    /// reports. Leaving it at its 0.0 default would make the next flush stamp
+    /// "now" (the `epoch_now()` fallback), erasing the real age of the memory
+    /// within one flush interval of launch -- and a staleness indicator that
+    /// always reads "moments ago" is worse than none.
+    #[test]
+    fn a_loaded_cache_restores_the_sync_time() {
+        let state = crate::api::default_state();
+        seed_cache(&state, 300, 1_000_000_000.0);
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        assert_eq!(
+            state.shadow.read().unwrap().last_sync,
+            1_000_000_000.0,
+            "the adopted cache's sync time must survive into the shadow"
+        );
     }
 }

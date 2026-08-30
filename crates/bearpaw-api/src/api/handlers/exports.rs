@@ -220,12 +220,19 @@ pub(crate) async fn export_bc125at_ss_file(
             custom_ranges.push((idx, lower_hz, upper_hz));
         }
 
-        // Channels come from the shadow cache (populated by memory sync), not
-        // a live CIN walk. Re-reading all 500 channels over the wire took
-        // ~150s (300ms x 500) and blew past client timeouts, so the export
-        // "did nothing". CSV export already reads the cache; this matches it.
-        // Both reflect the last memory sync. The tone column is rebuilt to the
+        // Channels come from the shadow cache, not a live CIN walk. Re-reading
+        // all 500 channels over the wire took ~150s (300ms x 500) and blew past
+        // client timeouts, so the export "did nothing". CSV export already
+        // reads the cache; this matches it. The tone column is rebuilt to the
         // same label format the CIN walk produced (`tone_code_label`).
+        //
+        // Since #413 the shadow may have been adopted from SQLite at connect
+        // rather than read from the radio this session, so what this exports is
+        // "the last memory sync, whenever that was" -- possibly days ago, and
+        // possibly out of date if the channels were edited on the scanner's own
+        // keypad in between. That is the same staleness the Channels tab
+        // renders, which is the point of the cache; `synced_at` is how a user
+        // sees how old it is.
         // (index, name, frequency_hz, modulation, tone, lockout, delay, priority)
         type SsChannelRow = (u16, String, i64, String, String, String, String, String);
         let channels: Vec<SsChannelRow> = {
