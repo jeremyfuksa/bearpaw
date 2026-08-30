@@ -156,9 +156,28 @@ BC75XLT   GeneralSearch  delay  code  direction
 The keyword plus 17 slots holding global lockout frequencies. **Absent entirely
 when there are no lockouts** — confirmed by the blank file.
 
-Bearpaw does not write this section, so exported global lockouts are lost. Only
-one sample containing it exists, with a single frequency in slot 2 and slot 1
-empty, which cannot distinguish fixed positions from a packed list. See #459.
+**It is a PACKED list, offset by one.** Values start at field 2 and fill
+forward in insertion order; field 1 is never a frequency slot. Settled
+2026-08-29 by setting two global lockouts on a real BC125AT in a known order
+and having BC125AT SS read the radio:
+
+```
+GLF walk (Bearpaw)   [1] 116.7333 MHz   [2] 122.8833 MHz
+AvoidFreqs           <empty>  116733300  122883300  <14 empties>
+                     field 1  field 2    field 3
+```
+
+The one pre-existing sample agrees rather than conflicting: its single value
+also sat at field 2 with field 1 empty, which alone looked like it might be a
+fixed position. Two values in insertion order settle it.
+
+Frequencies are **integer Hz**, the same encoding `C-Freq` uses. Insertion
+order is meaningful because `LOF` appends rather than sorting (confirmed on a
+BC75XLT across a six-entry list, #502), so the file's order is the order the
+user added them.
+
+Bearpaw does not write this section, so exported global lockouts are still
+lost. See #459.
 
 ### `Conventional` — 4, `C-Freq` — 9
 
@@ -173,6 +192,26 @@ C-Freq  idx  name  freqHz  modulation  tone  lockout  delay  priority
 
 On a BC75XLT, `name`, `modulation` and `tone` are always **empty**: those `CIN`
 fields are `[RSV]` on that model.
+
+**The `tone` column uses Uniden's own spellings, which are NOT the labels
+Bearpaw shows in the UI.** Measured 2026-08-29 by writing a CTCSS and a DCS
+channel to a real BC125AT and having BC125AT SS read the radio back:
+
+| tone | file writes |
+|---|---|
+| none | `Off` |
+| CTCSS 100.0 Hz | `C100.0` |
+| DCS 023 | `D023` |
+
+A one-letter prefix, no space, DCS zero-padded to three digits and given as the
+Motorola number rather than the wire code. Bearpaw wrote `100.0` and `DCS 023`
+until #516; Uniden's parser reads neither and silently defaults the column to
+`Off`, which was verified by round-tripping a Bearpaw file through the tool —
+both tones came back `Off` while every other field survived.
+
+No reference file has ever carried a **search**-tone channel, so the spelling
+for `ToneSquelchKind::Search` remains a guess (`Srch`) and is flagged as such
+at the code site.
 
 **`delay` is a constant `2` on the BC75XLT.** 600 of 600 channels across two
 real files, empty slots included. It cannot be echoing the radio — that model's
@@ -203,9 +242,18 @@ inside the bracket.
 
 ## Known gaps
 
-- **`AvoidFreqs` is never written** (#459) — global lockouts do not survive an export
+- **`AvoidFreqs` is never written** (#459) — global lockouts do not survive an
+  export. The format itself is now fully known (see that section); what is
+  missing is the writer.
 - **No importer for `.bc75xlt_ss`** (#460) — Bearpaw writes it but cannot read it
-- **The BC125AT export has not been opened in Uniden's software.** The BC75XLT
-  export has (2026-08-27). The BC125AT path is the older code and has had two
-  structural bugs found in one day — CRLF (#456) and interleaving (#461) —
-  neither of which any test caught until a sequence-exact comparison existed.
+- **The search-tone spelling is unverified.** `Off`, CTCSS and DCS are measured;
+  a channel using the scanner's tone-search mode has never appeared in any
+  reference file.
+
+### Closed
+
+- ~~**The BC125AT export has not been opened in Uniden's software.**~~ Opened in
+  BC125AT SS on 2026-08-29 (#464). It loads, and a round-trip preserves every
+  field except the tone column, which was the bug that verification existed to
+  find (#516). Modulation survives, so the `AUTO` vs `Auto` casing difference
+  (#507) is cosmetic.

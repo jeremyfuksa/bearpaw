@@ -3788,6 +3788,94 @@ mod tests {
         assert_ne!(channel.bank, 0, "bank 0 is the parser's placeholder");
     }
 
+    /// REGRESSION GUARD (#516): the tone column must reach the FILE, not just
+    /// the helper. `ss_tone_label` is unit-tested next to itself; this asserts
+    /// the emitted `C-Freq` line, so a future refactor that stops calling it
+    /// (or calls `dcs_code_to_label` again) fails here.
+    ///
+    /// The golden shape test cannot cover this: it compares section and
+    /// field-count runs, and every reference file is `Off` on all 500 rows.
+    #[tokio::test]
+    async fn bc125at_ss_export_writes_unidens_tone_spellings() {
+        let state = default_state();
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for idx in 1..=500u16 {
+                shadow.channels.insert(
+                    idx,
+                    ChannelData {
+                        index: idx,
+                        ..Default::default()
+                    },
+                );
+            }
+            shadow.channels.insert(
+                429,
+                ChannelData {
+                    index: 429,
+                    frequency: 123.0,
+                    modulation: "AM".to_string(),
+                    tone_squelch_kind: crate::state::ToneSquelchKind::Ctcss,
+                    tone_squelch: Some(100.0),
+                    ..Default::default()
+                },
+            );
+            shadow.channels.insert(
+                430,
+                ChannelData {
+                    index: 430,
+                    frequency: 462.5625,
+                    modulation: "NFM".to_string(),
+                    tone_squelch_kind: crate::state::ToneSquelchKind::Dcs,
+                    tone_dcs_code: Some(128),
+                    ..Default::default()
+                },
+            );
+        }
+        let _scanner = FakeScanner::attach(&state, |cmd: &str| {
+            Ok(match cmd {
+                "BLT" => "BLT,AF".to_string(),
+                "KBP" => "KBP,99,0".to_string(),
+                "BSV" => "BSV,2".to_string(),
+                "PRI" => "PRI,0".to_string(),
+                "SCG" => "SCG,1111111111".to_string(),
+                "SCO" => "SCO,1,0".to_string(),
+                "CLC" => "CLC,0,0,0,11111,0".to_string(),
+                "WXS" => "WXS,0".to_string(),
+                "CNT" => "CNT,8".to_string(),
+                "VOL" => "VOL,14".to_string(),
+                "SQL" => "SQL,6".to_string(),
+                c if c.starts_with("CSP,") => format!("{c},25000000,27995000"),
+                c if c.starts_with("SSP,") => format!("{c},0"),
+                _ => "OK".to_string(),
+            })
+        });
+
+        let response =
+            super::handlers::exports::export_bc125at_ss_file(axum::extract::State(state.clone()))
+                .await
+                .expect("export should succeed");
+        let body = axum::response::IntoResponse::into_response(response);
+        let bytes = axum::body::to_bytes(body.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let out = String::from_utf8(bytes.to_vec()).expect("utf8");
+
+        // Measured against BC125AT SS reading a real radio, 2026-08-29.
+        assert!(
+            out.contains("C-Freq\t429\t\t123000000\tAM\tC100.0\t"),
+            "CTCSS must be written as C100.0"
+        );
+        assert!(
+            out.contains("C-Freq\t430\t\t462562500\tNFM\tD023\t"),
+            "DCS must be written as D023"
+        );
+        assert!(
+            !out.contains("DCS 023"),
+            "the UI's `DCS 023` label must never reach the file"
+        );
+    }
+
     /// GOLDEN TEST: the `.bc125at_ss` we write must match the shape of a file
     /// written by Uniden's own tool.
     ///
