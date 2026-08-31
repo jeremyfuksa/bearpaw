@@ -878,6 +878,7 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
         // whose serial failed to read gets its own stable profile instead of
         // colliding with a real one.
         let usb_serial = crate::config::usb_serial_for_port(port_label);
+        let previous_id = state.device.read().ok().and_then(|d| d.scanner_id.clone());
         let resolved = super::scanner_registry::resolve_scanner(
             &state.preferences_db_path,
             &model,
@@ -888,6 +889,35 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             if d.serial_number.is_none() {
                 d.serial_number = usb_serial.clone();
             }
+        }
+
+        // REGRESSION GUARD (`a_different_radio_does_not_inherit_the_last_ones_channels`):
+        // a DIFFERENT scanner on the same port means the shadow belongs to the
+        // radio that just left. Clear it.
+        //
+        // Nothing else does. `mark_disconnected` touches DeviceInfo and
+        // `live.stale` only, and `load_channel_cache`'s "a populated shadow
+        // wins" rule -- correct for a reconnect of the SAME radio -- then
+        // declines to load, so the capacity guard never sees the stale map
+        // either. The next flush writes that map under the NEW scanner_id,
+        // and `save_channels` DELETEs the target profile's rows before
+        // inserting. Reproduced: a BC75XLT's 300 channels landed in a
+        // BC125AT's profile.
+        //
+        // Reachable wherever two units share a port string across a replug --
+        // two CP210x radios both landing on /dev/ttyUSB0, say. Same-capacity
+        // units are the worst case, because the capacity guard cannot catch it
+        // on the next launch either: 300 == 300.
+        //
+        // Only on a CHANGE. `previous_id.is_some()` keeps the first connect of
+        // a session from wiping channels a handler read off the wire before any
+        // MDL landed.
+        if previous_id.is_some() && previous_id != resolved {
+            if let Ok(mut shadow) = state.shadow.write() {
+                shadow.channels.clear();
+                shadow.last_sync = 0.0;
+            }
+            info!("scanner changed; cleared the previous radio's channel memory");
         }
         if let Some(id) = resolved.as_deref() {
             super::channel_cache::adopt_placeholder_cache(
@@ -1943,5 +1973,82 @@ mod tests {
         // it, with a model. The fallback must not fire a second time.
         assert!(!should_announce_connect(true, false));
         assert!(!should_announce_connect(true, true));
+    }
+
+    /// REGRESSION GUARD: a DIFFERENT radio must not inherit the last one's
+    /// channels, and must not overwrite its profile with them.
+    ///
+    /// Found by review, then reproduced: connect a BC75XLT, sync 300 channels,
+    /// then connect a BC125AT on the same port string. Nothing clears
+    /// `shadow.channels` on disconnect, so the BC75XLT's map was still in
+    /// memory; `load_channel_cache` declined to load ("a populated shadow
+    /// wins", which is correct for a reconnect of the SAME radio) so the
+    /// capacity guard never saw it; and the next flush wrote those 300
+    /// channels under the BC125AT's `scanner_id`, DELETEing that profile's own
+    /// rows first.
+    ///
+    /// Reachable wherever two units share a port string across a replug -- two
+    /// CP210x radios both landing on `/dev/ttyUSB0`. Two same-capacity units
+    /// are the worst case: the capacity guard cannot catch it on the next
+    /// launch either, because the counts match.
+    ///
+    /// The existing reconnect guard passes both connects the SAME model, so it
+    /// exercised a same-radio reconnect and never an identity change. This is
+    /// the case no test in the suite covered.
+    #[test]
+    fn a_different_radio_does_not_inherit_the_last_ones_channels() {
+        let state = crate::api::default_state();
+
+        // Radio A: 300 channels, synced and persisted.
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/ttyUSB0");
+        let id_a = state.scanner_id();
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            shadow.channels = channel_map(300);
+            shadow.last_sync = 1_000_000_000.0;
+        }
+        crate::api::channel_cache::flush_channel_cache(&state);
+
+        // Radio B arrives on the same port string.
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/ttyUSB0");
+        let id_b = state.scanner_id();
+        assert_ne!(id_a, id_b, "precondition: a different radio");
+
+        assert_eq!(
+            shadow_len(&state),
+            0,
+            "the departed radio's channels must not still be in memory"
+        );
+
+        // And a flush must not write them into B's profile.
+        crate::api::channel_cache::flush_channel_cache(&state);
+        assert!(
+            crate::api::channel_cache::load_channels(&state.preferences_db_path, &id_b).is_empty(),
+            "the new radio's profile must not be filled with the old radio's channels"
+        );
+        assert_eq!(
+            crate::api::channel_cache::load_channels(&state.preferences_db_path, &id_a).len(),
+            300,
+            "and the departed radio's own cache must survive intact"
+        );
+    }
+
+    /// Paired with the guard above: reconnecting the SAME radio must KEEP its
+    /// channels. Clearing unconditionally would throw away live edits on every
+    /// USB blip -- a flapping link reconnects every few seconds.
+    #[test]
+    fn the_same_radio_reconnecting_keeps_its_channels() {
+        let state = crate::api::default_state();
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/ttyUSB0");
+        state.shadow.write().unwrap().channels = channel_map(300);
+
+        mark_disconnected(&state, "unplugged");
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/ttyUSB0");
+
+        assert_eq!(
+            shadow_len(&state),
+            300,
+            "the same radio's live channel memory must survive a replug"
+        );
     }
 }
