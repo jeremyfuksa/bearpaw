@@ -1011,25 +1011,41 @@ mod tests {
     /// Expect `0001` on a BC125AT. That is a firmware constant, identical on
     /// every unit; it is not a per-unit id. See `scanner_registry`.
     ///
-    /// OPEN HARDWARE QUESTION (#570), unanswered as of 2026-08-31. Nothing in
-    /// CI touches this, so the macOS direct-USB path ships unverified. To
-    /// settle it, run BOTH ways and record the answer here with a date:
+    /// ANSWERED ON HARDWARE 2026-08-31: there is NO contention. A second
+    /// `rusb::Context` can open a BC125AT that `UsbTransport` has already
+    /// opened and claimed, on macOS, and read the string descriptor.
     ///
-    /// 1. With Bearpaw NOT running -> establishes the baseline serial.
-    /// 2. With Bearpaw running and CONNECTED to the same BC125AT -> this is
-    ///    the real question. `UsbTransport::open()` has already claimed the
-    ///    interface, and this builds a SECOND `rusb::Context` and calls
-    ///    `dev.open()` on the same device.
+    /// This was #570's open question and it shipped unverified, because
+    /// nothing in CI touches the direct-USB path and this function's own doc
+    /// comment flagged the failure as one that would be silent.
     ///
-    /// If (2) returns None while (1) returns `0001`, the contention is real and
-    /// the descriptor read must be replaced with something that does not need a
-    /// second handle -- reading the serial once during `UsbTransport::open()`
-    /// and carrying it, most likely.
+    /// How it was settled. A backend was run from source against a live
+    /// BC125AT with `usb_vid`/`usb_pid` configured, so `resolve_scanner_port`
+    /// fell through to the `usb:1965:0017` pseudo-target -- confirmed by the
+    /// absence of a `last_scanner.json`, which `update_device_info_from_mdl`
+    /// skips writing for a `usb:` port. `update_device_info_from_mdl` then ran
+    /// `usb_serial_for_port` on that target while the poll loop held the bulk
+    /// endpoints, and `resolve_scanner` persisted the result. The row it wrote:
     ///
-    /// Lower stakes than it looks, and only in one direction: a BC125AT's
-    /// serial is a constant, so `match_index` ignores it entirely and a None
-    /// here costs that model nothing. A BC75XLT is unaffected either way -- its
-    /// CP210x binds normally, so it never takes this path at all.
+    /// ```text
+    /// match_index | model   | usb_serial
+    /// BC125AT     | BC125AT | 0001
+    /// ```
+    ///
+    /// A `usb_serial` of `0001` rather than NULL is the descriptor read
+    /// succeeding against a claimed device. It also re-confirms the firmware
+    /// constant -- see `scanner_registry::match_index`, which is why the
+    /// `match_index` column has no serial segment.
+    ///
+    /// So the descriptor read does NOT need replacing with a
+    /// serial-captured-during-`UsbTransport::open()` scheme. What remains is
+    /// only that the call is now WASTED for this family: `match_index` ignores
+    /// a BC125AT's serial, so the one path that takes this branch discards the
+    /// answer. Skipping the read when `has_unique_usb_serial` is false would
+    /// remove a syscall, not a hazard.
+    ///
+    /// A BC75XLT never takes this path at all -- its CP210x binds normally, so
+    /// it resolves through `available_ports()`.
     #[test]
     #[ignore]
     fn usb_serial_reads_from_a_live_bc125at() {
