@@ -26,6 +26,16 @@ const APP_PATH = resolve(HERE, '..', 'App.tsx');
 const APP_SOURCE = readFileSync(APP_PATH, 'utf8');
 
 /**
+ * The auto-sync effect moved out of App.tsx in #568 so it could be exercised
+ * by mounting it (see `useAutoMemorySync.test.tsx`). Its source-level guards
+ * are still worth keeping -- they pin the ORDER and SHAPE of the decision,
+ * which a behavioural test covers less precisely -- so they read the hook's
+ * source rather than App's.
+ */
+const AUTO_SYNC_PATH = resolve(HERE, '..', '..', 'hooks', 'useAutoMemorySync.ts');
+const AUTO_SYNC_SOURCE = readFileSync(AUTO_SYNC_PATH, 'utf8');
+
+/**
  * Extracts the deps array of the WebSocket-subscription useEffect — the one
  * whose body sets up `unsubscribeState`, `unsubscribeEvent`,
  * `unsubscribeDeviceInfo`, `unsubscribeProgress`. Returns the raw deps text
@@ -282,7 +292,7 @@ describe('App.tsx regression guards', () => {
     // neither path works. That is the vacuous-guard shape this file exists to
     // prevent, and it nearly happened here.
     it('the auto-sync effect still returns early when the preference is OFF', () => {
-      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const { body } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       expect(body).toMatch(
         /if\s*\(\s*!preferences\.rereadMemoryOnConnect\s*&&\s*channels\.length\s*>\s*0\s*\)\s*return\s*;/,
       );
@@ -292,7 +302,7 @@ describe('App.tsx regression guards', () => {
       // Without the negation the effect would sync only when the preference is
       // OFF -- backwards, and green against a test that merely looked for the
       // identifier somewhere in the body.
-      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const { body } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       expect(body).toMatch(/!preferences\.rereadMemoryOnConnect\s*&&/);
     });
 
@@ -306,7 +316,7 @@ describe('App.tsx regression guards', () => {
       // tests: they set the store synchronously, so nothing here ever
       // exercised the load race. The same hazard is already guarded for
       // `check_updates_on_launch`.
-      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const { body } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       expect(body).toMatch(/if\s*\(\s*!preferencesLoaded\s*\)\s*return\s*;/);
     });
 
@@ -314,7 +324,7 @@ describe('App.tsx regression guards', () => {
       // Reading the preference before waiting for it is the bug, so ordering
       // is the assertion. A build with both lines in the wrong order passes
       // any test that only checks both are present.
-      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const { body } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       const wait = body.search(/!preferencesLoaded/);
       const use = body.search(/!preferences\.rereadMemoryOnConnect/);
       expect(wait).toBeGreaterThanOrEqual(0);
@@ -326,7 +336,7 @@ describe('App.tsx regression guards', () => {
       // Without it in the deps the effect never re-runs after the fetch
       // settles, so the early return above would permanently suppress the
       // launch sync for everyone.
-      const { deps } = extractAutoSyncEffect(APP_SOURCE);
+      const { deps } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       expect(deps).toMatch(/preferencesLoaded/);
     });
 
@@ -344,7 +354,7 @@ describe('App.tsx regression guards', () => {
       //
       // Asking the backend removes the ordering assumption instead of making
       // it likelier to hold.
-      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const { body } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       const guardIdx = body.search(/if\s*\(\s*!preferences\.rereadMemoryOnConnect\s*\)\s*\{/);
       const fetchIdx = body.search(/await\s+api\.getChannels\(\)/);
       const syncIdx = body.search(/await\s+api\.syncMemory\(\)/);
@@ -353,26 +363,42 @@ describe('App.tsx regression guards', () => {
       expect(syncIdx).toBeGreaterThan(fetchIdx);
     });
 
-    it('the effect re-evaluates when the preference changes', () => {
-      // Without it in the deps, toggling the switch would not take effect
-      // until something else re-ran the effect -- so the setting would appear
-      // to do nothing until the next connect.
-      const { deps } = extractAutoSyncEffect(APP_SOURCE);
-      expect(deps).toMatch(/preferences\.rereadMemoryOnConnect/);
+    it('the preference is read at invocation, not tracked as a dependency', () => {
+      // REVERSED IN #568, deliberately. This guard used to assert the opposite
+      // -- that `preferences.rereadMemoryOnConnect` IS in the deps array -- on
+      // the reasoning that "the setting would appear to do nothing until the
+      // next connect".
+      //
+      // That reasoning was backwards. The preference governs what happens when
+      // a scanner CONNECTS, so taking effect at the next connect is correct.
+      // As a dependency it made the toggle itself drive the hardware: flipping
+      // it ON while connected re-ran the effect, cleared the early return, and
+      // sent `api.syncMemory()` -- covering the settings page the user was
+      // standing on with the full-screen overlay and holding the radio in
+      // program mode for the whole walk.
+      //
+      // The old guard could not catch that: a build with the bug contains the
+      // string perfectly. Presence of a string is not use of it.
+      //
+      // `preferencesLoaded` is what carries a stored value to an
+      // already-connected launch, and it is asserted separately above.
+      const { body, deps } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
+      expect(deps).not.toMatch(/preferences\.rereadMemoryOnConnect/);
+      expect(body).toMatch(/useStore\.getState\(\)\.preferences/);
     });
 
     it('the auto-sync effect re-evaluates when the channel count changes', () => {
       // Without `channels.length` in deps the effect runs once, before the
       // mount fetch resolves, and syncs anyway -- the check above would be
       // present and useless.
-      const { deps } = extractAutoSyncEffect(APP_SOURCE);
+      const { deps } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       expect(deps).toMatch(/\bchannels\.length\b/);
     });
 
     it('the early return precedes the syncMemory call', () => {
       // Ordering matters: a guard placed after `api.syncMemory()` reads as a
       // guard and suppresses nothing.
-      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const { body } = extractAutoSyncEffect(AUTO_SYNC_SOURCE);
       const guard = body.search(/channels\.length\s*>\s*0\s*\)\s*return\s*;/);
       const call = body.indexOf('api.syncMemory()');
       expect(guard).toBeGreaterThanOrEqual(0);
