@@ -8,7 +8,6 @@ use std::time::Duration;
 use tracing::warn;
 
 use crate::protocol::{classify_response, ScannerReply};
-use crate::state::ChannelData;
 
 use super::super::{
     command_sender, send_raw_command, set_channel_lockout_on_scanner, set_setting_section,
@@ -233,37 +232,37 @@ pub(crate) async fn post_lockout(
             if !(1..=state.capabilities().channel_count).contains(&index) {
                 return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
             }
-            let updated = if command_sender(&state).is_ok() {
-                let current = {
-                    let shadow = state.shadow.read().unwrap();
-                    shadow
-                        .channels
-                        .get(&index)
-                        .map(|c| c.lockout)
-                        .unwrap_or(false)
-                };
-                set_channel_lockout_on_scanner(&state, index, !current).await?
-            } else {
-                let mut shadow = state.shadow.write().unwrap();
-                let ch = shadow.channels.entry(index).or_insert(ChannelData {
-                    index,
-                    frequency: live.frequency,
-                    modulation: live.modulation,
-                    alpha_tag: live.alpha_tag.unwrap_or_default(),
-                    delay: 2,
-                    lockout: false,
-                    priority: false,
-                    tone_squelch: None,
-                    tone_squelch_kind: Default::default(),
-                    tone_dcs_code: None,
-                    // Capability-aware: a BC75XLT's banks are 30 wide, so
-                    // the free function's fixed /50 reported the wrong bank in
-                    // the KEY-command echo. See #401.
-                    bank: state.capabilities().index_to_bank(index),
-                });
-                ch.lockout = !ch.lockout;
-                ch.clone()
+            // REGRESSION GUARD
+            // (`a_permanent_lockout_without_a_scanner_fails_instead_of_inventing_a_channel`):
+            // with no scanner attached this FAILS. It used to fabricate.
+            //
+            // The old else-arm built a `ChannelData` out of live state -- with
+            // a hardcoded `delay: 2` -- inserted it into `shadow.channels`, and
+            // returned HTTP 200 while nothing reached the radio (#556,
+            // finding 1). That is a direct violation of the rule in
+            // `channel_cache`'s module header: the cache is a read accelerator,
+            // and nothing may write to it and upload later. A value invented
+            // here never came back from a scanner read, because there was no
+            // scanner.
+            //
+            // #413 changed the severity without changing this code. The shadow
+            // is flushed to SQLite within 30 s and re-adopted at every connect,
+            // so an invented row now persists across restarts instead of dying
+            // with the session.
+            //
+            // `command_sender` is checked rather than assumed: every other
+            // write path in this module already answers `device_disconnected`
+            // here, and this was the one that pretended otherwise.
+            command_sender(&state)?;
+            let current = {
+                let shadow = state.shadow.read().unwrap();
+                shadow
+                    .channels
+                    .get(&index)
+                    .map(|c| c.lockout)
+                    .unwrap_or(false)
             };
+            let updated = set_channel_lockout_on_scanner(&state, index, !current).await?;
             state
                 .shadow
                 .write()
