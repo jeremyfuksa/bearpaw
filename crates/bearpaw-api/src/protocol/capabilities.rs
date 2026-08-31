@@ -200,6 +200,25 @@ pub struct ScannerCapabilities {
     /// `buildEmptyDraft` must match it exactly or cleared channels stay
     /// permanently pending. See the third-rail table in CLAUDE.md.
     pub cleared_delay: i8,
+    /// Whether this model's USB serial identifies the UNIT rather than the
+    /// model.
+    ///
+    /// Measured on both units 2026-08-26: every BC125AT reports usb_serial
+    /// `0001`. It is a firmware constant, so `BC125AT:0001` never meant "this
+    /// radio" -- it meant "a BC125AT". The BC75XLT's comes from a CP2104 bridge
+    /// that Silicon Labs programs per unit, so there it is a real
+    /// discriminator.
+    ///
+    /// `scanner_registry::match_index` reads this to decide whether the serial
+    /// belongs in the identity key at all. Including a constant bought no
+    /// precision and cost a profile split whenever the descriptor read failed:
+    /// the same radio would key as `BC125AT:0001` on one launch and
+    /// `BC125AT:unknown` on the next, each with its own channel cache (#570).
+    ///
+    /// Named for what the VALUE is, not for what Bearpaw does with it -- unlike
+    /// `has_backlight_control`, which names a capability. False here does not
+    /// mean "no serial"; it means "the serial does not distinguish units".
+    pub has_unique_usb_serial: bool,
     /// Serial baud rate this model speaks.
     pub default_baud: u32,
     /// Receive coverage, as inclusive `(low_mhz, high_mhz)` bands.
@@ -249,6 +268,8 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     // Per docs/BC125AT_PROTOCOL.md §5.3. Negatives are pre-delays.
     valid_delays: &[-10, -5, 0, 1, 2, 3, 4, 5],
     cleared_delay: 2,
+    // Every unit reports `0001` (measured on both, 2026-08-26).
+    has_unique_usb_serial: false,
     default_baud: 115_200,
     // docs/SCANNER_PROTOCOL_REFERENCE.md §6.
     coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (225.0, 380.0), (400.0, 512.0)],
@@ -292,6 +313,8 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     valid_delays: &[0, 1],
     // Observed: `CIN,299 -> CIN,299,,00000000,,,0,1,0`.
     cleared_delay: 0,
+    // The CP2104 bridge is programmed per unit by Silicon Labs, e.g. 020D43D8.
+    has_unique_usb_serial: true,
     default_baud: 57_600,
     // Owner's manual, "FREQUENCY RANGE". No 225-380 band; UHF starts at 406.
     coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (406.0, 512.0)],

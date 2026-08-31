@@ -37,6 +37,7 @@ export const DEFAULT_CAPABILITIES: ScannerCapabilities = {
   key_beep_needs_program_mode: false,
   valid_delays: [-10, -5, 0, 1, 2, 3, 4, 5],
   cleared_delay: 2,
+  has_unique_usb_serial: false,
   default_baud: 115200,
   coverage_bands: [
     [25, 54],

@@ -87,6 +87,7 @@ capabilities are always read under one lock.
 | `key_beep_needs_program_mode` | false | true (`KBP,NG` outside PRG) |
 | `valid_delays` | `-10,-5,0,1,2,3,4,5` (seconds) | `0,1` (boolean) |
 | `cleared_delay` | 2 | 0 |
+| `has_unique_usb_serial` | false (every unit reports `0001`) | true (per-unit CP2104) |
 | `default_baud` | 115200 | 57600 |
 | `coverage_bands` | 25–54, 108–174, 225–380, 400–512 | 25–54, 108–174, 406–512 |
 

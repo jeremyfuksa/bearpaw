@@ -159,6 +159,16 @@ export interface ScannerCapabilities {
    * See the third-rail table in CLAUDE.md.
    */
   cleared_delay: number;
+  /**
+   * Whether this model's USB serial identifies the UNIT rather than the model.
+   *
+   * Every BC125AT reports `0001` — a firmware constant, measured on both units
+   * 2026-08-26 — while a BC75XLT's comes from a per-unit CP2104 bridge. The
+   * backend reads this to decide whether the serial belongs in a scanner's
+   * identity key at all (#570). False does not mean "no serial"; it means the
+   * serial does not distinguish units.
+   */
+  has_unique_usb_serial: boolean;
   /** Serial baud rate this model speaks. */
   default_baud: number;
   /**

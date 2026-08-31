@@ -47,6 +47,7 @@ const EXPECTED_KEYS = [
   'key_beep_needs_program_mode',
   'valid_delays',
   'cleared_delay',
+  'has_unique_usb_serial',
   'default_baud',
   'coverage_bands',
 ] as const;
@@ -88,6 +89,7 @@ describe('ScannerCapabilities contract', () => {
     expect(typeof caps.key_beep_needs_program_mode).toBe('boolean');
     expect(Array.isArray(caps.valid_delays)).toBe(true);
     expect(typeof caps.cleared_delay).toBe('number');
+    expect(typeof caps.has_unique_usb_serial).toBe('boolean');
     expect(typeof caps.default_baud).toBe('number');
     expect(Array.isArray(caps.coverage_bands)).toBe(true);
     for (const band of caps.coverage_bands) {
