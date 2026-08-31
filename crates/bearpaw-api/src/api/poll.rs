@@ -1648,9 +1648,10 @@ mod tests {
     /// route, and invisible to every other guard here.
     #[test]
     fn channels_survive_a_restart_and_keep_their_age() {
-        use crate::api::channel_cache::{
-            flush_channel_cache, last_synced_at, PLACEHOLDER_SCANNER_ID,
-        };
+        // `PLACEHOLDER_SCANNER_ID` was imported here until #576. Both sessions
+        // identify the same radio now, so the test reads under the resolved
+        // profile and never touches the placeholder.
+        use crate::api::channel_cache::{flush_channel_cache, last_synced_at};
         const SYNCED_AT: f64 = 1_000_000_000.0;
 
         // --- Session A: connect, complete a sync, flush. ---

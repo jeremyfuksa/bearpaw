@@ -254,13 +254,19 @@ describe('App.tsx regression guards', () => {
     // /memory/channels now returns a full list on a warm cache.
     //
     // The ONLY thing that turns that into "no startup sync" is the
-    // `channels.length > 0` early return in the auto-sync effect. There is
-    // no WS message meaning "channels changed", and the connect-edge
-    // device_info broadcast never fires (#539), so nothing else can suppress
-    // the sync. Dropping the check -- or dropping `channels.length` from the
-    // deps array, which stops the effect re-evaluating when the fetch lands
-    // -- restores the blocking overlay for every user with a warm cache,
-    // with no error and no visible cause.
+    // `channels.length > 0` early return in the auto-sync effect. There is no
+    // WS message meaning "channels changed", so nothing else can suppress the
+    // sync. Dropping the check -- or dropping `channels.length` from the deps
+    // array, which stops the effect re-evaluating when the fetch lands --
+    // restores the blocking overlay for every user with a warm cache, with no
+    // error and no visible cause.
+    //
+    // CORRECTED (#576): this used to add "and the connect-edge device_info
+    // broadcast never fires (#539)". It does fire -- #551 moved
+    // `connection_status = "connected"` out of the port-open path so
+    // `transitioned_to_connected` becomes true, and #552 built App's
+    // connect-edge channel refetch on it. Acting on the old claim would have
+    // read that refetch as dead code and removed it.
     //
     // This is asserted at source level for the reason given at the top of
     // this file: mounting App needs mocks for the WS context, Tauri shell,
