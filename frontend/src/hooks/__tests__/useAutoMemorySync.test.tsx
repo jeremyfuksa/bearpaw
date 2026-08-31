@@ -158,4 +158,80 @@ describe('useAutoMemorySync', () => {
     expect(api.syncMemory).not.toHaveBeenCalled();
     expect(api.getChannels).not.toHaveBeenCalled();
   });
+
+  /**
+   * THE #564 BUG: a radio's first connection synced TWICE.
+   *
+   * Observed on hardware 2026-08-30, tracing a BC75XLT's first-ever connect:
+   *
+   * ```text
+   * 22:14:34  in_progress:true   task_id:sync-41030358  channels=0
+   * 22:14:37  in_progress:true   task_id:sync-19179e20  channels=300
+   * 22:14:40  in_progress:false  task_id:null           channels=300
+   * ```
+   *
+   * `channels.length` is in the deps -- and has to be, so the effect
+   * re-evaluates when the mount fetch lands. With the preference ON there is no
+   * early return, so the sequence was: sync, channels fill, length changes,
+   * effect re-runs, sync again. Self-limiting at exactly two, because the
+   * second sync does not change the length.
+   *
+   * Cold cache only: with a warm one the list is already populated and its
+   * length does not change across the sync.
+   *
+   * Wasteful rather than harmful -- about 5 extra seconds of the radio deaf in
+   * program mode on a first connection -- but the fix is a real one: the effect
+   * has to know a sync already ran FOR THIS CONNECTION, not merely that the
+   * channel list is empty.
+   */
+  it('a first connection syncs once, not twice', async () => {
+    setPreference(true);
+    // Cold cache: nothing in the store yet.
+    const { rerender } = render({ channels: [] });
+    await waitFor(() => expect(api.syncMemory).toHaveBeenCalledTimes(1));
+
+    // The sync completes and fills the list. `channels.length` changes, so the
+    // effect re-runs -- which is exactly what the deps array is for, and
+    // exactly what used to fire the second sync.
+    const filled = [createTestChannel({ index: 1 }), createTestChannel({ index: 2 })];
+    rerender({
+      api,
+      channels: filled,
+      deviceInfo: connected,
+      preferencesLoaded: true,
+      updateSync,
+      setChannels,
+    });
+    await Promise.resolve();
+
+    expect(api.syncMemory).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The other half, and not optional: whatever remembers "already synced" has
+   * to forget on disconnect, or the next radio never syncs at all.
+   *
+   * Asserting only the test above passes for a hook that syncs once per PROCESS
+   * -- which would be a far worse bug than the one being fixed, and invisible
+   * until someone swapped scanners.
+   */
+  it('a reconnect syncs again', async () => {
+    setPreference(true);
+    const { rerender } = render({ channels: [] });
+    await waitFor(() => expect(api.syncMemory).toHaveBeenCalledTimes(1));
+
+    const props = (
+      deviceInfo: ReturnType<typeof createTestDeviceInfo>,
+      channels: ChannelData[],
+    ) => ({ api, channels, deviceInfo, preferencesLoaded: true, updateSync, setChannels });
+
+    // The radio goes away.
+    rerender(props(createTestDeviceInfo({ connection_status: 'disconnected' }), []));
+    await Promise.resolve();
+
+    // And comes back.
+    rerender(props(createTestDeviceInfo({ connection_status: 'connected' }), []));
+
+    await waitFor(() => expect(api.syncMemory).toHaveBeenCalledTimes(2));
+  });
 });

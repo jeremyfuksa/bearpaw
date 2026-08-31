@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore, type SyncState } from '../store/useStore';
 import type { ChannelData, DeviceInfo } from '../types';
 
@@ -80,8 +80,29 @@ export function useAutoMemorySync({
   updateSync,
   setChannels,
 }: AutoMemorySyncParams): void {
+  // REGRESSION GUARD (#564): whether this CONNECTION has already been handled.
+  //
+  // `channels.length` is in the deps and must stay there -- the effect has to
+  // re-evaluate when the mount fetch lands, or it decides before the answer
+  // arrives. On a cold cache that produced two syncs: sync, channels fill,
+  // length changes, effect re-runs, sync again. Self-limiting at exactly two
+  // (the second does not change the length), and measured on a BC75XLT's
+  // first-ever connect as ~10 s of the radio deaf in program mode instead of
+  // ~5.
+  //
+  // "Have we already acted for this connection?" is the question the empty
+  // channel list was standing in for, and it is not the same question.
+  // `sync.hasSyncedInitially` is close but per-SESSION, so a second radio would
+  // never sync -- see the paired reconnect guard.
+  const handledThisConnection = useRef(false);
+
   useEffect(() => {
-    if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
+    if (!deviceInfo || deviceInfo.connection_status !== 'connected') {
+      // Forget on disconnect, so the next connect -- a reconnect, or a
+      // different radio entirely -- syncs again.
+      handledThisConnection.current = false;
+      return;
+    }
     if (useStore.getState().sync.inProgress) return;
     // Wait for the stored preferences before deciding. The store holds
     // DEFAULTS until the fetch settles, and `rereadMemoryOnConnect` defaults
@@ -109,6 +130,11 @@ export function useAutoMemorySync({
     // sides of this condition are pinned, because loosening the assertion to
     // "mentions channels.length" would leave neither path guarded.
     if (!preferences.rereadMemoryOnConnect && channels.length > 0) return;
+    // Everything above is a reason NOT to act, and none of them means this
+    // connection was handled -- so the flag is set here, after the last of
+    // them and before the work, rather than at the top (#564).
+    if (handledThisConnection.current) return;
+    handledThisConnection.current = true;
 
     let active = true;
     const startMemorySync = async () => {
