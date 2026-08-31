@@ -45,6 +45,36 @@ fn tone_kind_from_text(text: &str) -> ToneSquelchKind {
     }
 }
 
+/// Is `channels` a complete image of a radio with `channel_count` slots?
+///
+/// ONE definition, deliberately used on BOTH sides -- `flush_channel_cache`
+/// before a write and `load_channel_cache` after a read. #567 and #569 are the
+/// same question asked in two places, and before this it had two different
+/// answers: the write side never asked at all, and the read side asked
+/// `max(index) == channel_count`, which is a claim about the highest row rather
+/// than about coverage.
+///
+/// Both conditions are required and neither is redundant:
+///
+/// - `len` catches a hole ANYWHERE. `max(index)` only ever noticed a hole at
+///   the top, which is arbitrary from the user's point of view -- a walk that
+///   dropped channel 150 wrote a cache that looked complete.
+/// - `max(index)` pins the coverage to 1..=channel_count. `len` alone would
+///   accept 500 rows numbered 1..=500 from a different radio's map that
+///   happened to survive in the shadow, which is the failure #565 closes at the
+///   call site rather than here.
+///
+/// Together they mean dense: `channel_count` entries, all in `1..=channel_count`.
+///
+/// This does NOT identify the radio -- that is `scanner_id`'s job (#570), and
+/// keeping the two questions apart is what stops one number from quietly
+/// answering both, the way the hardcoded `/ 50` did for bank derivation.
+fn is_complete_image(channels: &HashMap<u16, ChannelData>, channel_count: u16) -> bool {
+    channel_count > 0
+        && channels.len() == channel_count as usize
+        && channels.keys().max().copied() == Some(channel_count)
+}
+
 /// Replace this profile's cached channels with `channels`, in one transaction.
 ///
 /// A snapshot, not a merge: rows for `scanner_id` that are absent from the map
@@ -74,27 +104,40 @@ pub(crate) fn save_channels(
         return;
     }
     for ch in channels.values() {
-        let _ = tx.execute(
-            "INSERT OR REPLACE INTO channel_memory (
+        // REGRESSION GUARD (#569): a failed row aborts the whole write.
+        //
+        // This was `let _ = tx.execute(...)` followed by an unconditional
+        // commit. The DELETE above has already run, so committing after a
+        // failed INSERT persists a cache with a hole -- indistinguishable from
+        // a skipped CIN, and rejected on every subsequent launch. Returning
+        // without committing drops `tx`, which rolls back to the previous
+        // snapshot: an unchanged good cache, not a damaged one.
+        if tx
+            .execute(
+                "INSERT OR REPLACE INTO channel_memory (
                  scanner_id, channel_index, frequency, modulation, alpha_tag,
                  delay, lockout, priority, tone_kind, tone_squelch_hz,
                  tone_dcs_code, synced_at
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            rusqlite::params![
-                scanner_id,
-                ch.index,
-                ch.frequency,
-                ch.modulation,
-                ch.alpha_tag,
-                ch.delay,
-                ch.lockout,
-                ch.priority,
-                tone_kind_to_text(&ch.tone_squelch_kind),
-                ch.tone_squelch,
-                ch.tone_dcs_code,
-                synced_at,
-            ],
-        );
+                rusqlite::params![
+                    scanner_id,
+                    ch.index,
+                    ch.frequency,
+                    ch.modulation,
+                    ch.alpha_tag,
+                    ch.delay,
+                    ch.lockout,
+                    ch.priority,
+                    tone_kind_to_text(&ch.tone_squelch_kind),
+                    ch.tone_squelch,
+                    ch.tone_dcs_code,
+                    synced_at,
+                ],
+            )
+            .is_err()
+        {
+            return;
+        }
     }
     let _ = tx.commit();
 }
@@ -169,7 +212,28 @@ pub(crate) fn flush_channel_cache(state: &AppState) {
         // flush rather than persist a half-updated map; the next tick retries.
         Err(_) => return,
     };
-    if channels.is_empty() {
+    // REGRESSION GUARD (`a_partial_shadow_does_not_overwrite_a_complete_cache`,
+    // `a_holed_walk_does_not_delete_the_good_cache`): only a COMPLETE image is
+    // written.
+    //
+    // `save_channels` DELETEs before it inserts, so every flush is a replace.
+    // "Not empty" was never enough evidence to justify one: several handlers
+    // insert a single channel, and the walk skips a channel it could not read.
+    // Both produced a map that replaced the user's whole cache.
+    //
+    // Capacity comes from the connected radio. Before MDL is parsed
+    // `capabilities()` answers with the BC125AT default of 500, which is safe
+    // HERE only because a shadow that small is refused anyway -- do not copy
+    // this call into a path where the default would be adopted as fact (see
+    // the channel-memory cache rules in CLAUDE.md).
+    let channel_count = state.capabilities().channel_count;
+    if !is_complete_image(&channels, channel_count) {
+        tracing::debug!(
+            len = channels.len(),
+            channel_count,
+            "skipping channel-cache flush: the shadow is not a complete image \
+             of the connected scanner"
+        );
         return;
     }
     // 0.0 is `ShadowState`'s default and means "no sync recorded this session".
@@ -301,29 +365,37 @@ pub(crate) fn load_channel_cache(state: &AppState, channel_count: u16) -> usize 
         return 0;
     }
 
-    // CAPACITY GUARD: a completed walk writes exactly one row per channel the
-    // radio has (`memory_sync` inserts for every index whose CIN parses, and a
-    // cleared slot parses fine), so the highest cached index IS the capacity of
-    // whichever scanner wrote it. Anything else is a different radio's memory,
-    // or a partial write from a handler that read one channel off the wire.
+    // COMPLETENESS GUARD: the same `is_complete_image` the flush applies before
+    // writing. One definition, both directions -- #567 and #569 were the same
+    // question with two different wrong answers.
     //
-    // Deliberately `!=`, not `>`. Rejecting only the too-big direction leaves
-    // the too-small one wide open: a 300-row BC75XLT cache loads happily onto a
-    // 500-channel BC125AT, and because the frontend suppresses its startup sync
-    // whenever channels exist, the wrong radio's memory would render and never
-    // refresh. Both directions are the same mistake.
+    // Still rejects both capacity directions, which is the part that must not
+    // regress: a 300-row BC75XLT cache must not load onto a 500-channel
+    // BC125AT any more than the reverse. The frontend suppresses its startup
+    // sync whenever channels exist, so the wrong radio's memory would render
+    // and never refresh.
+    //
+    // #569 NOTE -- this still discards a cache with a hole, and that is a
+    // deliberate limit rather than an oversight. Telling "299 rows from a
+    // BC75XLT" apart from "299-of-500 from a BC125AT" needs the writing
+    // radio's capacity STORED, which needs a schema migration; #574 says the
+    // pre-migration backup is currently incomplete, so that migration should
+    // not land first. What #569 actually cost the user is fixed on the write
+    // side instead: a holed map never replaces a good cache, so the "it
+    // remembered my channels last time but not this time" loop cannot start.
+    // A holed cache therefore only exists if an older build wrote it.
     //
     // Nothing here deletes the rejected rows. They are the other radio's
     // memory, and the next completed sync's snapshot replaces them anyway
     // (`save_channels` DELETEs then INSERTs per profile). Under one shared
     // placeholder profile the two scanners take turns; #414 gives them their
     // own keys and the discard stops happening at all.
-    let max_index = cached.keys().max().copied().unwrap_or(0);
-    if max_index != channel_count {
+    if !is_complete_image(&cached, channel_count) {
         tracing::info!(
-            max_index,
+            len = cached.len(),
+            max_index = cached.keys().max().copied().unwrap_or(0),
             channel_count,
-            "cached channel memory does not match this scanner's capacity; \
+            "cached channel memory is not a complete image of this scanner; \
              discarding it and starting cold"
         );
         return 0;
@@ -575,19 +647,25 @@ mod tests {
     #[test]
     fn flush_writes_the_current_shadow_to_the_cache() {
         let state = crate::api::default_state();
-        state.shadow.write().unwrap().channels = sample();
+        // A COMPLETE image, not `sample()`. Since #567 the flush writes only a
+        // map that covers the whole radio, and `sample()`'s two channels never
+        // were one -- it stays the right fixture for field fidelity
+        // (`channels_round_trip_through_the_cache`) and the wrong one here.
+        let count = state.capabilities().channel_count;
+        state.shadow.write().unwrap().channels = complete_map(count);
 
         flush_channel_cache(&state);
 
         let loaded = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
         assert_eq!(
             loaded.len(),
-            2,
-            "flush must persist every channel: {loaded:?}"
+            count as usize,
+            "flush must persist every channel: {}",
+            loaded.len()
         );
         assert!(
-            loaded.get(&1).is_some_and(|c| c.alpha_tag == "CALLING"),
-            "field values must survive the flush: {loaded:?}"
+            loaded.get(&1).is_some_and(|c| c.alpha_tag == "CH1"),
+            "field values must survive the flush"
         );
         assert!(
             last_synced_at(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).is_some(),
@@ -606,11 +684,12 @@ mod tests {
     #[test]
     fn flushing_an_empty_shadow_does_not_wipe_a_good_cache() {
         let state = crate::api::default_state();
-        state.shadow.write().unwrap().channels = sample();
+        let count = state.capabilities().channel_count;
+        state.shadow.write().unwrap().channels = complete_map(count);
         flush_channel_cache(&state);
         assert_eq!(
             load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).len(),
-            2
+            count as usize
         );
 
         state.shadow.write().unwrap().channels.clear();
@@ -619,8 +698,8 @@ mod tests {
         let survived = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
         assert_eq!(
             survived.len(),
-            2,
-            "an empty shadow must leave the cache alone, not delete it: {survived:?}"
+            count as usize,
+            "an empty shadow must leave the cache alone, not delete it"
         );
     }
 
@@ -639,9 +718,10 @@ mod tests {
     #[test]
     fn a_flush_records_the_sync_time_not_the_flush_time() {
         let state = crate::api::default_state();
+        let count = state.capabilities().channel_count;
         {
             let mut shadow = state.shadow.write().unwrap();
-            shadow.channels = sample();
+            shadow.channels = complete_map(count);
             // A sync that completed long ago -- 2001-09-09, comfortably
             // distinguishable from any plausible `epoch_now()`.
             shadow.last_sync = 1_000_000_000.0;
@@ -657,16 +737,24 @@ mod tests {
         );
     }
 
-    /// With no sync recorded this session, the flush falls back to now -- which
-    /// is honest, because the only way to hold channels without a sync is a
-    /// single-channel read that DID just come off the wire.
+    /// With no sync recorded this session, the flush falls back to now rather
+    /// than writing `ShadowState`'s 0.0 default into a column the UI reports as
+    /// an age.
+    ///
+    /// The justification here used to be "the only way to hold channels
+    /// without a sync is a single-channel read that DID just come off the
+    /// wire". #567 made that false: a single-channel shadow is refused by the
+    /// flush now, so the reachable case is a complete map whose `last_sync` was
+    /// never set. The fallback stays because 0.0 is the one value that would
+    /// render as 1970, not because that path is common.
     ///
     /// Paired with the guard above on purpose: asserting only the preserved
     /// timestamp would also pass for a build that stamped a hardcoded 0.0.
     #[test]
     fn a_flush_with_no_recorded_sync_stamps_now() {
         let state = crate::api::default_state();
-        state.shadow.write().unwrap().channels = sample();
+        let count = state.capabilities().channel_count;
+        state.shadow.write().unwrap().channels = complete_map(count);
 
         flush_channel_cache(&state);
 
@@ -687,5 +775,257 @@ mod tests {
         save_channels(path, PLACEHOLDER_SCANNER_ID, &sample(), 1.0);
         assert!(load_channels(path, PLACEHOLDER_SCANNER_ID).is_empty());
         assert_eq!(last_synced_at(path, PLACEHOLDER_SCANNER_ID), None);
+    }
+
+    /// A dense `1..=count` map, as a completed walk leaves it.
+    ///
+    /// `sample()` is two channels and was never a complete image of any radio.
+    /// It is still the right fixture for field fidelity; it is the wrong one
+    /// for anything that asks "is this the whole radio?".
+    fn complete_map(count: u16) -> HashMap<u16, ChannelData> {
+        (1..=count)
+            .map(|index| {
+                (
+                    index,
+                    ChannelData {
+                        index,
+                        frequency: 146.0 + (index as f64) / 1000.0,
+                        modulation: "FM".to_string(),
+                        alpha_tag: format!("CH{index}"),
+                        ..Default::default()
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn cached_rows(state: &AppState) -> usize {
+        load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).len()
+    }
+
+    /// REGRESSION GUARD (#567): a partial shadow must NOT overwrite a complete
+    /// cache.
+    ///
+    /// `save_channels` DELETEs the profile's rows before inserting, so the
+    /// flush is a replace. The only guard used to be "the map is not empty",
+    /// which treats ANY non-empty shadow as an authoritative image of the
+    /// radio. It is not: `get_memory_channel`, `clear_channel_lockouts` and the
+    /// KEY-toggle path each insert ONE entry, and `mark_port_opened` registers
+    /// the command sender before the MDL probe -- so a `GET
+    /// /memory/channels/:index` landing in that window puts a single row in an
+    /// otherwise empty shadow. From there the 30-second timer needs no further
+    /// help: one row replaces the user's whole cache.
+    #[test]
+    fn a_partial_shadow_does_not_overwrite_a_complete_cache() {
+        let state = crate::api::default_state();
+        let count = state.capabilities().channel_count;
+
+        state.shadow.write().unwrap().channels = complete_map(count);
+        flush_channel_cache(&state);
+        assert_eq!(cached_rows(&state), count as usize, "setup: cache is full");
+
+        // What a single handler read off the wire leaves behind.
+        let mut one = HashMap::new();
+        one.insert(7, complete_map(count).remove(&7).expect("channel 7"));
+        state.shadow.write().unwrap().channels = one;
+
+        flush_channel_cache(&state);
+
+        assert_eq!(
+            cached_rows(&state),
+            count as usize,
+            "a one-channel shadow must leave the cache alone, not replace it"
+        );
+    }
+
+    /// REGRESSION GUARD (#569): a walk that skipped a channel must not destroy
+    /// the good cache.
+    ///
+    /// The walk deliberately tolerates a per-channel failure -- a `Soft`
+    /// transport error and an unparseable reply are both skipped -- and a
+    /// CP210x bridge is documented to `ERR` a command for reasons unrelated to
+    /// the data (pitfall #11). Over 300-500 commands one skip is an expected
+    /// event.
+    ///
+    /// The damage was never the hole itself. It was that the holed map went
+    /// through `save_channels`, which DELETED 300 good rows and wrote 299 that
+    /// `load_channel_cache` then rejected on every subsequent launch. The user
+    /// saw "it remembered my channels last time but not this time", repeating
+    /// forever, and the 299 rows sat there being re-rejected.
+    ///
+    /// Refusing the write keeps the previous good cache, which is strictly
+    /// better than both the old behaviour and an empty cache.
+    #[test]
+    fn a_holed_walk_does_not_delete_the_good_cache() {
+        let state = crate::api::default_state();
+        let count = state.capabilities().channel_count;
+
+        state.shadow.write().unwrap().channels = complete_map(count);
+        flush_channel_cache(&state);
+        assert_eq!(cached_rows(&state), count as usize, "setup: cache is full");
+
+        // The top channel's reply was dropped. Every other channel read fine.
+        let mut holed = complete_map(count);
+        holed.remove(&count);
+        state.shadow.write().unwrap().channels = holed;
+
+        flush_channel_cache(&state);
+
+        assert_eq!(
+            cached_rows(&state),
+            count as usize,
+            "a walk missing one channel must not replace a complete cache"
+        );
+    }
+
+    /// REGRESSION GUARD (#569): a transaction whose inserts failed must not
+    /// commit.
+    ///
+    /// `save_channels` used `let _ = tx.execute(...)` per row and committed
+    /// regardless. Because the DELETE runs first, one failed INSERT leaves the
+    /// same hole -- and the same permanent discard -- as a skipped CIN, by a
+    /// route no guard on the caller can see.
+    ///
+    /// The trigger is how a per-row failure is forced without a fake database:
+    /// SQLite raises on exactly one row, the rest would insert fine, and the
+    /// transaction must roll back to the previous snapshot rather than commit
+    /// a partial one.
+    #[test]
+    fn a_save_whose_insert_fails_does_not_commit() {
+        let state = crate::api::default_state();
+        let count = state.capabilities().channel_count;
+
+        state.shadow.write().unwrap().channels = complete_map(count);
+        flush_channel_cache(&state);
+        let before = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+        assert_eq!(before.len(), count as usize, "setup: cache is full");
+        let original_tag = before.get(&7).map(|c| c.alpha_tag.clone());
+
+        let conn = open_sqlite(&state.preferences_db_path).expect("open");
+        conn.execute_batch(
+            "CREATE TRIGGER fail_on_7 BEFORE INSERT ON channel_memory
+             WHEN NEW.channel_index = 7
+             BEGIN SELECT RAISE(ABORT, 'forced'); END;",
+        )
+        .expect("create trigger");
+        drop(conn);
+
+        let mut next = complete_map(count);
+        next.insert(
+            1,
+            ChannelData {
+                index: 1,
+                alpha_tag: "REWRITTEN".to_string(),
+                ..Default::default()
+            },
+        );
+        save_channels(
+            &state.preferences_db_path,
+            PLACEHOLDER_SCANNER_ID,
+            &next,
+            42.0,
+        );
+
+        let after = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+        assert_eq!(
+            after.len(),
+            count as usize,
+            "a failed insert must roll back to the previous snapshot, \
+             not commit a holed one"
+        );
+        assert_eq!(
+            after.get(&7).map(|c| c.alpha_tag.clone()),
+            original_tag,
+            "the rolled-back write must leave the old rows untouched"
+        );
+    }
+
+    /// Pins the `len` half of `is_complete_image`.
+    ///
+    /// A hole in the MIDDLE keeps `max(index) == channel_count`, so the old
+    /// top-index test accepted it: #569 notes that a hole anywhere but the top
+    /// was tolerated silently, which is arbitrary from the user's point of
+    /// view -- a walk that dropped channel 250 wrote a cache that looked
+    /// complete and was missing a channel forever.
+    ///
+    /// Paired with `a_map_whose_indices_are_shifted_is_refused` on purpose.
+    /// Drop `len` from the predicate and only this test goes red; drop the
+    /// `max(index)` clause and only that one does. Either alone leaves half
+    /// the condition unexercised.
+    #[test]
+    fn a_walk_missing_a_middle_channel_does_not_replace_the_cache() {
+        let state = crate::api::default_state();
+        let count = state.capabilities().channel_count;
+
+        state.shadow.write().unwrap().channels = complete_map(count);
+        flush_channel_cache(&state);
+        assert_eq!(cached_rows(&state), count as usize, "setup: cache is full");
+
+        let mut holed = complete_map(count);
+        holed.remove(&(count / 2));
+        assert_eq!(
+            holed.keys().max().copied(),
+            Some(count),
+            "the hole must NOT be at the top -- that is the case max(index) \
+             already caught, and this test exists for the case it did not"
+        );
+        state.shadow.write().unwrap().channels = holed;
+
+        flush_channel_cache(&state);
+
+        assert_eq!(
+            cached_rows(&state),
+            count as usize,
+            "a map with a hole in the middle is not a complete image"
+        );
+    }
+
+    /// Pins the `max(index)` half of `is_complete_image`.
+    ///
+    /// The right NUMBER of channels is not the same fact as covering
+    /// `1..=channel_count`. A map carrying `count` entries numbered from 2 is
+    /// missing channel 1 and carries a phantom one channel past the end --
+    /// `index_to_bank` answers 0 above `channel_count`, and the frontend's
+    /// `deriveBankFromIndex` clamps, so it would render in a bank the backend
+    /// calls 0 and `export_csv` would write it to the user's file.
+    #[test]
+    fn a_map_whose_indices_are_shifted_is_refused() {
+        let state = crate::api::default_state();
+        let count = state.capabilities().channel_count;
+
+        state.shadow.write().unwrap().channels = complete_map(count);
+        flush_channel_cache(&state);
+        assert_eq!(cached_rows(&state), count as usize, "setup: cache is full");
+
+        let shifted: HashMap<u16, ChannelData> = complete_map(count)
+            .into_values()
+            .map(|mut ch| {
+                ch.index += 1;
+                (ch.index, ch)
+            })
+            .collect();
+        assert_eq!(
+            shifted.len(),
+            count as usize,
+            "the count must match -- that is what makes this the len check's \
+             blind spot"
+        );
+        state.shadow.write().unwrap().channels = shifted;
+
+        flush_channel_cache(&state);
+
+        // Assert the CONTENT, not the row count. A shifted map writes exactly
+        // `count` rows too, so counting them passes whether or not the guard
+        // works -- mutation caught this assertion doing nothing.
+        let after = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+        assert!(
+            after.contains_key(&1),
+            "channel 1 must survive: the shifted map does not contain it, so \
+             its absence means the write went through"
+        );
+        assert!(
+            !after.contains_key(&(count + 1)),
+            "a phantom channel one past the end must never reach the cache"
+        );
     }
 }
