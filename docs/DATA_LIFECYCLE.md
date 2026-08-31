@@ -31,6 +31,12 @@ for channels.
 - Each DB uses SQLite `PRAGMA user_version`.
 - Migrations are forward-only and idempotent.
 - Before applying a version bump migration, backend creates a `.bak` copy in the same directory.
+  It is taken with SQLite's `VACUUM INTO`, **not** a file copy (#574). The databases run in WAL
+  mode, so a committed transaction lives in the `-wal` sidecar until something checkpoints it —
+  copying the main file alone silently omitted the most recent committed state, and restoring
+  such a file next to a newer `-wal` produced a mismatched pair rather than the old database.
+  `VACUUM INTO` is consistent by construction and writes ONE self-contained file, which is what
+  makes "put the `.bak` back" a complete instruction. It preserves `user_version`.
 - On startup, backend runs migrations before reads/writes.
 
 ### What forward-only obligates (#418)
