@@ -2224,10 +2224,82 @@ pub(crate) async fn write_channel_to_scanner(
     let write_cmd = format!("CIN,{},{}", channel.index, payload);
     let write_response = send_raw_command(state, &write_cmd, false).await;
     let read_response = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
+
+    // REGRESSION GUARD (`a_priority_write_re_reads_the_channel_it_displaced`):
+    // a `CIN` write with priority=1 clears the bank's PREVIOUS holder on
+    // hardware without naming it (#556, finding 2; the displacement is
+    // documented at `set_channel_priority` and was captured live).
+    //
+    // Only the written index was updated, so the displaced channel kept
+    // `priority: true` in the shadow and the bank showed two priority channels.
+    // Not destructive -- `needs_priority_clear` re-reads before any `DCH` --
+    // but it mis-aims the next swap's plan, and since #413 the wrong flag is
+    // flushed to SQLite and re-adopted at every connect instead of dying with
+    // the session.
+    //
+    // Read INSIDE the bracket that is already open. Doing it after the `EPG`
+    // would mean a second `PRG`/`EPG` round trip back to back -- the shape
+    // #584 was about, where the second bracket queued behind the first and
+    // blew its deadline.
+    //
+    // Candidates come from the shadow, and the guard is dropped before any
+    // await: a std `RwLock` guard held across one would block the poll thread.
+    // Only channels the cache BELIEVES hold priority are re-read, so the usual
+    // cost is one extra `CIN` and often zero.
+    let mut displaced: Vec<ChannelData> = Vec::new();
+    if channel.priority {
+        let caps = state.capabilities();
+        let bank = caps.index_to_bank(channel.index);
+        let candidates: Vec<u16> = {
+            match state.shadow.read() {
+                Ok(shadow) => shadow
+                    .channels
+                    .values()
+                    .filter(|c| {
+                        c.index != channel.index
+                            && c.priority
+                            && caps.index_to_bank(c.index) == bank
+                    })
+                    .map(|c| c.index)
+                    .collect(),
+                Err(_) => Vec::new(),
+            }
+        };
+        for other in candidates {
+            match send_raw_command(state, &format!("CIN,{}", other), false).await {
+                Ok(resp) => {
+                    if let Some(ch) = parse_cin_response(other, &resp) {
+                        displaced.push(ch);
+                    }
+                }
+                // Best-effort: the user's write succeeded, and a failed
+                // re-read of a bystander must not turn that into an error.
+                // The stale flag survives to the next read of that channel,
+                // which is where it started.
+                Err(e) => warn!(
+                    index = other,
+                    error = ?e,
+                    "could not re-read the channel displaced by a priority write"
+                ),
+            }
+        }
+    }
+
     // REGRESSION GUARD (#138): EPG must be sent before any early return so
     // the scanner isn't left stuck in program mode with polling suspended.
     if !in_program_mode {
         let _ = send_raw_command(state, "EPG", false).await;
+    }
+
+    // Store the displaced reads before any early return below: they are
+    // verified reads, and they are true whether or not the write we came here
+    // to make turns out to have persisted.
+    if !displaced.is_empty() {
+        if let Ok(mut shadow) = state.shadow.write() {
+            for ch in displaced {
+                shadow.channels.insert(ch.index, ch);
+            }
+        }
     }
 
     match classify_response(&write_response?) {
@@ -6067,6 +6139,152 @@ mod tests {
         assert_ne!(
             cached.alpha_tag, "Wanted",
             "storing the INTENT would be the bug this issue is about"
+        );
+    }
+
+    /// REGRESSION GUARD (#556, finding 2): a `CIN` write that SETS priority
+    /// re-reads the channel it displaced.
+    ///
+    /// Setting priority on one channel clears the bank's previous holder on
+    /// hardware, without naming it -- documented at `set_channel_priority` and
+    /// captured live. Only the written index was updated, so the displaced
+    /// channel kept `priority: true` in the shadow and the bank showed TWO
+    /// priority channels.
+    ///
+    /// Not destructive: `needs_priority_clear` re-reads before any `DCH`. But
+    /// it mis-aims the next swap's plan, and since #413 the wrong flag is
+    /// flushed to SQLite and re-adopted at every connect rather than dying with
+    /// the session.
+    ///
+    /// The fake scanner models the real behaviour: writing priority=1 to a
+    /// channel makes every OTHER channel in that bank read back as priority=0.
+    #[tokio::test]
+    async fn a_priority_write_re_reads_the_channel_it_displaced() {
+        let state = default_state();
+        // Channel 3 holds priority, per the cache. Same bank as channel 5 on
+        // both families (bank 1 covers 1-30 on a BC75XLT, 1-50 on a BC125AT).
+        state.shadow.write().unwrap().channels.insert(
+            3,
+            ChannelData {
+                index: 3,
+                frequency: 151.0,
+                priority: true,
+                ..Default::default()
+            },
+        );
+
+        // The displacing scanner: whatever index is asked for, only the one
+        // most recently written with priority=1 reads back as priority=1.
+        let fake = FakeScanner::attach(&state, {
+            let holder = std::sync::Mutex::new(0u16);
+            move |command: &str| {
+                if command == "PRG" {
+                    return Ok("PRG,OK\r".to_string());
+                }
+                if command == "EPG" {
+                    return Ok("EPG,OK\r".to_string());
+                }
+                if let Some(rest) = command.strip_prefix("CIN,") {
+                    let mut fields = rest.splitn(2, ',');
+                    let index: u16 = fields.next().unwrap_or("").parse().unwrap_or(0);
+                    match fields.next() {
+                        Some(payload) => {
+                            if payload.rsplit(',').next() == Some("1") {
+                                *holder.lock().unwrap() = index;
+                            }
+                            return Ok("CIN,OK\r".to_string());
+                        }
+                        None => {
+                            let p = if *holder.lock().unwrap() == index {
+                                1
+                            } else {
+                                0
+                            };
+                            return Ok(format!("CIN,{index},Chan,01510000,FM,0,2,0,{p}\r"));
+                        }
+                    }
+                }
+                Ok("OK\r".to_string())
+            }
+        });
+
+        let wanted = ChannelData {
+            index: 5,
+            frequency: 151.0,
+            alpha_tag: "Chan".to_string(),
+            modulation: "FM".to_string(),
+            delay: 2,
+            priority: true,
+            ..Default::default()
+        };
+        let written = write_channel_to_scanner(&state, &wanted)
+            .await
+            .expect("the write itself must succeed");
+        assert!(written.priority, "precondition: channel 5 took priority");
+
+        let shadow = state.shadow.read().unwrap();
+        let displaced = shadow
+            .channels
+            .get(&3)
+            .expect("channel 3 must still be cached");
+        assert!(
+            !displaced.priority,
+            "the displaced channel must be re-read, not left claiming a \
+             priority the radio moved away: {displaced:?}"
+        );
+
+        // And it happened inside ONE bracket -- a second PRG/EPG pair back to
+        // back is the #584 shape, where the second queues behind the first and
+        // blows its deadline.
+        let transcript = fake.transcript_with_closed_bracket();
+        assert_eq!(
+            transcript.iter().filter(|c| *c == "PRG").count(),
+            1,
+            "the displacement re-read must reuse the open bracket: {transcript:?}"
+        );
+        assert!(
+            transcript.iter().any(|c| c == "CIN,3"),
+            "expected a re-read of the displaced channel: {transcript:?}"
+        );
+    }
+
+    /// The other direction: a write that does NOT set priority reads nothing
+    /// extra.
+    ///
+    /// Paired deliberately. A build that re-read the whole bank on every
+    /// channel write would satisfy the guard above while turning each edit into
+    /// a burst of round trips -- and the bulk-upload loop writes one channel at
+    /// a time.
+    #[tokio::test]
+    async fn a_write_without_priority_reads_no_bystanders() {
+        let state = default_state();
+        state.shadow.write().unwrap().channels.insert(
+            3,
+            ChannelData {
+                index: 3,
+                frequency: 151.0,
+                priority: true,
+                ..Default::default()
+            },
+        );
+        let fake = FakeScanner::attach(&state, scanner_responder(None, |_| false));
+
+        let wanted = ChannelData {
+            index: 5,
+            frequency: 145.13,
+            alpha_tag: "Test Chan".to_string(),
+            modulation: "FM".to_string(),
+            delay: 2,
+            priority: false,
+            ..Default::default()
+        };
+        let _ = write_channel_to_scanner(&state, &wanted).await;
+
+        let transcript = fake.transcript_with_closed_bracket();
+        assert!(
+            !transcript.iter().any(|c| c == "CIN,3"),
+            "a write that sets no priority displaces nothing, so it must not \
+             re-read bystanders: {transcript:?}"
         );
     }
 
