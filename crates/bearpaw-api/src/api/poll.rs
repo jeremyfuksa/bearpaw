@@ -125,6 +125,7 @@ fn run_poll_loop(
         // Device info: model from MDL (with retry because some scanners can return
         // stale command echoes immediately after connection).
         let mut mdl_set = false;
+        let mut device_gone = false;
         for attempt in 1..=5 {
             match transport.send(port.as_mut(), MDL_CMD) {
                 Ok(mdl_resp) => {
@@ -142,6 +143,7 @@ fn run_poll_loop(
                 Err(err) => {
                     warn!("MDL read failed on serial attempt {}: {}", attempt, err);
                     if err.is_device_gone() {
+                        device_gone = true;
                         break;
                     }
                 }
@@ -150,11 +152,20 @@ fn run_poll_loop(
         }
         if !mdl_set {
             warn!("Unable to read valid MDL response after retries (serial)");
-            // The port is open and the loop is about to poll it, so connected
-            // is the honest status even with no model. Without this a scanner
-            // whose MDL is garbled would read as permanently disconnected --
-            // a worse bug than the one #539 fixes.
-            mark_connected_without_model(&state, port_name);
+            // REGRESSION GUARD (`a_vanished_device_is_never_announced_as_connected`):
+            // announce a connect ONLY if the device is still there.
+            //
+            // The port being open makes "connected with no model" the honest
+            // status for a scanner whose MDL is merely garbled -- that is why
+            // this fallback exists (#539). It is the wrong answer when the
+            // retry loop broke out because the device VANISHED: that branch
+            // would tell the frontend the scanner arrived, moments before the
+            // poll loop marks it disconnected again. Since #551 this also
+            // BROADCASTS, so a wedged link (the documented USB STALL case)
+            // becomes a connect/disconnect storm at reconnect-backoff rate.
+            if should_announce_connect(mdl_set, device_gone) {
+                mark_connected_without_model(&state, port_name);
+            }
         }
 
         // Initial volume query. Writes to `state.live.volume` so the first
@@ -399,6 +410,7 @@ fn run_poll_loop_usb(
         mark_port_opened(&state, &port_label);
 
         let mut mdl_set = false;
+        let mut device_gone = false;
         for attempt in 1..=5 {
             match transport.send(&mut session, MDL_CMD) {
                 Ok(mdl_resp) => {
@@ -416,6 +428,7 @@ fn run_poll_loop_usb(
                 Err(err) => {
                     warn!("MDL read failed on usb attempt {}: {}", attempt, err);
                     if err.is_device_gone() {
+                        device_gone = true;
                         break;
                     }
                 }
@@ -424,7 +437,12 @@ fn run_poll_loop_usb(
         }
         if !mdl_set {
             warn!("Unable to read valid MDL response after retries (usb)");
-            mark_connected_without_model(&state, &port_label);
+            // See the serial path: a device that vanished must not be
+            // announced as connected. This transport is the one the USB STALL
+            // wedge actually happens on.
+            if should_announce_connect(mdl_set, device_gone) {
+                mark_connected_without_model(&state, &port_label);
+            }
         }
 
         // Initial volume query. Writes to `state.live.volume` so the first
@@ -650,6 +668,27 @@ fn mark_port_opened(state: &AppState, port_label: &str) {
         d.port = Some(port_label.to_string());
         d.clear_connection_diagnostic();
     }
+}
+
+/// After the MDL retries gave up, should the frontend be told a scanner is here?
+///
+/// Extracted from both poll loops SO THAT it can be tested: `run_poll_loop` has
+/// no fake transport, so a guard written against the loop cannot exist, and a
+/// guard written against `mark_connected_without_model` alone cannot see which
+/// branch reached it -- which is exactly how this shipped wrong.
+///
+/// Yes when the scanner answered nothing intelligible but is still there: the
+/// port is open, the loop is about to poll it, and "connected, model unknown"
+/// is the honest report (#539).
+///
+/// No when the retries ended because the device VANISHED. Announcing a connect
+/// there tells the frontend the scanner arrived moments before the poll loop
+/// marks it gone again -- and since #551 that announcement is broadcast, so a
+/// wedged link turns into a connect/disconnect storm at reconnect-backoff rate.
+///
+/// Test: `a_vanished_device_is_never_announced_as_connected`.
+fn should_announce_connect(mdl_set: bool, device_gone: bool) -> bool {
+    !mdl_set && !device_gone
 }
 
 /// Report connected when the port is open but `MDL` never answered.
@@ -1868,5 +1907,41 @@ mod tests {
             Some(2_000_000_000.0),
             "its own, newer sync time must survive"
         );
+    }
+    /// REGRESSION GUARD: a device that VANISHED must never be announced as
+    /// connected.
+    ///
+    /// Both MDL retry loops break out early when the transport reports the
+    /// device is gone, and the very next statement used to run the
+    /// "connected, model unknown" fallback -- so the one branch that had just
+    /// learned the scanner left was the branch that said it arrived. Harmless
+    /// while nothing listened; #551 made that state BROADCAST, which turns a
+    /// wedged link (the documented USB STALL wedge) into a connect/disconnect
+    /// storm at reconnect-backoff rate, roughly 2 Hz.
+    ///
+    /// Asserted on the predicate rather than the loop because `run_poll_loop`
+    /// has no fake transport. A guard on `mark_connected_without_model` alone
+    /// cannot see which branch called it -- which is how this shipped.
+    #[test]
+    fn a_vanished_device_is_never_announced_as_connected() {
+        // The scanner is still there, just not answering intelligibly. The
+        // port is open and about to be polled, so connected-with-no-model is
+        // the honest report -- this is the #539 case the fallback exists for.
+        assert!(
+            should_announce_connect(false, false),
+            "a garbled MDL must still report connected"
+        );
+
+        // The transport said the device is gone. Saying "connected" here is a
+        // lie the poll loop will contradict within a tick.
+        assert!(
+            !should_announce_connect(false, true),
+            "a vanished device must NOT be announced as connected"
+        );
+
+        // A successful MDL means update_device_info_from_mdl already announced
+        // it, with a model. The fallback must not fire a second time.
+        assert!(!should_announce_connect(true, false));
+        assert!(!should_announce_connect(true, true));
     }
 }
