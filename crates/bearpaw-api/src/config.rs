@@ -801,13 +801,43 @@ pub fn usb_serial_for_port(port_name: &str) -> Option<String> {
     }
     let ports = serialport::available_ports().ok()?;
     for p in ports {
-        if p.port_name == port_name {
+        if names_the_same_port(port_name, &p.port_name) {
             if let serialport::SerialPortType::UsbPort(info) = p.port_type {
                 return info.serial_number;
             }
         }
     }
     None
+}
+
+/// Do two port names refer to the same device node?
+///
+/// REGRESSION GUARD (`a_symlinked_port_name_matches_the_node_it_points_at`):
+/// a plain `==` was not enough (#570).
+///
+/// `resolve_scanner_port` returns an explicit `device.port` VERBATIM -- "user
+/// gets exactly what they ask for" -- while `available_ports()` always reports
+/// real device nodes. The stable idiom a Linux user is told to pin,
+/// `/dev/serial/by-id/usb-Silicon_Labs_CP2102_...`, is a symlink to
+/// `/dev/ttyUSB0`, so it matched nothing, the serial read returned None, and
+/// that config resolved to `BC75XLT:unknown` while autodetect on the same
+/// machine resolved to `BC75XLT:020D43D8`. Two profiles, two channel caches,
+/// one radio, and no log line explaining it.
+///
+/// The string comparison comes FIRST and is the only thing that runs in the
+/// common case. `canonicalize` is a syscall per candidate port, and it fails
+/// for anything that is not a filesystem path -- a Windows `COM3`, or a port
+/// that has just been unplugged. Falling back to name equality keeps those
+/// working exactly as before rather than turning a resolvable port into an
+/// unmatchable one.
+fn names_the_same_port(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// `usb:VVVV:PPPP` -> `(vid, pid)`. The pseudo-target the poll loop uses when
@@ -878,6 +908,92 @@ mod tests {
         assert_eq!(parse_usb_pseudo_target("usb:1965"), None);
     }
 
+    /// REGRESSION GUARD (#570): a port named through a symlink is the SAME port
+    /// as the node it points at.
+    ///
+    /// `resolve_scanner_port` returns an explicit `device.port` verbatim -- its
+    /// comment says so: "user gets exactly what they ask for". That string then
+    /// reaches `usb_serial_for_port`, which compares it against the names
+    /// `serialport::available_ports()` reports. Those are always real device
+    /// nodes.
+    ///
+    /// So the stable idiom a Linux user is told to pin --
+    ///
+    /// ```yaml
+    /// device:
+    ///   port: /dev/serial/by-id/usb-Silicon_Labs_CP2102_...
+    /// ```
+    ///
+    /// -- never matched any `p.port_name`, which are `/dev/ttyUSB0`. The serial
+    /// read returned None, so that config yielded `BC75XLT:unknown` while
+    /// autodetect on the SAME machine yielded `BC75XLT:020D43D8`: two profiles,
+    /// two channel caches, one radio, and nothing in the log saying why.
+    ///
+    /// `update_device_info_from_mdl`'s own doc names an explicit `device.port`
+    /// as a first-class connection path, so this is a supported configuration
+    /// rather than an edge case.
+    ///
+    /// Tested with an ordinary file and symlink because a test cannot conjure a
+    /// device node. The resolution rule is the same one the OS applies.
+    #[test]
+    fn a_symlinked_port_name_matches_the_node_it_points_at() {
+        let dir = std::env::temp_dir().join(format!(
+            "bearpaw-port-link-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create dir");
+        let node = dir.join("ttyUSB0");
+        std::fs::write(&node, b"").expect("create node");
+        let by_id = dir.join("usb-Silicon_Labs_CP2102_020D43D8-if00-port0");
+        std::os::unix::fs::symlink(&node, &by_id).expect("create symlink");
+
+        let configured = by_id.to_str().expect("path");
+        let enumerated = node.to_str().expect("path");
+
+        assert!(
+            names_the_same_port(configured, enumerated),
+            "a by-id symlink and its target are one port"
+        );
+        assert!(
+            names_the_same_port(enumerated, configured),
+            "and the comparison is symmetric"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The other direction, and not optional: two different ports stay
+    /// different. Asserting only that a symlink matches would pass for a build
+    /// where every port matches every other, which would hand one radio's
+    /// serial to whichever node enumerated first.
+    #[test]
+    fn two_different_ports_are_not_the_same_port() {
+        assert!(!names_the_same_port("/dev/ttyUSB0", "/dev/ttyUSB1"));
+        assert!(!names_the_same_port(
+            "/dev/cu.usbserial-A",
+            "/dev/cu.usbserial-B"
+        ));
+    }
+
+    /// A path that does not exist still compares by name.
+    ///
+    /// Canonicalising fails for a port that has been unplugged, or for a
+    /// Windows name like `COM3` that is not a filesystem path at all. Falling
+    /// back to string equality keeps those working exactly as before rather
+    /// than turning a resolvable port into an unmatchable one.
+    #[test]
+    fn a_nonexistent_port_still_matches_itself_by_name() {
+        assert!(names_the_same_port("COM3", "COM3"));
+        assert!(names_the_same_port(
+            "/dev/cu.usbmodem-gone",
+            "/dev/cu.usbmodem-gone"
+        ));
+        assert!(!names_the_same_port("COM3", "COM4"));
+    }
+
     /// Live hardware: read the serial off a connected BC125AT.
     ///
     /// `#[ignore]`d because it needs the radio attached, like the transport's
@@ -894,6 +1010,26 @@ mod tests {
     ///
     /// Expect `0001` on a BC125AT. That is a firmware constant, identical on
     /// every unit; it is not a per-unit id. See `scanner_registry`.
+    ///
+    /// OPEN HARDWARE QUESTION (#570), unanswered as of 2026-08-31. Nothing in
+    /// CI touches this, so the macOS direct-USB path ships unverified. To
+    /// settle it, run BOTH ways and record the answer here with a date:
+    ///
+    /// 1. With Bearpaw NOT running -> establishes the baseline serial.
+    /// 2. With Bearpaw running and CONNECTED to the same BC125AT -> this is
+    ///    the real question. `UsbTransport::open()` has already claimed the
+    ///    interface, and this builds a SECOND `rusb::Context` and calls
+    ///    `dev.open()` on the same device.
+    ///
+    /// If (2) returns None while (1) returns `0001`, the contention is real and
+    /// the descriptor read must be replaced with something that does not need a
+    /// second handle -- reading the serial once during `UsbTransport::open()`
+    /// and carrying it, most likely.
+    ///
+    /// Lower stakes than it looks, and only in one direction: a BC125AT's
+    /// serial is a constant, so `match_index` ignores it entirely and a None
+    /// here costs that model nothing. A BC75XLT is unaffected either way -- its
+    /// CP210x binds normally, so it never takes this path at all.
     #[test]
     #[ignore]
     fn usb_serial_reads_from_a_live_bc125at() {

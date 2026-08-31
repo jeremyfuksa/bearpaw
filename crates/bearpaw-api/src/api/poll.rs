@@ -857,13 +857,21 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
                 ));
             }
         }
+        // Read the USB serial ONCE per connect (#570).
+        //
+        // This ran twice -- here and again below for the profile lookup -- and
+        // each call enumerates every serial port on the machine, or opens a
+        // second USB handle on the `usb:` path. Two independent reads is also
+        // two chances to disagree, and the two consumers would then key the
+        // scanner cache and the profile off different answers for one radio.
+        let usb_serial = crate::config::usb_serial_for_port(port_label);
         // Cache the USB serial number so autodetect can prefer this
         // physical unit on reconnect. Best-effort: skipped silently for
         // the `usb:` pseudo-target (macOS no-CDC-bind path) and any port
         // without a USB serial number reported.
         if !port_label.starts_with("usb:") {
-            if let Some(serial) = crate::config::usb_serial_for_port(port_label) {
-                crate::config::save_last_scanner_cache(&serial, port_label, &model);
+            if let Some(serial) = usb_serial.as_deref() {
+                crate::config::save_last_scanner_cache(serial, port_label, &model);
             }
         }
         // Resolve WHICH radio this is before touching its cached memory (#414).
@@ -876,8 +884,7 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
         // A serial the transport cannot read is passed through as None rather
         // than guessed at -- `match_index` records it explicitly, so a scanner
         // whose serial failed to read gets its own stable profile instead of
-        // colliding with a real one.
-        let usb_serial = crate::config::usb_serial_for_port(port_label);
+        // colliding with a real one. `usb_serial` is read once, above.
         let previous_id = state.device.read().ok().and_then(|d| d.scanner_id.clone());
         let resolved = super::scanner_registry::resolve_scanner(
             &state.preferences_db_path,
