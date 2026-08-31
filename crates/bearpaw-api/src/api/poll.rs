@@ -1466,6 +1466,58 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD (#570): the CONNECT PATH resolves the same profile
+    /// every time, not just `resolve_scanner` called with the same literal.
+    ///
+    /// `a_known_scanner_keeps_its_profile` passes the identical model and
+    /// serial to `resolve_scanner` twice, which cannot observe anything that
+    /// happens between the wire and that call -- the `MDL` parse, the case
+    /// fold, the serial read, and `match_index` construction all sit in
+    /// `update_device_info_from_mdl` and are bypassed entirely.
+    ///
+    /// This drives the whole path twice. A profile that changed between two
+    /// connects of one radio would orphan its channel cache behind a key
+    /// nothing looks up again, and `adopt_placeholder_cache` cannot recover
+    /// that -- it only ever moves rows out of `_default`.
+    ///
+    /// Also asserts the CASE FOLD survives the round trip, which is the half
+    /// the direct-call guard cannot reach: `MDL,bc125at` is a reply Bearpaw
+    /// must accept (`model_match_is_case_insensitive_at_connect`), and
+    /// `scanners.match_index` is UNIQUE -- so an unfolded spelling would sit
+    /// beside the folded one as a second profile for one radio, forever.
+    #[test]
+    fn the_connect_path_resolves_one_profile_per_radio() {
+        let state = crate::api::default_state();
+
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+        let first = state
+            .device
+            .read()
+            .unwrap()
+            .scanner_id
+            .clone()
+            .expect("a connect must resolve a profile");
+
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+        let second = state.device.read().unwrap().scanner_id.clone();
+        assert_eq!(
+            second.as_ref(),
+            Some(&first),
+            "reconnecting the same radio must land on the same profile"
+        );
+
+        // Same radio, lowercase reply. Real hardware reports uppercase, but the
+        // crate accepts either and this is the one place a spelling difference
+        // becomes a permanent second profile.
+        update_device_info_from_mdl(&state, "MDL,bc125at", "/dev/cu.test");
+        let lowercase = state.device.read().unwrap().scanner_id.clone();
+        assert_eq!(
+            lowercase.as_ref(),
+            Some(&first),
+            "a lowercase MDL reply is the same radio, not a new one"
+        );
+    }
+
     /// REGRESSION GUARD (#575): `serial_number` names the CURRENTLY connected
     /// unit, never a previous one.
     ///
