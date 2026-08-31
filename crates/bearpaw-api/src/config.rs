@@ -713,9 +713,18 @@ fn probe_mdl_on_port(port_name: &str, baud: u32) -> MdlProbe {
 /// prefer the same physical unit across reconnects.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LastScannerCache {
-    /// USB serial number reported by `serialport::UsbPortInfo`. Stable per
-    /// physical scanner unit; lets us distinguish two BC125ATs plugged into
-    /// the same host.
+    /// USB serial number, from `serialport::UsbPortInfo` on a serial node or
+    /// the USB device descriptor on the direct path.
+    ///
+    /// It does NOT distinguish two units of the same model, whatever it looks
+    /// like. A BC125AT reports `0001` for every unit ever made -- a firmware
+    /// constant, measured on hardware 2026-08-26. Only the BC75XLT has a real
+    /// per-unit value, and only because its CP2104 bridge is programmed by
+    /// Silicon Labs rather than Uniden.
+    ///
+    /// What it IS good for is what this cache uses it for: preferring the same
+    /// physical port across reconnects. See `scanner_registry` for the
+    /// identity model built on top of it, and the limitation it documents.
     serial_number: String,
     /// Last-known port path (`/dev/cu.usbmodemXXX`, `COM3`, etc). Recorded
     /// for debugging; the serial number is the actual lookup key.
@@ -781,6 +790,15 @@ pub fn save_last_scanner_cache(serial_number: &str, port_name: &str, model: &str
 /// number reported. Public so the poll loop can call it when committing
 /// to a port.
 pub fn usb_serial_for_port(port_name: &str) -> Option<String> {
+    // The macOS BC125AT path has no serial node at all -- the kernel never
+    // binds CDC-ACM, so `available_ports()` cannot see it and this returned
+    // None purely as an accident of which transport ran. Read the descriptor
+    // directly instead, so the match index is built the same way on both
+    // transports and a missing serial is a real answer rather than a side
+    // effect. See `scanner_registry::match_index`.
+    if let Some((vid, pid)) = parse_usb_pseudo_target(port_name) {
+        return usb_serial_from_descriptor(vid, pid);
+    }
     let ports = serialport::available_ports().ok()?;
     for p in ports {
         if p.port_name == port_name {
@@ -792,9 +810,102 @@ pub fn usb_serial_for_port(port_name: &str) -> Option<String> {
     None
 }
 
+/// `usb:VVVV:PPPP` -> `(vid, pid)`. The pseudo-target the poll loop uses when
+/// there is no serial node to name.
+fn parse_usb_pseudo_target(target: &str) -> Option<(u16, u16)> {
+    let rest = target.strip_prefix("usb:")?;
+    let (v, p) = rest.split_once(':')?;
+    Some((
+        u16::from_str_radix(v.trim(), 16).ok()?,
+        u16::from_str_radix(p.trim(), 16).ok()?,
+    ))
+}
+
+/// The USB serial string from the device descriptor.
+///
+/// Best-effort in every direction: an unreadable descriptor on an unrelated
+/// device is skipped rather than failing the scan (the #143 rule), and a device
+/// that reports no serial yields None. Never opens a data endpoint, so it
+/// cannot disturb a session the poll loop is holding.
+fn usb_serial_from_descriptor(vid: u16, pid: u16) -> Option<String> {
+    use rusb::UsbContext;
+    let ctx = rusb::Context::new().ok()?;
+    for dev in ctx.devices().ok()?.iter() {
+        let Ok(desc) = dev.device_descriptor() else {
+            continue;
+        };
+        if desc.vendor_id() != vid || desc.product_id() != pid {
+            continue;
+        }
+        let Ok(handle) = dev.open() else { continue };
+        return handle
+            .read_serial_number_string_ascii(&desc)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The `usb:` pseudo-target parses back to the ids it names.
+    ///
+    /// This is what routes a BC125AT to the descriptor read instead of to
+    /// `available_ports()`, which cannot see it -- on macOS the kernel never
+    /// binds CDC-ACM for that model, so no `/dev/cu.*` node exists at all.
+    #[test]
+    fn a_usb_pseudo_target_parses_to_its_ids() {
+        assert_eq!(
+            parse_usb_pseudo_target("usb:1965:0017"),
+            Some((0x1965, 0x0017))
+        );
+        assert_eq!(
+            parse_usb_pseudo_target("usb:10c4:ea60"),
+            Some((0x10C4, 0xEA60))
+        );
+    }
+
+    /// Anything that is not a pseudo-target falls through to the serial-node
+    /// lookup rather than being misread.
+    #[test]
+    fn a_serial_node_is_not_mistaken_for_a_pseudo_target() {
+        assert_eq!(parse_usb_pseudo_target("/dev/cu.usbserial-020D43D8"), None);
+        assert_eq!(parse_usb_pseudo_target("COM3"), None);
+        assert_eq!(parse_usb_pseudo_target("usb:nothex:0017"), None);
+        assert_eq!(parse_usb_pseudo_target("usb:1965"), None);
+    }
+
+    /// Live hardware: read the serial off a connected BC125AT.
+    ///
+    /// `#[ignore]`d because it needs the radio attached, like the transport's
+    /// own live test. Run with:
+    ///
+    /// ```text
+    /// cargo test -p bearpaw-api --lib -- --ignored usb_serial
+    /// ```
+    ///
+    /// Worth running WHILE the app is connected: this opens the device to read
+    /// a string descriptor over the control endpoint, and the poll loop holds
+    /// the bulk endpoints. If the two cannot coexist, the function returns None
+    /// on exactly the path it exists to serve -- and it would do so silently.
+    ///
+    /// Expect `0001` on a BC125AT. That is a firmware constant, identical on
+    /// every unit; it is not a per-unit id. See `scanner_registry`.
+    #[test]
+    #[ignore]
+    fn usb_serial_reads_from_a_live_bc125at() {
+        let serial = usb_serial_for_port("usb:1965:0017");
+        println!("BC125AT serial over the direct path: {serial:?}");
+        assert!(
+            serial.is_some(),
+            "expected a serial from the device descriptor; got None. \
+             If the app is running, this may mean the read cannot share the \
+             device with the poll loop."
+        );
+    }
 
     fn usb_port(
         name: &str,
