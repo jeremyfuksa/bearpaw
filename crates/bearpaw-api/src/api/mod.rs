@@ -76,6 +76,20 @@ impl AppState {
     /// Defaults rather than `None` so callers never handle a third state that
     /// exists only between process start and the first `MDL` reply. Matches
     /// the frontend's `useScannerCapabilities()` fallback for the same reason.
+    /// The profile key for whichever scanner is attached.
+    ///
+    /// Falls back to the shared placeholder when no profile has been resolved --
+    /// before the first `MDL`, or when the profile database could not be
+    /// written. That fallback IS the pre-#414 behaviour, so an unusable
+    /// registry degrades to one shared cache rather than to no cache.
+    pub fn scanner_id(&self) -> String {
+        self.device
+            .read()
+            .ok()
+            .and_then(|d| d.scanner_id.clone())
+            .unwrap_or_else(|| channel_cache::PLACEHOLDER_SCANNER_ID.to_string())
+    }
+
     pub fn capabilities(&self) -> crate::protocol::capabilities::ScannerCapabilities {
         self.device
             .read()
