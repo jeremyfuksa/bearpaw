@@ -69,7 +69,12 @@ impl ProgramModeGuard {
     /// Conflict here lets the frontend retry once the sync finishes.
     pub async fn enter(state: &AppState) -> Result<Self, ApiError> {
         if state.sync_task_id.lock().unwrap().is_some() {
-            return Err(ApiError::Conflict("memory_sync_in_progress".to_string()));
+            // `sync_in_progress`, matching the six other sites and the three
+            // places API_SPEC documents this 409. This guard used to answer
+            // `memory_sync_in_progress` -- the only occurrence anywhere, and
+            // undocumented -- so a client handling the documented string got a
+            // generic failure from the one guard that fires most often.
+            return Err(ApiError::Conflict("sync_in_progress".to_string()));
         }
         let flag = state.program_mode_active.clone();
         // Set the flag *before* sending PRG so the poll loop suspends as
