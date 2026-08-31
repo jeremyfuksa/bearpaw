@@ -1645,8 +1645,17 @@ mod tests {
         };
         const SYNCED_AT: f64 = 1_000_000_000.0;
 
-        // --- Session A: a completed sync, then a flush. ---
+        // --- Session A: connect, complete a sync, flush. ---
+        //
+        // A identifies its radio before flushing, which a real session always
+        // does -- the flush reads `capabilities().channel_count` to decide
+        // whether the map covers the whole scanner (#567), and an
+        // unidentified state answers with the BC125AT default of 500 while
+        // holding a BC75XLT's 300. Seeding through the raw `save_channels`
+        // instead would keep the test green while removing the flush from the
+        // pair this test exists to exercise.
         let a = crate::api::default_state();
+        update_device_info_from_mdl(&a, "MDL,BC75XLT", "/dev/cu.test");
         {
             let mut shadow = a.shadow.write().unwrap();
             shadow.channels = channel_map(300);
@@ -1677,10 +1686,11 @@ mod tests {
 
         // --- And the periodic flush must not relabel it as fresh. ---
         //
-        // Read under the RESOLVED profile, not the placeholder. Since #414 the
-        // connect above adopts the pre-identity rows onto this scanner's own
-        // key, so the placeholder is empty afterwards -- which is the adoption
-        // working, and this assertion went red until it followed the move.
+        // Read under the RESOLVED profile, not the placeholder. Both sessions
+        // identify the same radio, so both use its own key throughout.
+        // (Adoption of pre-identity placeholder rows is a different path, and
+        // it has its own guards: `a_matching_cache_is_loaded_on_connect` and
+        // `a_placeholder_cache_from_another_radio_is_not_adopted`.)
         flush_channel_cache(&b);
         assert_eq!(
             last_synced_at(&b.preferences_db_path, &b.scanner_id()),

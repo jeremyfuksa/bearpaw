@@ -214,16 +214,23 @@ mod tests {
     #[test]
     fn a_completed_sync_writes_the_cache() {
         let state = default_state();
+        // Walk the WHOLE radio. `handlers/memory.rs` derives `max_channels`
+        // from `capabilities().channel_count`, so in production the walk and
+        // the flush's completeness check always agree; a short walk is a
+        // fixture shortcut that cannot happen on hardware, and since #567 the
+        // flush refuses a map that does not cover the radio.
+        let count = state.capabilities().channel_count;
 
-        let result = run(&state, "test-task", 3, respond);
+        let result = run(&state, "test-task", count, respond);
         assert!(result.is_ok(), "the walk must complete: {result:?}");
 
         let cached = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
         assert_eq!(
             cached.len(),
-            3,
+            count as usize,
             "a completed sync must persist every channel it read, without \
-             waiting for the periodic flush: {cached:?}"
+             waiting for the periodic flush: got {}",
+            cached.len()
         );
         assert!(
             cached.values().all(|c| (c.frequency - 146.52).abs() < 1e-6),
