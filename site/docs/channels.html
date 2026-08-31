@@ -384,15 +384,48 @@
         </h2>
         <p>
           Your channels are read from the scanner when the app starts. This
-          <strong>memory sync</strong> takes about 30 to 45 seconds, because the
-          scanner hands over its 500 channels one at a time.
+          <strong>memory sync</strong> takes about five seconds, because the
+          scanner hands over its channels one at a time. A panel covers the
+          screen with a progress bar while it runs — the scanner stops scanning
+          for the duration, so the app says so rather than pretending otherwise.
         </p>
         <p>
-          To re-read them manually, say after you changed something on the radio's
-          own keypad, use <strong>Scanner → Sync Memory</strong> in the menu (or
-          <kbd>Ctrl/⌘ + Y</kbd>). A panel covers the screen with a progress bar
-          and blocks the UI until it's done.
+          Bearpaw also keeps a saved copy of your channels between sessions, so
+          the list can appear instantly at launch instead of after a sync.
+          Whether it re-reads the scanner anyway is up to you — see
+          <a href="preferences.html#reread-channels">Re-read Channels on
+          Connect</a>. It's on by default.
         </p>
+
+        <h3 id="how-old-is-this-list">How old is this list?</h3>
+        <p>
+          Next to the search box, Bearpaw shows when it last read your channels
+          from the scanner — <em>Synced 3d ago</em>, or <em>Synced just
+          now</em>. The same note sits at the bottom of the window beside the
+          connection status.
+        </p>
+        <p>
+          It matters because <strong>the scanner never tells the app when
+          something changes.</strong> It answers questions and volunteers
+          nothing. So if you program a channel on the radio's own keypad while
+          Bearpaw is closed, the saved copy is out of date and nothing on screen
+          looks wrong — the timestamp is the tell.
+        </p>
+        <p>
+          Press <strong>Refresh</strong> beside that timestamp to re-read the
+          scanner. <strong>Scanner → Sync Memory</strong> in the menu (or
+          <kbd>Ctrl/⌘ + Y</kbd>) does the same thing.
+        </p>
+
+        <div class="callout">
+          <p>
+            <strong>Editing a channel is safe even when the list is stale.</strong>
+            Bearpaw re-reads a channel from the scanner immediately before
+            writing to it, and keeps the scanner's own values for every field you
+            didn't change. So editing the tag on a channel whose frequency you
+            retuned at the keypad won't put the old frequency back.
+          </p>
+        </div>
         <nav class="docs-pagination" aria-label="Guide pages">
           <a class="page-prev" href="scan.html"><span class="page-dir">← Previous</span><span class="page-title">The Scan Tab</span></a>
           <a class="page-next" href="device.html"><span class="page-dir">Next →</span><span class="page-title">The Device Tab</span></a>

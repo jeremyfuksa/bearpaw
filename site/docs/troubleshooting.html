@@ -109,7 +109,7 @@
               <tr>
                 <td>Sync Memory</td>
                 <td><kbd>Ctrl/⌘ + Y</kbd></td>
-                <td>Re-read all 500 channels from the scanner (30 to 45 s)</td>
+                <td>Re-read all channels from the scanner (about 5 s)</td>
               </tr>
             </tbody>
           </table>
@@ -237,6 +237,35 @@
         </div>
 
         <h2 id="other-common-issues">Other common issues</h2>
+
+        <h3 id="my-channels-dont-match-the-scanner">
+          My channels don't match what's on the scanner
+        </h3>
+        <p>
+          Bearpaw saves a copy of your channel memory between sessions so the
+          list can appear instantly at launch. If you programmed a channel on
+          the radio's own keypad while Bearpaw was closed, that saved copy is
+          out of date — and the scanner has no way to announce the change, so
+          the app can't know on its own.
+        </p>
+        <p>
+          Look next to the search box on the Channels tab. It shows when the
+          list was last read from the scanner — <em>Synced 3d ago</em>. Press
+          <strong>Refresh</strong> beside it to re-read, or use
+          <strong>Scanner → Sync Memory</strong>.
+        </p>
+        <p>
+          To avoid it entirely, leave
+          <a href="preferences.html#reread-channels">Re-read Channels on
+          Connect</a> switched on. That's the default, and it re-reads the
+          scanner at every launch — about five seconds.
+        </p>
+        <p>
+          Editing is safe either way: Bearpaw re-reads a channel from the
+          scanner just before writing to it, and keeps the scanner's values for
+          every field you didn't change. A stale list can look wrong, but it
+          won't overwrite work you did on the keypad.
+        </p>
 
         <h3 id="my-channel-edits-didnt-save-to-the-scanner">
           My channel edits didn't save to the scanner
