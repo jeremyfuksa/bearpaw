@@ -11,6 +11,16 @@ export interface Preferences {
   /** #273: gates the automatic update check the desktop shell runs at launch. */
   checkUpdatesOnLaunch: boolean;
   /**
+   * Whether channel memory is re-read from the scanner at every connect, or
+   * rendered from the SQLite cache (#413) until the user asks.
+   *
+   * Defaults true -- the pre-cache behaviour. A scanner programmed on its own
+   * keypad has a cache that is stale before Bearpaw opens, and a user poll
+   * found that is the majority case. Off is right for anyone who only programs
+   * from a computer: their cache is never stale, and startup is instant.
+   */
+  rereadMemoryOnConnect: boolean;
+  /**
    * Whether the Scan page's analytics count only the connected scanner
    * ('scanner') or every scanner ever attached ('all').
    *
@@ -117,6 +127,7 @@ const defaultPreferences: Preferences = {
   dataRetentionDays: 30,
   audioOutputDevice: 'default',
   checkUpdatesOnLaunch: true,
+  rereadMemoryOnConnect: true,
   analyticsScope: 'scanner',
   activityExportTimezone: 'local',
 };
@@ -153,6 +164,9 @@ export function mapStoredPreferences(stored: Record<string, unknown>): Preferenc
     // `false` back to `true` and the toggle would silently revert on every
     // launch. Only null/undefined mean "unset".
     checkUpdatesOnLaunch: prefs.check_updates_on_launch ?? true,
+    // `??` for the same reason as above: defaults true, so `||` would coerce
+    // a stored `false` back on every launch.
+    rereadMemoryOnConnect: prefs.reread_memory_on_connect ?? true,
     analyticsScope: prefs.analytics_scope === 'all' ? 'all' : 'scanner',
     activityExportTimezone: prefs.activity_export_timezone === 'utc' ? 'utc' : 'local',
   };

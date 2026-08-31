@@ -610,7 +610,12 @@ export default function App() {
   useEffect(() => {
     if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
     if (useStore.getState().sync.inProgress) return;
-    if (channels.length > 0) return;
+    // Conditional since the `reread_memory_on_connect` preference: ON means
+    // re-read the radio at every launch even when the cache is warm, which is
+    // the pre-#413 behaviour and the default. See the guards below -- both
+    // sides of this condition are pinned, because loosening the assertion to
+    // "mentions channels.length" would leave neither path guarded.
+    if (!preferences.rereadMemoryOnConnect && channels.length > 0) return;
 
     let active = true;
     const startMemorySync = async () => {
@@ -631,7 +636,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [api, channels.length, deviceInfo, updateSync]);
+  }, [api, channels.length, deviceInfo, updateSync, preferences.rereadMemoryOnConnect]);
 
   useEffect(() => {
     // One-shot animation pass on mount so the bar chart slides in once.

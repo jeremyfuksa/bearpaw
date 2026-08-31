@@ -704,6 +704,18 @@ pub(crate) fn default_preferences() -> Map<String, Value> {
     // the behaviour it shipped with — but the app is offline-first, so a
     // user who wants zero network traffic needs a way to turn it off.
     m.insert("check_updates_on_launch".to_string(), Value::Bool(true));
+    // #413 follow-on: whether channel memory is re-read from the scanner at
+    // every connect, or rendered from the SQLite cache until the user asks.
+    //
+    // Defaults ON, which is the pre-cache behaviour. A user poll (n=20,
+    // 2026-08-30) found 45% program their scanner on its own keypad "all the
+    // time" and 65% do so at least sometimes -- for them the cache is stale
+    // before Bearpaw opens, and being quietly wrong is worse than being
+    // visibly slow. A full walk costs ~5 s on a BC125AT over direct USB.
+    //
+    // Users who only program from a computer turn it off and get the instant
+    // startup the cache was built for; their cache is never stale.
+    m.insert("reread_memory_on_connect".to_string(), Value::Bool(true));
     // Whether the Scan page's analytics count only the connected scanner
     // ("scanner", the default) or every scanner ever attached ("all").
     //
