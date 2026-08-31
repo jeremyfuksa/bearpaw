@@ -1285,6 +1285,84 @@ describe('ChannelsTab', () => {
       expect(screen.getByRole('button', { name: /Reading/i })).toBeDisabled();
     });
   });
+
+  describe('the pre-upload re-read is not skipped for a lockout edit (#573)', () => {
+    // #549 re-reads each channel before writing so a field the user did NOT
+    // edit carries the scanner's value rather than the draft's cached basis.
+    // That re-read lived inside `if (!change.lockoutChanged)`, so ticking L/O
+    // -- an ordinary batched draft edit, not an immediate action (see the
+    // LOCKOUT note in the row-render loop) -- skipped it entirely and the CIN
+    // write pushed the cached frequency back over a keypad retune.
+    //
+    // This exercises `handleUploadDrafts`, not `reconcileUntouchedFields` in
+    // isolation. The function was always correct; the call site never reached
+    // it. Asserting the helper again passes for a build that never calls it --
+    // the vacuous shape CLAUDE.md already records.
+    //
+    // The channel is index 1 on purpose. `reorderTargets` maps a channel to
+    // its POSITION in the bank, so a lone channel in bank 1 always targets
+    // index 1 -- numbering it anything else would make `targetIndex !==
+    // channelIndex` and drag the reorder path into a test about lockout.
+    const uploadLockoutEditOverKeypadRetune = async () => {
+      // The cache says 154.100. The radio was retuned to 155.400 on its own
+      // keypad, which 45% of users do "all the time" (poll, n=20, 2026-08-30).
+      const cached = createTestChannel({
+        index: 1,
+        frequency: 154.1,
+        bank: 1,
+        alpha_tag: 'Fire 1',
+        lockout: false,
+      });
+      const onScanner = createTestChannel({
+        index: 1,
+        frequency: 155.4,
+        bank: 1,
+        alpha_tag: 'Fire 1',
+        lockout: false,
+      });
+
+      setMockStore(
+        createMockStore({
+          channels: [cached],
+          // The L/O tick is the ONLY edit in the batch.
+          memoryDrafts: {
+            1: createTestChannelDraft({ ...buildDraft(cached), lockout: true }),
+          },
+        }),
+      );
+      mockApiClient.startProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.getChannel = vi.fn().mockResolvedValue(onScanner);
+      mockApiClient.updateChannel = vi.fn().mockResolvedValue(onScanner);
+      mockApiClient.getChannels = vi.fn().mockResolvedValue([onScanner]);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Upload Changes/i }));
+      await waitFor(() => expect(mockApiClient.endProgramMode).toHaveBeenCalled());
+    };
+
+    it('re-reads and adopts the scanner frequency when the batch includes a lockout edit', async () => {
+      await uploadLockoutEditOverKeypadRetune();
+
+      expect(mockApiClient.getChannel).toHaveBeenCalledWith(1);
+      expect(mockApiClient.updateChannel).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ frequency: 155.4 }),
+      );
+    });
+
+    it('does not let the re-read clobber the staged lockout edit', async () => {
+      await uploadLockoutEditOverKeypadRetune();
+
+      // The scanner reports lockout:false; the user just ticked it on. Adopting
+      // `latest.lockout` unconditionally would discard the only edit in the
+      // batch -- the half-fix the frequency assertion alone would accept.
+      expect(mockApiClient.updateChannel).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ lockout: true }),
+      );
+    });
+  });
 });
 
 describe('deriveBankFromIndex (#401)', () => {
