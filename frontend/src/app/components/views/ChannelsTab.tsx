@@ -957,29 +957,38 @@ export function ChannelsTab() {
             ...payload,
             bank: targetBank,
           };
-          if (!change.lockoutChanged) {
-            try {
-              const latest = await api.getChannel(change.channelIndex);
+          // REGRESSION GUARD (#573): the re-read is UNCONDITIONAL. Only the
+          // adoption block below is gated on `!change.lockoutChanged`, because
+          // taking `latest.lockout` there would discard the staged tick.
+          // Gating the whole re-read on it — which is what shipped with #549 —
+          // meant a batch containing a lockout edit never called getChannel at
+          // all, and the CIN write pushed the draft's cached frequency back
+          // over a keypad retune. Lockout is a BATCHED draft field, so that is
+          // an ordinary edit path, not an edge case. See ChannelsTab.test.tsx
+          // "the pre-upload re-read is not skipped for a lockout edit (#573)".
+          try {
+            const latest = await api.getChannel(change.channelIndex);
+            if (!change.lockoutChanged) {
               payload = {
                 ...payload,
                 lockout: latest.lockout,
                 priority: latest.priority,
                 bank: latest.bank || payload.bank,
               };
-              // Every OTHER field the user did not edit also comes from the
-              // scanner, not from the draft's cached basis. See
-              // `reconcileUntouchedFields`. Only reachable when the read
-              // succeeded: the catch below leaves `payload` on the draft, so a
-              // marginal read degrades to today's behaviour rather than
-              // reverting a staged edit.
-              const outcome = reconcileUntouchedFields(payload, change.channel, latest);
-              payload = outcome.payload;
-              if (outcome.reconciled.length > 0) {
-                reconciledChannels.push(change.channelIndex);
-              }
-            } catch (refreshError) {
-              console.warn('Failed to refresh channel before upload', refreshError);
             }
+            // Every OTHER field the user did not edit also comes from the
+            // scanner, not from the draft's cached basis. See
+            // `reconcileUntouchedFields`. Only reachable when the read
+            // succeeded: the catch below leaves `payload` on the draft, so a
+            // marginal read degrades to today's behaviour rather than
+            // reverting a staged edit.
+            const outcome = reconcileUntouchedFields(payload, change.channel, latest);
+            payload = outcome.payload;
+            if (outcome.reconciled.length > 0) {
+              reconciledChannels.push(change.channelIndex);
+            }
+          } catch (refreshError) {
+            console.warn('Failed to refresh channel before upload', refreshError);
           }
 
           if (payload.frequency === 0) {
