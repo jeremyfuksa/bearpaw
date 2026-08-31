@@ -92,10 +92,15 @@ fn new_scanner_id() -> String {
 /// existed, which is the same posture every other path in this crate takes
 /// toward an unusable database: degrade, never take down the poll loop.
 ///
-/// Exercised by tests but not yet by production code — the connect path adopts
-/// it in a later PR, together with reading the serial on the USB-direct
-/// transport.
-#[allow(dead_code)]
+/// Called on every connect from `update_device_info_from_mdl` (`poll.rs`),
+/// after the `MDL` reply and before anything touches this scanner's cached
+/// memory.
+///
+/// This used to say "exercised by tests but not yet by production code" and
+/// carried an `#[allow(dead_code)]` to match. #562 wired it into the connect
+/// path and the comment was not updated, so the attribute went on suppressing
+/// a real dead-code signal for everything else in this module -- the one check
+/// that would have flagged the staleness was the thing turned off (#576).
 pub(crate) fn resolve_scanner(path: &str, model: &str, usb_serial: Option<&str>) -> Option<String> {
     let index = match_index(model, usb_serial);
     let conn = open_sqlite(path)?;
