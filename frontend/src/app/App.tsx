@@ -610,6 +610,24 @@ export default function App() {
   useEffect(() => {
     if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
     if (useStore.getState().sync.inProgress) return;
+    // Wait for the stored preferences before deciding. The store holds
+    // DEFAULTS until the fetch settles, and `rereadMemoryOnConnect` defaults
+    // true -- so without this the effect reads `true` on every launch and syncs
+    // regardless of what the user stored. Turning the preference off did
+    // nothing, which is how it shipped and how hardware verification caught it:
+    // the backend reported `reread_memory_on_connect: false` and the launch
+    // synced anyway.
+    //
+    // Exactly the hazard `check_updates_on_launch` already guards at the
+    // `preferencesLoaded ? ... : undefined` call site, whose comment says the
+    // startup check "waits for preferences to load rather than acting on a
+    // default that may be about to change". I copied that preference in every
+    // respect except this one.
+    //
+    // `preferencesLoaded` settles in a `finally`, so a failed fetch still
+    // releases the gate and the effect proceeds on defaults -- the same answer
+    // a fresh install gets.
+    if (!preferencesLoaded) return;
     // Conditional since the `reread_memory_on_connect` preference: ON means
     // re-read the radio at every launch even when the cache is warm, which is
     // the pre-#413 behaviour and the default. See the guards below -- both
@@ -620,6 +638,28 @@ export default function App() {
     let active = true;
     const startMemorySync = async () => {
       try {
+        // Ask the BACKEND how much channel memory it has, rather than trusting
+        // the store. `channels` here is whatever the last render saw, and
+        // during startup that is usually [] -- the mount fetch races the poll
+        // loop's connect, and the connect-edge refetch (#552) has not resolved
+        // by the time this effect re-runs on the same device_info message.
+        //
+        // Without this the preference cannot work at all: the guard above is
+        // `!rereadMemoryOnConnect && channels.length > 0`, which with an empty
+        // store is `true && false` -- no early return, sync anyway. Measured on
+        // hardware: with the preference stored OFF, every launch still synced.
+        //
+        // One extra GET, only on the path that was about to spend ~5 s on the
+        // wire, and it removes the ordering assumption entirely rather than
+        // making it more likely to hold.
+        if (!preferences.rereadMemoryOnConnect) {
+          const current = await api.getChannels();
+          if (!active) return;
+          if (current.length > 0) {
+            setChannels(current);
+            return;
+          }
+        }
         updateSync({ message: 'Loading channels from device...' });
         const result = await api.syncMemory();
         if (!active) return;
@@ -636,7 +676,15 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [api, channels.length, deviceInfo, updateSync, preferences.rereadMemoryOnConnect]);
+  }, [
+    api,
+    channels.length,
+    deviceInfo,
+    updateSync,
+    setChannels,
+    preferences.rereadMemoryOnConnect,
+    preferencesLoaded,
+  ]);
 
   useEffect(() => {
     // One-shot animation pass on mount so the bar chart slides in once.
