@@ -827,6 +827,37 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
                 crate::config::save_last_scanner_cache(&serial, port_label, &model);
             }
         }
+        // Resolve WHICH radio this is before touching its cached memory (#414).
+        //
+        // Order matters and is not arbitrary: the profile has to exist before
+        // the cache is keyed on it, and the pre-#414 rows have to be adopted
+        // before the load runs, or the first launch after upgrading finds an
+        // empty profile and re-syncs for nothing.
+        //
+        // A serial the transport cannot read is passed through as None rather
+        // than guessed at -- `match_index` records it explicitly, so a scanner
+        // whose serial failed to read gets its own stable profile instead of
+        // colliding with a real one.
+        let usb_serial = crate::config::usb_serial_for_port(port_label);
+        let resolved = super::scanner_registry::resolve_scanner(
+            &state.preferences_db_path,
+            &model,
+            usb_serial.as_deref(),
+        );
+        if let Ok(mut d) = state.device.write() {
+            d.scanner_id = resolved.clone();
+            if d.serial_number.is_none() {
+                d.serial_number = usb_serial.clone();
+            }
+        }
+        if let Some(id) = resolved.as_deref() {
+            super::channel_cache::adopt_placeholder_cache(
+                &state.preferences_db_path,
+                id,
+                caps.channel_count,
+            );
+        }
+
         // Adopt cached channel memory now that we know WHICH radio this is.
         //
         // REGRESSION GUARD (`a_cache_from_a_larger_scanner_is_discarded`,
@@ -1576,9 +1607,14 @@ mod tests {
         );
 
         // --- And the periodic flush must not relabel it as fresh. ---
+        //
+        // Read under the RESOLVED profile, not the placeholder. Since #414 the
+        // connect above adopts the pre-identity rows onto this scanner's own
+        // key, so the placeholder is empty afterwards -- which is the adoption
+        // working, and this assertion went red until it followed the move.
         flush_channel_cache(&b);
         assert_eq!(
-            last_synced_at(&b.preferences_db_path, PLACEHOLDER_SCANNER_ID),
+            last_synced_at(&b.preferences_db_path, &b.scanner_id()),
             Some(SYNCED_AT),
             "a flush in the new session must preserve the original sync time, \
              not stamp the restart"
@@ -1696,5 +1732,141 @@ mod tests {
         let d = state.device.read().unwrap();
         assert_eq!(d.connection_status, "connected");
         assert_eq!(d.port.as_deref(), Some("/dev/cu.test"));
+    }
+
+    /// REGRESSION GUARD (#414): connecting resolves a real profile, and the
+    /// cache is keyed on it rather than on the shared placeholder.
+    #[test]
+    fn connecting_resolves_a_profile_and_keys_the_cache_on_it() {
+        let state = crate::api::default_state();
+        assert_eq!(
+            state.scanner_id(),
+            "_default",
+            "precondition: no profile before the first MDL"
+        );
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        let id = state.scanner_id();
+        assert_ne!(id, "_default", "a connect must resolve a real profile");
+        assert_eq!(
+            state.device.read().unwrap().scanner_id.as_deref(),
+            Some(id.as_str()),
+            "the id must live on DeviceInfo, beside the model it was resolved with"
+        );
+    }
+
+    /// REGRESSION GUARD (#414): channels cached before profiles existed are
+    /// adopted onto the scanner they belong to, not orphaned.
+    ///
+    /// Everything cached pre-#414 sits under `_default`. Nothing looks that key
+    /// up any more, so without the move a user who upgrades silently loses
+    /// their cache and pays a re-sync on the next launch.
+    #[test]
+    fn pre_identity_cached_channels_are_adopted_on_connect() {
+        let state = crate::api::default_state();
+        // 300 rows, exactly a BC75XLT's memory.
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            "_default",
+            &channel_map(300),
+            1_000_000_000.0,
+        );
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        let id = state.scanner_id();
+        assert_eq!(
+            crate::api::channel_cache::load_channels(&state.preferences_db_path, &id).len(),
+            300,
+            "the rows must now live under this scanner's profile"
+        );
+        assert!(
+            crate::api::channel_cache::load_channels(&state.preferences_db_path, "_default")
+                .is_empty(),
+            "and must no longer sit under the placeholder"
+        );
+        assert_eq!(
+            shadow_len(&state),
+            300,
+            "and must be loaded into the shadow"
+        );
+    }
+
+    /// REGRESSION GUARD (#414): a placeholder cache from a DIFFERENT radio is
+    /// left alone.
+    ///
+    /// Adoption is a one-way move. If a user's pre-#414 cache came from their
+    /// BC125AT and they plug the BC75XLT in first, re-keying blindly would hand
+    /// 500 BC125AT channels to the BC75XLT's profile -- where the capacity
+    /// guard discards them at load, and the BC125AT never finds them again
+    /// because they now live under someone else's key. Silent, permanent, and
+    /// exactly the shape of loss the whole cache exists to avoid.
+    ///
+    /// Paired with the guard above on purpose: asserting only that adoption
+    /// happens also passes for a build that adopts unconditionally.
+    #[test]
+    fn a_placeholder_cache_from_another_radio_is_not_adopted() {
+        let state = crate::api::default_state();
+        // 500 rows -- a BC125AT's memory, not a BC75XLT's.
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            "_default",
+            &channel_map(500),
+            1_000_000_000.0,
+        );
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        assert_eq!(
+            crate::api::channel_cache::load_channels(&state.preferences_db_path, "_default").len(),
+            500,
+            "the other radio's cache must stay where the right scanner can find it"
+        );
+        assert_eq!(
+            shadow_len(&state),
+            0,
+            "and must not render on the wrong scanner"
+        );
+    }
+
+    /// A profile that already has its own channels is never overwritten by the
+    /// placeholder rows.
+    #[test]
+    fn adoption_never_overwrites_a_profile_that_has_memory() {
+        let state = crate::api::default_state();
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        let id = state.scanner_id();
+
+        // This profile already synced once.
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            &id,
+            &channel_map(300),
+            2_000_000_000.0,
+        );
+        // And a stale placeholder set is still lying around.
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            "_default",
+            &channel_map(300),
+            1_000_000_000.0,
+        );
+
+        let moved = crate::api::channel_cache::adopt_placeholder_cache(
+            &state.preferences_db_path,
+            &id,
+            300,
+        );
+
+        assert_eq!(
+            moved, 0,
+            "a profile with its own memory must not be rewritten"
+        );
+        assert_eq!(
+            crate::api::channel_cache::last_synced_at(&state.preferences_db_path, &id),
+            Some(2_000_000_000.0),
+            "its own, newer sync time must survive"
+        );
     }
 }

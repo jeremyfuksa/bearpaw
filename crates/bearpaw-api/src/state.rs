@@ -100,6 +100,18 @@ pub struct DeviceInfo {
     pub firmware: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub serial_number: Option<String>,
+    /// Which stored profile this scanner is (#414).
+    ///
+    /// Lives here beside `model` and `capabilities` for the same reason they
+    /// do: all three are resolved from one `MDL` reply, and a reader that saw
+    /// a BC75XLT's model beside a BC125AT's profile would be reading a
+    /// contradiction. One lock, one answer.
+    ///
+    /// `None` until the first successful `MDL`, and if the profile database is
+    /// unusable it stays `None` -- the cache then falls back to the shared
+    /// placeholder key, which is exactly the pre-#414 behaviour.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scanner_id: Option<String>,
     /// A problem with the CONNECTION, cleared the moment one succeeds.
     ///
     /// Correct for `usb_detected_no_serial_endpoint`, `unsupported_model` and

@@ -184,10 +184,87 @@ pub(crate) fn flush_channel_cache(state: &AppState) {
     };
     save_channels(
         &state.preferences_db_path,
-        PLACEHOLDER_SCANNER_ID,
+        &state.scanner_id(),
         &channels,
         synced_at,
     );
+}
+
+/// Move pre-#414 cached channels onto a real profile, once.
+///
+/// Everything cached before scanners had identity sits under
+/// `PLACEHOLDER_SCANNER_ID`. Left there it is orphaned: nothing looks that key
+/// up any more, so a user who upgrades silently loses their cache and pays a
+/// re-sync.
+///
+/// ONLY adopts when the placeholder rows are a complete image of THIS scanner
+/// -- the same `max_index == channel_count` test `load_channel_cache` uses, and
+/// for a sharper reason here. Adoption is a one-way move. If a user's
+/// placeholder cache came from their BC125AT and they happen to plug in the
+/// BC75XLT first, re-keying blindly would hand 500 BC125AT channels to the
+/// BC75XLT's profile, where the capacity guard would discard them at load --
+/// and the BC125AT would never find them again, because they now live under
+/// someone else's key. Checking capacity first means the rows wait for the
+/// scanner they actually belong to.
+///
+/// Returns how many rows moved. Silent on failure, like every other write here.
+pub(crate) fn adopt_placeholder_cache(path: &str, scanner_id: &str, channel_count: u16) -> usize {
+    if scanner_id == PLACEHOLDER_SCANNER_ID {
+        return 0;
+    }
+    let Some(conn) = open_sqlite(path) else {
+        return 0;
+    };
+
+    let max_index: Option<u16> = conn
+        .query_row(
+            "SELECT MAX(channel_index) FROM channel_memory WHERE scanner_id = ?1",
+            rusqlite::params![PLACEHOLDER_SCANNER_ID],
+            |row| row.get::<_, Option<u16>>(0),
+        )
+        .ok()
+        .flatten();
+
+    match max_index {
+        None => return 0, // nothing left over
+        Some(max) if max != channel_count => {
+            tracing::info!(
+                max,
+                channel_count,
+                "leaving pre-#414 cached channels in place; they do not match \
+                 this scanner's capacity and belong to a different radio"
+            );
+            return 0;
+        }
+        Some(_) => {}
+    }
+
+    // Never overwrite a profile that already has its own memory.
+    let existing: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM channel_memory WHERE scanner_id = ?1",
+            rusqlite::params![scanner_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if existing > 0 {
+        return 0;
+    }
+
+    conn.execute(
+        "UPDATE channel_memory SET scanner_id = ?1 WHERE scanner_id = ?2",
+        rusqlite::params![scanner_id, PLACEHOLDER_SCANNER_ID],
+    )
+    .map(|n| {
+        if n > 0 {
+            tracing::info!(
+                rows = n,
+                "adopted pre-#414 cached channels onto this scanner"
+            );
+        }
+        n
+    })
+    .unwrap_or(0)
 }
 
 /// Populate the shadow from the cache, if the cache belongs to THIS scanner.
@@ -218,7 +295,8 @@ pub(crate) fn load_channel_cache(state: &AppState, channel_count: u16) -> usize 
         Err(_) => return 0,
     }
 
-    let cached = load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+    let scanner_id = state.scanner_id();
+    let cached = load_channels(&state.preferences_db_path, &scanner_id);
     if cached.is_empty() {
         return 0;
     }
@@ -251,7 +329,7 @@ pub(crate) fn load_channel_cache(state: &AppState, channel_count: u16) -> usize 
         return 0;
     }
 
-    let synced_at = last_synced_at(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID);
+    let synced_at = last_synced_at(&state.preferences_db_path, &scanner_id);
 
     let Ok(mut shadow) = state.shadow.write() else {
         return 0;
