@@ -271,9 +271,55 @@ pub(crate) fn flush_channel_cache(state: &AppState) {
 /// someone else's key. Checking capacity first means the rows wait for the
 /// scanner they actually belong to.
 ///
+/// KNOWN AMBIGUITY, deliberately left open (#571b). Every model in the BC125AT
+/// family -- BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H -- holds 500
+/// channels, so a user who owns two of them gets one radio's pre-identity cache
+/// attached to whichever they connect first. Capacity cannot separate them and
+/// the `_default` rows carry no model, so telling them apart would need the
+/// model recorded at WRITE time -- which is impossible retroactively, and
+/// retroactive is the only case that matters: these rows exist for ONE hop,
+/// from a pre-#414 install to a post-#414 one. The rows still only move to a
+/// radio of the right family and capacity, and the loser re-syncs rather than
+/// losing data.
+///
+/// Capacity is necessary but NOT sufficient, which is why `model` is here too
+/// (#571). `for_model_or_default` hands an unrecognised model the BC125AT
+/// family's 500 channels, and the connect path deliberately connects to
+/// unsupported radios rather than refusing them -- so anything that answers
+/// `MDL,<something>` presented as a 500-channel radio and matched a BC125AT's
+/// placeholder cache exactly. The capacity test cannot catch that: 500 == 500
+/// is precisely what the fallback produced.
+///
+/// The recognition check derives its own answer from `model` rather than taking
+/// a `supported` flag from the caller. A caller can pass the wrong boolean; it
+/// cannot lie about the model string it just read off the wire. It also keeps
+/// the guard on the DATA, where a future caller cannot skip it -- the lesson
+/// from #565, which fixed a related hazard at its call site and left every
+/// other route open.
+///
 /// Returns how many rows moved. Silent on failure, like every other write here.
-pub(crate) fn adopt_placeholder_cache(path: &str, scanner_id: &str, channel_count: u16) -> usize {
+pub(crate) fn adopt_placeholder_cache(
+    path: &str,
+    scanner_id: &str,
+    model: &str,
+    channel_count: u16,
+) -> usize {
     if scanner_id == PLACEHOLDER_SCANNER_ID {
+        return 0;
+    }
+    // REGRESSION GUARD (`an_unsupported_model_does_not_adopt_the_placeholder_cache`):
+    // a radio whose capabilities came from the fallback has no claim on anyone
+    // else's memory. The move is one-way, so a wrong adoption is permanent:
+    // the real owner finds an empty profile and re-syncs, while the stranger
+    // renders 500 channels it never had and `export_csv` writes them to the
+    // user's file.
+    if crate::protocol::capabilities::ScannerCapabilities::for_model(model).is_none() {
+        tracing::info!(
+            model,
+            "leaving pre-#414 cached channels in place; this model is not \
+             supported, so its capacity came from the default rather than from \
+             the radio"
+        );
         return 0;
     }
     let Some(conn) = open_sqlite(path) else {

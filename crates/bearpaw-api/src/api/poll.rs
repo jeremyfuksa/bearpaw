@@ -923,6 +923,7 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             super::channel_cache::adopt_placeholder_cache(
                 &state.preferences_db_path,
                 id,
+                &model,
                 caps.channel_count,
             );
         }
@@ -1909,6 +1910,88 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD (#571): a radio Bearpaw does not support never adopts
+    /// someone else's pre-#414 cache.
+    ///
+    /// Adoption used to turn on `max_index == channel_count` alone, and the
+    /// `_default` rows carry no model. `for_model_or_default` hands an
+    /// UNRECOGNISED model the BC125AT family's 500 channels, and this function
+    /// deliberately connects to unsupported radios rather than refusing them --
+    /// so plugging in anything that answers `MDL,<something>` presented as a
+    /// 500-channel radio and matched a BC125AT's placeholder cache exactly.
+    ///
+    /// The move is a one-way UPDATE. Afterwards the real BC125AT finds an empty
+    /// profile and re-syncs, while the stranger's UI renders 500 channels it
+    /// never had: `GET /channels` serves the shadow, and `export_csv` writes
+    /// them to the user's file as that radio's memory.
+    ///
+    /// The capacity test cannot answer this -- 500 == 500 is exactly what the
+    /// fallback produced. Recognition is a different question, so it is asked
+    /// separately, inside `adopt_placeholder_cache` rather than at this call
+    /// site: a guard on the data cannot be skipped by a future caller.
+    #[test]
+    fn an_unsupported_model_does_not_adopt_the_placeholder_cache() {
+        let state = crate::api::default_state();
+        // A BC125AT's memory, waiting for the BC125AT.
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            "_default",
+            &channel_map(500),
+            1_000_000_000.0,
+        );
+
+        // An SDS100 is a real Uniden scanner Bearpaw does not support. It
+        // resolves through the fallback, so it claims 500 channels.
+        update_device_info_from_mdl(&state, "MDL,SDS100", "/dev/cu.test");
+
+        assert_eq!(
+            crate::api::channel_cache::load_channels(&state.preferences_db_path, "_default").len(),
+            500,
+            "the BC125AT's cache must stay where the BC125AT can still find it"
+        );
+        assert_eq!(
+            shadow_len(&state),
+            0,
+            "and must not render as the unsupported radio's own memory"
+        );
+    }
+
+    /// The positive half of #571, and not optional: the guard above also passes
+    /// for a build that never adopts anything at all.
+    ///
+    /// KNOWN AMBIGUITY, deliberately not closed here. Every model in the
+    /// BC125AT family -- BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H -- has
+    /// 500 channels, so a user who owns two of them still gets one radio's
+    /// pre-identity cache attached to whichever they plug in first. Capacity
+    /// cannot separate them and the `_default` rows carry no model, so telling
+    /// them apart needs the model recorded at WRITE time -- impossible
+    /// retroactively, which is the whole nature of a migration path. Adoption
+    /// is a one-hop migration from a pre-#414 install, and the rows only ever
+    /// move to a radio that is at least the right family and capacity.
+    #[test]
+    fn a_supported_model_still_adopts_the_placeholder_cache() {
+        let state = crate::api::default_state();
+        crate::api::channel_cache::save_channels(
+            &state.preferences_db_path,
+            "_default",
+            &channel_map(500),
+            1_000_000_000.0,
+        );
+
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+
+        assert_eq!(
+            crate::api::channel_cache::load_channels(&state.preferences_db_path, "_default").len(),
+            0,
+            "a supported radio of the right capacity must still take the rows"
+        );
+        assert_eq!(
+            shadow_len(&state),
+            500,
+            "and must render them without paying for a re-sync"
+        );
+    }
+
     /// A profile that already has its own channels is never overwritten by the
     /// placeholder rows.
     #[test]
@@ -1935,6 +2018,7 @@ mod tests {
         let moved = crate::api::channel_cache::adopt_placeholder_cache(
             &state.preferences_db_path,
             &id,
+            "BC75XLT",
             300,
         );
 
