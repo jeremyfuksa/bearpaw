@@ -734,6 +734,26 @@ fn mark_disconnected(state: &AppState, reason: &str) {
         }
         d.diagnostic_code = Some("scanner_disconnected".to_string());
         d.diagnostic_message = Some(reason.to_string());
+        // REGRESSION GUARD (`identity_survives_a_disconnect_so_the_flush_finds_its_profile`):
+        // `scanner_id` and `serial_number` are deliberately NOT cleared here.
+        //
+        // #575 suggested clearing them on disconnect, and that is wrong for a
+        // reason the issue could not see. `flush_channel_cache` keys on
+        // `AppState::scanner_id()`, which falls back to
+        // `PLACEHOLDER_SCANNER_ID` when the field is None, and the periodic
+        // flush runs every CHANNEL_CACHE_FLUSH_SECS regardless of whether a
+        // radio is attached. Nothing clears `shadow.channels` on disconnect
+        // either -- so clearing the id would mean: unplug, wait 30 s, and the
+        // departed radio's whole channel map is written under the placeholder
+        // profile, where `adopt_placeholder_cache` can later hand it to a
+        // DIFFERENT scanner.
+        //
+        // The #575 harm is a stale serial surviving a SWAP, and the
+        // unconditional assign in `update_device_info_from_mdl` fixes that
+        // completely: the next connect overwrites both fields together. What
+        // remains here after a disconnect describes the last-connected radio,
+        // consistently, which is a coherent thing for a "disconnected" status
+        // to sit beside.
     }
     // Also flag liveState as stale so the frontend's "stale" UI fires
     // (the frontend treats `stale: true` as a disconnect indicator).
@@ -892,10 +912,28 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             usb_serial.as_deref(),
         );
         if let Ok(mut d) = state.device.write() {
+            // REGRESSION GUARD (`the_serial_number_does_not_latch_across_a_swap`):
+            // both fields are assigned UNCONDITIONALLY, and they move together.
+            //
+            // This was `if d.serial_number.is_none()`, so the serial latched on
+            // the first successful read and never moved again. `scanner_id` had
+            // no such gate, so after a unit swap on the same port path the two
+            // disagreed: `DeviceInfo` carried the new model, the new
+            // capabilities and the new profile beside the OLD unit's serial --
+            // under one lock, which is the contradiction the doc on
+            // `DeviceInfo.scanner_id` says this field placement exists to
+            // prevent.
+            //
+            // Blanking on an empty read is deliberate. A stale identifier is
+            // worse than none at the moment it gets read: the user is on the
+            // Device tab asking why their channels disappeared.
+            //
+            // An unconditional assign would be the wrong trade if the serial
+            // read were flappy -- stale swapped for blinking. It is not:
+            // answered on hardware 2026-08-31 (#570), the descriptor read
+            // succeeds against a device `UsbTransport` has already claimed.
             d.scanner_id = resolved.clone();
-            if d.serial_number.is_none() {
-                d.serial_number = usb_serial.clone();
-            }
+            d.serial_number = usb_serial.clone();
         }
 
         // REGRESSION GUARD (`a_different_radio_does_not_inherit_the_last_ones_channels`):
@@ -1425,6 +1463,118 @@ mod tests {
         assert_eq!(
             d.diagnostic_code, None,
             "a lowercase but supported model must not be flagged unsupported"
+        );
+    }
+
+    /// REGRESSION GUARD (#575): `serial_number` names the CURRENTLY connected
+    /// unit, never a previous one.
+    ///
+    /// The assignment was `if d.serial_number.is_none() { ... }`, so the field
+    /// latched on the first successful read and never moved again --
+    /// `mark_disconnected` does not clear it either. `scanner_id` on the line
+    /// above was always assigned, so after a unit swap on the same port path
+    /// the two disagreed: `GET /status` and the Device tab reported the FIRST
+    /// unit's serial while the cache was already keyed on the SECOND unit's
+    /// profile.
+    ///
+    /// `DeviceInfo` then carried the new model, the new capabilities and the
+    /// new `scanner_id` beside the old unit's serial -- under one lock, which
+    /// is exactly the contradiction the doc on `DeviceInfo.scanner_id` says
+    /// the field placement exists to prevent.
+    ///
+    /// The profile was always right, because `match_index` is built from the
+    /// freshly-read value. The harm is a user reading a stale identifier off
+    /// the Device tab and trusting it, at the one moment they are diagnosing
+    /// "why did my channels disappear?".
+    ///
+    /// A stale value is worse than a blank one here, so the assignment is
+    /// unconditional in BOTH directions: a read that comes back empty blanks
+    /// the field rather than leaving the last unit's serial standing.
+    ///
+    /// That was an open question when #575 was filed -- an unconditional
+    /// assign would trade a stale value for a blinking one if the read were
+    /// flappy. Answered on hardware 2026-08-31 (#570): the descriptor read
+    /// succeeds against a device `UsbTransport` has already claimed, so it does
+    /// not flap. See `usb_serial_reads_from_a_live_bc125at`.
+    #[test]
+    fn the_serial_number_does_not_latch_across_a_swap() {
+        let state = crate::api::default_state();
+
+        // A previous unit left its serial behind. In this test environment
+        // `usb_serial_for_port("/dev/cu.test")` answers None, which is exactly
+        // the case that used to latch: `is_none()` was false, so the stale
+        // value survived every subsequent connect.
+        if let Ok(mut d) = state.device.write() {
+            d.serial_number = Some("PREVIOUS-UNIT".to_string());
+        }
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+
+        let d = state.device.read().unwrap();
+        assert_eq!(
+            d.serial_number, None,
+            "a connect must replace the serial with what THIS radio reported, \
+             even when that is nothing: {:?}",
+            d.serial_number
+        );
+        assert_eq!(
+            d.model.as_deref(),
+            Some("BC75XLT"),
+            "precondition: the connect path ran"
+        );
+    }
+
+    /// REGRESSION GUARD (#575): a disconnect must NOT clear the scanner
+    /// identity, because the periodic flush still needs it.
+    ///
+    /// #575 proposed clearing `scanner_id` and `serial_number` in
+    /// `mark_disconnected`. Doing that reaches a worse bug than the one it
+    /// fixes: `flush_channel_cache` keys on `AppState::scanner_id()`, which
+    /// falls back to `PLACEHOLDER_SCANNER_ID` when the field is None; the
+    /// periodic flush runs every CHANNEL_CACHE_FLUSH_SECS whether or not a
+    /// radio is attached; and nothing clears `shadow.channels` on disconnect.
+    ///
+    /// So: unplug, wait 30 s, and the departed radio's entire channel map is
+    /// written under the placeholder profile -- where `adopt_placeholder_cache`
+    /// can later move it onto a DIFFERENT scanner. That is the #571 loss by a
+    /// new route.
+    ///
+    /// This test drives exactly that sequence, so the tidy-up is caught rather
+    /// than reasoned about.
+    #[test]
+    fn identity_survives_a_disconnect_so_the_flush_finds_its_profile() {
+        use crate::api::channel_cache::{load_channels, PLACEHOLDER_SCANNER_ID};
+
+        let state = crate::api::default_state();
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        let resolved = state
+            .device
+            .read()
+            .unwrap()
+            .scanner_id
+            .clone()
+            .expect("precondition: connecting resolved a profile");
+
+        // A synced radio, then the cable comes out.
+        if let Ok(mut shadow) = state.shadow.write() {
+            shadow.channels = channel_map(300);
+            shadow.last_sync = 1_000_000_000.0;
+        }
+        mark_disconnected(&state, "unplugged");
+
+        // What the 30-second timer does next.
+        crate::api::channel_cache::flush_channel_cache(&state);
+
+        assert_eq!(
+            load_channels(&state.preferences_db_path, &resolved).len(),
+            300,
+            "a flush after disconnect must still write to the radio's own profile"
+        );
+        assert_eq!(
+            load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).len(),
+            0,
+            "and must NOT land under the placeholder, where another scanner \
+             could adopt it"
         );
     }
 
