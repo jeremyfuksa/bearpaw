@@ -1004,7 +1004,24 @@ export function ChannelsTab() {
             detail,
             error: apiError,
           });
-          if (detail === 'channel_write_mismatch') {
+          // The backend never emits `channel_write_mismatch` -- grep the crate:
+          // the string exists only here. This branch was dead, and it is not
+          // decoration: it re-reads the channel and, if the primary fields
+          // match, treats the write as SUCCEEDED rather than failed.
+          //
+          // The strings that actually reach here for a post-write verification
+          // failure are `channel_not_persisted` (mod.rs:2181) and
+          // `channel_readback_failed` (mod.rs:2159). Both mean the CIN was
+          // acknowledged and the follow-up read then disagreed or could not be
+          // parsed -- exactly the case this recovery exists for. mod.rs:2078
+          // records one on hardware: a cleared slot on a BC75XLT returned 400
+          // `channel_not_persisted` after the write had already landed.
+          //
+          // `channel_write_rejected` and `channel_write_wrong_mode` are
+          // deliberately NOT here: those fire before anything is written, so
+          // re-reading would only confirm the old value and the honest report
+          // is a failure.
+          if (detail === 'channel_not_persisted' || detail === 'channel_readback_failed') {
             try {
               const refreshed = await api.getChannel(change.channelIndex);
               const matchesPrimaryFields =
