@@ -1149,6 +1149,83 @@ describe('ChannelsTab', () => {
     });
   });
 
+  describe('post-write verification failures are recovered, not reported (#556)', () => {
+    // The upload's recovery branch checked `channel_write_mismatch` -- a string
+    // that exists NOWHERE in the Rust crate. It was dead code, and not
+    // decoration: it re-reads the channel and, when the primary fields match,
+    // treats the write as SUCCEEDED.
+    //
+    // What the backend really emits after an acknowledged CIN whose readback
+    // disagrees is `channel_not_persisted` (mod.rs:2181). mod.rs:2078 records
+    // one on hardware -- a cleared slot on a BC75XLT returned 400 after the
+    // write had already landed. Users saw "Failed to upload N channel edits"
+    // for writes that worked.
+
+    const uploadOneEdit = async (failWith: string, refreshed: ChannelData) => {
+      const target = createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Old' });
+      setMockStore(
+        createMockStore({
+          channels: [target],
+          memoryDrafts: {
+            1: createTestChannelDraft({ ...buildDraft(target), alpha_tag: 'New' }),
+          },
+        }),
+      );
+      mockApiClient.startProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.getChannel = vi.fn().mockResolvedValue(refreshed);
+      mockApiClient.updateChannel = vi
+        .fn()
+        .mockRejectedValue({ payload: { detail: failWith }, message: failWith });
+      mockApiClient.getChannels = vi.fn().mockResolvedValue([refreshed]);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Upload Changes/i }));
+      await waitFor(() => expect(mockApiClient.endProgramMode).toHaveBeenCalled());
+    };
+
+    it('treats channel_not_persisted as success when the scanner has the new value', async () => {
+      // The write landed; only the verification disagreed.
+      await uploadOneEdit(
+        'channel_not_persisted',
+        createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'New' }),
+      );
+
+      // Twice: once by the pre-write reconciliation (#549), once by the
+      // recovery re-read.
+      expect(mockApiClient.getChannel).toHaveBeenCalledTimes(2);
+      expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/Failed to upload/i));
+    });
+
+    it('still reports a failure when the scanner does NOT have the new value', async () => {
+      // Paired on purpose: recovering unconditionally would report every failed
+      // write as a success, which is worse than the bug being fixed.
+      await uploadOneEdit(
+        'channel_not_persisted',
+        createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Old' }),
+      );
+
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Failed to upload/i));
+    });
+
+    it('does not recover from a write the scanner refused outright', async () => {
+      // `channel_write_rejected` fires BEFORE anything is written, so
+      // re-reading would only confirm the old value. The honest report is a
+      // failure, and re-reading would be a pointless round trip.
+      await uploadOneEdit(
+        'channel_write_rejected',
+        createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Old' }),
+      );
+
+      // ONCE, not twice: the pre-write reconciliation (#549) still reads the
+      // channel, but no recovery re-read follows. Asserting "not called" would
+      // be wrong -- and asserting nothing about the count would pass for a
+      // build that recovers from every error.
+      expect(mockApiClient.getChannel).toHaveBeenCalledTimes(1);
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Failed to upload/i));
+    });
+  });
+
   describe('channel staleness and Refresh (#413)', () => {
     // Since #413 the channel list can be a cache of arbitrary age, adopted at
     // connect with no sync at all. The page where a user EDITS channels is
