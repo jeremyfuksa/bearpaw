@@ -492,4 +492,69 @@ describe('App.tsx regression guards', () => {
       expect(deps).not.toMatch(/\bchannels\b/);
     });
   });
+
+  describe('cache age appears on the cache-first path', () => {
+    // #572. The cache-age label ("Synced 3d ago") and the Channels tab's
+    // Refresh button both exist to answer "how stale is this list?". On the one
+    // path where that question matters most, neither appeared.
+    //
+    // The backend only knows `synced_at` after `load_channel_cache` sets
+    // `shadow.last_sync` inside `update_device_info_from_mdl`. The frontend
+    // learned it in exactly two places: the WS-connect probe, and sync
+    // completion. On a Tauri cold launch the WS connects in milliseconds while
+    // the poll loop is still opening the port and retrying MDL, so the probe
+    // answers `synced_at: null` -- and with `reread_memory_on_connect` OFF no
+    // sync ever runs, so it stayed null for the whole session.
+    //
+    // Result: the cache-first user -- the exact person #413 was built for --
+    // got an unlabelled channel list and no Refresh button. It appeared only
+    // on a tab switch (`currentTab` is in the probe effect's deps), and never
+    // for a `?tab=channels` deep link.
+    //
+    // The connect edge is precisely when `synced_at` becomes knowable, and the
+    // handler was already refetching channels there.
+
+    /**
+     * Body of the `device_info` WS handler, from its `ws.on('device_info'` to
+     * the close of the callback. Comments stripped so the assertions check
+     * executable code only.
+     */
+    function extractDeviceInfoHandler(source: string): string {
+      const anchor = source.indexOf("ws.on('device_info'");
+      if (anchor === -1) throw new Error('Could not locate the device_info handler');
+      const end = source.indexOf("ws.on('progress'", anchor);
+      if (end === -1) throw new Error('Could not locate the end of the device_info handler');
+      return stripComments(source.slice(anchor, end));
+    }
+
+    it('the connect edge refetches sync status, not just channels', () => {
+      // THE BUG: the edge refetched channels and nothing else, so `syncedAt`
+      // kept whatever the WS-connect probe saw -- null, because the scanner
+      // had not connected yet.
+      const handler = extractDeviceInfoHandler(APP_SOURCE);
+      expect(handler).toMatch(/getChannels\(\)/);
+      expect(handler).toMatch(/getSyncStatus\(\)/);
+    });
+
+    it('the refetched sync status is stored, not discarded', () => {
+      // Calling it and dropping the answer would satisfy the assertion above
+      // while leaving the label exactly as blank as before.
+      const handler = extractDeviceInfoHandler(APP_SOURCE);
+      const fetchIdx = handler.search(/getSyncStatus\(\)/);
+      const storeIdx = handler.search(/updateSync\(\{\s*syncedAt/);
+      expect(fetchIdx).toBeGreaterThanOrEqual(0);
+      expect(storeIdx).toBeGreaterThan(fetchIdx);
+    });
+
+    it('both refetches stay gated on the connect EDGE', () => {
+      // `broadcast_device_info` only fires on edges today, but an unconditional
+      // refetch would become two HTTP calls per tick if that ever changed --
+      // the hazard the existing channel-refetch comment already names.
+      const handler = extractDeviceInfoHandler(APP_SOURCE);
+      const gateIdx = handler.search(/connection_status\s*===\s*'connected'\s*&&\s*!wasConnected/);
+      expect(gateIdx).toBeGreaterThanOrEqual(0);
+      expect(handler.search(/getChannels\(\)/)).toBeGreaterThan(gateIdx);
+      expect(handler.search(/getSyncStatus\(\)/)).toBeGreaterThan(gateIdx);
+    });
+  });
 });

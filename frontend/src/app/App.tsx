@@ -284,6 +284,28 @@ export default function App() {
           .getChannels()
           .then((channelData) => setChannels(channelData))
           .catch((error) => console.warn('Failed to refresh channels on connect', error));
+
+        // REGRESSION GUARD (#572): refetch the SYNC STATUS here too, for the
+        // same reason and on the same edge.
+        //
+        // `synced_at` only becomes knowable once `load_channel_cache` has set
+        // `shadow.last_sync`, which happens inside
+        // `update_device_info_from_mdl` -- i.e. just before this broadcast.
+        // The frontend otherwise learns it in only two places: the WS-connect
+        // probe and sync completion. On a Tauri cold launch the WS connects in
+        // milliseconds while the poll loop is still opening the port, so the
+        // probe answers null; and with `reread_memory_on_connect` OFF no sync
+        // ever runs, so it stayed null for the entire session.
+        //
+        // The cost was the whole point of #413 going missing on its own happy
+        // path: the Scan bar showed no age, and the Channels tab's age +
+        // Refresh block is gated on that label, so it did not render at all.
+        // It appeared only if the user switched tabs (`currentTab` is in the
+        // probe effect's deps) and never for a `?tab=channels` deep link.
+        api
+          .getSyncStatus()
+          .then((status) => updateSync({ syncedAt: status.synced_at ?? null }))
+          .catch((error) => console.warn('Failed to refresh sync status on connect', error));
       }
     });
 
