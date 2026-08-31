@@ -275,9 +275,33 @@ describe('App.tsx regression guards', () => {
       };
     }
 
-    it('the auto-sync effect returns early when channels are already loaded', () => {
+    // Since the `reread_memory_on_connect` preference the early return is
+    // CONDITIONAL. Both sides are asserted separately and deliberately: the
+    // tempting edit when this first went red was to loosen the assertion to
+    // "the body mentions channels.length", which passes for a build where
+    // neither path works. That is the vacuous-guard shape this file exists to
+    // prevent, and it nearly happened here.
+    it('the auto-sync effect still returns early when the preference is OFF', () => {
       const { body } = extractAutoSyncEffect(APP_SOURCE);
-      expect(body).toMatch(/if\s*\(\s*channels\.length\s*>\s*0\s*\)\s*return\s*;/);
+      expect(body).toMatch(
+        /if\s*\(\s*!preferences\.rereadMemoryOnConnect\s*&&\s*channels\.length\s*>\s*0\s*\)\s*return\s*;/,
+      );
+    });
+
+    it('the preference is what makes the early return conditional', () => {
+      // Without the negation the effect would sync only when the preference is
+      // OFF -- backwards, and green against a test that merely looked for the
+      // identifier somewhere in the body.
+      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      expect(body).toMatch(/!preferences\.rereadMemoryOnConnect\s*&&/);
+    });
+
+    it('the effect re-evaluates when the preference changes', () => {
+      // Without it in the deps, toggling the switch would not take effect
+      // until something else re-ran the effect -- so the setting would appear
+      // to do nothing until the next connect.
+      const { deps } = extractAutoSyncEffect(APP_SOURCE);
+      expect(deps).toMatch(/preferences\.rereadMemoryOnConnect/);
     });
 
     it('the auto-sync effect re-evaluates when the channel count changes', () => {
@@ -292,7 +316,7 @@ describe('App.tsx regression guards', () => {
       // Ordering matters: a guard placed after `api.syncMemory()` reads as a
       // guard and suppresses nothing.
       const { body } = extractAutoSyncEffect(APP_SOURCE);
-      const guard = body.search(/if\s*\(\s*channels\.length\s*>\s*0\s*\)\s*return\s*;/);
+      const guard = body.search(/channels\.length\s*>\s*0\s*\)\s*return\s*;/);
       const call = body.indexOf('api.syncMemory()');
       expect(guard).toBeGreaterThanOrEqual(0);
       expect(call).toBeGreaterThanOrEqual(0);

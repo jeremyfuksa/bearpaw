@@ -354,6 +354,7 @@ describe('useStore', () => {
       data_retention_days: 90,
       audio_output_device: 'speakers',
       check_updates_on_launch: false,
+      reread_memory_on_connect: false,
       analytics_scope: 'all',
       activity_export_timezone: 'utc',
     };
@@ -375,6 +376,7 @@ describe('useStore', () => {
         dataRetentionDays: 90,
         audioOutputDevice: 'speakers',
         checkUpdatesOnLaunch: false,
+        rereadMemoryOnConnect: false,
         analyticsScope: 'all',
         activityExportTimezone: 'utc',
       });
@@ -400,9 +402,20 @@ describe('useStore', () => {
         dataRetentionDays: 30,
         audioOutputDevice: 'default',
         checkUpdatesOnLaunch: true,
+        rereadMemoryOnConnect: true,
         analyticsScope: 'scanner',
         activityExportTimezone: 'local',
       });
+    });
+
+    it('keeps a stored false for rereadMemoryOnConnect', () => {
+      // Same `??`-not-`||` hazard as checkUpdatesOnLaunch below, and the same
+      // consequence: this defaults true, so `||` would coerce a stored false
+      // back on every launch and a user who turned re-reading OFF would get a
+      // 5-second sync at every start with no way to stop it.
+      expect(mapStoredPreferences({ reread_memory_on_connect: false }).rereadMemoryOnConnect).toBe(
+        false,
+      );
     });
 
     it('keeps a stored false for checkUpdatesOnLaunch', () => {

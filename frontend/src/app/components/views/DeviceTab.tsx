@@ -64,6 +64,7 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   hitMinDuration: 'hit_min_duration',
   dataRetentionDays: 'data_retention_days',
   checkUpdatesOnLaunch: 'check_updates_on_launch',
+  rereadMemoryOnConnect: 'reread_memory_on_connect',
   analyticsScope: 'analytics_scope',
   activityExportTimezone: 'activity_export_timezone',
 };
@@ -2017,6 +2018,31 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                       />
                     </div>
                   )}
+
+                  {/* Not gated on capabilities: both scanner families cache
+                    channel memory and both can be programmed on their own
+                    keypad, so the choice applies to every model. */}
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <label
+                        htmlFor="reread-memory-on-connect"
+                        className="text-base font-medium text-white"
+                      >
+                        Re-read Channels on Connect
+                      </label>
+                      <p className="text-sm text-white/60">
+                        Read channel memory from the scanner at every launch. Turn off for an
+                        instant start from the saved copy.
+                      </p>
+                    </div>
+                    <Switch
+                      id="reread-memory-on-connect"
+                      checked={preferences.rereadMemoryOnConnect}
+                      onCheckedChange={(checked) =>
+                        handlePreferenceChange('rereadMemoryOnConnect', checked)
+                      }
+                    />
+                  </div>
 
                   {/* Not gated on capabilities: the choice is about the stored
                     history, which can contain hits from a scanner that is not
