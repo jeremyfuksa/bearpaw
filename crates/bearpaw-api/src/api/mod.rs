@@ -3271,6 +3271,64 @@ mod tests {
         assert_eq!(body["error"], "channel_out_of_range");
     }
 
+    /// REGRESSION GUARD (#556, finding 1): a permanent lockout with NO scanner
+    /// attached must fail, not invent a channel.
+    ///
+    /// The handler used to fall back to building a `ChannelData` out of live
+    /// state -- with a hardcoded `delay: 2` -- inserting it into
+    /// `shadow.channels`, and returning HTTP 200. Nothing reached the radio.
+    ///
+    /// That is a direct violation of the rule in `channel_cache`'s module
+    /// header: the cache is a READ ACCELERATOR, and nothing may write to it and
+    /// upload later. The value never came back from a scanner read, because
+    /// there was no scanner.
+    ///
+    /// #413 changed the severity without changing this code. The shadow is
+    /// flushed to SQLite within 30 s and re-adopted at every connect, so an
+    /// invented row now persists. Worse, `save_channels` DELETEs a profile's
+    /// rows before inserting: a one-entry fabricated map replaces the entire
+    /// cached image on disk. The completeness guard added in #578 refuses that
+    /// flush now, but the fabrication is still a lie in memory and the API
+    /// still told the user it worked.
+    ///
+    /// Returning `device_disconnected` is the honest answer, and it is what
+    /// every other write path here already does.
+    #[tokio::test]
+    async fn a_permanent_lockout_without_a_scanner_fails_instead_of_inventing_a_channel() {
+        let state = default_state();
+        // Precondition: no command sender, i.e. nothing to write to.
+        assert!(
+            state.command_tx.lock().unwrap().is_none(),
+            "precondition: this test is about the no-scanner path"
+        );
+
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/lockout")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"mode":"permanent","channel":7}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "a write with no radio attached is not a success"
+        );
+        let body = json_body(response).await;
+        assert_eq!(body["error"], "device_disconnected");
+
+        assert!(
+            state.shadow.read().unwrap().channels.get(&7).is_none(),
+            "and nothing may be invented into the channel cache: {:?}",
+            state.shadow.read().unwrap().channels.get(&7)
+        );
+    }
+
     /// REGRESSION GUARD (#435): the bound follows the CONNECTED scanner.
     ///
     /// The guard above posts channel 600, which is out of range on both
