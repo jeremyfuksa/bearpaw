@@ -396,20 +396,22 @@ export default function App() {
                 toastOnError: true,
               });
             }
-            // Background bank refresh — fire-and-forget so a 409/timeout
-            // doesn't take scan-resume down with it. Failure here just
-            // means the UI's bank state stays at whatever it was; the
-            // existing bank-refetch useEffect is a second chance.
-            api
-              .getBanks()
-              .then((result) => {
-                if (Array.isArray(result.banks) && result.banks.length === 10) {
-                  setBanks(result.banks);
-                }
-              })
-              .catch((error) => {
-                console.warn('Failed to refresh banks after sync', error);
-              });
+            // REGRESSION GUARD (#584): NO bank read here. The bank-refetch
+            // effect below already re-runs when `sync.inProgress` flips false,
+            // which is exactly "the sync is done, re-ask the scanner".
+            //
+            // Both firing meant two program-mode brackets back to back at the
+            // end of every sync -- and `get_banks` is a whole bracket, not one
+            // command: `PRG`, a 100 ms settle, `SCG`, then `EPG` on guard drop.
+            // Serialized behind the 5 Hz poll loop with a 3-second budget each,
+            // the second queued behind the first and blew its deadline. Over a
+            // ~17 hour hardware run that was 37 "Failed to refresh banks after
+            // sync" warnings and 18 backend `command_timeout`s -- the warning
+            // appearing TWICE per sync was the tell.
+            //
+            // This one was the redundant half: its own comment called the
+            // effect "a second chance", which had it backwards. The effect is
+            // the primary.
           })
           .catch((error) =>
             console.warn('[Progress] Failed to refresh channels after sync', error),
@@ -593,13 +595,17 @@ export default function App() {
   }, [api, setChannels, setDeviceInfo, updateLiveState]);
 
   useEffect(() => {
-    // Refetch banks once the scanner is reachable AND any initial memory
-    // sync has settled. The initial `Promise.allSettled` mount-time
-    // fetch races against `startMemorySync` (both want PRG mode); if
-    // sync wins, the bank fetch errors out and the store keeps its
-    // all-enabled default. This effect closes the gap by re-asking the
-    // scanner once sync is done (or once we know sync isn't needed
-    // because channels are already populated).
+    // Refetch banks once the scanner is reachable AND any memory sync has
+    // settled. `sync.inProgress` is in the deps, so this re-runs the moment a
+    // sync ends -- which is what makes it, and not the post-sync chain, the
+    // place bank state is refreshed (#584).
+    //
+    // CORRECTED (#584/#576): this used to justify itself by a race against
+    // "the initial `Promise.allSettled` mount-time fetch". #447 DELETED that
+    // fetch -- see the "Deliberately NO getBanks() here (#393)" comment on the
+    // mount effect above. The reason to keep this effect is the one stated
+    // now: it is the only thing that re-asks the scanner when a sync releases
+    // program mode.
     if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
     if (sync.inProgress) return; // wait for the sync to release PRG mode
     let active = true;
