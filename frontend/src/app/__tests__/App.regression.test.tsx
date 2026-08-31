@@ -296,6 +296,63 @@ describe('App.tsx regression guards', () => {
       expect(body).toMatch(/!preferences\.rereadMemoryOnConnect\s*&&/);
     });
 
+    it('the effect waits for stored preferences before deciding', () => {
+      // The store holds DEFAULTS until the preferences fetch settles, and
+      // `rereadMemoryOnConnect` defaults true. Without this gate the effect
+      // reads `true` on every launch and syncs regardless of what the user
+      // stored -- turning the preference OFF did nothing.
+      //
+      // Shipped that way and caught by hardware verification, not by these
+      // tests: they set the store synchronously, so nothing here ever
+      // exercised the load race. The same hazard is already guarded for
+      // `check_updates_on_launch`.
+      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      expect(body).toMatch(/if\s*\(\s*!preferencesLoaded\s*\)\s*return\s*;/);
+    });
+
+    it('the gate precedes the preference check', () => {
+      // Reading the preference before waiting for it is the bug, so ordering
+      // is the assertion. A build with both lines in the wrong order passes
+      // any test that only checks both are present.
+      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const wait = body.search(/!preferencesLoaded/);
+      const use = body.search(/!preferences\.rereadMemoryOnConnect/);
+      expect(wait).toBeGreaterThanOrEqual(0);
+      expect(use).toBeGreaterThanOrEqual(0);
+      expect(wait).toBeLessThan(use);
+    });
+
+    it('the effect re-evaluates once preferences have loaded', () => {
+      // Without it in the deps the effect never re-runs after the fetch
+      // settles, so the early return above would permanently suppress the
+      // launch sync for everyone.
+      const { deps } = extractAutoSyncEffect(APP_SOURCE);
+      expect(deps).toMatch(/preferencesLoaded/);
+    });
+
+    it('the OFF path asks the backend before syncing, not the store', () => {
+      // THE bug, and the one the source-level guards above could not catch.
+      // The early return is `!rereadMemoryOnConnect && channels.length > 0`.
+      // During startup `channels` is [] -- the mount fetch races the poll
+      // loop's connect and the connect-edge refetch (#552) has not resolved
+      // when this effect re-runs on the same device_info message. So the
+      // condition is `true && false`, no early return, and it syncs anyway.
+      //
+      // Measured on hardware: preference stored OFF, every launch still
+      // synced. A trace from the first API response showed in_progress:true
+      // with a task_id already assigned.
+      //
+      // Asking the backend removes the ordering assumption instead of making
+      // it likelier to hold.
+      const { body } = extractAutoSyncEffect(APP_SOURCE);
+      const guardIdx = body.search(/if\s*\(\s*!preferences\.rereadMemoryOnConnect\s*\)\s*\{/);
+      const fetchIdx = body.search(/await\s+api\.getChannels\(\)/);
+      const syncIdx = body.search(/await\s+api\.syncMemory\(\)/);
+      expect(guardIdx).toBeGreaterThanOrEqual(0);
+      expect(fetchIdx).toBeGreaterThan(guardIdx);
+      expect(syncIdx).toBeGreaterThan(fetchIdx);
+    });
+
     it('the effect re-evaluates when the preference changes', () => {
       // Without it in the deps, toggling the switch would not take effect
       // until something else re-ran the effect -- so the setting would appear
