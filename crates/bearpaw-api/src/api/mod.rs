@@ -1201,7 +1201,34 @@ impl std::fmt::Display for MigrationError {
 ///
 /// Nothing in Bearpaw deletes these files. Pruning them to reclaim disk would
 /// remove the documented way back from an upgrade.
+///
+/// REGRESSION GUARD (`the_backup_includes_uncheckpointed_wal_data`): this is
+/// `VACUUM INTO`, run through SQLite, NOT `std::fs::copy` (#574).
+///
+/// `open_sqlite` sets `journal_mode = WAL`, so a committed transaction lives in
+/// the `-wal` sidecar until something checkpoints it. Copying the main file
+/// alone silently dropped every uncommitted-to-main frame -- and restoring such
+/// a backup over a database whose newer `-wal` still sat beside it produced a
+/// MISMATCHED PAIR rather than the old database. The 30-second channel-cache
+/// flush makes the at-risk volume much larger than when this was written.
+///
+/// `VACUUM INTO` is consistent by construction: SQLite reads through its own
+/// MVCC snapshot, so the WAL is included without anyone having to get a
+/// checkpoint ordering right. It also emits ONE self-contained file, which
+/// matters because the recovery instruction is "put this file back" -- a
+/// backup that needed its own sidecars to be complete would recreate the
+/// mismatched-pair problem at restore time.
+///
+/// Preserving `user_version` is load-bearing, not incidental: the version is
+/// what tells the pre-migration build which schema it is looking at, and a
+/// backup that lost it would make that build re-run every migration. The guard
+/// asserts it.
+///
+/// Takes the live connection rather than reopening `path`: a second connection
+/// would see the same WAL but adds a failure mode for nothing, and the caller
+/// (`migrate_preferences_db`) already holds one.
 fn backup_db_if_needed(
+    conn: &rusqlite::Connection,
     path: &str,
     label: &str,
     from_version: i32,
@@ -1233,10 +1260,11 @@ fn backup_db_if_needed(
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
         .join(backup_name);
-    std::fs::copy(&source, &backup_path).map_err(|e| MigrationError::BackupFailed {
-        path: backup_path.display().to_string(),
-        source: e.to_string(),
-    })?;
+    conn.execute("VACUUM INTO ?1", [backup_path.to_string_lossy().as_ref()])
+        .map_err(|e| MigrationError::BackupFailed {
+            path: backup_path.display().to_string(),
+            source: e.to_string(),
+        })?;
     Ok(Some(backup_path))
 }
 
@@ -1328,7 +1356,13 @@ fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) -> Result<(),
     let current = schema_version(conn);
     check_not_from_the_future(path, current, PREFERENCES_SCHEMA_VERSION)?;
     if current > 0 || has_user_tables(conn) {
-        backup_db_if_needed(path, "preferences", current, PREFERENCES_SCHEMA_VERSION)?;
+        backup_db_if_needed(
+            conn,
+            path,
+            "preferences",
+            current,
+            PREFERENCES_SCHEMA_VERSION,
+        )?;
     }
     if current < 1 {
         run_migration_step(
@@ -1402,7 +1436,7 @@ fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) -> Result<(), M
     let current = schema_version(conn);
     check_not_from_the_future(path, current, ANALYTICS_SCHEMA_VERSION)?;
     if current > 0 || has_user_tables(conn) {
-        backup_db_if_needed(path, "analytics", current, ANALYTICS_SCHEMA_VERSION)?;
+        backup_db_if_needed(conn, path, "analytics", current, ANALYTICS_SCHEMA_VERSION)?;
     }
     if current < 1 {
         run_migration_step(
@@ -3854,22 +3888,23 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).expect("create dir");
         let path = dir.join("prefs.db");
-        {
-            let conn = rusqlite::Connection::open(&path).expect("create db");
-            conn.execute(
-                "CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
-                [],
-            )
-            .expect("create table");
-        }
+        // The connection stays open across the backup now that the backup runs
+        // through SQLite rather than the filesystem (#574).
+        let conn = rusqlite::Connection::open(&path).expect("create db");
+        conn.execute(
+            "CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
+            [],
+        )
+        .expect("create table");
         // Read+execute only: the existing file stays readable, but a new file
         // cannot be created alongside it.
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500))
             .expect("make dir read-only");
 
-        let result = backup_db_if_needed(path.to_str().unwrap(), "preferences", 0, 1);
+        let result = backup_db_if_needed(&conn, path.to_str().unwrap(), "preferences", 0, 1);
 
         // Restore permissions before asserting so a failure still cleans up.
+        drop(conn);
         let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
         let _ = std::fs::remove_dir_all(&dir);
 
@@ -3881,18 +3916,111 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD (#574): the pre-migration backup must contain data that
+    /// is still sitting in the write-ahead log.
+    ///
+    /// `open_sqlite` sets `journal_mode = WAL` and `synchronous = NORMAL`, so a
+    /// committed transaction lives in the `-wal` sidecar until something
+    /// checkpoints it. The backup was `std::fs::copy` of the main file alone --
+    /// the `-wal` and `-shm` sidecars were not copied and no checkpoint was
+    /// forced, so the ONLY recovery path from a forward-only migration could be
+    /// missing the most recent committed state.
+    ///
+    /// Restoring it was worse than incomplete: dropping the `.bak` over
+    /// `preferences.db` while a newer `-wal` still sat beside it produces a
+    /// MISMATCHED PAIR, not the old database.
+    ///
+    /// The existing backup tests assert that a file is CREATED, and that its
+    /// absence aborts. Never what is inside it -- the same shape as the
+    /// `synced_at` bug from #537: a guard that checks a value exists cannot
+    /// notice the value is wrong.
+    ///
+    /// The 30-second channel-cache flush (#413) makes the volume of at-risk WAL
+    /// frames much larger than it was when this code was written, and v2/v3 are
+    /// the first migrations to run against a database holding real channel
+    /// memory. Before that, the worst case was losing preferences.
+    #[test]
+    fn the_backup_includes_uncheckpointed_wal_data() {
+        let path = temp_db_file("wal-backup");
+        let path_str = path.to_str().expect("path").to_string();
+
+        // Exactly what `open_sqlite` configures.
+        let conn = rusqlite::Connection::open(&path).expect("create db");
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .expect("wal");
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .expect("synchronous");
+        conn.execute(
+            "CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
+            [],
+        )
+        .expect("create table");
+        conn.pragma_update(None, "user_version", 2)
+            .expect("set version");
+
+        // Checkpoint the SCHEMA into the main file, so the only thing left in
+        // the WAL is the row below. Without this the backup would be missing
+        // the table too, and the test would prove a blunter point than the one
+        // #574 is about: committed data that the copy cannot see.
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .expect("checkpoint");
+
+        // Committed, and deliberately NOT checkpointed. The connection stays
+        // open, so these frames are still in `-wal` when the backup runs --
+        // which is the state a SIGKILL, panic or power loss leaves behind.
+        conn.execute(
+            "INSERT INTO preferences (key, value, updated_at) VALUES ('theme', 'dark', 1.0)",
+            [],
+        )
+        .expect("insert");
+        assert!(
+            std::path::Path::new(&format!("{path_str}-wal")).exists(),
+            "precondition: the WAL sidecar must be hot for this test to mean \
+             anything"
+        );
+
+        let backup = backup_db_if_needed(&conn, &path_str, "preferences", 2, 3)
+            .expect("the backup must succeed")
+            .expect("a database at v2 going to v3 must be backed up");
+
+        // Open the backup ALONE. No sidecar travels with it, which is the whole
+        // point: whatever the recovery path can read has to already be in this
+        // one file.
+        let restored = rusqlite::Connection::open(&backup).expect("open backup");
+        let value: String = restored
+            .query_row(
+                "SELECT value FROM preferences WHERE key = 'theme'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("the committed row must be IN the backup, not just in the original's WAL");
+        assert_eq!(value, "dark");
+
+        let version: i32 = restored
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(
+            version, 2,
+            "the backup must carry the schema version it was taken at -- \
+             restoring it is how a user gets back to the pre-migration app, \
+             and a version of 0 would make that build re-run every migration"
+        );
+
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&backup);
+    }
+
     /// The backup path appears in the failure message, because forward-only
     /// migrations make "restore the .bak" the documented way back and a user
     /// told to do that has to be able to find the file.
     #[test]
     fn a_successful_backup_lands_next_to_the_database() {
         let path = temp_db_file("backup-made");
-        {
-            let conn = rusqlite::Connection::open(&path).expect("create db");
-            conn.execute("CREATE TABLE probe (id INTEGER)", [])
-                .expect("create table");
-        }
-        let backup = backup_db_if_needed(path.to_str().unwrap(), "preferences", 0, 1)
+        let conn = rusqlite::Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE probe (id INTEGER)", [])
+            .expect("create table");
+        let backup = backup_db_if_needed(&conn, path.to_str().unwrap(), "preferences", 0, 1)
             .expect("backup must succeed")
             .expect("a backup must be made when migrating an existing database");
 
@@ -3911,12 +4039,10 @@ mod tests {
     #[test]
     fn no_backup_is_made_when_already_current() {
         let path = temp_db_file("no-backup");
-        {
-            let conn = rusqlite::Connection::open(&path).expect("create db");
-            conn.execute("CREATE TABLE probe (id INTEGER)", [])
-                .expect("create table");
-        }
-        let backup = backup_db_if_needed(path.to_str().unwrap(), "preferences", 1, 1)
+        let conn = rusqlite::Connection::open(&path).expect("create db");
+        conn.execute("CREATE TABLE probe (id INTEGER)", [])
+            .expect("create table");
+        let backup = backup_db_if_needed(&conn, path.to_str().unwrap(), "preferences", 1, 1)
             .expect("no-op must succeed");
         assert!(backup.is_none(), "already-current needs no backup");
         let _ = std::fs::remove_file(&path);
