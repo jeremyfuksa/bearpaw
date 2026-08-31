@@ -9,6 +9,7 @@ mod handlers;
 mod memory_sync;
 mod poll;
 mod program_mode;
+mod scanner_registry;
 mod security;
 mod ws;
 
@@ -162,7 +163,7 @@ pub struct ActiveHit {
     pub bank: Option<u8>,
 }
 
-const PREFERENCES_SCHEMA_VERSION: i32 = 2;
+const PREFERENCES_SCHEMA_VERSION: i32 = 3;
 
 /// How often the channel cache is snapshotted to SQLite.
 ///
@@ -1341,6 +1342,41 @@ fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) -> Result<(),
                 tone_dcs_code    INTEGER,
                 synced_at        REAL NOT NULL,
                 PRIMARY KEY (scanner_id, channel_index)
+            );
+            ",
+        )?;
+    }
+    if current < 3 {
+        // #414: one row per physical scanner Bearpaw has seen.
+        //
+        // `scanner_id` is a generated key, NOT a discriminator. Recognition has
+        // to come from what the hardware volunteers, and a generated id would
+        // have to live either on the scanner (whose only writable storage is
+        // channel memory, wiped by a factory reset) or on the host (circular --
+        // the lookup key would be the thing we lack). So `match_index` does the
+        // recognising and `scanner_id` is a stable internal key, which means
+        // renaming a scanner or adding a better signal later does not rewrite
+        // every foreign key.
+        //
+        // ACCEPTED LIMITATION: two units of the SAME model share one profile.
+        // A BC125AT reports usb_serial `0001` for every unit -- it is a firmware
+        // constant, not a per-unit id (measured on hardware 2026-08-26). Only
+        // the BC75XLT has a real serial, and only because its CP2104 bridge is
+        // programmed per-unit by Silicon Labs. Correct and permanent for one
+        // BC125AT plus one BC75XLT; detectable and fixable if a second
+        // same-model unit ever appears, because the real key is a UUID.
+        run_migration_step(
+            conn,
+            3,
+            "
+            CREATE TABLE IF NOT EXISTS scanners (
+                scanner_id   TEXT PRIMARY KEY,
+                match_index  TEXT NOT NULL UNIQUE,
+                model        TEXT NOT NULL,
+                usb_serial   TEXT,
+                display_name TEXT,
+                first_seen   REAL NOT NULL,
+                last_seen    REAL NOT NULL
             );
             ",
         )?;
@@ -3425,7 +3461,14 @@ mod tests {
         init_preferences_db(path.to_str().unwrap()).expect("migration must succeed");
 
         let conn = rusqlite::Connection::open(&path).expect("reopen");
-        assert_eq!(schema_version(&conn), 2, "version must advance to 2");
+        // Every pending step runs, so a v1 database lands on the current
+        // version, not on 2. Compared against the constant so a future bump
+        // does not fail this test for a reason unrelated to what it checks.
+        assert_eq!(
+            schema_version(&conn),
+            PREFERENCES_SCHEMA_VERSION,
+            "a v1 database must be brought fully up to date"
+        );
 
         let cols: Vec<String> = conn
             .prepare("SELECT name FROM pragma_table_info('channel_memory')")
@@ -3479,7 +3522,78 @@ mod tests {
         init_preferences_db(p).expect("second run must be a no-op");
 
         let conn = rusqlite::Connection::open(&path).expect("reopen");
-        assert_eq!(schema_version(&conn), 2);
+        // Compared against the constant, not a literal: a version bump should
+        // require touching the migration and nothing else. Hardcoding the
+        // number here made the bump to 3 fail this test for no reason.
+        assert_eq!(schema_version(&conn), PREFERENCES_SCHEMA_VERSION);
+    }
+
+    /// A v2 database gains the `scanners` table and keeps its channel memory.
+    ///
+    /// The columns are asserted by name for the same reason as the v2 test: the
+    /// schema is the contract #415 through #417 build on, and a silently
+    /// renamed column would not fail a round-trip test that uses the same names
+    /// on both sides.
+    #[test]
+    fn preferences_v2_migrates_to_scanners_v3() {
+        let path = temp_db_file("scanners-v2-to-v3");
+        let p = path.to_str().unwrap();
+
+        // Build a real v2 database, then wind the version back so the v3 step
+        // is the only one left to run.
+        init_preferences_db(p).expect("build current schema");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("reopen");
+            conn.execute(
+                "INSERT INTO channel_memory
+                     (scanner_id, channel_index, frequency, modulation, alpha_tag,
+                      delay, lockout, priority, tone_kind, synced_at)
+                 VALUES ('_default', 1, 146.52, 'FM', 'KEEP ME', 2, 0, 0, 'none', 1.0)",
+                [],
+            )
+            .expect("seed cached channel memory");
+            conn.execute("DROP TABLE scanners", []).expect("undo v3");
+            conn.pragma_update(None, "user_version", 2)
+                .expect("mark as v2");
+        }
+
+        init_preferences_db(p).expect("migration must succeed");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        assert_eq!(schema_version(&conn), PREFERENCES_SCHEMA_VERSION);
+
+        let cols: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('scanners')")
+            .expect("scanners table must exist")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query columns")
+            .filter_map(Result::ok)
+            .collect();
+        for expected in [
+            "scanner_id",
+            "match_index",
+            "model",
+            "usb_serial",
+            "display_name",
+            "first_seen",
+            "last_seen",
+        ] {
+            assert!(
+                cols.iter().any(|c| c == expected),
+                "scanners must carry `{expected}`: {cols:?}"
+            );
+        }
+
+        // The cache survives. Orphaning a user's channel memory on an upgrade
+        // would cost them a re-sync and look like data loss.
+        let tag: String = conn
+            .query_row(
+                "SELECT alpha_tag FROM channel_memory WHERE channel_index = 1",
+                [],
+                |r| r.get(0),
+            )
+            .expect("cached channel memory must survive the step");
+        assert_eq!(tag, "KEEP ME");
     }
 
     /// REGRESSION GUARD: a failed step must NOT bump `user_version`.
