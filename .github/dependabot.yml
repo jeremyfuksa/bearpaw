@@ -26,6 +26,14 @@ updates:
       # un-mergeable in either order (see PR #367, which bumped TS 6 -> 7 alone
       # and could not be installed, rebased, or merged). Listed FIRST so it
       # claims these packages before npm-minor-patch does.
+      #
+      # Grouping is NECESSARY BUT NOT SUFFICIENT, and the way it fails is
+      # deceptive. It moves them together only when BOTH have compatible
+      # releases; when one does not, Dependabot opens the solo bump anyway and
+      # titles it "in the typescript group", so a PR that the group was meant
+      # to prevent arrives looking as though the group approved it. That is
+      # what PR #516 was. The `ignore` rule below is the part that actually
+      # holds.
       typescript:
         patterns:
           - "typescript"
@@ -41,6 +49,25 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # HOLD TypeScript majors until typescript-eslint can follow.
+      #
+      # As of 2026-08-30 the newest stable typescript-eslint is 8.68.0 and its
+      # peer range is `typescript: >=4.8.4 <6.1.0`. TypeScript 7 is outside it,
+      # and no stable release supports 7 yet (only 8.68.1-alpha.*). npm ci dies
+      # with ERESOLVE, so EVERY CI job fails -- including the Rust ones, which
+      # need `frontend/dist` and therefore need the install to succeed.
+      #
+      # This has now cost two PRs (#367, #516). Grouping alone did not stop the
+      # second, for the reason spelled out above the groups block.
+      #
+      # Minor and patch TypeScript bumps still flow normally; only the major is
+      # held. REMOVE THIS RULE once typescript-eslint ships a stable release
+      # whose `typescript` peer range admits 7 -- check with
+      # `npm view typescript-eslint@latest peerDependencies`.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "cargo"
     directory: "/"
