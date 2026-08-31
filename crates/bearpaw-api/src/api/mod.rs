@@ -2262,6 +2262,22 @@ pub(crate) async fn write_channel_to_scanner(
             read_back = %read_response.trim(),
             "CIN write not persisted as sent"
         );
+        // REGRESSION GUARD
+        // (`a_failed_channel_write_still_stores_what_the_scanner_reported`):
+        // store the readback even though this returns Err (#556, findings
+        // 8/11).
+        //
+        // The `CIN` has already landed and been acknowledged; `readback` is
+        // what the radio holds now. Callers update the shadow only on `Ok`, so
+        // discarding it left the pre-write value cached -- and since #413 that
+        // survives restarts rather than dying with the session.
+        //
+        // Paired with the identical guard in `set_channel_lockout_on_scanner`:
+        // two copies of one mistake in two functions, so fixing either alone
+        // leaves the other live.
+        if let Ok(mut shadow) = state.shadow.write() {
+            shadow.channels.insert(channel.index, readback);
+        }
         return Err(ApiError::BadRequest("channel_not_persisted".to_string()));
     }
     Ok(readback)
@@ -2585,6 +2601,23 @@ pub(crate) async fn set_channel_lockout_on_scanner(
             read_back = readback.lockout,
             "lockout write not persisted as sent"
         );
+        // REGRESSION GUARD
+        // (`a_failed_lockout_write_still_stores_what_the_scanner_reported`):
+        // store the readback even though this returns Err (#556, findings
+        // 7/12).
+        //
+        // `readback` was just parsed off the wire -- it is what the radio
+        // actually holds. Callers update the shadow only on `Ok`, so
+        // discarding it here left the cache on its PRE-write value: a
+        // description already known to be wrong, kept in preference to one
+        // just read from the scanner.
+        //
+        // Reporting the failure is right; throwing away the truth on the way
+        // out is not. #413 made it durable -- the shadow is flushed to SQLite
+        // within 30 s and re-adopted at every connect.
+        if let Ok(mut shadow) = state.shadow.write() {
+            shadow.channels.insert(index, readback);
+        }
         return Err(ApiError::BadRequest("lockout_not_persisted".to_string()));
     }
     Ok(readback)
@@ -5907,6 +5940,133 @@ mod tests {
         assert!(
             transcript.iter().any(|c| c.starts_with("CIN,5,")),
             "expected a CIN write for channel 5: {transcript:?}"
+        );
+    }
+
+    /// A scanner that ACKNOWLEDGES every write and then reads back a channel
+    /// that does not reflect it -- the "write landed, verification disagrees"
+    /// case both write helpers already detect and report.
+    ///
+    /// The read is deliberately a REAL channel with a distinctive frequency, so
+    /// a test can tell "the shadow holds what the scanner said" apart from
+    /// "the shadow holds what the caller hoped" or "the shadow was untouched".
+    fn responder_that_never_persists() -> impl Fn(&str) -> Result<String, String> + Send + 'static {
+        move |command: &str| {
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let mut fields = rest.splitn(2, ',');
+                let index: u16 = fields.next().unwrap_or("").parse().unwrap_or(0);
+                return match fields.next() {
+                    // Write: acknowledged, and then ignored by the firmware.
+                    Some(_) => Ok("CIN,OK\r".to_string()),
+                    // Read: always unlocked, always 146.5200, whatever was written.
+                    None => Ok(format!("CIN,{index},Scanner Truth,01465200,FM,0,2,0,0\r")),
+                };
+            }
+            Ok("OK\r".to_string())
+        }
+    }
+
+    /// REGRESSION GUARD (#556, findings 7/12): a lockout write whose readback
+    /// disagrees still STORES that readback.
+    ///
+    /// `set_channel_lockout_on_scanner` reads the channel back, compares, and
+    /// on a mismatch warns and returns `lockout_not_persisted` -- discarding
+    /// the parsed readback it is holding. Callers update the shadow only on
+    /// `Ok`, so the cache kept its PRE-write value: a description of the radio
+    /// that was already known to be wrong, chosen over one that had just been
+    /// read off the wire.
+    ///
+    /// Reporting the failure is right. Throwing away the truth on the way out
+    /// is not, and #413 made it durable -- the shadow is flushed to SQLite
+    /// within 30 s and re-adopted at every connect.
+    #[tokio::test]
+    async fn a_failed_lockout_write_still_stores_what_the_scanner_reported() {
+        let state = default_state();
+        // A stale cache entry: wrong frequency, and claiming a lockout the
+        // radio does not have.
+        state.shadow.write().unwrap().channels.insert(
+            5,
+            ChannelData {
+                index: 5,
+                frequency: 100.0,
+                alpha_tag: "Stale".to_string(),
+                lockout: true,
+                ..Default::default()
+            },
+        );
+        let _fake = FakeScanner::attach(&state, responder_that_never_persists());
+
+        let result = set_channel_lockout_on_scanner(&state, 5, true).await;
+
+        assert!(
+            result.is_err(),
+            "a write the scanner did not persist must still be reported as a failure"
+        );
+        let cached = state.shadow.read().unwrap().channels.get(&5).cloned();
+        let cached = cached.expect("the channel must still be cached");
+        assert!(
+            (cached.frequency - 146.52).abs() < 1e-9,
+            "the shadow must hold what the scanner reported, not the stale \
+             pre-write value: {cached:?}"
+        );
+        assert!(
+            !cached.lockout,
+            "including the field the write failed to change: {cached:?}"
+        );
+    }
+
+    /// REGRESSION GUARD (#556, findings 8/11): the same for a full channel
+    /// write.
+    ///
+    /// `write_channel_to_scanner` returns `channel_not_persisted` AFTER the
+    /// `CIN` has landed and been read back, discarding the readback. Paired
+    /// with the guard above because they are two copies of one mistake in two
+    /// functions -- fixing either alone leaves the other live.
+    #[tokio::test]
+    async fn a_failed_channel_write_still_stores_what_the_scanner_reported() {
+        let state = default_state();
+        state.shadow.write().unwrap().channels.insert(
+            5,
+            ChannelData {
+                index: 5,
+                frequency: 100.0,
+                alpha_tag: "Stale".to_string(),
+                lockout: true,
+                ..Default::default()
+            },
+        );
+        let _fake = FakeScanner::attach(&state, responder_that_never_persists());
+
+        let wanted = ChannelData {
+            index: 5,
+            frequency: 154.1,
+            alpha_tag: "Wanted".to_string(),
+            modulation: "FM".to_string(),
+            delay: 2,
+            ..Default::default()
+        };
+        let result = write_channel_to_scanner(&state, &wanted).await;
+
+        assert!(
+            result.is_err(),
+            "a write the scanner did not persist must still be reported as a failure"
+        );
+        let cached = state.shadow.read().unwrap().channels.get(&5).cloned();
+        let cached = cached.expect("the channel must still be cached");
+        assert!(
+            (cached.frequency - 146.52).abs() < 1e-9,
+            "the shadow must hold the scanner's readback, not the stale value \
+             and not the value the caller wanted: {cached:?}"
+        );
+        assert_ne!(
+            cached.alpha_tag, "Wanted",
+            "storing the INTENT would be the bug this issue is about"
         );
     }
 
