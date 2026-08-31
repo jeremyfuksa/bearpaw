@@ -563,4 +563,78 @@ describe('App.tsx regression guards', () => {
       expect(handler.search(/getSyncStatus\(\)/)).toBeGreaterThan(gateIdx);
     });
   });
+
+  describe('one bank read per sync, not two', () => {
+    // #584, found on hardware over a ~17 hour run: "Failed to refresh banks
+    // after sync" fired 37 times, with 18 backend `command_timeout`s, and the
+    // warning appeared TWICE per sync. That was the tell.
+    //
+    // Two `getBanks()` fired at the end of every sync: the post-sync chain's
+    // fire-and-forget refresh, and the connection-gated effect, which re-runs
+    // because `sync.inProgress` is in its deps and had just flipped false.
+    //
+    // `get_banks` is not one command -- it is a whole program-mode bracket:
+    // `PRG` round-trip, the 100 ms settle, `SCG` round-trip, `EPG` on guard
+    // drop. Two of those back to back, serialized behind the 5 Hz poll loop,
+    // each with its own 3-second budget. The second queues behind the first and
+    // blows its deadline, which is why the log shows `command_timeout` followed
+    // by `discarding expired queued command` (#139's expiry path -- the command
+    // sat too long, the scanner was not slow).
+    //
+    // Related to #393, which described this signature at STARTUP; #447 fixed
+    // that one by deleting the mount-time read. This is a different call site.
+
+    /**
+     * The post-sync chain inside the progress handler: from the scan-resume
+     * call that marks sync completion to the end of that `.then`.
+     */
+    function extractPostSyncChain(source: string): string {
+      const anchor = source.indexOf("requestScanResume('sync completion'");
+      if (anchor === -1) throw new Error('Could not locate the post-sync chain');
+      const end = source.indexOf('Failed to refresh channels after sync', anchor);
+      if (end === -1) throw new Error('Could not locate the end of the post-sync chain');
+      return stripComments(source.slice(anchor, end));
+    }
+
+    /**
+     * The bank-refetch effect, identified by the one deps array carrying both
+     * `sync.inProgress` and `sync.hasSyncedInitially`.
+     */
+    function extractBankRefetchEffect(source: string): { body: string; deps: string } {
+      const depsOpen = source.indexOf('}, [api, deviceInfo, sync.inProgress');
+      if (depsOpen === -1) throw new Error('Could not locate the bank-refetch deps array');
+      const effectOpen = source.lastIndexOf('useEffect(() => {', depsOpen);
+      if (effectOpen === -1) throw new Error('Could not locate the bank-refetch effect');
+      const depsClose = source.indexOf(']);', depsOpen);
+      return {
+        body: stripComments(source.slice(effectOpen, depsOpen)),
+        deps: source.slice(depsOpen + 3, depsClose + 1),
+      };
+    }
+
+    it('the post-sync chain does not read banks', () => {
+      // THE BUG. The chain's own comment called the effect below "a second
+      // chance", which is backwards: the effect is the primary, because it
+      // re-runs precisely when `sync.inProgress` flips false.
+      const chain = extractPostSyncChain(APP_SOURCE);
+      expect(chain).not.toMatch(/getBanks\(\)/);
+    });
+
+    it('the bank-refetch effect still reads banks when a sync ends', () => {
+      // Not optional. Deleting BOTH calls would satisfy the guard above while
+      // leaving bank state at whatever it was before the sync -- which on a
+      // cold start is the all-enabled default that #393 was about.
+      const { body, deps } = extractBankRefetchEffect(APP_SOURCE);
+      expect(body).toMatch(/getBanks\(\)/);
+      expect(deps).toMatch(/sync\.inProgress/);
+    });
+
+    it('the effect waits for the sync to release program mode', () => {
+      // Without the early return it fires DURING the sync, when every command
+      // is queued behind a 500-channel PRG bracket -- the timeout this issue is
+      // about, just earlier.
+      const { body } = extractBankRefetchEffect(APP_SOURCE);
+      expect(body).toMatch(/if\s*\(\s*sync\.inProgress\s*\)\s*return\s*;/);
+    });
+  });
 });
