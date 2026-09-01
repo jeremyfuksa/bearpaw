@@ -6142,6 +6142,76 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD (#598): a drop that QUEUED an EPG leaves the flag set.
+    ///
+    /// The poll loop yields STS/GLG on `program_mode_active`. The Drop used to
+    /// clear it up front and then queue the EPG fire-and-forget, so the loop
+    /// resumed polling a radio still in program mode -- a window exactly as
+    /// wide as the queue backlog, and a plausible source of the STS parse drops
+    /// seen on hardware.
+    ///
+    /// `send_raw_command` already had this ordering right for the EPGs it sends
+    /// itself; only the guard's path was wrong, because a `Drop` cannot await a
+    /// reply. The poll loop now clears the flag after the EPG actually goes
+    /// out -- which is why the flag is still set here: this test has a fake
+    /// scanner but no poll loop, so nothing else clears it.
+    #[tokio::test]
+    async fn the_flag_survives_a_drop_that_queued_an_epg() {
+        let state = default_state();
+        let fake = FakeScanner::attach(&state, |_| Ok("OK\r".to_string()));
+
+        {
+            let _guard = ProgramModeGuard::enter(&state)
+                .await
+                .expect("the fake accepts PRG");
+            assert!(
+                state.program_mode_active.load(Ordering::Relaxed),
+                "precondition: entering suspends the poll loop"
+            );
+        }
+
+        assert!(
+            state.program_mode_active.load(Ordering::Relaxed),
+            "the flag must stay set until the EPG has actually gone out -- \
+             clearing it in Drop is what let the poll loop talk to a radio \
+             still in PRG"
+        );
+
+        let transcript = fake.transcript_with_closed_bracket();
+        assert!(
+            transcript.iter().any(|c| c == "EPG"),
+            "and the EPG must genuinely be on its way: {transcript:?}"
+        );
+    }
+
+    /// The other half, and the hazard the original comment named: when nothing
+    /// will arrive to clear the flag, the drop must clear it itself.
+    ///
+    /// Asserting only the guard above would pass for a build that never clears
+    /// the flag at all -- which freezes the live display permanently, a worse
+    /// bug than the one being fixed.
+    #[tokio::test]
+    async fn a_drop_with_nowhere_to_send_clears_the_flag_itself() {
+        let state = default_state();
+        let _fake = FakeScanner::attach(&state, |_| Ok("OK\r".to_string()));
+
+        let guard = ProgramModeGuard::enter(&state)
+            .await
+            .expect("the fake accepts PRG");
+        assert!(state.program_mode_active.load(Ordering::Relaxed));
+
+        // The channel goes away before the bracket closes -- a shutdown, or a
+        // poll loop that has torn down. Nothing will ever execute an EPG now.
+        *state.command_tx.lock().unwrap() = None;
+        drop(guard);
+
+        assert!(
+            !state.program_mode_active.load(Ordering::Relaxed),
+            "with nowhere to send the EPG, the drop must clear the flag or the \
+             poll loop stays suspended forever"
+        );
+    }
+
     /// REGRESSION GUARD (#513): the shipped server's shutdown path is
     /// REACHABLE, and it flushes.
     ///
