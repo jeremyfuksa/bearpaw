@@ -2395,4 +2395,112 @@ mod tests {
             "the same radio's live channel memory must survive a replug"
         );
     }
+
+    /// Long enough for the first open to fail and the loop to sleep through
+    /// `RECONNECT_BACKOFF_INITIAL_MS` (500 ms) into a second attempt. The two
+    /// outcomes are far apart in time — the bug ends the thread in
+    /// milliseconds, the fix never ends it — so this does not need to be tight.
+    const OPEN_RETRY_OBSERVE_MS: u64 = 900;
+
+    /// REGRESSION GUARD (#513): a failed open must RETRY, not end the loop.
+    ///
+    /// `run_poll_loop` used to `return Err` when the very first open failed, so
+    /// starting Bearpaw while the scanner was unplugged — or wedged — left the
+    /// process serving a permanently disconnected API, recoverable only by
+    /// relaunching. A device that vanished MID-session was handled correctly;
+    /// the first open was the one path with no retry.
+    ///
+    /// Both loop functions carried this guard as a COMMENT ONLY, with no test,
+    /// until this one. That matters because the supervisor restructure in #416
+    /// moves exactly this code, and a regression here is silent: it presents as
+    /// "Bearpaw won't reconnect after I unplugged it", which is the original
+    /// #513 report.
+    ///
+    /// The observable is thread liveness. Restoring the `return Err` makes the
+    /// thread finish almost immediately; the correct loop never finishes.
+    /// Mutation-verified in both directions before this landed.
+    ///
+    /// NOTE: the spawned thread is deliberately detached and runs for the life
+    /// of the test binary — a loop with no scanner cannot be asked to stop. It
+    /// settles at one failed open per `RECONNECT_BACKOFF_MAX_MS` (5 s), which
+    /// costs nothing measurable.
+    #[test]
+    fn a_failed_serial_open_retries_instead_of_ending_the_loop() {
+        let state = device_only_state();
+        let (_cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let loop_state = state.clone();
+
+        let handle = thread::spawn(move || {
+            run_poll_loop(
+                loop_state,
+                "/dev/bearpaw-nonexistent-test-port",
+                115_200,
+                false,
+                cmd_rx,
+            )
+        });
+
+        thread::sleep(Duration::from_millis(OPEN_RETRY_OBSERVE_MS));
+
+        assert!(
+            !handle.is_finished(),
+            "a failed serial open must retry; the loop ended instead, which is \
+             the #513 bug — Bearpaw serves a permanently disconnected API until \
+             it is relaunched"
+        );
+
+        // And the failure goes through `mark_disconnected`, not the fatal exit
+        // path. That is what makes it MORE visible than the old behaviour: it
+        // sets `diagnostic_code` and the liveState `stale` flag the frontend
+        // keys its disconnect UI on, which the old `return Err` path did not.
+        let device = state.device.read().expect("device lock");
+        assert_eq!(device.connection_status, "disconnected");
+        assert_eq!(
+            device.diagnostic_code.as_deref(),
+            Some("scanner_disconnected"),
+            "the retry path must report through mark_disconnected"
+        );
+        drop(device);
+        assert!(
+            state.live.read().expect("live lock").stale,
+            "mark_disconnected must flag liveState stale so the disconnect UI fires"
+        );
+    }
+
+    /// REGRESSION GUARD (#513), USB half — paired with
+    /// `a_failed_serial_open_retries_instead_of_ending_the_loop`.
+    ///
+    /// The two loop functions are separate ~310-line bodies carrying duplicated
+    /// copies of this guard, so a fix or a regression in one does not touch the
+    /// other. Pinning only the serial half would stay green for a build where
+    /// the USB path — the one macOS actually uses for a BC125AT — kills its
+    /// thread on a failed open. That is the exact shape the original report
+    /// described: "this logged `Poll loop exited: usb device not found` once and
+    /// the thread ended, so plugging the scanner back in did nothing."
+    #[test]
+    fn a_failed_usb_open_retries_instead_of_ending_the_loop() {
+        let state = device_only_state();
+        let (_cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let loop_state = state.clone();
+
+        // Not an assigned USB vendor id, so this cannot collide with hardware
+        // attached to the machine running the suite.
+        let handle = thread::spawn(move || run_poll_loop_usb(loop_state, 0xFFFF, 0xFFFF, cmd_rx));
+
+        thread::sleep(Duration::from_millis(OPEN_RETRY_OBSERVE_MS));
+
+        assert!(
+            !handle.is_finished(),
+            "a failed USB open must retry; the loop ended instead, which is the \
+             #513 bug on the transport macOS uses for a BC125AT"
+        );
+
+        let device = state.device.read().expect("device lock");
+        assert_eq!(device.connection_status, "disconnected");
+        assert_eq!(
+            device.diagnostic_code.as_deref(),
+            Some("scanner_disconnected"),
+            "the retry path must report through mark_disconnected"
+        );
+    }
 }
