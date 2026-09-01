@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::protocol::capabilities::ScannerCapabilities;
 use crate::protocol::{classify_response, parse_cin_response, tones, ScannerReply};
@@ -1021,24 +1021,20 @@ fn init_analytics_db(path: &str) -> Result<(), MigrationError> {
 fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
     let mut out = Vec::new();
     if let Some(conn) = open_sqlite(path) {
-        let _ = conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS scan_hits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp REAL NOT NULL,
-                frequency REAL NOT NULL,
-                channel INTEGER,
-                alpha_tag TEXT,
-                modulation TEXT NOT NULL,
-                rssi INTEGER NOT NULL,
-                duration REAL,
-                mode TEXT NOT NULL,
-                bank INTEGER,
-                session_id TEXT NOT NULL,
-                ended_at REAL
-            );
-            ",
-        );
+        // REGRESSION GUARD (`loading_hits_does_not_create_the_table`): the READ
+        // path does not define schema. `migrate_analytics_db` owns it.
+        //
+        // There used to be a `CREATE TABLE IF NOT EXISTS scan_hits (...)` here
+        // that omitted `scanner_id`, while the SELECT below reads it --
+        // `scanner_id` arrived in analytics schema v2 (#440) via ALTER TABLE and
+        // this second copy was never updated to match. Two definitions of one
+        // table that had to be edited in lockstep, which is precisely what
+        // failed.
+        //
+        // Harmless in production only because the migration runs first, making
+        // the IF NOT EXISTS a no-op. Where it did fire -- an unmigrated
+        // database -- it created the table WITHOUT `scanner_id` and turned every
+        // later `prepare` into a silent empty result.
         // REGRESSION GUARD (`the_hit_load_cap_applies_per_scanner`): the cap is
         // PER SCANNER, which is what the window function buys.
         //
@@ -1097,6 +1093,26 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
             if let Ok(rows) = rows {
                 out.extend(rows.flatten());
             }
+        } else if let Err(e) = conn.prepare("SELECT 1 FROM scan_hits LIMIT 1") {
+            // A query that cannot be prepared is a bug, not an empty result set
+            // (#608). The old code swallowed it: `if let Ok(mut stmt) = ...`
+            // skipped the block and returned an empty Vec, so a malformed
+            // SELECT and a database with no hits were indistinguishable to the
+            // caller and produced an empty activity log with nothing logged.
+            //
+            // Re-probing with a trivial query separates the two causes worth
+            // telling apart: no table at all (an unmigrated or fresh database,
+            // which is expected and benign) versus a table whose columns do not
+            // match what this function reads (a real schema drift).
+            warn!(
+                error = %e,
+                "analytics hits could not be read: scan_hits is missing or unreadable"
+            );
+        } else {
+            error!(
+                "analytics hits could not be read: scan_hits exists but does not \
+                 match the columns this build expects — schema drift, not an empty log"
+            );
         }
         out.sort_by(|a, b| {
             a.timestamp
@@ -4192,6 +4208,60 @@ mod tests {
             "the cap is per scanner, so the chatty scanner keeps a full cap's worth"
         );
 
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// REGRESSION GUARD (#608): the analytics READ path must not define schema.
+    ///
+    /// `load_analytics_hits_from_db` opened with a `CREATE TABLE IF NOT EXISTS
+    /// scan_hits (...)` that omitted `scanner_id`, while the `SELECT` two
+    /// statements below reads it. `scanner_id` arrived in analytics schema v2
+    /// (#440) via `ALTER TABLE`; this second, drifting copy of the same table
+    /// was never updated to match.
+    ///
+    /// In production `migrate_analytics_db` runs first, so the `IF NOT EXISTS`
+    /// is a no-op and the mismatch stays hidden. It only bites where this CREATE
+    /// actually fires — a database reaching this function unmigrated — and then
+    /// it bites silently: the table comes into existence WITHOUT `scanner_id`,
+    /// `conn.prepare` returns `Err`, `if let Ok(..)` skips the whole block, and
+    /// the caller cannot tell "no hits recorded" from "the query was malformed".
+    /// To the user that is an empty activity log and empty dashboards, with
+    /// nothing in a WARN-only file log to say why.
+    ///
+    /// The fix is one owner for the schema: `migrate_analytics_db`. A reader
+    /// that creates tables is the actual defect, and a second definition that
+    /// must be edited in lockstep with the first is what went wrong here.
+    ///
+    /// Asserting the table is ABSENT, not that the result is empty. An empty
+    /// result is what the bug produces too, so it cannot tell the two apart.
+    #[test]
+    fn loading_hits_does_not_create_the_table() {
+        let path = temp_db_file("analytics-read-no-create");
+        let p = path.to_str().expect("path to string").to_string();
+
+        // Deliberately NOT migrated — this is the unmigrated path the inline
+        // CREATE was there to paper over.
+        let loaded = load_analytics_hits_from_db(&p);
+        assert!(
+            loaded.is_empty(),
+            "an unmigrated database has no hits to load"
+        );
+
+        let conn = rusqlite::Connection::open(&path).expect("open");
+        let tables: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='scan_hits'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("query sqlite_master");
+        assert_eq!(
+            tables, 0,
+            "the read path must not create scan_hits; it used to create one \
+             WITHOUT scanner_id, which made every later prepare fail silently"
+        );
+
+        drop(conn);
         let _ = std::fs::remove_file(&path);
     }
 
