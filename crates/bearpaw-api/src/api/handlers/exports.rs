@@ -947,15 +947,25 @@ fn parse_import_csv_row(
         ));
     }
 
-    let bank: u8 = row
-        .get("Bank")
-        .map(|s| s.as_str())
-        .unwrap_or("1")
-        .parse()
-        .map_err(|_| "Invalid bank".to_string())?;
-    if !(1..=10).contains(&bank) {
-        return Err(format!("Invalid bank: {}", bank));
-    }
+    // REGRESSION GUARD (`an_import_row_derives_its_bank_and_ignores_the_file`,
+    // `an_import_row_with_the_old_zero_bank_still_lands`): the Bank column is
+    // DECORATIVE. Derive it from the index; never read it from the file.
+    //
+    // Bank membership is positional and there is no wire field for it --
+    // `build_cin_write_payload_for` does not reference `bank` at all. This used
+    // to parse the column, range-check it against `(1..=10)`, and discard the
+    // whole row on a mismatch, for a value it then never sent anywhere.
+    //
+    // The check also punished the more careful user: the `.unwrap_or("1")`
+    // default meant DELETING the Bank column imported fine, while KEEPING it
+    // with a wrong value killed the row. And #603's export wrote `Bank,0` for
+    // every channel, so Bearpaw's own export failed every programmed row on
+    // re-import -- 350 of 350 on the dev unit.
+    //
+    // Derivation is per-model (50 channels per bank on a BC125AT, 30 on a
+    // BC75XLT), which is why this reads `caps` rather than dividing by a
+    // constant. See the bank-derivation third rail in CLAUDE.md.
+    let bank = caps.index_to_bank(index);
 
     let tone_squelch = row
         .get("CTCSS/DCS")
@@ -1356,5 +1366,86 @@ mod tests {
             vec![(1u16, 1u8), (60, 2), (500, 10)],
             "export must write the bank derived from the connected scanner"
         );
+    }
+
+    // REGRESSION GUARD (#604): the Bank column is DECORATIVE. The import
+    // derives bank from the channel index and ignores whatever the file said.
+    //
+    // Bank membership is positional on both families -- channels 1-50 are bank
+    // 1 on a BC125AT, 1-30 on a BC75XLT -- and there is no wire field for it at
+    // all. `build_cin_write_payload_for` never reads `bank`, so the importer
+    // was parsing a value, validating it, discarding whole rows over it, and
+    // then not using it.
+    //
+    // The old check was `(1..=10).contains(&bank)` with a `.unwrap_or("1")`
+    // default, which punished the more careful user: DELETING the Bank column
+    // imported fine, while KEEPING it with a wrong value killed the row. #603's
+    // export wrote `Bank,0` for every channel, so Bearpaw's own export failed
+    // every programmed row on re-import.
+    //
+    // Both models are asserted because the derivation is per-model and the two
+    // disagree at this index: channel 31 is bank 1 on a 50-per-bank BC125AT and
+    // bank 2 on a 30-per-bank BC75XLT. A single-model assertion would pass for
+    // a build that hardcoded either width -- the bank-derivation third rail in
+    // CLAUDE.md is exactly that mistake, made in three places at once.
+    #[test]
+    fn an_import_row_derives_its_bank_and_ignores_the_file() {
+        // Channel 31, with a Bank column that is wrong under BOTH models.
+        let r = row(&[
+            ("Index", "31"),
+            ("Frequency", "145.13"),
+            ("Modulation", "AUTO"),
+            ("Alpha Tag", "Derived"),
+            // 0 is the only delay valid on BOTH families: a BC75XLT takes a
+            // boolean (`valid_delays` is [0, 1]) and rejects the BC125AT's 2.
+            ("Delay", "0"),
+            ("Lockout", "false"),
+            ("Priority", "false"),
+            ("Bank", "7"),
+        ]);
+
+        let on_125 = parse_import_csv_row(&r, &BC125AT_FAMILY)
+            .expect("a wrong bank must not fail the row")
+            .expect("a programmed row must not be skipped");
+        assert_eq!(
+            on_125.bank, 1,
+            "channel 31 is bank 1 on a 50-per-bank model, whatever the file claims"
+        );
+
+        let on_75 = parse_import_csv_row(&r, &BC75XLT)
+            .expect("a wrong bank must not fail the row")
+            .expect("a programmed row must not be skipped");
+        assert_eq!(
+            on_75.bank, 2,
+            "channel 31 is bank 2 on a 30-per-bank model, whatever the file claims"
+        );
+    }
+
+    /// REGRESSION GUARD (#604), paired with
+    /// `an_import_row_derives_its_bank_and_ignores_the_file`.
+    ///
+    /// `Bank,0` is the specific value #603's export wrote for every channel,
+    /// and the value the old `(1..=10)` check rejected. Any file written by a
+    /// Bearpaw build before #603 still carries it, so this has to keep working
+    /// after the derivation guard above is satisfied — a build that derived the
+    /// bank but kept the range check would pass that test and still reject
+    /// every row of an old export.
+    #[test]
+    fn an_import_row_with_the_old_zero_bank_still_lands() {
+        let r = row(&[
+            ("Index", "60"),
+            ("Frequency", "145.13"),
+            ("Modulation", "AUTO"),
+            ("Alpha Tag", "Old Export"),
+            ("Delay", "2"),
+            ("Lockout", "false"),
+            ("Priority", "false"),
+            ("Bank", "0"),
+        ]);
+
+        let ch = parse_import_csv_row(&r, &BC125AT_FAMILY)
+            .expect("Bank,0 is what every pre-#603 export wrote; it must import")
+            .expect("a programmed row must not be skipped");
+        assert_eq!(ch.bank, 2, "channel 60 is bank 2 on a 50-per-bank model");
     }
 }
