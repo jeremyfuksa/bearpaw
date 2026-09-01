@@ -54,6 +54,22 @@ export interface Preferences {
  */
 export interface SyncState {
   inProgress: boolean;
+  /**
+   * A startup sync has been decided on, but `POST /memory/sync` has not come
+   * back yet (#606).
+   *
+   * NOT the same question as `inProgress`, and the gap between them is the
+   * whole point. `inProgress` flips only once the POST resolves, which leaves
+   * a window at the connect edge where a sync is about to take program mode
+   * and nothing in the UI knows it. `useBankRefresh` fired into that window,
+   * took program mode first, and had its `SCG` queued behind the sync — which
+   * the poll thread dispatches inline — until it blew its 3-second budget.
+   *
+   * This clears on EVERY exit path, including the one where the pending sync
+   * resolves into no sync at all (cache-first). A missed clear means banks are
+   * never read, which is worse than the race it closes.
+   */
+  pending: boolean;
   hasSyncedInitially: boolean;
   taskId: string | null;
   message: string;
@@ -190,6 +206,7 @@ const defaultBanks: boolean[] = Array.from({ length: 10 }, () => true);
 
 const defaultSync: SyncState = {
   inProgress: false,
+  pending: false,
   hasSyncedInitially: false,
   taskId: null,
   message: 'Loading channels from device...',
