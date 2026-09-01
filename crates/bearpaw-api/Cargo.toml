@@ -27,7 +27,6 @@ tower-http = { version = "0.7", features = ["trace", "cors"] }
 serialport = "4"
 rusb = { version = "0.9", features = ["vendored"] }
 thiserror = "2"
-anyhow = "1"
 csv = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
 
