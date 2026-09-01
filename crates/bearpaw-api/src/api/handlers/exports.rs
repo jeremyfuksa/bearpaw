@@ -708,10 +708,14 @@ pub(crate) async fn export_csv(State(state): State<AppState>) -> impl IntoRespon
         "Index,Frequency,Modulation,Alpha Tag,Delay,Lockout,Priority,CTCSS/DCS,Bank".to_string(),
     );
 
-    let shadow = state.shadow.read().unwrap();
-    let mut channels: Vec<ChannelData> = shadow.channels.values().cloned().collect();
-    channels.sort_by_key(|c| c.index);
-    for ch in channels {
+    // REGRESSION GUARD (`an_exported_csv_re_imports`): read through
+    // `channels_with_banks`, never the cache directly. Bank is not a wire field
+    // -- `parse_cin_response` leaves it 0 and only this accessor derives it from
+    // the connected scanner's memory model (see the third-rail table in
+    // CLAUDE.md). Exporting the raw 0 wrote a Bank column the importer rejects
+    // with "Invalid bank: 0", so Bearpaw's own CSV could not be re-imported.
+    // It sorts by index, so the caller does not.
+    for ch in state.channels_with_banks() {
         rows.push(format!(
             "{},{},{},{},{},{},{},{},{}",
             ch.index,
@@ -1000,6 +1004,7 @@ fn parse_import_csv_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::default_state;
     use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
 
     fn row(pairs: &[(&str, &str)]) -> HashMap<String, String> {
@@ -1278,5 +1283,78 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(ss_tone_label(&broken), "Off");
+    }
+
+    // REGRESSION GUARD (`an_exported_csv_re_imports`): every row `export_csv`
+    // writes must survive `parse_import_csv_row`. Export -> import is the round
+    // trip users actually perform, and nothing pinned it end to end.
+    //
+    // `parse_cin_response` deliberately leaves `bank: 0` (#421 moved bank
+    // derivation out of the pure parser; see the third-rail table in CLAUDE.md),
+    // so the cache holds 0 for every channel and only `channels_with_banks`
+    // fills it in. `export_csv` read the cache directly and wrote that 0 into
+    // the Bank column, which the importer rejects with "Invalid bank: 0" -- so
+    // Bearpaw's own export could not be re-imported. Measured on the dev unit
+    // 2026-09-01: 350 programmed channels, 350 errors, 0 imported. The 150
+    // cleared rows returned `Ok(None)` and were dropped from BOTH counts, which
+    // is why the toast under-reported the damage.
+    //
+    // This drives the REAL `export_csv`. Every neighbouring test in this module
+    // hand-builds its row with `("Bank", "1")` -- a value the export never
+    // produced -- so all of them passed for the entire life of the bug.
+    // `parse_empty_slot_is_skipped_not_error` even cites "the hundreds of import
+    // errors bug", having fixed only the cleared-channel half of it.
+    //
+    // Asserting the derived VALUE, not merely that the row parses, is what makes
+    // this mutation-proof: an export hardcoding 1 would satisfy a
+    // parses-without-error check while misfiling every channel above bank 1.
+    #[tokio::test]
+    async fn an_exported_csv_re_imports() {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC125AT_FAMILY);
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            // Banks 1, 2 and 10 on a 50-per-bank model. Index 1 is deliberately
+            // included: it derives to bank 1, so a hardcoded 1 would pass on
+            // that row alone and fail on the other two.
+            for index in [1u16, 60, 500] {
+                shadow.channels.insert(
+                    index,
+                    ChannelData {
+                        index,
+                        frequency: 146.52,
+                        alpha_tag: "Round Trip".to_string(),
+                        // As the parser leaves it, and as the cache holds it.
+                        bank: 0,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        let response = export_csv(State(state)).await.into_response();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let csv = String::from_utf8(bytes.to_vec()).unwrap();
+
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(true)
+            .from_reader(csv.as_bytes());
+        let mut seen = Vec::new();
+        for result in rdr.deserialize::<HashMap<String, String>>() {
+            let row = result.expect("export must emit parseable CSV");
+            let parsed = parse_import_csv_row(&row, &BC125AT_FAMILY)
+                .unwrap_or_else(|e| panic!("exported row failed to re-import: {e} -- {row:?}"))
+                .expect("a programmed row must not be skipped as empty");
+            seen.push((parsed.index, parsed.bank));
+        }
+
+        seen.sort();
+        assert_eq!(
+            seen,
+            vec![(1u16, 1u8), (60, 2), (500, 10)],
+            "export must write the bank derived from the connected scanner"
+        );
     }
 }
