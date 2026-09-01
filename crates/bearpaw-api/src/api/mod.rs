@@ -2030,24 +2030,17 @@ pub(crate) fn build_cin_write_payload_for(
     ))
 }
 
-/// Write one channel without the per-channel read-back verify, for bulk
-/// import. The caller MUST already hold a `ProgramModeGuard` — this sends only
-/// `CIN,<idx>,...` and checks the reply, matching Uniden Sentinel's bulk-write
-/// path (one wire command per channel). Correctness is recovered by a single
-/// full read-back after the whole import, not per channel — 500 inline
-/// read-backs are what made import take ~8 minutes instead of ~30 seconds.
-pub(crate) async fn write_channel_no_readback(
-    state: &AppState,
-    channel: &ChannelData,
-) -> Result<(), ApiError> {
-    let payload = build_cin_write_payload_for(channel, &state.capabilities())?;
-    let write_cmd = format!("CIN,{},{}", channel.index, payload);
-    match classify_response(&send_raw_command(state, &write_cmd, false).await?) {
-        ScannerReply::Ok => Ok(()),
-        ScannerReply::Ng => Err(ApiError::BadRequest("channel_write_wrong_mode".to_string())),
-        _ => Err(ApiError::BadRequest("channel_write_rejected".to_string())),
-    }
-}
+/// NOTE (#556): there is deliberately no `write_channel_no_readback`.
+///
+/// It existed for the import loops, and returned nothing verified -- so all
+/// three of them cached what they INTENDED to write. The firmware silently
+/// refuses an in-place priority 1->0, so every imported row disagreeing on
+/// that field was stored as a lie, and since #413 the lie survives restarts.
+///
+/// The imports use `write_channel_to_scanner` now. It costs one extra `CIN`
+/// per row -- about +5 s on a full 500-channel import, against the ~5 s a
+/// 500-channel read takes -- which is the whole price of a cache that only
+/// holds values a scanner actually reported.
 
 /// Read-back-verify comparison: does the channel we read back match what we
 /// wrote? `wrote_alpha` is the sanitised alpha (comma-stripped, 16-char cap,
@@ -6012,6 +6005,94 @@ mod tests {
         assert!(
             transcript.iter().any(|c| c.starts_with("CIN,5,")),
             "expected a CIN write for channel 5: {transcript:?}"
+        );
+    }
+
+    /// REGRESSION GUARD (#556, findings 3/4/5): an import caches what the
+    /// SCANNER reports, not what the file said.
+    ///
+    /// The three import loops used `write_channel_no_readback`, which accepts
+    /// `CIN,OK` and returns nothing verified -- so each cached its own intent.
+    /// The firmware silently refuses an in-place priority 1->0 (REGRESSION
+    /// GUARD #198, captured live), so every imported row disagreeing on that
+    /// field was stored as a lie. Before #413 that died with the session; now
+    /// it is flushed to SQLite and re-adopted at every connect.
+    ///
+    /// The fake radio here models exactly that refusal: it accepts the write,
+    /// then reads back with priority still set. `readback_matches` tolerates
+    /// that specific disagreement (`priority_ok`), so the import still counts
+    /// the row as imported -- what must change is the value that lands in the
+    /// cache.
+    ///
+    /// Costs one extra `CIN` per row: about +5 s on a full 500-channel import,
+    /// measured against the ~5 s a 500-channel read takes.
+    #[tokio::test]
+    async fn an_import_caches_the_scanner_value_not_the_file_value() {
+        let state = default_state();
+        // A radio that refuses to clear priority on channel 2, whatever it is
+        // told -- the documented firmware behaviour.
+        let _fake = FakeScanner::attach(&state, |command: &str| {
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let mut fields = rest.splitn(2, ',');
+                let index: u16 = fields.next().unwrap_or("").parse().unwrap_or(0);
+                return match fields.next() {
+                    Some(_) => Ok("CIN,OK\r".to_string()),
+                    // Always priority=1, however it was written.
+                    None => Ok(format!("CIN,{index},Imported,01451300,FM,0,2,0,1\r")),
+                };
+            }
+            Ok("OK\r".to_string())
+        });
+
+        // The file asks for priority off.
+        let csv = "Index,Frequency,Modulation,Alpha Tag,Delay,Lockout,Priority,CTCSS/DCS,Bank\r\n\
+                   2,145.1300,FM,Imported,2,0,0,,1\r\n";
+        let boundary = "XbearpawX";
+        let body = format!(
+            "--{b}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"c.csv\"\r\n\
+             Content-Type: text/csv\r\n\r\n{csv}\r\n--{b}--\r\n",
+            b = boundary,
+            csv = csv
+        );
+
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/import/csv")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the import itself must succeed: a refused priority clear is a \
+             tolerated disagreement, not a failed row"
+        );
+
+        let cached = state
+            .shadow
+            .read()
+            .unwrap()
+            .channels
+            .get(&2)
+            .cloned()
+            .expect("the imported channel must be cached");
+        assert!(
+            cached.priority,
+            "the cache must hold the SCANNER's priority, not the file's: {cached:?}"
         );
     }
 

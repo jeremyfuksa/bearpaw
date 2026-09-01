@@ -3,7 +3,7 @@ use axum::response::Json;
 use serde_json::{json, Value};
 
 use super::super::{
-    command_sender, send_raw_command, split_command_parts, write_channel_no_readback, ApiError,
+    command_sender, send_raw_command, split_command_parts, write_channel_to_scanner, ApiError,
     AppState, ProgramModeGuard,
 };
 use super::exports::import_progress;
@@ -346,19 +346,34 @@ pub(crate) async fn import_bc75xlt_ss(
 
     let _prg = ProgramModeGuard::enter(&state).await?;
     for (n, ch) in channels.iter().enumerate() {
-        let mut r = write_channel_no_readback(&state, ch).await;
+        let mut r = write_channel_to_scanner(&state, ch).await;
         if r.is_err() {
-            r = write_channel_no_readback(&state, ch).await;
+            r = write_channel_to_scanner(&state, ch).await;
         }
+        // REGRESSION GUARD (#556, findings 3/4/5): the import stores what the
+        // SCANNER reports, not what the file said.
+        //
+        // This used `write_channel_no_readback`, which returns nothing
+        // verified, so the loop cached its own intent. The firmware
+        // silently refuses an in-place priority 1->0, so every imported row
+        // disagreeing on that field was cached as a lie -- and since #413
+        // the lie is flushed to SQLite and re-adopted at every connect.
+        //
+        // `write_channel_to_scanner` writes, reads back, and returns the
+        // readback. It costs one extra CIN per row: about +5 s on a full
+        // 500-channel import, measured against the ~5 s a 500-channel read
+        // takes. It also picks up the #595 priority-displacement re-read,
+        // so a row that takes priority no longer leaves the bank's previous
+        // holder stale.
         match r {
-            Ok(()) => {
+            Ok(verified) => {
                 imported += 1;
                 state
                     .shadow
                     .write()
                     .unwrap()
                     .channels
-                    .insert(ch.index, ch.clone());
+                    .insert(verified.index, verified);
             }
             Err(e) => errors.push(json!({ "index": ch.index, "error": format!("{:?}", e) })),
         }
@@ -437,19 +452,34 @@ pub(crate) async fn import_bc125at_ss(
 
     // --- channels (fast path, retry once — mirrors CSV import) ---
     for (n, ch) in cfg.channels.iter().enumerate() {
-        let mut r = write_channel_no_readback(&state, ch).await;
+        let mut r = write_channel_to_scanner(&state, ch).await;
         if r.is_err() {
-            r = write_channel_no_readback(&state, ch).await;
+            r = write_channel_to_scanner(&state, ch).await;
         }
+        // REGRESSION GUARD (#556, findings 3/4/5): the import stores what the
+        // SCANNER reports, not what the file said.
+        //
+        // This used `write_channel_no_readback`, which returns nothing
+        // verified, so the loop cached its own intent. The firmware
+        // silently refuses an in-place priority 1->0, so every imported row
+        // disagreeing on that field was cached as a lie -- and since #413
+        // the lie is flushed to SQLite and re-adopted at every connect.
+        //
+        // `write_channel_to_scanner` writes, reads back, and returns the
+        // readback. It costs one extra CIN per row: about +5 s on a full
+        // 500-channel import, measured against the ~5 s a 500-channel read
+        // takes. It also picks up the #595 priority-displacement re-read,
+        // so a row that takes priority no longer leaves the bank's previous
+        // holder stale.
         match r {
-            Ok(()) => {
+            Ok(verified) => {
                 imported += 1;
                 state
                     .shadow
                     .write()
                     .unwrap()
                     .channels
-                    .insert(ch.index, ch.clone());
+                    .insert(verified.index, verified);
             }
             Err(e) => errors.push(json!({ "index": ch.index, "error": format!("{:?}", e) })),
         }
