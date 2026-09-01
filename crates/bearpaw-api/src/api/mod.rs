@@ -195,6 +195,17 @@ const PREFERENCES_SCHEMA_VERSION: i32 = 3;
 const CHANNEL_CACHE_FLUSH_SECS: u64 = 30;
 const ANALYTICS_SCHEMA_VERSION: i32 = 2;
 
+/// How many recorded hits are loaded into the in-memory activity log at
+/// startup, **per scanner**.
+///
+/// Per scanner, not in total: #415 called this out before it could bite. A
+/// global cap takes the newest N rows across the whole table, so a chatty
+/// radio fills the entire budget and a quieter one's history never reaches the
+/// activity view or any dashboard derived from it — while its rows sit intact
+/// in SQLite, which makes it look like a display bug rather than a load one.
+/// The cost is that N scanners can load N times this many rows.
+const ANALYTICS_HIT_LOAD_CAP: usize = 5000;
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/health", get(handlers::status::get_health))
@@ -1028,11 +1039,32 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
             );
             ",
         );
+        // REGRESSION GUARD (`the_hit_load_cap_applies_per_scanner`): the cap is
+        // PER SCANNER, which is what the window function buys.
+        //
+        // This was `ORDER BY timestamp DESC LIMIT 5000` over the whole table.
+        // With two radios attached that starves the quieter one: the chatty
+        // scanner's rows are newer, so they fill the entire budget and the
+        // other's history never reaches the in-memory log, the activity view,
+        // or any dashboard built from it. The rows are intact in SQLite the
+        // whole time, which makes it present as a display bug rather than a
+        // load one.
+        //
+        // A NULL `scanner_id` forms its own partition, and that is deliberate:
+        // #440 kept pre-attribution hits as a real group meaning "recorded
+        // before Bearpaw tracked this", so they get their own allowance rather
+        // than competing with an identified scanner.
         if let Ok(mut stmt) = conn.prepare(
             "SELECT id, timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id
-             FROM scan_hits ORDER BY timestamp DESC LIMIT 5000",
+             FROM (
+                 SELECT *, ROW_NUMBER() OVER (
+                     PARTITION BY scanner_id ORDER BY timestamp DESC
+                 ) AS rn
+                 FROM scan_hits
+             )
+             WHERE rn <= ?1",
         ) {
-            let rows = stmt.query_map([], |row| {
+            let rows = stmt.query_map([ANALYTICS_HIT_LOAD_CAP as i64], |row| {
                 let id: i64 = row.get(0)?;
                 let timestamp: f64 = row.get(1)?;
                 let frequency: f64 = row.get(2)?;
@@ -4067,6 +4099,99 @@ mod tests {
         let loaded = load_analytics_hits_from_db(&p);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].scanner_id.as_deref(), Some("BC75XLT"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// REGRESSION GUARD (#415): the hit-load cap applies PER SCANNER.
+    ///
+    /// `load_analytics_hits_from_db` took the newest `ANALYTICS_HIT_LOAD_CAP`
+    /// rows across the whole table. With two radios attached that is a
+    /// starvation bug, and #415 named it before it could happen: a chatty
+    /// scanner fills the entire budget and the quiet one's history is absent
+    /// from the in-memory log, so the activity view and every dashboard
+    /// derived from it silently show nothing for a scanner that was recording
+    /// fine.
+    ///
+    /// The assertion is on CONTENT, not on `loaded.len()`. A count check
+    /// passes for a build that returns the cap's worth of arbitrary rows --
+    /// which is exactly what the bug does -- so it could never fail. What has
+    /// to be true is that the QUIET scanner's specific hits come back.
+    #[test]
+    fn the_hit_load_cap_applies_per_scanner() {
+        let path = temp_db_file("analytics-per-scanner-cap");
+        let p = path.to_str().expect("path to string").to_string();
+        init_analytics_db(&p).expect("migrate");
+
+        let hit_at = |ts: f64, scanner: &str| ActivityHit {
+            id: "0".to_string(),
+            timestamp: ts,
+            frequency: 146.7,
+            channel: Some(1),
+            alpha_tag: None,
+            rssi: 36,
+            duration: 1.0,
+            modulation: "NFM".to_string(),
+            mode: ScannerMode::Scan,
+            bank: Some(1),
+            session_id: "s".to_string(),
+            ended_at: ts + 1.0,
+            scanner_id: Some(scanner.to_string()),
+        };
+
+        // The quiet scanner recorded FIRST, so every one of its hits is older
+        // than everything the chatty one produced. Under a global
+        // "newest N" cap they are the first rows evicted.
+        let quiet_stamps: Vec<f64> = (0..5).map(|i| 1_000.0 + i as f64).collect();
+        for ts in &quiet_stamps {
+            insert_analytics_hit(&p, &hit_at(*ts, "QUIET"));
+        }
+        // Chatty fills the whole budget on its own. Seeded in one transaction
+        // rather than through `insert_analytics_hit`, which opens a fresh
+        // connection per row — thousands of those makes the test slow enough
+        // that people stop running it.
+        {
+            let conn = rusqlite::Connection::open(&path).expect("open for bulk seed");
+            conn.execute_batch("BEGIN").expect("begin");
+            {
+                let mut stmt = conn
+                    .prepare(
+                        "INSERT INTO scan_hits (timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id)
+                         VALUES (?1, 146.7, 1, NULL, 'NFM', 36, 1.0, 'SCAN', 1, 's', ?2, 'CHATTY')",
+                    )
+                    .expect("prepare bulk insert");
+                for i in 0..ANALYTICS_HIT_LOAD_CAP {
+                    let ts = 50_000.0 + i as f64;
+                    stmt.execute(rusqlite::params![ts, ts + 1.0])
+                        .expect("bulk insert");
+                }
+            }
+            conn.execute_batch("COMMIT").expect("commit");
+        }
+
+        let loaded = load_analytics_hits_from_db(&p);
+
+        let quiet_loaded: Vec<f64> = loaded
+            .iter()
+            .filter(|h| h.scanner_id.as_deref() == Some("QUIET"))
+            .map(|h| h.timestamp)
+            .collect();
+        assert_eq!(
+            quiet_loaded, quiet_stamps,
+            "every hit from the quiet scanner must survive the load; a chatty \
+             scanner must not evict another scanner's history"
+        );
+
+        // And the chatty scanner still gets its own full allowance rather than
+        // being penalised for the other's presence.
+        let chatty_count = loaded
+            .iter()
+            .filter(|h| h.scanner_id.as_deref() == Some("CHATTY"))
+            .count();
+        assert_eq!(
+            chatty_count, ANALYTICS_HIT_LOAD_CAP,
+            "the cap is per scanner, so the chatty scanner keeps a full cap's worth"
+        );
+
         let _ = std::fs::remove_file(&path);
     }
 
