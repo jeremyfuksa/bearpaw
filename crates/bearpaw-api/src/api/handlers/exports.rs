@@ -10,7 +10,7 @@ use crate::state::{ChannelData, ToneSquelchKind};
 use super::super::security::validate_wire_field;
 use super::super::{
     command_sender, csv_escape, flags_to_bools, on_off, read_frequency_lockouts_walk,
-    send_raw_command, split_command_parts, write_channel_no_readback, ApiError, AppState,
+    send_raw_command, split_command_parts, write_channel_to_scanner, ApiError, AppState,
     ProgramModeGuard,
 };
 
@@ -809,19 +809,34 @@ pub(crate) async fn import_csv(
             // wire hiccup under load) would otherwise permanently fail one
             // channel; the protocol's timeout policy is "retry once, then
             // fail". Only genuine rejections (NG/ERR twice) become errors.
-            let mut result = write_channel_no_readback(&state, &payload).await;
+            // REGRESSION GUARD (#556, findings 3/4/5): the import stores what the
+            // SCANNER reports, not what the file said.
+            //
+            // This used `write_channel_no_readback`, which returns nothing
+            // verified, so the loop cached its own intent. The firmware
+            // silently refuses an in-place priority 1->0, so every imported row
+            // disagreeing on that field was cached as a lie -- and since #413
+            // the lie is flushed to SQLite and re-adopted at every connect.
+            //
+            // `write_channel_to_scanner` writes, reads back, and returns the
+            // readback. It costs one extra CIN per row: about +5 s on a full
+            // 500-channel import, measured against the ~5 s a 500-channel read
+            // takes. It also picks up the #595 priority-displacement re-read,
+            // so a row that takes priority no longer leaves the bank's previous
+            // holder stale.
+            let mut result = write_channel_to_scanner(&state, &payload).await;
             if result.is_err() {
-                result = write_channel_no_readback(&state, &payload).await;
+                result = write_channel_to_scanner(&state, &payload).await;
             }
             match result {
-                Ok(()) => {
+                Ok(verified) => {
                     imported += 1;
                     state
                         .shadow
                         .write()
                         .unwrap()
                         .channels
-                        .insert(payload.index, payload);
+                        .insert(verified.index, verified);
                 }
                 Err(err) => errors.push(json!({ "row": row, "error": format!("{:?}", err) })),
             }
