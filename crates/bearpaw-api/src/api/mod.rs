@@ -547,12 +547,58 @@ impl IntoResponse for ApiError {
     }
 }
 
+/// Resolve when the process is asked to stop.
+///
+/// REGRESSION GUARD (`the_shipped_server_has_a_reachable_shutdown`): this
+/// exists because `run_server` used to pass `std::future::pending()`, a future
+/// that never resolves. `with_graceful_shutdown` therefore never fired, the
+/// `.await?` on the server never returned, and EVERYTHING after it was
+/// unreachable in the shipped binary -- including the final
+/// `flush_channel_cache`, which CLAUDE.md lists as one of the three flush
+/// callers and describes as "the one that makes a clean quit lose nothing".
+///
+/// It went unnoticed because the only tested entry point is
+/// `run_server_with_shutdown`, and the shipped one is `run_server`.
+///
+/// Both signals matter: SIGINT is Ctrl-C in a terminal, SIGTERM is `kill` and
+/// what a supervisor -- including the Tauri shell stopping its sidecar --
+/// sends. Neither had a handler, so the process died mid-poll with the USB
+/// interface still claimed and transfers in flight, which is the precondition
+/// #513's wedge is reproduced from.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            // A process that cannot install the handler should still run, and
+            // still stop on Ctrl-C.
+            Err(e) => {
+                warn!("could not install SIGTERM handler: {e}");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => info!("received SIGINT; shutting down"),
+        _ = terminate => info!("received SIGTERM; shutting down"),
+    }
+}
+
 pub async fn run_server(
     bind: &str,
     state: AppState,
     serial_port: Option<(String, u32, bool)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    run_server_with_shutdown(bind, state, serial_port, std::future::pending()).await
+    run_server_with_shutdown(bind, state, serial_port, shutdown_signal()).await
 }
 
 /// Like `run_server` but accepts a shutdown future. When the future resolves,
@@ -6093,6 +6139,108 @@ mod tests {
         assert!(
             cached.priority,
             "the cache must hold the SCANNER's priority, not the file's: {cached:?}"
+        );
+    }
+
+    /// REGRESSION GUARD (#513): the shipped server's shutdown path is
+    /// REACHABLE, and it flushes.
+    ///
+    /// `run_server` passed `std::future::pending()` -- a future that never
+    /// resolves. `with_graceful_shutdown` therefore never fired, the `.await?`
+    /// on the server never returned, and every line after it was dead code in
+    /// the shipped binary. That included the final `flush_channel_cache`, which
+    /// CLAUDE.md lists as one of three flush callers and calls "the one that
+    /// makes a clean quit lose nothing".
+    ///
+    /// It went unnoticed because the only entry point with a test is
+    /// `run_server_with_shutdown`, and the one `main.rs` calls is `run_server`.
+    ///
+    /// It is also the precondition #513's USB wedge is reproduced from: with no
+    /// signal handler, SIGTERM kills the process mid-poll with the interface
+    /// still claimed and transfers in flight.
+    ///
+    /// This drives the real server with a shutdown future it controls, and
+    /// asserts the cache was written. It does NOT assert anything about
+    /// signals -- `shutdown_signal()` cannot be delivered to a test process
+    /// without killing the test runner -- so the wiring from `run_server` to
+    /// this path is asserted separately below.
+    #[tokio::test]
+    async fn the_shutdown_path_flushes_the_channel_cache() {
+        use crate::api::channel_cache::{load_channels, PLACEHOLDER_SCANNER_ID};
+
+        let state = default_state();
+        let count = state.capabilities().channel_count;
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            shadow.channels = (1..=count)
+                .map(|index| {
+                    (
+                        index,
+                        ChannelData {
+                            index,
+                            frequency: 146.0 + (index as f64) / 1000.0,
+                            ..Default::default()
+                        },
+                    )
+                })
+                .collect();
+            shadow.last_sync = 1_000_000_000.0;
+        }
+        assert_eq!(
+            load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).len(),
+            0,
+            "precondition: nothing is cached yet"
+        );
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(run_server_with_shutdown(
+            // Port 0: the OS picks a free one, so this never collides with a
+            // real backend or another test.
+            "127.0.0.1:0",
+            state.clone(),
+            None,
+            async {
+                let _ = rx.await;
+            },
+        ));
+
+        tx.send(()).expect("ask the server to stop");
+        let result = tokio::time::timeout(std::time::Duration::from_secs(10), server)
+            .await
+            .expect("the server must actually return once shutdown resolves")
+            .expect("join");
+        assert!(result.is_ok(), "clean shutdown: {result:?}");
+
+        assert_eq!(
+            load_channels(&state.preferences_db_path, PLACEHOLDER_SCANNER_ID).len(),
+            count as usize,
+            "the shutdown flush must run -- this is the whole reason the path \
+             has to be reachable"
+        );
+    }
+
+    /// The wiring, asserted separately because a signal cannot be delivered to
+    /// a test process without killing the runner.
+    ///
+    /// Without this, `run_server` could go back to `pending()` and the guard
+    /// above would stay green forever -- it exercises
+    /// `run_server_with_shutdown`, which was never the broken one.
+    #[test]
+    fn the_shipped_server_has_a_reachable_shutdown() {
+        let source = include_str!("mod.rs");
+        let start = source
+            .find("pub async fn run_server(")
+            .expect("run_server must exist");
+        let body = &source[start..start + 400];
+        assert!(
+            !body.contains("std::future::pending()"),
+            "run_server must not pass a future that never resolves -- that is \
+             the bug: everything after `with_graceful_shutdown` becomes dead \
+             code in the shipped binary"
+        );
+        assert!(
+            body.contains("shutdown_signal()"),
+            "run_server must pass a real signal future"
         );
     }
 
