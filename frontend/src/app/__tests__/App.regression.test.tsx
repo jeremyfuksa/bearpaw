@@ -36,6 +36,15 @@ const AUTO_SYNC_PATH = resolve(HERE, '..', '..', 'hooks', 'useAutoMemorySync.ts'
 const AUTO_SYNC_SOURCE = readFileSync(AUTO_SYNC_PATH, 'utf8');
 
 /**
+ * The bank refresh moved out of App.tsx in #596, for the same reason the
+ * auto-sync effect did: the bug was about how OFTEN it ran, which no
+ * source-level assertion can see. Behavioural coverage is in
+ * `useBankRefresh.test.tsx`; these guards still pin the shape and order.
+ */
+const BANK_REFRESH_PATH = resolve(HERE, '..', '..', 'hooks', 'useBankRefresh.ts');
+const BANK_REFRESH_SOURCE = readFileSync(BANK_REFRESH_PATH, 'utf8');
+
+/**
  * Extracts the deps array of the WebSocket-subscription useEffect — the one
  * whose body sets up `unsubscribeState`, `unsubscribeEvent`,
  * `unsubscribeDeviceInfo`, `unsubscribeProgress`. Returns the raw deps text
@@ -601,7 +610,7 @@ describe('App.tsx regression guards', () => {
      * `sync.inProgress` and `sync.hasSyncedInitially`.
      */
     function extractBankRefetchEffect(source: string): { body: string; deps: string } {
-      const depsOpen = source.indexOf('}, [api, deviceInfo, sync.inProgress');
+      const depsOpen = source.indexOf('}, [api, connectionStatus, syncInProgress');
       if (depsOpen === -1) throw new Error('Could not locate the bank-refetch deps array');
       const effectOpen = source.lastIndexOf('useEffect(() => {', depsOpen);
       if (effectOpen === -1) throw new Error('Could not locate the bank-refetch effect');
@@ -624,17 +633,17 @@ describe('App.tsx regression guards', () => {
       // Not optional. Deleting BOTH calls would satisfy the guard above while
       // leaving bank state at whatever it was before the sync -- which on a
       // cold start is the all-enabled default that #393 was about.
-      const { body, deps } = extractBankRefetchEffect(APP_SOURCE);
+      const { body, deps } = extractBankRefetchEffect(BANK_REFRESH_SOURCE);
       expect(body).toMatch(/getBanks\(\)/);
-      expect(deps).toMatch(/sync\.inProgress/);
+      expect(deps).toMatch(/syncInProgress/);
     });
 
     it('the effect waits for the sync to release program mode', () => {
       // Without the early return it fires DURING the sync, when every command
       // is queued behind a 500-channel PRG bracket -- the timeout this issue is
       // about, just earlier.
-      const { body } = extractBankRefetchEffect(APP_SOURCE);
-      expect(body).toMatch(/if\s*\(\s*sync\.inProgress\s*\)\s*return\s*;/);
+      const { body } = extractBankRefetchEffect(BANK_REFRESH_SOURCE);
+      expect(body).toMatch(/if\s*\(\s*syncInProgress\s*\)\s*return\s*;/);
     });
   });
 });

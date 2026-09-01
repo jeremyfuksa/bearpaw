@@ -10,6 +10,7 @@ import { useStore, mapStoredPreferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
 import { useActivityLogHydrate } from '../hooks/useActivityLogHydrate';
 import { useAutoMemorySync } from '../hooks/useAutoMemorySync';
+import { useBankRefresh } from '../hooks/useBankRefresh';
 import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { useDashboardAnalytics } from '../hooks/useDashboardAnalytics';
@@ -594,36 +595,16 @@ export default function App() {
     // this effect no longer reads banks (#393).
   }, [api, setChannels, setDeviceInfo, updateLiveState]);
 
-  useEffect(() => {
-    // Refetch banks once the scanner is reachable AND any memory sync has
-    // settled. `sync.inProgress` is in the deps, so this re-runs the moment a
-    // sync ends -- which is what makes it, and not the post-sync chain, the
-    // place bank state is refreshed (#584).
-    //
-    // CORRECTED (#584/#576): this used to justify itself by a race against
-    // "the initial `Promise.allSettled` mount-time fetch". #447 DELETED that
-    // fetch -- see the "Deliberately NO getBanks() here (#393)" comment on the
-    // mount effect above. The reason to keep this effect is the one stated
-    // now: it is the only thing that re-asks the scanner when a sync releases
-    // program mode.
-    if (!deviceInfo || deviceInfo.connection_status !== 'connected') return;
-    if (sync.inProgress) return; // wait for the sync to release PRG mode
-    let active = true;
-    api
-      .getBanks()
-      .then((result) => {
-        if (!active) return;
-        if (Array.isArray(result.banks) && result.banks.length === 10) {
-          setBanks(result.banks);
-        }
-      })
-      .catch((error) => {
-        console.warn('Failed to refresh banks after sync', error);
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, deviceInfo, sync.inProgress, sync.hasSyncedInitially, setBanks]);
+  // Bank refresh lives in `useBankRefresh` (#596). It was lifted out of this
+  // file so the "how often does this run?" question can be answered by
+  // mounting it -- the deps-array guard it used to carry was happy while the
+  // effect fired twice per connect.
+  useBankRefresh({
+    api,
+    connectionStatus: deviceInfo?.connection_status,
+    syncInProgress: sync.inProgress,
+    setBanks,
+  });
 
   // The auto-sync decision lives in `useAutoMemorySync` (#568). It was lifted
   // out of this file so it can be exercised by MOUNTING it: the guards it
