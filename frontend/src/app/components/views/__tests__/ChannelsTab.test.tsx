@@ -1238,6 +1238,7 @@ describe('ChannelsTab', () => {
           channels: mockChannels,
           sync: {
             inProgress: false,
+            pending: false,
             hasSyncedInitially: false,
             taskId: null,
             message: '',

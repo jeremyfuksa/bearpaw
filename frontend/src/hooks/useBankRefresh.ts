@@ -12,6 +12,12 @@ interface BankRefreshParams {
    */
   connectionStatus: string | undefined;
   syncInProgress: boolean;
+  /**
+   * A startup sync has been decided on but `POST /memory/sync` has not come
+   * back yet. See the #606 guard on the effect below — `syncInProgress` alone
+   * leaves a window open at exactly the moment this effect first runs.
+   */
+  syncPending: boolean;
   setBanks: (banks: boolean[]) => void;
 }
 
@@ -52,11 +58,29 @@ export function useBankRefresh({
   api,
   connectionStatus,
   syncInProgress,
+  syncPending,
   setBanks,
 }: BankRefreshParams): void {
   useEffect(() => {
     if (connectionStatus !== 'connected') return;
-    if (syncInProgress) return; // wait for the sync to release PRG mode
+    // REGRESSION GUARD (`does not read banks while a sync is pending but not yet
+    // in progress`, #606): both flags, not just `syncInProgress`.
+    //
+    // `syncInProgress` flips only once `POST /memory/sync` has come back. At
+    // the connect edge it is still false while the startup sync is being
+    // requested, so this effect fired first, took program mode, and had its
+    // `SCG` queued behind the sync -- which the poll thread dispatches INLINE,
+    // so the command queue is not drained for the sync's duration. The read
+    // then blew its 3-second budget. Reproduced on hardware 2026-09-01: sync
+    // first gives a clean 409 in 0.5 ms, bank read first gives
+    // `command_timeout` after 3.31 s, once per launch.
+    //
+    // `syncPending` must CLEAR rather than hand off to nothing: a pending sync
+    // can resolve into no sync at all (cache-first, where `useAutoMemorySync`
+    // declines after its `getChannels` check), and on that path banks would
+    // otherwise never be read. That is the trap #596 named -- removing a bank
+    // read until there is no bank read left.
+    if (syncPending || syncInProgress) return; // wait for the sync to release PRG mode
     let active = true;
     api
       .getBanks()
@@ -72,5 +96,5 @@ export function useBankRefresh({
     return () => {
       active = false;
     };
-  }, [api, connectionStatus, syncInProgress, setBanks]);
+  }, [api, connectionStatus, syncInProgress, syncPending, setBanks]);
 }

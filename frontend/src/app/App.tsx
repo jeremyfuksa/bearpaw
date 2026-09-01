@@ -603,6 +603,10 @@ export default function App() {
     api,
     connectionStatus: deviceInfo?.connection_status,
     syncInProgress: sync.inProgress,
+    // #606: `inProgress` alone leaves a window at the connect edge, where a
+    // startup sync has been decided on but its POST has not returned. The bank
+    // read used to fire into it and time out behind the sync.
+    syncPending: sync.pending,
     setBanks,
   });
 

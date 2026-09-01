@@ -26,16 +26,86 @@ describe('useBankRefresh', () => {
         api,
         connectionStatus: 'connected',
         syncInProgress: false,
+        // Explicit, not omitted: leaving it undefined here makes the first
+        // rerender look like a dependency change (undefined -> false) and
+        // fires a second read, which the once-per-connect guard catches.
+        syncPending: false,
         setBanks,
         ...overrides,
       },
     });
 
-  const props = (connectionStatus: string | undefined, syncInProgress = false) => ({
+  const props = (
+    connectionStatus: string | undefined,
+    syncInProgress = false,
+    syncPending = false,
+  ) => ({
     api,
     connectionStatus,
     syncInProgress,
+    syncPending,
     setBanks,
+  });
+
+  /**
+   * THE #606 RACE, and the reason `syncPending` exists at all.
+   *
+   * `syncInProgress` only flips once `POST /memory/sync` has come back. At the
+   * connect edge it is still false while the startup sync is being requested,
+   * so this effect fired, took program mode, and had its `SCG` queued behind
+   * the sync — which the poll thread dispatches INLINE, so the queue is not
+   * drained for the sync's duration. The read then blew its 3-second budget.
+   *
+   * Reproduced on hardware 2026-09-01: sync first gives a clean 409 in 0.5 ms,
+   * bank read first gives `command_timeout` after 3.31 s. One per launch.
+   */
+  it('does not read banks while a sync is pending but not yet in progress', async () => {
+    render({ syncInProgress: false, syncPending: true });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.getBanks).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The other half, and NOT redundant.
+   *
+   * A pending sync can resolve into no sync at all: with
+   * `reread_memory_on_connect` off and the cache warm, `useAutoMemorySync`
+   * declines after its `getChannels` check and `syncInProgress` never becomes
+   * true. If clearing `syncPending` did not re-open this gate, banks would
+   * never be read on that path — which is the trap #596 already warned about,
+   * where removing a bank read leaves no bank read at all.
+   *
+   * Suppressing the connect-edge read outright would pass the test above and
+   * fail here.
+   */
+  it('reads banks when a pending sync resolves without one starting', async () => {
+    const { rerender } = render({ syncInProgress: false, syncPending: true });
+    await Promise.resolve();
+    expect(api.getBanks).not.toHaveBeenCalled();
+
+    // The decline path: pending clears, and `inProgress` never went true.
+    rerender(props('connected', false, false));
+
+    await waitFor(() => expect(api.getBanks).toHaveBeenCalledTimes(1));
+    expect(setBanks).toHaveBeenCalledWith(allEnabled);
+  });
+
+  /**
+   * The handoff must not open a window either. `syncPending` clears at the same
+   * moment `syncInProgress` is set, and if the gate checked them in a way that
+   * let both be briefly false, the race would simply move.
+   */
+  it('does not read banks when pending hands off to in-progress', async () => {
+    const { rerender } = render({ syncInProgress: false, syncPending: true });
+    await Promise.resolve();
+
+    rerender(props('connected', true, false));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.getBanks).not.toHaveBeenCalled();
   });
 
   /**

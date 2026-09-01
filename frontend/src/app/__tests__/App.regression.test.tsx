@@ -636,14 +636,32 @@ describe('App.tsx regression guards', () => {
       const { body, deps } = extractBankRefetchEffect(BANK_REFRESH_SOURCE);
       expect(body).toMatch(/getBanks\(\)/);
       expect(deps).toMatch(/syncInProgress/);
+      // #606: `syncPending` must be a dependency too, or clearing it never
+      // re-runs the effect and the cache-first path never reads banks at all.
+      expect(deps).toMatch(/syncPending/);
     });
 
     it('the effect waits for the sync to release program mode', () => {
       // Without the early return it fires DURING the sync, when every command
       // is queued behind a 500-channel PRG bracket -- the timeout this issue is
       // about, just earlier.
+      //
+      // WIDENED for #606. This used to assert `if (syncInProgress) return;`
+      // alone, and that gate was not enough: `inProgress` flips only once
+      // `POST /memory/sync` comes back, so at the connect edge a sync could be
+      // about to take program mode while this still read false. The bank read
+      // fired into that window and timed out behind the sync -- reproduced on
+      // hardware 2026-09-01, once per launch.
+      //
+      // Both flags are pinned because either alone is wrong in a different
+      // direction: `syncInProgress` alone reopens the #606 race, and
+      // `syncPending` alone stops waiting for a sync that is actually running.
+      //
+      // This is shape only. The timing half -- that `pending` CLEARS on the
+      // cache-first path, so banks are still read on a launch with no sync --
+      // lives in `useBankRefresh.test.tsx`, which mounts the hook.
       const { body } = extractBankRefetchEffect(BANK_REFRESH_SOURCE);
-      expect(body).toMatch(/if\s*\(\s*syncInProgress\s*\)\s*return\s*;/);
+      expect(body).toMatch(/if\s*\(\s*syncPending\s*\|\|\s*syncInProgress\s*\)\s*return\s*;/);
     });
   });
 });

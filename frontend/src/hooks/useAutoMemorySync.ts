@@ -136,6 +136,20 @@ export function useAutoMemorySync({
     if (handledThisConnection.current) return;
     handledThisConnection.current = true;
 
+    // REGRESSION GUARD (#606): claim the wire BEFORE any await.
+    //
+    // `inProgress` only becomes true once `POST /memory/sync` has come back,
+    // which leaves a window at the connect edge where this hook is about to
+    // take program mode and nothing else knows. `useBankRefresh` fired into
+    // that window, won the race to `PRG`, and had its `SCG` queued behind the
+    // sync -- dispatched INLINE by the poll thread, so the queue stops draining
+    // -- until it blew its 3-second budget. One wasted 3 s command and one WARN
+    // per launch, measured on hardware 2026-09-01.
+    //
+    // Set synchronously, here, after the last early return: everything above is
+    // a reason not to sync, and this must not claim the wire on those paths.
+    updateSync({ pending: true });
+
     let active = true;
     const startMemorySync = async () => {
       try {
@@ -171,6 +185,23 @@ export function useAutoMemorySync({
         if (active) {
           console.warn('Failed to start memory sync', error);
         }
+      } finally {
+        // REGRESSION GUARD (#606): clear on EVERY exit path.
+        //
+        // `finally` rather than one clear per branch, because there are four
+        // ways out and a missed one is worse than the race this closes: with
+        // `pending` stuck true, `useBankRefresh` never fires and the bank mask
+        // is never read at all.
+        //
+        // Safe to clear even on the success path. `inProgress` has already been
+        // set by then, and `useBankRefresh` gates on `pending || inProgress`,
+        // so the gate stays shut with no window between the two.
+        //
+        // The cache-first decline is the path that matters most here: it
+        // returns without ever setting `inProgress`, so this clear is the only
+        // thing that re-opens the gate and lets banks be read on a launch where
+        // no sync runs.
+        updateSync({ pending: false });
       }
     };
     startMemorySync();
