@@ -273,6 +273,26 @@ fn run_poll_loop(
                                 e.to_string()
                             })
                         };
+                        // REGRESSION GUARD (#598): clear the program-mode
+                        // flag only AFTER the EPG has actually gone out.
+                        //
+                        // `ProgramModeGuard::drop` used to clear it up front
+                        // and then queue the EPG fire-and-forget. The poll loop
+                        // yields STS/GLG on this flag, so it resumed polling a
+                        // radio that had not left PRG yet -- a window exactly
+                        // as wide as the queue backlog.
+                        //
+                        // `send_raw_command` already had this ordering right
+                        // for the EPGs it sends itself; the guard's Drop path
+                        // bypassed it because a Drop cannot await a reply.
+                        //
+                        // Cleared whether or not the write succeeded: a failed
+                        // EPG still ends the bracket as far as this process is
+                        // concerned, and leaving the flag set would freeze the
+                        // live display.
+                        if command.eq_ignore_ascii_case("EPG") {
+                            state.program_mode_active.store(false, Ordering::Relaxed);
+                        }
                         let _ = reply.send(response);
                     }
                 }
@@ -550,6 +570,26 @@ fn run_poll_loop_usb(
                                 e.to_string()
                             })
                         };
+                        // REGRESSION GUARD (#598): clear the program-mode
+                        // flag only AFTER the EPG has actually gone out.
+                        //
+                        // `ProgramModeGuard::drop` used to clear it up front
+                        // and then queue the EPG fire-and-forget. The poll loop
+                        // yields STS/GLG on this flag, so it resumed polling a
+                        // radio that had not left PRG yet -- a window exactly
+                        // as wide as the queue backlog.
+                        //
+                        // `send_raw_command` already had this ordering right
+                        // for the EPGs it sends itself; the guard's Drop path
+                        // bypassed it because a Drop cannot await a reply.
+                        //
+                        // Cleared whether or not the write succeeded: a failed
+                        // EPG still ends the bracket as far as this process is
+                        // concerned, and leaving the flag set would freeze the
+                        // live display.
+                        if command.eq_ignore_ascii_case("EPG") {
+                            state.program_mode_active.store(false, Ordering::Relaxed);
+                        }
                         let _ = reply.send(response);
                     }
                 }

@@ -117,12 +117,27 @@ impl ProgramModeGuard {
 
 impl Drop for ProgramModeGuard {
     fn drop(&mut self) {
-        // Always clear the flag — leaving it stuck would freeze the live
-        // display indefinitely.
-        self.flag.store(false, Ordering::Relaxed);
-
+        // REGRESSION GUARD (`the_flag_survives_a_drop_that_queued_an_epg`):
+        // the flag is NOT cleared here when an EPG is on its way (#598).
+        //
+        // It used to be cleared unconditionally, up front, and the EPG queued
+        // afterwards. The poll loop yields STS/GLG on this flag, so it resumed
+        // polling a radio that had not left PRG yet -- a window exactly as wide
+        // as the queue backlog, and a plausible source of the STS parse drops
+        // logged on hardware.
+        //
+        // The poll loop clears it after the EPG actually goes out, which is the
+        // ordering `send_raw_command` already used for the EPGs it sends
+        // itself. A Drop cannot await a reply, which is why this path had its
+        // own, wrong, copy of the logic.
+        //
+        // The flag is still cleared HERE in every case where no EPG will
+        // arrive, because then nothing else ever would: the stuck flag freezes
+        // the live display, which is the hazard the original comment named and
+        // it has not gone away.
         if !self.active {
             // PRG never succeeded; nothing to EPG.
+            self.flag.store(false, Ordering::Relaxed);
             return;
         }
 
@@ -130,23 +145,34 @@ impl Drop for ProgramModeGuard {
         // can't await; fire-and-forget through the same mechanism
         // send_raw_command uses, but without waiting for the reply.
         let tx = self.state.command_tx.lock().ok().and_then(|g| g.clone());
-        if let Some(tx) = tx {
-            let (reply_tx, _) = std::sync::mpsc::channel();
-            let _ = tx.send(crate::api::control::ControlCommand::Raw {
-                command: "EPG".to_string(),
-                multiline: false,
-                reply: reply_tx,
-                // EPG is exempt from expiry in the drain (see
-                // control::should_execute_queued), but give it a generous
-                // deadline anyway so the intent is explicit: the bracket
-                // closer must run no matter how late.
-                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
-            });
-            // Don't block on the reply: the poll thread will execute EPG
-            // on its next drain, and we've already cleared the flag so
-            // the poll loop will resume STS/GLG/PWR after that tick.
-        } else {
-            warn!("ProgramModeGuard dropped with no command channel; EPG not sent");
+        let queued = match tx {
+            Some(tx) => {
+                let (reply_tx, _) = std::sync::mpsc::channel();
+                tx.send(crate::api::control::ControlCommand::Raw {
+                    command: "EPG".to_string(),
+                    multiline: false,
+                    reply: reply_tx,
+                    // EPG is exempt from expiry in the drain (see
+                    // control::should_execute_queued), but give it a generous
+                    // deadline anyway so the intent is explicit: the bracket
+                    // closer must run no matter how late.
+                    deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                })
+                .is_ok()
+                // Don't block on the reply: the poll thread executes EPG on its
+                // next drain and clears the flag there (#598).
+            }
+            None => {
+                warn!("ProgramModeGuard dropped with no command channel; EPG not sent");
+                false
+            }
+        };
+
+        // Nothing is coming to clear it, so clear it here. Covers a missing
+        // sender and a receiver that has hung up -- in both cases the poll loop
+        // will never see the EPG, and a flag left set freezes the live display.
+        if !queued {
+            self.flag.store(false, Ordering::Relaxed);
         }
     }
 }
