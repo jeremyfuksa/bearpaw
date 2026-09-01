@@ -1,0 +1,66 @@
+# port: /dev/cu.usbserial-020D43D8  baud: 57600
+=== Phase 0: identity ===
+MDL                                -> 'MDL,BC75XLT'
+VER                                -> 'VER,Version 1.02.04'
+
+=== Phase 1: SSP and BPL outside program mode ===
+SSP                                -> 'SSP,NG'
+BPL                                -> 'BPL,NG'
+
+=== Phase 2: enter program mode, read everything ===
+PRG                                -> 'PRG,OK'
+BPL                                -> 'BPL,0'
+
+--- band plan currently '0' ---
+
+=== Phase 3: SSP shape ===
+SSP                                -> 'SSP,ERR'
+SSP,0                              -> 'SSP,ERR'
+SSP,1                              -> 'SSP,1,1,0'
+SSP,2                              -> 'SSP,2,1,0'
+SSP,3                              -> 'SSP,3,1,0'
+SSP,4                              -> 'SSP,4,1,0'
+SSP,5                              -> 'SSP,5,1,0'
+SSP,6                              -> 'SSP,6,1,0'
+SSP,7                              -> 'SSP,7,1,0'
+SSP,8                              -> 'SSP,8,1,0'
+SSP,9                              -> 'SSP,9,1,0'
+SSP,10                             -> 'SSP,10,1,0'
+SSP,11                             -> 'SSP,ERR'
+
+SSP indices that answered something: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+=== Phase 4: channel sample BEFORE the BPL round trip ===
+CIN,1                              -> 'CIN,1,,01451300,,,1,0,1'
+CIN,31                             -> 'CIN,31,,04422000,,,1,0,1'
+CIN,61                             -> 'CIN,61,,01470000,,,1,0,1'
+CIN,121                            -> 'CIN,121,,04646375,,,1,1,1'
+CIN,241                            -> 'CIN,241,,00000000,,,0,1,1'
+CIN,300                            -> 'CIN,300,,00000000,,,0,1,0'
+
+=== Phase 5: BPL write, staged ===
+--- 5a: write the CURRENT value back (0) -- a no-op that still tests the write path
+BPL,0                              -> 'BPL,OK'
+
+--- 5b: no-op accepted. Changing to '1', then restoring.
+BPL,1                              -> 'BPL,OK'
+BPL                                -> 'BPL,1'
+wrote '1' -> read back '1'  (PERSISTED)
+
+--- 5c: restoring '0'
+BPL,0                              -> 'BPL,OK'
+BPL                                -> 'BPL,0'
+RESTORED to '0'
+
+=== Phase 6: channel sample AFTER, diffed against before ===
+CIN,1                              -> 'CIN,1,,01451300,,,1,0,1'
+CIN,31                             -> 'CIN,31,,04422000,,,1,0,1'
+CIN,61                             -> 'CIN,61,,01470000,,,1,0,1'
+CIN,121                            -> 'CIN,121,,04646375,,,1,1,1'
+CIN,241                            -> 'CIN,241,,00000000,,,0,1,1'
+CIN,300                            -> 'CIN,300,,00000000,,,0,1,0'
+
+No drift: all 6 sampled channels identical before and after.
+
+=== Phase 7: leaving program mode ===
+EPG                                -> 'EPG,OK'
