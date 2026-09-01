@@ -1,0 +1,49 @@
+# port: /dev/cu.usbserial-020D43D8  baud: 57600
+=== Phase 0: identity ===
+MDL                                -> 'MDL,BC75XLT'
+PRG                                -> 'PRG,OK'
+
+=== Phase 1: read all ten first (restore depends on this) ===
+SSP,1                              -> 'SSP,1,1,0'
+SSP,2                              -> 'SSP,2,1,0'
+SSP,3                              -> 'SSP,3,1,0'
+SSP,4                              -> 'SSP,4,1,0'
+SSP,5                              -> 'SSP,5,1,0'
+SSP,6                              -> 'SSP,6,1,0'
+SSP,7                              -> 'SSP,7,1,0'
+SSP,8                              -> 'SSP,8,1,0'
+SSP,9                              -> 'SSP,9,1,0'
+SSP,10                             -> 'SSP,10,1,0'
+
+--- SSP,1 currently delay='1' direction='0' ---
+
+=== Phase 2: write field 1 (presumed delay) ===
+SSP,1,0,0                          -> 'SSP,OK'
+SSP,1                              -> 'SSP,1,0,0'
+wrote delay='0' -> read back '0' (PERSISTED)
+
+=== Phase 3: write field 2 (presumed direction) ===
+SSP,1,0,1                          -> 'SSP,OK'
+SSP,1                              -> 'SSP,1,0,1'
+wrote direction='1' -> read back '1' (PERSISTED)
+
+=== Phase 4: does a write to one index touch the others? ===
+SSP,2                              -> 'SSP,2,1,0'
+SSP,3                              -> 'SSP,3,1,0'
+SSP,4                              -> 'SSP,4,1,0'
+SSP,5                              -> 'SSP,5,1,0'
+SSP,6                              -> 'SSP,6,1,0'
+SSP,7                              -> 'SSP,7,1,0'
+SSP,8                              -> 'SSP,8,1,0'
+SSP,9                              -> 'SSP,9,1,0'
+SSP,10                             -> 'SSP,10,1,0'
+
+No drift in the other nine.
+
+=== Phase 5: restore SSP,1 to delay='1' direction='0' ===
+SSP,1,1,0                          -> 'SSP,OK'
+SSP,1                              -> 'SSP,1,1,0'
+RESTORED exactly: 'SSP,1,1,0'
+
+=== Phase 6: leaving program mode ===
+EPG                                -> 'EPG,OK'
