@@ -5328,15 +5328,23 @@ mod tests {
                 shadow.channels.insert(idx, ch);
             }
         }
-        // Exactly the replies this model gave on the wire, 2026-08-26.
+        // Mixed search/band settings exercise both mask polarities: CSG uses
+        // zero=enabled, while CLC uses one=enabled.
         let _scanner = FakeScanner::attach(&state, |cmd: &str| {
             Ok(match cmd {
                 "KBP" => "KBP,,0".to_string(),
                 "SQL" => "SQL,2".to_string(),
                 "PRI" => "PRI,0".to_string(),
-                "SCO" => "SCO,2,,0".to_string(),
+                "SCO" => "SCO,1,,1".to_string(),
                 "CLC" => "CLC,2,1,1,11101,".to_string(),
                 "SCG" => "SCG,1111111111".to_string(),
+                "CSG" => "CSG,0111111110,0,1".to_string(),
+                c if c.starts_with("SSP,") => {
+                    let index = c.trim_start_matches("SSP,").parse::<u8>().unwrap();
+                    let delay = if index % 2 == 1 { 1 } else { 0 };
+                    let direction = if index == 2 { 1 } else { 0 };
+                    format!("{c},{delay},{direction}")
+                }
                 _ => "OK".to_string(),
             })
         });
@@ -5385,6 +5393,18 @@ mod tests {
         // writer must keep it; this one must not have it.
         assert!(ours.contains("Custom\t1\tSearch Bank1\t"));
         assert!(!ours.contains("Bnak"));
+
+        // Value fidelity, not just section shape. These are the exact states
+        // returned by the fake scanner above.
+        assert!(ours.contains("Service\t1\tWX\t\t2\tUp\r\n"));
+        assert!(ours.contains("Service\t2\tPolice\t\t0\tDown\r\n"));
+        assert!(ours.contains("CustomSearch\t0\tDown\r\n"));
+        assert!(ours.contains("Custom\t1\tSearch Bank1\t25000000\t27995000\tOn\r\n"));
+        assert!(ours.contains("Custom\t2\tSearch Bank2\t28000000\t29695000\tOff\r\n"));
+        assert!(ours.contains("Custom\t10\tSearch Bank10\t470000000\t512000000\tOn\r\n"));
+        assert!(ours.contains("CloseCall\tDND\tOn\tOn\t\r\n"));
+        assert!(ours.contains("CloseCallBands\tOn\tOn\tOn\t\tOn\r\n"));
+        assert!(ours.contains("GeneralSearch\t2\t\tDown\r\n"));
 
         // The reserved columns go out empty, as the real file has them.
         // Delay 2 despite the channel carrying wire delay 1: the tool writes a
