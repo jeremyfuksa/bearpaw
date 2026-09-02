@@ -521,10 +521,11 @@ const BC75XLT_CUSTOM_RANGES: [(u32, u32); 10] = [
 /// ```
 ///
 /// Only commands this model is known to answer are sent -- `KBP` (inside PRG),
-/// `SQL`, `PRI`, `SCO`, `CLC`, `SCG`, per the wire capture in
-/// `docs/wire_captures/2026-08-26/`. `BLT`/`BSV`/`CNT`/`WXS` reply `ERR` here
-/// and are never sent; their `Misc` slots go out empty, which is exactly what
-/// the real files contain.
+/// `SQL`, `PRI`, `SCO`, `CLC`, `SCG`, `CSG`, and per-service `SSP`. The last
+/// two preserve the search settings represented by the native file instead of
+/// filling them with constants. `BLT`/`BSV`/`CNT`/`WXS` reply `ERR` here and
+/// are never sent; their `Misc` slots go out empty, which is exactly what the
+/// real files contain.
 pub(crate) async fn export_bc75xlt_ss_file(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -553,13 +554,32 @@ pub(crate) async fn export_bc75xlt_ss_file(
             .cloned()
             .unwrap_or_else(|| "0".to_string());
         let sco = split_command_parts(&send_raw_command(&state, "SCO", false).await?);
-        let search_delay = sco.first().cloned().unwrap_or_else(|| "2".to_string());
+        let search_delay = bc75_ss_delay(sco.first().map(String::as_str).unwrap_or("1"));
         let search_code = sco.get(1).cloned().unwrap_or_default();
+        let search_direction = bc75_ss_direction(sco.get(2).map(String::as_str).unwrap_or("0"));
         let clc = split_command_parts(&send_raw_command(&state, "CLC", false).await?);
         let scan_flags = split_command_parts(&send_raw_command(&state, "SCG", false).await?)
             .first()
             .cloned()
             .unwrap_or_else(|| "1111111111".to_string());
+        let csg = split_command_parts(&send_raw_command(&state, "CSG", false).await?);
+        let custom_flags = csg
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "1111111111".to_string());
+        let custom_delay = bc75_ss_delay(csg.get(1).map(String::as_str).unwrap_or("1"));
+        let custom_direction = bc75_ss_direction(csg.get(2).map(String::as_str).unwrap_or("0"));
+        let mut service_settings = Vec::with_capacity(BC75XLT_SERVICE_NAMES.len());
+        for index in 1..=BC75XLT_SERVICE_NAMES.len() {
+            let fields = split_command_parts(
+                &send_raw_command(&state, &format!("SSP,{index}"), false).await?,
+            );
+            // SSP echoes its index before the two values.
+            service_settings.push((
+                bc75_ss_delay(fields.get(1).map(String::as_str).unwrap_or("1")),
+                bc75_ss_direction(fields.get(2).map(String::as_str).unwrap_or("0")),
+            ));
+        }
 
         let mut lines = Vec::new();
 
@@ -577,35 +597,36 @@ pub(crate) async fn export_bc75xlt_ss_file(
         ));
         lines.push(format!("Priority\t{}", on_off(&priority)));
 
-        // Direction is "Up" in every observed file and has no confirmed wire
-        // source on this model; the delay column mirrors the search delay.
         for (idx, name) in BC75XLT_SERVICE_NAMES.iter().enumerate() {
+            let (delay, direction) = service_settings[idx];
             lines.push(format!(
-                "Service\t{}\t{}\t\t{}\tUp",
+                "Service\t{}\t{}\t\t{}\t{}",
                 idx + 1,
                 name,
-                search_delay
+                delay,
+                direction
             ));
         }
-        lines.push(format!("CustomSearch\t{}\tUp", search_delay));
+        lines.push(format!(
+            "CustomSearch\t{}\t{}",
+            custom_delay, custom_direction
+        ));
 
         // "Search Bank", not the BC125AT's "Search Bnak" -- Uniden fixed the
         // typo in this tool, and the real files prove it.
+        let custom_enabled = flags_to_bools(&custom_flags);
         for (idx, (lower, upper)) in BC75XLT_CUSTOM_RANGES.iter().enumerate() {
             lines.push(format!(
-                "Custom\t{}\tSearch Bank{}\t{}\t{}\tOff",
+                "Custom\t{}\tSearch Bank{}\t{}\t{}\t{}",
                 idx + 1,
                 idx + 1,
                 lower,
-                upper
+                upper,
+                on_off_bool(custom_enabled.get(idx).copied().unwrap_or(false))
             ));
         }
 
-        let cc_mode = match clc.first().map(String::as_str) {
-            Some("1") => "Pri",
-            Some("2") => "Pri",
-            _ => "Off",
-        };
+        let cc_mode = bc75_ss_close_call_mode(clc.first().map(String::as_str).unwrap_or("0"));
         lines.push(format!(
             "CloseCall\t{}\t{}\t{}\t",
             cc_mode,
@@ -614,7 +635,13 @@ pub(crate) async fn export_bc75xlt_ss_file(
         ));
         // Band 4 is empty rather than "Off": this model has no 225-380 MHz
         // band at all, and the real files leave that slot blank.
-        let cc_bands = flags_to_bools(clc.get(3).map(String::as_str).unwrap_or("11111"));
+        let cc_bands: Vec<bool> = clc
+            .get(3)
+            .map(String::as_str)
+            .unwrap_or("00000")
+            .chars()
+            .map(|bit| bit == '1')
+            .collect();
         lines.push(format!(
             "CloseCallBands\t{}\t{}\t{}\t\t{}",
             on_off_bool(cc_bands.first().copied().unwrap_or(false)),
@@ -623,8 +650,8 @@ pub(crate) async fn export_bc75xlt_ss_file(
             on_off_bool(cc_bands.get(4).copied().unwrap_or(false))
         ));
         lines.push(format!(
-            "GeneralSearch\t{}\t{}\tUp",
-            search_delay, search_code
+            "GeneralSearch\t{}\t{}\t{}",
+            search_delay, search_code, search_direction
         ));
 
         // Banks and channels INTERLEAVE: each `Conventional` line is followed
@@ -691,6 +718,33 @@ pub(crate) async fn export_bc75xlt_ss_file(
         ],
         payload,
     ))
+}
+
+/// Search delay is boolean on this model's wire, while its native file stores
+/// the fixed two-second delay as `2` when enabled.
+fn bc75_ss_delay(wire: &str) -> &'static str {
+    if wire == "1" {
+        "2"
+    } else {
+        "0"
+    }
+}
+
+fn bc75_ss_direction(wire: &str) -> &'static str {
+    if wire == "1" {
+        "Down"
+    } else {
+        "Up"
+    }
+}
+
+fn bc75_ss_close_call_mode(wire: &str) -> &'static str {
+    match wire {
+        "1" => "Pri",
+        "2" => "DND",
+        "3" => "Only",
+        _ => "Off",
+    }
 }
 
 /// `true`/`false` -> the `On`/`Off` the settings file uses.
@@ -1038,6 +1092,18 @@ mod tests {
             flags_to_bools("01001"),
             vec![true, false, true, true, false]
         );
+    }
+
+    #[test]
+    fn bc75_file_values_cover_every_search_and_close_call_state() {
+        assert_eq!(bc75_ss_delay("0"), "0");
+        assert_eq!(bc75_ss_delay("1"), "2");
+        assert_eq!(bc75_ss_direction("0"), "Up");
+        assert_eq!(bc75_ss_direction("1"), "Down");
+        assert_eq!(bc75_ss_close_call_mode("0"), "Off");
+        assert_eq!(bc75_ss_close_call_mode("1"), "Pri");
+        assert_eq!(bc75_ss_close_call_mode("2"), "DND");
+        assert_eq!(bc75_ss_close_call_mode("3"), "Only");
     }
 
     #[test]
