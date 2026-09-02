@@ -7,14 +7,15 @@
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)](https://tauri.app)
 [![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-ffdd00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/jeremyfuksa)
 
-**A desktop control interface for the Uniden BC125AT scanner.**
+**A desktop control interface for supported Uniden analog handheld scanners.**
 
-Bearpaw puts your BC125AT on your computer screen. See what the scanner sees:
-the live frequency, the alpha tag, the signal strength, in a display big enough
-to read across the room. Edit all 500 channels without the radio's keypad, and
-move them in and out of the radio as plain CSV or native Uniden files.
+Bearpaw puts your BC125AT-family or BC75XLT scanner on your computer screen. See
+what the scanner sees: the live frequency, alpha tag when the model supports
+one, and signal strength, in a display big enough to read across the room. Edit
+the scanner's full 300- or 500-channel memory without its keypad, and move it in
+and out of the radio as plain CSV or native Uniden files.
 
-It does one thing the radio and the official software never did: while it runs, Bearpaw logs every hit and records a log of 
+It does one thing the radio and the official software never did: while it runs, Bearpaw logs every hit and records a log of
 the radio world around you, and hands you the
 raw data as CSV whenever you want it.
 
@@ -22,7 +23,7 @@ It talks to the scanner the same way Uniden's Sentinel software does, over the
 USB cable, and runs live while you're listening, on macOS, Windows, and Linux.
 
 > **Hit a problem?** [Open an issue](https://github.com/jeremyfuksa/bearpaw/issues) —
-> especially if you're running a scanner other than a BC125AT (see
+> especially if you're running an expected-but-unverified model (see
 > [Supported scanners](#supported-scanners)).
 
 ---
@@ -33,14 +34,14 @@ Bearpaw drives conventional analog Uniden handhelds — scanners with a flat
 list of channel slots that speak Uniden's ASCII serial protocol. Two families,
 same protocol, different memory:
 
-| Scanner       | Region        | Channels | Status                                        |
-| ------------- | ------------- | -------- | --------------------------------------------- |
-| **BC125AT**   | US            | 500      | **Verified** — developed and tested against it |
-| **BC75XLT**   | US            | 300      | **Verified** — tested against real hardware    |
-| **UBC125XLT** | EU            | 500      | **Verified** — confirmed by a contributor      |
+| Scanner       | Region        | Channels | Status                                                |
+| ------------- | ------------- | -------- | ----------------------------------------------------- |
+| **BC125AT**   | US            | 500      | **Verified** — developed and tested against it        |
+| **BC75XLT**   | US            | 300      | **Verified** — tested against real hardware           |
+| **UBC125XLT** | EU            | 500      | **Verified** — confirmed by a contributor             |
 | **BCT125AT**  | US            | 500      | Expected — same USB ID and command set as the BC125AT |
-| **UBC126AT**  | EU            | 500      | Expected — accepted by the model probe, untested |
-| **AE125H**    | EU (Albrecht) | 500      | Expected — accepted by the model probe, untested |
+| **UBC126AT**  | EU            | 500      | Expected — accepted by the model probe, untested      |
+| **AE125H**    | EU (Albrecht) | 500      | Expected — accepted by the model probe, untested      |
 
 "Expected" means the scanner is in the same family and Bearpaw accepts it, but
 nobody has run it against real hardware yet. If you have one,
@@ -93,8 +94,9 @@ time you open the app.
 
 ## Connect your scanner
 
-Plug the BC125AT into a USB port and launch Bearpaw. It auto-detects the scanner
-on every platform.
+Plug a supported scanner into a USB port and launch Bearpaw. It automatically
+detects the scanner family and uses the right memory layout and connection
+speed on every platform.
 
 If it doesn't connect, two things to check:
 
@@ -115,7 +117,7 @@ walks through every part of the app:
 - **[The Scan Tab](https://bearpaw.app/docs/scan.html)**: the live display, the
   "hit" workflow, and the on-screen controls.
 - **[The Channels Tab](https://bearpaw.app/docs/channels.html)**: viewing and
-  editing your 500 channels, and how to save your changes back to the radio.
+  editing channel memory, and how to save your changes back to the radio.
 - **[The Device Tab](https://bearpaw.app/docs/device.html)**: the scanner's own
   settings plus the app's preferences.
 - **[Menu & Keyboard Shortcuts](https://bearpaw.app/docs/troubleshooting.html#menu--keyboard-shortcuts)**
