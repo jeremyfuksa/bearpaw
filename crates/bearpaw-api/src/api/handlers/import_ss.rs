@@ -3,8 +3,8 @@ use axum::response::Json;
 use serde_json::{json, Value};
 
 use super::super::{
-    command_sender, send_raw_command, split_command_parts, write_channel_to_scanner, ApiError,
-    AppState, ProgramModeGuard,
+    build_cin_write_payload_for, command_sender, read_channel_from_scanner, send_raw_command,
+    split_command_parts, write_channel_to_scanner, ApiError, AppState, ProgramModeGuard,
 };
 use super::exports::import_progress;
 use crate::protocol::capabilities::ScannerCapabilities;
@@ -39,6 +39,7 @@ pub(crate) struct SsSettings {
 pub(crate) struct SsConfig {
     pub settings: SsSettings,
     pub channels: Vec<ChannelData>,
+    pub empty_slots: Vec<u16>,
     pub errors: Vec<String>,
 }
 
@@ -62,6 +63,7 @@ fn on_off_to_flag(v: &str) -> &'static str {
 pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfig {
     let mut s = SsSettings::default();
     let mut channels = Vec::new();
+    let mut empty_slots = Vec::new();
     let mut errors = Vec::new();
     // masks built from indexed lines default to enabled ('0'); we fill by index
     let mut scan = ['0'; 10];
@@ -164,7 +166,10 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
             }
             Some("C-Freq") if f.len() >= 9 => match parse_ss_channel(&f, caps) {
                 Ok(Some(ch)) => channels.push(ch),
-                Ok(None) => {}
+                Ok(None) => match parse_ss_index(&f, caps) {
+                    Ok(index) => empty_slots.push(index),
+                    Err(error) => errors.push(error),
+                },
                 Err(e) => errors.push(e),
             },
             _ => {} // unknown line type: ignore (forward-compatible)
@@ -177,21 +182,27 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
     SsConfig {
         settings: s,
         channels,
+        empty_slots,
         errors,
     }
 }
 
-fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<ChannelData>, String> {
-    let on = |v: &str| v.eq_ignore_ascii_case("On");
+fn parse_ss_index(f: &[&str], caps: &ScannerCapabilities) -> Result<u16, String> {
     let index: u16 = f[1].parse().map_err(|_| "bad C-Freq index".to_string())?;
-    // Bounded by the CONNECTED scanner, not a hardcoded 500 -- the same class
-    // of bug #433 fixed on the CSV path. A BC75XLT holds 300.
     if !(1..=caps.channel_count).contains(&index) {
         return Err(format!(
             "C-Freq index out of range: {} (must be 1-{})",
             index, caps.channel_count
         ));
     }
+    Ok(index)
+}
+
+fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<ChannelData>, String> {
+    let on = |v: &str| v.eq_ignore_ascii_case("On");
+    // Bounded by the CONNECTED scanner, not a hardcoded 500 -- the same class
+    // of bug #433 fixed on the CSV path. A BC75XLT holds 300.
+    let index = parse_ss_index(f, caps)?;
     let freq_hz: i64 = f[3]
         .parse()
         .map_err(|_| "bad C-Freq frequency".to_string())?;
@@ -236,6 +247,67 @@ fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<Cha
         tone_dcs_code,
         bank: 1,
     }))
+}
+
+#[derive(Clone)]
+enum SsRestoreSlot {
+    Programmed(ChannelData),
+    Empty(u16),
+}
+
+impl SsRestoreSlot {
+    fn index(&self) -> u16 {
+        match self {
+            Self::Programmed(channel) => channel.index,
+            Self::Empty(index) => *index,
+        }
+    }
+}
+
+fn ordered_restore_slots(cfg: &SsConfig) -> Vec<SsRestoreSlot> {
+    let mut slots: Vec<SsRestoreSlot> = cfg
+        .channels
+        .iter()
+        .cloned()
+        .map(SsRestoreSlot::Programmed)
+        .chain(cfg.empty_slots.iter().copied().map(SsRestoreSlot::Empty))
+        .collect();
+    slots.sort_unstable_by_key(SsRestoreSlot::index);
+    slots
+}
+
+/// Clear one file-empty slot with the operation supported by this scanner,
+/// then read it back. BC125-family radios have a true delete command; BC75XLT
+/// does not, so it is cleared by writing a zero-frequency channel instead.
+async fn clear_ss_slot(
+    state: &AppState,
+    index: u16,
+    caps: &ScannerCapabilities,
+) -> Result<ChannelData, ApiError> {
+    let response = if caps.has_priority_clear {
+        send_raw_command(state, &format!("DCH,{index}"), false).await?
+    } else {
+        let empty = ChannelData {
+            index,
+            delay: caps.cleared_delay,
+            lockout: true,
+            bank: caps.index_to_bank(index),
+            ..ChannelData::default()
+        };
+        let payload = build_cin_write_payload_for(&empty, caps)?;
+        send_raw_command(state, &format!("CIN,{index},{payload}"), false).await?
+    };
+    if !matches!(classify_response(&response), ScannerReply::Ok) {
+        return Err(ApiError::BadRequest("channel_clear_rejected".to_string()));
+    }
+
+    let cleared = read_channel_from_scanner(state, index).await?;
+    if cleared.frequency.abs() >= 0.00005 {
+        return Err(ApiError::BadRequest(
+            "channel_clear_not_persisted".to_string(),
+        ));
+    }
+    Ok(cleared)
 }
 
 fn parse_ss_tone(
@@ -363,31 +435,39 @@ pub(crate) async fn import_bc75xlt_ss(
 
     let mut errors: Vec<Value> = cfg.errors.iter().map(|e| json!({ "error": e })).collect();
     let mut imported = 0usize;
-    let total = cfg.channels.len();
+    let mut cleared = 0usize;
+    let mut slots = ordered_restore_slots(&cfg);
+    let total = slots.len();
 
     // Substitute each channel's existing delay BEFORE the bracket opens, so
     // the shadow read is not holding a lock across a wire round-trip.
-    let channels: Vec<ChannelData> = {
+    {
         let shadow = state.shadow.read().unwrap();
-        cfg.channels
-            .iter()
-            .map(|ch| {
-                let mut ch = ch.clone();
-                ch.delay = shadow
+        for slot in &mut slots {
+            if let SsRestoreSlot::Programmed(channel) = slot {
+                channel.delay = shadow
                     .channels
-                    .get(&ch.index)
+                    .get(&channel.index)
                     .map(|existing| existing.delay)
                     .unwrap_or(caps.cleared_delay);
-                ch
-            })
-            .collect()
-    };
+            }
+        }
+    }
 
     let _prg = ProgramModeGuard::enter(&state).await?;
-    for (n, ch) in channels.iter().enumerate() {
-        let mut r = write_channel_to_scanner(&state, ch).await;
+    for (n, slot) in slots.iter().enumerate() {
+        let index = slot.index();
+        let mut r = match slot {
+            SsRestoreSlot::Programmed(channel) => write_channel_to_scanner(&state, channel).await,
+            SsRestoreSlot::Empty(index) => clear_ss_slot(&state, *index, &caps).await,
+        };
         if r.is_err() {
-            r = write_channel_to_scanner(&state, ch).await;
+            r = match slot {
+                SsRestoreSlot::Programmed(channel) => {
+                    write_channel_to_scanner(&state, channel).await
+                }
+                SsRestoreSlot::Empty(index) => clear_ss_slot(&state, *index, &caps).await,
+            };
         }
         // REGRESSION GUARD (#556, findings 3/4/5): the import stores what the
         // SCANNER reports, not what the file said.
@@ -407,6 +487,9 @@ pub(crate) async fn import_bc75xlt_ss(
         match r {
             Ok(verified) => {
                 imported += 1;
+                if matches!(slot, SsRestoreSlot::Empty(_)) {
+                    cleared += 1;
+                }
                 state
                     .shadow
                     .write()
@@ -414,7 +497,7 @@ pub(crate) async fn import_bc75xlt_ss(
                     .channels
                     .insert(verified.index, verified);
             }
-            Err(e) => errors.push(json!({ "index": ch.index, "error": format!("{:?}", e) })),
+            Err(e) => errors.push(json!({ "index": index, "error": format!("{:?}", e) })),
         }
         if total > 0 && (n + 1) % 10 == 0 {
             let pct = ((n + 1) * 100 / total) as u8;
@@ -430,6 +513,7 @@ pub(crate) async fn import_bc75xlt_ss(
 
     Ok(Json(json!({
         "imported": imported,
+        "cleared": cleared,
         "total": total,
         "settings_applied": 0,
         "errors": errors,
@@ -484,16 +568,27 @@ pub(crate) async fn import_bc125at_ss(
 
     let mut errors: Vec<Value> = cfg.errors.iter().map(|e| json!({ "error": e })).collect();
     let mut imported = 0usize;
+    let mut cleared = 0usize;
     let mut settings_applied = 0usize;
-    let total = cfg.channels.len();
+    let slots = ordered_restore_slots(&cfg);
+    let total = slots.len();
 
     let _prg = ProgramModeGuard::enter(&state).await?;
 
     // --- channels (fast path, retry once — mirrors CSV import) ---
-    for (n, ch) in cfg.channels.iter().enumerate() {
-        let mut r = write_channel_to_scanner(&state, ch).await;
+    for (n, slot) in slots.iter().enumerate() {
+        let index = slot.index();
+        let mut r = match slot {
+            SsRestoreSlot::Programmed(channel) => write_channel_to_scanner(&state, channel).await,
+            SsRestoreSlot::Empty(index) => clear_ss_slot(&state, *index, &caps).await,
+        };
         if r.is_err() {
-            r = write_channel_to_scanner(&state, ch).await;
+            r = match slot {
+                SsRestoreSlot::Programmed(channel) => {
+                    write_channel_to_scanner(&state, channel).await
+                }
+                SsRestoreSlot::Empty(index) => clear_ss_slot(&state, *index, &caps).await,
+            };
         }
         // REGRESSION GUARD (#556, findings 3/4/5): the import stores what the
         // SCANNER reports, not what the file said.
@@ -513,6 +608,9 @@ pub(crate) async fn import_bc125at_ss(
         match r {
             Ok(verified) => {
                 imported += 1;
+                if matches!(slot, SsRestoreSlot::Empty(_)) {
+                    cleared += 1;
+                }
                 state
                     .shadow
                     .write()
@@ -520,7 +618,7 @@ pub(crate) async fn import_bc125at_ss(
                     .channels
                     .insert(verified.index, verified);
             }
-            Err(e) => errors.push(json!({ "index": ch.index, "error": format!("{:?}", e) })),
+            Err(e) => errors.push(json!({ "index": index, "error": format!("{:?}", e) })),
         }
         if total > 0 && (n + 1) % 10 == 0 {
             let pct = ((n + 1) * 80 / total) as u8;
@@ -606,6 +704,8 @@ pub(crate) async fn import_bc125at_ss(
     import_progress(&state, "import-ss", 100, "Import complete");
     Ok(Json(json!({
         "imported": imported,
+        "cleared": cleared,
+        "total": total,
         "settings_applied": settings_applied,
         "errors": errors,
     })))
@@ -789,21 +889,37 @@ mod tests {
     /// The BC75XLT parser must read a real file written by Uniden's tool.
     ///
     /// `fixtures/blank.bc75xlt_ss` is a `New` -> `Save As` from the real
-    /// software: 300 empty channels, so every `C-Freq` row parses to "empty
-    /// slot" and nothing should be imported.
+    /// software: 300 empty channels. Every row must retain its slot index so a
+    /// full restore can clear pre-existing scanner memory.
     #[test]
-    fn a_blank_bc75xlt_file_parses_to_no_channels() {
+    fn a_blank_bc75xlt_file_preserves_all_empty_slots() {
         let text = include_str!("../../../fixtures/blank.bc75xlt_ss");
         let cfg = parse_ss_config(text, &BC75XLT);
         assert!(
             cfg.channels.is_empty(),
             "every slot in a blank file is empty"
         );
+        assert_eq!(cfg.empty_slots.len(), 300);
+        assert_eq!(cfg.empty_slots.first(), Some(&1));
+        assert_eq!(cfg.empty_slots.last(), Some(&300));
         assert!(
             cfg.errors.is_empty(),
             "a file the tool itself wrote must parse cleanly: {:?}",
             cfg.errors
         );
+    }
+
+    #[test]
+    fn mixed_files_keep_programmed_and_empty_rows_in_index_order() {
+        let text = "C-Freq\t2\t\t0\t\tOff\tOff\t2\tOff\n\
+                    C-Freq\t1\tTEST\t145130000\tFM\tOff\tOff\t2\tOff\n";
+        let cfg = parse_ss_config(text, &BC125AT_FAMILY);
+        let slots = ordered_restore_slots(&cfg);
+        assert_eq!(slots.len(), 2);
+        assert_eq!(slots[0].index(), 1);
+        assert!(matches!(slots[0], SsRestoreSlot::Programmed(_)));
+        assert_eq!(slots[1].index(), 2);
+        assert!(matches!(slots[1], SsRestoreSlot::Empty(2)));
     }
 
     /// REGRESSION GUARD: the file's delay column must never reach the wire on

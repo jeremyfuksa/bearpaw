@@ -6701,6 +6701,234 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn blank_ss_restores_clear_every_slot_on_both_scanner_families() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        for (caps, uri, filename, ss) in [
+            (
+                BC125AT_FAMILY,
+                "/api/v1/memory/import/bc125at_ss",
+                "blank.bc125at_ss",
+                include_str!("../../fixtures/blank.bc125at_ss"),
+            ),
+            (
+                BC75XLT,
+                "/api/v1/memory/import/bc75xlt_ss",
+                "blank.bc75xlt_ss",
+                include_str!("../../fixtures/blank.bc75xlt_ss"),
+            ),
+        ] {
+            let state = default_state();
+            state.device.write().unwrap().capabilities = Some(caps);
+            {
+                let mut shadow = state.shadow.write().unwrap();
+                for index in 1..=caps.channel_count {
+                    shadow.channels.insert(
+                        index,
+                        ChannelData {
+                            index,
+                            frequency: 145.13,
+                            bank: caps.index_to_bank(index),
+                            ..test_channel()
+                        },
+                    );
+                }
+            }
+
+            let fake = FakeScanner::attach(&state, move |command: &str| {
+                if command == "PRG" || command == "EPG" {
+                    return Ok(format!("{command},OK"));
+                }
+                if command.starts_with("DCH,") {
+                    return Ok("DCH,OK".to_string());
+                }
+                if let Some(rest) = command.strip_prefix("CIN,") {
+                    if rest.contains(',') {
+                        return Ok("CIN,OK".to_string());
+                    }
+                    let index = rest.parse::<u16>().unwrap();
+                    return if caps.has_priority_clear {
+                        Ok(format!("CIN,{index},,00000000,AUTO,0,2,1,0"))
+                    } else {
+                        Ok(format!("CIN,{index},,00000000,,,0,1,0"))
+                    };
+                }
+                if command.contains(',') {
+                    let name = command.split(',').next().unwrap();
+                    return Ok(format!("{name},OK"));
+                }
+                Ok(format!("{command},0"))
+            });
+
+            let boundary = format!("XbearpawBlank{}X", caps.channel_count);
+            let body = format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n\
+                 Content-Type: text/plain\r\n\r\n{ss}\r\n--{boundary}--\r\n"
+            );
+            let response = router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(uri)
+                        .header(
+                            "content-type",
+                            format!("multipart/form-data; boundary={boundary}"),
+                        )
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK, "{filename}");
+            let response_body = json_body(response).await;
+            assert_eq!(response_body["total"], caps.channel_count);
+            assert_eq!(response_body["imported"], caps.channel_count);
+            assert_eq!(response_body["cleared"], caps.channel_count);
+            let shadow = state.shadow.read().unwrap();
+            assert_eq!(shadow.channels.len(), caps.channel_count as usize);
+            assert!(shadow
+                .channels
+                .values()
+                .all(|channel| channel.frequency.abs() < 0.00005));
+
+            let transcript = fake.transcript_with_closed_bracket();
+            let clear_count = if caps.has_priority_clear {
+                transcript
+                    .iter()
+                    .filter(|command| command.starts_with("DCH,"))
+                    .count()
+            } else {
+                transcript
+                    .iter()
+                    .filter(|command| {
+                        command.starts_with("CIN,") && command.matches(',').count() > 1
+                    })
+                    .count()
+            };
+            assert_eq!(clear_count, caps.channel_count as usize, "{filename}");
+        }
+    }
+
+    #[tokio::test]
+    async fn mixed_ss_restores_programmed_and_empty_rows_on_both_scanner_families() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        for (caps, uri, filename) in [
+            (
+                BC125AT_FAMILY,
+                "/api/v1/memory/import/bc125at_ss",
+                "mixed.bc125at_ss",
+            ),
+            (
+                BC75XLT,
+                "/api/v1/memory/import/bc75xlt_ss",
+                "mixed.bc75xlt_ss",
+            ),
+        ] {
+            let state = default_state();
+            state.device.write().unwrap().capabilities = Some(caps);
+            for index in 1..=2 {
+                state.shadow.write().unwrap().channels.insert(
+                    index,
+                    ChannelData {
+                        index,
+                        frequency: 146.52,
+                        delay: caps.cleared_delay,
+                        bank: 1,
+                        ..test_channel()
+                    },
+                );
+            }
+
+            let memory = Arc::new(Mutex::new(HashMap::from([
+                (1_u16, "Old,01465200,FM,0,2,0,0".to_string()),
+                (2_u16, "Old,01465200,FM,0,2,0,0".to_string()),
+            ])));
+            let scanner_memory = memory.clone();
+            let _fake = FakeScanner::attach(&state, move |command: &str| {
+                if command == "PRG" || command == "EPG" {
+                    return Ok(format!("{command},OK"));
+                }
+                if let Some(index) = command.strip_prefix("DCH,") {
+                    scanner_memory
+                        .lock()
+                        .unwrap()
+                        .remove(&index.parse::<u16>().unwrap());
+                    return Ok("DCH,OK".to_string());
+                }
+                if let Some(rest) = command.strip_prefix("CIN,") {
+                    if let Some((index, payload)) = rest.split_once(',') {
+                        let index = index.parse::<u16>().unwrap();
+                        let frequency = payload.split(',').nth(1).unwrap_or_default();
+                        if frequency == "00000000" {
+                            scanner_memory.lock().unwrap().remove(&index);
+                        } else {
+                            scanner_memory
+                                .lock()
+                                .unwrap()
+                                .insert(index, payload.to_string());
+                        }
+                        return Ok("CIN,OK".to_string());
+                    }
+                    let index = rest.parse::<u16>().unwrap();
+                    if let Some(payload) = scanner_memory.lock().unwrap().get(&index).cloned() {
+                        return Ok(format!("CIN,{index},{payload}"));
+                    }
+                    return if caps.has_priority_clear {
+                        Ok(format!("CIN,{index},,00000000,AUTO,0,2,1,0"))
+                    } else {
+                        Ok(format!("CIN,{index},,00000000,,,0,1,0"))
+                    };
+                }
+                if command.contains(',') {
+                    let name = command.split(',').next().unwrap();
+                    return Ok(format!("{name},OK"));
+                }
+                Ok(format!("{command},0"))
+            });
+
+            let (name, modulation) = if caps.has_alpha_tags {
+                ("New", "FM")
+            } else {
+                ("", "")
+            };
+            let ss = format!(
+                "C-Freq\t1\t{name}\t145130000\t{modulation}\tOff\tOff\t2\tOff\r\n\
+                 C-Freq\t2\t\t0\t{modulation}\tOff\tOff\t2\tOff\r\n"
+            );
+            let boundary = format!("XbearpawMixed{}X", caps.channel_count);
+            let body = format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n\
+                 Content-Type: text/plain\r\n\r\n{ss}\r\n--{boundary}--\r\n"
+            );
+            let response = router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(uri)
+                        .header(
+                            "content-type",
+                            format!("multipart/form-data; boundary={boundary}"),
+                        )
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK, "{filename}");
+            let response_body = json_body(response).await;
+            assert_eq!(response_body["total"], 2, "{filename}: {response_body}");
+            assert_eq!(response_body["imported"], 2, "{filename}: {response_body}");
+            assert_eq!(response_body["cleared"], 1, "{filename}: {response_body}");
+            let shadow = state.shadow.read().unwrap();
+            assert!((shadow.channels[&1].frequency - 145.13).abs() < 0.00005);
+            assert!(shadow.channels[&2].frequency.abs() < 0.00005);
+        }
+    }
+
     /// REGRESSION GUARD (#598): a drop that QUEUED an EPG leaves the flag set.
     ///
     /// The poll loop yields STS/GLG on `program_mode_active`. The Drop used to
