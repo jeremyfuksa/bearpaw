@@ -22,6 +22,22 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Exporting channels to CSV and importing them back now works.** Every
+  exported row carried a bank number of zero, and the importer refused any row
+  whose bank wasn't between 1 and 10 — so Bearpaw's own export failed on every
+  programmed channel. On a full scanner that was 350 rows rejected and nothing
+  imported. Empty channels were skipped without being counted at all, so the
+  error message under-reported the damage. The bank column is now filled in on
+  the way out and worked out from the channel number on the way back in, which
+  is how the scanner decides it anyway.
+
+- **One scanner's activity no longer crowds out another's.** Recorded hits were
+  loaded newest-first up to a fixed limit across all scanners together, so a busy
+  radio could fill the entire budget and a quieter one's history would be missing
+  from the activity list and every dashboard built on it — while sitting intact
+  in the database, which made it look like a display problem rather than a
+  loading one. The limit now applies per scanner.
+
 - **Channel banks now follow the connected scanner.** Bank width was fixed at 50
   channels in three places, so on a 300-channel scanner every channel above 30
   was filed in the wrong bank — and the priority swap, which enforces one
