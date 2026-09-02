@@ -2,7 +2,7 @@ name: Build Bearpaw
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 env:
@@ -59,8 +59,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Cache Rust
@@ -199,10 +199,11 @@ jobs:
 
             ## Installing this build
 
-            Bearpaw is a control interface for the Uniden BC125AT scanner. These
-            builds are ad-hoc signed but **not notarized by Apple**, so your OS
-            will warn you the first time you open the app. That's expected —
-            here's how to run it:
+            Bearpaw is a control interface for supported Uniden analog handheld
+            scanners, including the BC125AT family and BC75XLT. These builds are
+            ad-hoc signed but **not notarized by Apple**, so your OS will warn
+            you the first time you open the app. That's expected — here's how
+            to run it:
 
             **macOS** (`.dmg`): open the dmg and drag Bearpaw to Applications. On
             first launch macOS says it "cannot verify the developer" — right-click
@@ -215,10 +216,10 @@ jobs:
 
             **Linux** (`.AppImage`): `chmod +x` it and run; or install the `.deb`.
 
-            Plug in your BC125AT over USB and launch — the app auto-detects the
-            scanner, so no config file is required to get started. (A
-            `config.yaml` beside the app is only needed to override the port or
-            tweak advanced settings.)
+            Plug in a supported scanner over USB and launch — the app
+            auto-detects its family, so no config file is required to get
+            started. (A `config.yaml` beside the app is only needed to override
+            the port or tweak advanced settings.)
 
             Found a bug? Please open an issue with your OS and what you were doing.
 

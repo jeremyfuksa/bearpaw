@@ -2,10 +2,10 @@
 
 ## Supported versions
 
-Bearpaw is pre-1.0 (`1.0.0-beta.x`). Only the latest release and the current
-`main` branch receive security fixes. There is no back-porting to older betas —
-if you hit a security issue, first confirm it reproduces against the latest
-release or `main`.
+Only the latest stable release and the current `main` branch receive security
+fixes. Pre-releases and older stable lines are not maintained after a newer
+stable release is available. If you hit a security issue, first confirm it
+reproduces against the latest release or `main`.
 
 ## Reporting a vulnerability
 
@@ -23,8 +23,8 @@ otherwise.
 
 ## Scope
 
-Bearpaw is a desktop control interface for the Uniden BC125AT scanner. The parts
-worth flagging:
+Bearpaw is a desktop control interface for the Uniden BC125AT family and
+BC75XLT scanner. The parts worth flagging:
 
 - **The backend is an unauthenticated loopback HTTP + WebSocket server** bound to
   `127.0.0.1` by default. It relies on CORS and Host-header hardening
@@ -35,5 +35,5 @@ worth flagging:
   ([`crates/bearpaw-api/src/protocol/`](crates/bearpaw-api/src/protocol/)).
 - **The Tauri desktop shell** and any command surface it exposes to the frontend.
 
-Out of scope: physical access to the machine running Bearpaw, and the security of
-the BC125AT hardware/firmware itself (report those to Uniden).
+Out of scope: physical access to the machine running Bearpaw, and the security
+of supported scanners' hardware or firmware (report those to Uniden).
