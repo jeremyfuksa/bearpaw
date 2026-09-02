@@ -24,6 +24,7 @@ on:
     # companion workflow reporting these five job names for the excluded
     # paths — and that companion is a landmine, because renaming a job here
     # without renaming it there blocks every PR with no visible cause.
+  workflow_call:
 
 jobs:
   test-backend:
@@ -32,6 +33,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - name: Test release preflight
+        run: python3 -m unittest discover -s scripts -p 'test_release_preflight.py'
+      - name: Validate release metadata consistency
+        run: python3 scripts/release_preflight.py
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
