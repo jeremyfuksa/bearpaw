@@ -108,7 +108,7 @@ fn build_avoid_freqs_line(raw_100hz: &[u32]) -> Option<String> {
 ///
 /// Do NOT reuse `dcs_code_to_label` here. It renders `DCS 023` for the live
 /// display and is correct for that; this column needs `D023`.
-fn ss_tone_label(ch: &ChannelData) -> String {
+pub(crate) fn ss_tone_label(ch: &ChannelData) -> String {
     match ch.tone_squelch_kind {
         ToneSquelchKind::Ctcss => ch
             .tone_squelch

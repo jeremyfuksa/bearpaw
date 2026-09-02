@@ -8,6 +8,7 @@ use super::super::{
 };
 use super::exports::import_progress;
 use crate::protocol::capabilities::ScannerCapabilities;
+use crate::protocol::tones::{ctcss_hz_to_code, dcs_number_to_code};
 use crate::protocol::{classify_response, ScannerReply};
 use crate::state::{ChannelData, ToneSquelchKind};
 
@@ -219,6 +220,9 @@ fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<Cha
     } else {
         caps.cleared_delay
     };
+    let (tone_squelch_kind, tone_squelch, tone_dcs_code) =
+        parse_ss_tone(f[5], caps.has_tone_squelch)
+            .map_err(|error| format!("C-Freq {} tone: {}", index, error))?;
     Ok(Some(ChannelData {
         index,
         frequency,
@@ -227,16 +231,51 @@ fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<Cha
         delay,
         lockout: on(f[6]),
         priority: on(f[8]),
-        // Tone parsing from the display label is deferred: import writes tone
-        // as "0" (off) in the CIN payload for now. Tone round-trip is tracked
-        // separately — the export label ("100.0"/"DCS 023"/"Srch") would need
-        // reverse decoding to a code. Channels still import with correct
-        // freq/name/mod/delay/lockout/priority.
-        tone_squelch: None,
-        tone_squelch_kind: ToneSquelchKind::None,
-        tone_dcs_code: None,
+        tone_squelch,
+        tone_squelch_kind,
+        tone_dcs_code,
         bank: 1,
     }))
+}
+
+fn parse_ss_tone(
+    label: &str,
+    supported: bool,
+) -> Result<(ToneSquelchKind, Option<f64>, Option<u16>), String> {
+    if !supported {
+        return Ok((ToneSquelchKind::None, None, None));
+    }
+    let label = label.trim();
+    if label.is_empty() || label.eq_ignore_ascii_case("Off") {
+        return Ok((ToneSquelchKind::None, None, None));
+    }
+    if label.eq_ignore_ascii_case("Srch") {
+        return Ok((ToneSquelchKind::Search, None, None));
+    }
+
+    let upper = label.to_ascii_uppercase();
+    if let Some(value) = upper.strip_prefix('C') {
+        let hz = value
+            .parse::<f64>()
+            .map_err(|_| format!("invalid CTCSS value {label:?}"))?;
+        if ctcss_hz_to_code(hz).is_none() {
+            return Err(format!("unsupported CTCSS value {label:?}"));
+        }
+        return Ok((ToneSquelchKind::Ctcss, Some(hz), None));
+    }
+    if let Some(value) = upper.strip_prefix('D') {
+        if value.len() != 3 || !value.chars().all(|character| character.is_ascii_digit()) {
+            return Err(format!("invalid DCS value {label:?}"));
+        }
+        let number = value
+            .parse::<u16>()
+            .map_err(|_| format!("invalid DCS value {label:?}"))?;
+        let code =
+            dcs_number_to_code(number).ok_or_else(|| format!("unsupported DCS value {label:?}"))?;
+        return Ok((ToneSquelchKind::Dcs, None, Some(code)));
+    }
+
+    Err(format!("invalid value {label:?}"))
 }
 
 /// Sends `write_cmd`, checks the reply is OK, then reads back `read_cmd` and
@@ -574,6 +613,7 @@ pub(crate) async fn import_bc125at_ss(
 
 #[cfg(test)]
 mod tests {
+    use super::super::exports::ss_tone_label;
     use super::*;
     use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
 
@@ -678,6 +718,72 @@ mod tests {
             .expect("some");
         assert!(ch.lockout);
         assert!(ch.priority);
+    }
+
+    #[test]
+    fn ss_tones_round_trip_through_export_and_import() {
+        let channels = [
+            ChannelData::default(),
+            ChannelData {
+                tone_squelch_kind: ToneSquelchKind::Ctcss,
+                tone_squelch: Some(100.0),
+                ..ChannelData::default()
+            },
+            ChannelData {
+                tone_squelch_kind: ToneSquelchKind::Dcs,
+                tone_dcs_code: Some(128),
+                ..ChannelData::default()
+            },
+            ChannelData {
+                tone_squelch_kind: ToneSquelchKind::Search,
+                ..ChannelData::default()
+            },
+        ];
+
+        for (offset, original) in channels.into_iter().enumerate() {
+            let label = ss_tone_label(&original);
+            let row = format!(
+                "C-Freq\t{}\tTone\t145130000\tFM\t{}\tOff\t2\tOff",
+                offset + 1,
+                label
+            );
+            let fields: Vec<&str> = row.split('\t').collect();
+            let parsed = parse_ss_channel(&fields, &BC125AT_FAMILY)
+                .expect("exported row parses")
+                .expect("programmed channel");
+
+            assert_eq!(ss_tone_label(&parsed), label, "round-trip for {label}");
+        }
+    }
+
+    #[test]
+    fn malformed_non_empty_tones_are_reported_per_row() {
+        for label in ["C100.5", "D23", "D999", "Tone"] {
+            let text = format!("C-Freq\t1\tTone\t145130000\tFM\t{}\tOff\t2\tOff", label);
+            let cfg = parse_ss_config(&text, &BC125AT_FAMILY);
+            assert!(cfg.channels.is_empty(), "{label} must not become Off");
+            assert_eq!(cfg.errors.len(), 1, "{label} must produce one row error");
+            assert!(cfg.errors[0].contains("C-Freq 1 tone"));
+        }
+    }
+
+    #[test]
+    fn parsed_ss_tones_encode_to_the_expected_cin_codes() {
+        for (label, expected_code) in [
+            ("Off", "0"),
+            ("C100.0", "76"),
+            ("D023", "128"),
+            ("Srch", "127"),
+        ] {
+            let row = format!("C-Freq\t1\tTone\t145130000\tFM\t{}\tOff\t2\tOff", label);
+            let fields: Vec<&str> = row.split('\t').collect();
+            let parsed = parse_ss_channel(&fields, &BC125AT_FAMILY)
+                .expect("tone parses")
+                .expect("programmed channel");
+            let payload = crate::api::build_cin_write_payload_for(&parsed, &BC125AT_FAMILY)
+                .expect("tone encodes");
+            assert_eq!(payload.split(',').nth(3), Some(expected_code), "{label}");
+        }
     }
 
     /// The BC75XLT parser must read a real file written by Uniden's tool.
