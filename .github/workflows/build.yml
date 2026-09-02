@@ -9,8 +9,30 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  preflight:
+    name: Release Preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Test release preflight
+        run: python3 -m unittest discover -s scripts -p 'test_release_preflight.py'
+      - name: Validate release metadata
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            python3 scripts/release_preflight.py --tag "${GITHUB_REF_NAME}"
+          else
+            python3 scripts/release_preflight.py
+          fi
+
+  quality:
+    name: Quality Gates
+    uses: ./.github/workflows/tests.yml
+
   build:
     name: Build on ${{ matrix.platform }}
+    needs: [preflight, quality]
     strategy:
       fail-fast: false
       matrix:
@@ -153,8 +175,8 @@ jobs:
       # generate_release_notes still appends New Contributors and the compare
       # link below the prose.
       #
-      # A tag with no matching CHANGELOG heading yields an empty string and the
-      # release falls back to the generated notes alone.
+      # Preflight already verifies the section. Keep this stable-release check
+      # here too so a future workflow edit cannot silently publish empty notes.
       - name: Extract release notes from CHANGELOG
         id: changelog
         run: |
@@ -165,7 +187,12 @@ jobs:
             found { print }
           ' CHANGELOG.md)
           if [ -z "$NOTES" ]; then
-            echo "::warning::No CHANGELOG section found for $VERSION — falling back to generated notes only"
+            if [[ "$VERSION" == *-* ]]; then
+              echo "::warning::No CHANGELOG section found for pre-release $VERSION"
+            else
+              echo "::error::No CHANGELOG section found for stable release $VERSION"
+              exit 1
+            fi
           fi
           {
             echo "notes<<CHANGELOG_EOF"
