@@ -714,13 +714,22 @@ extension (#187).
 ```json
 {
   "imported": 500,
+  "settings_applied": 12,
+  "settings_skipped": [{ "command": "BLT", "label": "Backlight" }],
   "errors": []
 }
 ```
 
 **Behavior:**
-- Parses the `.bc125at_ss` payload and writes valid channels to the scanner.
+- Parses the payload and writes valid channels to the scanner.
 - Runs in program mode; returns the count imported and any per-row errors.
+- Settings writes are gated on `ScannerCapabilities` and read-back verified.
+  A setting the connected scanner has no way to accept is **not** an error —
+  it is named in `settings_skipped` so the caller can report it rather than
+  claim a full restore (#625). The same shape is returned by
+  `/memory/import/bc75xlt_ss`, which applies the subset that model supports
+  (`SCG`, `PRI`, `SQL`, `SCO`, `CSP`, `CSG`, `CLC`) and skips the rest
+  (`BLT`, `BSV`, `CNT`, `WXS`, `SSG`, `KBP`).
 
 **Errors:**
 - `400 Bad Request` if the file is malformed

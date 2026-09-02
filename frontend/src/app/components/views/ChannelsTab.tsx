@@ -1275,10 +1275,25 @@ export function ChannelsTab() {
       }
 
       const result = await response.json();
-      const { imported, errors } = result;
+      const { imported, errors, settings_skipped: settingsSkipped } = result;
+
+      // A setting this scanner cannot accept is not an error — the restore
+      // worked — but it must not be reported as an unqualified success
+      // either. The backend names each one it refused (#625); saying
+      // "Config restored" while silently dropping the file's backlight and
+      // service-search groups is the bug this reports its way out of.
+      const skippedNames: string[] = Array.isArray(settingsSkipped)
+        ? settingsSkipped.map(
+            (s: { label?: string; command?: string }) => s.label ?? s.command ?? '',
+          )
+        : [];
 
       if (errors && errors.length > 0) {
         toast.error(`Imported ${imported} — ${errors.length} item(s) failed`);
+      } else if (isSs && skippedNames.length > 0) {
+        toast.success(
+          `Config restored (${imported} channels). Not supported by this scanner: ${skippedNames.join(', ')}.`,
+        );
       } else if (isSs) {
         toast.success(`Config restored (${imported} channels)`);
       } else {
