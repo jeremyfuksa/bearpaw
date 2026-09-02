@@ -7,6 +7,7 @@ use super::super::{
     AppState, ProgramModeGuard,
 };
 use super::exports::import_progress;
+use super::settings;
 use crate::protocol::capabilities::ScannerCapabilities;
 use crate::protocol::tones::{ctcss_hz_to_code, dcs_number_to_code};
 use crate::protocol::{classify_response, ScannerReply};
@@ -347,6 +348,175 @@ async fn write_setting_verified(
 /// Under ONE program-mode bracket: writes every channel (fast CIN path, retry
 /// once — same as CSV import), then applies global settings write-verified
 /// (each rejection is non-fatal and recorded). Progress streams over the WS.
+/// A settings write the file asks for: what to send, what to read back, and
+/// the first field that read-back must echo.
+type SettingJob = (String, String, String);
+
+/// A setting the file carries that this radio has no way to accept.
+///
+/// Reported to the caller rather than dropped: a "Restore full config" that
+/// silently ignores half the file is the bug in #625. `command` is the wire
+/// command so the message names something the user can look up.
+#[derive(Debug, PartialEq)]
+pub(crate) struct SkippedSetting {
+    pub command: &'static str,
+    pub label: &'static str,
+}
+
+/// Build the settings writes this radio can actually take, and name the ones
+/// it cannot.
+///
+/// Gated on `ScannerCapabilities`, never on a model string. Every gate here
+/// mirrors one the settings handlers already enforce, because those were
+/// established against real hardware:
+///
+/// - `BLT`/`BSV`/`CNT`/`WXS` answer `ERR` on a BC75XLT, and a stalled command
+///   inside the `PRG` bracket is #436.
+/// - `SSG` does not exist on that model at all.
+/// - `KBP`'s beep field is `[RSV]` there, and `set_key_beep` refuses the WHOLE
+///   command rather than sending the key lock alongside a reserved slot -- per
+///   the vendor spec a value in a reserved field is a format error that aborts
+///   the set command and takes the lock with it.
+/// - `CLC` field 5 is `[RSV]` (hardware 2026-08-28), so it goes out EMPTY,
+///   exactly as `set_close_call` sends it.
+///
+/// `CSG` is absent from this list because its write must echo the field shape
+/// the radio just reported -- see `csg_write_command`, which needs a wire read
+/// and so cannot be built here.
+fn settings_jobs(
+    s: &SsSettings,
+    caps: &ScannerCapabilities,
+) -> (Vec<SettingJob>, Vec<SkippedSetting>) {
+    let mut jobs: Vec<SettingJob> = Vec::new();
+    let mut skipped: Vec<SkippedSetting> = Vec::new();
+
+    // A BLANK column is the tool saying "nothing recorded here", not "set this
+    // to empty string" -- the same distinction CLAUDE.md pitfall #9 draws for
+    // reserved `CIN` fields, one layer up. A real `.bc75xlt_ss` leaves volume
+    // and contrast blank (fixtures/sample.bc75xlt_ss), and sending the literal
+    // `VOL,` puts an ERR in the error list of every otherwise-clean restore.
+    let value = |v: &Option<String>| v.as_ref().filter(|v| !v.trim().is_empty()).cloned();
+
+    let mut gated =
+        |supported: bool, command: &'static str, label: &'static str, job: Option<SettingJob>| {
+            match (supported, job) {
+                (true, Some(job)) => jobs.push(job),
+                (false, Some(_)) => skipped.push(SkippedSetting { command, label }),
+                // The file did not carry this setting at all -- nothing to apply
+                // and nothing to warn about.
+                (_, None) => {}
+            }
+        };
+
+    gated(
+        caps.has_backlight_control,
+        "BLT",
+        "Backlight",
+        value(&s.backlight).map(|v| (format!("BLT,{}", v), "BLT".to_string(), v)),
+    );
+    gated(
+        caps.has_battery_save,
+        "BSV",
+        "Battery charge time",
+        value(&s.charge_time).map(|v| (format!("BSV,{}", v), "BSV".to_string(), v)),
+    );
+    gated(
+        caps.has_key_beep,
+        "KBP",
+        "Key beep and key lock",
+        match (value(&s.beep), value(&s.key_lock)) {
+            (Some(b), Some(k)) => Some((format!("KBP,{},{}", b, k), "KBP".to_string(), b)),
+            _ => None,
+        },
+    );
+    gated(
+        caps.has_contrast,
+        "CNT",
+        "Display contrast",
+        value(&s.contrast).map(|v| (format!("CNT,{}", v), "CNT".to_string(), v)),
+    );
+    gated(
+        caps.has_weather_alert,
+        "WXS",
+        "Weather alert priority",
+        value(&s.wx_pri).map(|v| (format!("WXS,{}", v), "WXS".to_string(), v)),
+    );
+    gated(
+        caps.has_search_options,
+        "SCO",
+        "General search delay and code search",
+        match (value(&s.search_delay), value(&s.search_code)) {
+            (Some(d), Some(c)) => Some((format!("SCO,{},{}", d, c), "SCO".to_string(), d)),
+            _ => None,
+        },
+    );
+    gated(
+        caps.has_service_search_groups,
+        "SSG",
+        "Service search groups",
+        value(&s.service_flags).map(|v| (format!("SSG,{}", v), "SSG".to_string(), v)),
+    );
+
+    // Supported on both families.
+    if let Some(v) = value(&s.volume) {
+        jobs.push((format!("VOL,{}", v), "VOL".to_string(), v));
+    }
+    if let Some(v) = value(&s.squelch) {
+        jobs.push((format!("SQL,{}", v), "SQL".to_string(), v));
+    }
+    if let Some(v) = value(&s.priority) {
+        jobs.push((format!("PRI,{}", v), "PRI".to_string(), v));
+    }
+    // Conventional bank enablement. Named explicitly in #625: this is the one
+    // the user is most likely to notice missing after a restore.
+    // The scanner REFUSES an all-disabled mask (vendor spec; `set_banks`
+    // rejects it before the wire for the same reason, CLAUDE.md pitfall #7).
+    // A file recording every bank off is not restorable, and saying so beats
+    // an opaque `SCG rejected: Err`.
+    if let Some(v) = value(&s.scan_flags) {
+        if v.chars().all(|c| c == '1') {
+            skipped.push(SkippedSetting {
+                command: "SCG",
+                label:
+                    "Bank enablement (the file has every bank disabled, which the scanner refuses)",
+            });
+        } else {
+            jobs.push((format!("SCG,{}", v), "SCG".to_string(), v));
+        }
+    }
+    for (idx, lo, hi) in &s.custom_ranges {
+        jobs.push((
+            format!("CSP,{},{},{}", idx, lo, hi),
+            // CSP read-back is per-index; verify the index echoes.
+            format!("CSP,{}", idx),
+            idx.to_string(),
+        ));
+    }
+    if let (Some(m), Some(b), Some(l), Some(bands)) = (
+        value(&s.cc_mode),
+        value(&s.cc_beep),
+        value(&s.cc_light),
+        value(&s.cc_bands),
+    ) {
+        // Field 5 is `[RSV]` where the model has no hit scan: written `1` on a
+        // BC75XLT it reads back empty (hardware 2026-08-28). A reserved field
+        // goes out EMPTY -- a value in one risks the format error that aborts
+        // the whole set command. Same shape as `set_close_call`.
+        let hit_scan = if caps.has_close_call_hit_scan {
+            value(&s.cc_lockout).unwrap_or_else(|| "0".to_string())
+        } else {
+            String::new()
+        };
+        jobs.push((
+            format!("CLC,{},{},{},{},{}", m, b, l, bands, hit_scan),
+            "CLC".to_string(),
+            m,
+        ));
+    }
+
+    (jobs, skipped)
+}
+
 /// Pull the `file` part out of a multipart upload.
 async fn read_upload(mut multipart: Multipart) -> Result<Vec<u8>, ApiError> {
     while let Some(field) = multipart
@@ -399,12 +569,64 @@ fn apply_stuck_priority(
     }
 }
 
+/// Apply every setting in the file this radio can take, and return the ones it
+/// cannot.
+///
+/// Each write is read-back verified and each rejection is non-fatal and
+/// recorded -- a bad `BSV` value must not cost the user their channels. The
+/// caller holds the program-mode bracket.
+///
+/// This used to exist only on the BC125AT path; a BC75XLT import applied no
+/// settings at all while the UI promised a full restore (#625).
+async fn apply_ss_settings(
+    state: &AppState,
+    settings: &SsSettings,
+    caps: &ScannerCapabilities,
+    applied: &mut usize,
+    errors: &mut Vec<Value>,
+) -> Vec<SkippedSetting> {
+    import_progress(state, "import-ss", 85, "Applying settings…");
+    let (mut jobs, skipped) = settings_jobs(settings, caps);
+
+    // `CSG` cannot be built without a wire read: its field count is per-family
+    // and only the READ reports it. See `csg_write_command`.
+    if let Some(flags) = settings
+        .custom_flags
+        .as_ref()
+        .filter(|f| !f.trim().is_empty())
+    {
+        match settings::csg_write_command(state, flags).await {
+            Ok(write) => jobs.push((write, "CSG".to_string(), flags.clone())),
+            Err(e) => errors.push(json!({ "setting": "CSG", "error": format!("{:?}", e) })),
+        }
+    }
+
+    for (write_cmd, read_cmd, expect) in jobs {
+        match write_setting_verified(state, &write_cmd, &read_cmd, &expect).await {
+            Ok(()) => *applied += 1,
+            Err(e) => errors.push(json!({ "setting": write_cmd, "error": e })),
+        }
+    }
+    skipped
+}
+
+fn skipped_json(skipped: &[SkippedSetting]) -> Vec<Value> {
+    skipped
+        .iter()
+        .map(|s| json!({ "command": s.command, "label": s.label }))
+        .collect()
+}
+
 /// Import a `.bc75xlt_ss` file.
 ///
-/// Channels only. The settings sections in that file are written by a tool
-/// that can send `BLT`/`BSV`/`CNT`/`WXS`, and this model answers `ERR` to all
-/// four -- pushing them would stall the PRG bracket (#436). Applying settings
-/// on this model needs its own probe and is deliberately out of scope here.
+/// Channels AND every setting this model can take. It was channels-only, on
+/// the reasoning that the file's settings section is written by a tool that
+/// can send `BLT`/`BSV`/`CNT`/`WXS` while this radio answers `ERR` to all four
+/// (#436) -- but that is an argument for gating those four, not for dropping
+/// the bank mask, priority, custom search and Close Call along with them. The
+/// UI called it a full restore either way (#625). `settings_jobs` gates on
+/// `ScannerCapabilities`; whatever it refuses comes back in `settings_skipped`
+/// so the user is told rather than misled.
 ///
 /// The file's delay column carries a constant 2 (see docs/SS_FILE_FORMAT.md),
 /// which is a `CIN` format error on this radio. Each channel therefore keeps
@@ -491,7 +713,7 @@ pub(crate) async fn import_bc75xlt_ss(
             Err(e) => errors.push(json!({ "index": ch.index, "error": format!("{:?}", e) })),
         }
         if total > 0 && (n + 1) % 10 == 0 {
-            let pct = ((n + 1) * 100 / total) as u8;
+            let pct = ((n + 1) * 80 / total) as u8;
             import_progress(
                 &state,
                 "import-ss",
@@ -500,12 +722,23 @@ pub(crate) async fn import_bc75xlt_ss(
             );
         }
     }
+    let mut settings_applied = 0usize;
+    let skipped = apply_ss_settings(
+        &state,
+        &cfg.settings,
+        &caps,
+        &mut settings_applied,
+        &mut errors,
+    )
+    .await;
+
     import_progress(&state, "import-ss", 100, "Import complete");
 
     Ok(Json(json!({
         "imported": imported,
         "total": total,
-        "settings_applied": 0,
+        "settings_applied": settings_applied,
+        "settings_skipped": skipped_json(&skipped),
         "errors": errors,
     })))
 }
@@ -609,75 +842,15 @@ pub(crate) async fn import_bc125at_ss(
         }
     }
 
-    // --- settings (write-verified, non-fatal) ---
-    import_progress(&state, "import-ss", 85, "Applying settings…");
-    let s = &cfg.settings;
-    // each entry: (write_cmd, read_cmd, expected first field of read-back)
-    let mut jobs: Vec<(String, String, String)> = Vec::new();
-    if let Some(v) = &s.backlight {
-        jobs.push((format!("BLT,{}", v), "BLT".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.charge_time {
-        jobs.push((format!("BSV,{}", v), "BSV".to_string(), v.clone()));
-    }
-    if let (Some(b), Some(k)) = (&s.beep, &s.key_lock) {
-        jobs.push((format!("KBP,{},{}", b, k), "KBP".to_string(), b.clone()));
-    }
-    if let Some(v) = &s.contrast {
-        jobs.push((format!("CNT,{}", v), "CNT".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.volume {
-        jobs.push((format!("VOL,{}", v), "VOL".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.squelch {
-        jobs.push((format!("SQL,{}", v), "SQL".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.priority {
-        jobs.push((format!("PRI,{}", v), "PRI".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.wx_pri {
-        jobs.push((format!("WXS,{}", v), "WXS".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.service_flags {
-        jobs.push((format!("SSG,{}", v), "SSG".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.scan_flags {
-        jobs.push((format!("SCG,{}", v), "SCG".to_string(), v.clone()));
-    }
-    if let Some(v) = &s.custom_flags {
-        jobs.push((format!("CSG,{}", v), "CSG".to_string(), v.clone()));
-    }
-    if let (Some(d), Some(c)) = (&s.search_delay, &s.search_code) {
-        jobs.push((format!("SCO,{},{}", d, c), "SCO".to_string(), d.clone()));
-    }
-    for (idx, lo, hi) in &s.custom_ranges {
-        jobs.push((
-            format!("CSP,{},{},{}", idx, lo, hi),
-            // CSP read-back is per-index; verify the index echoes.
-            format!("CSP,{}", idx),
-            idx.to_string(),
-        ));
-    }
-    if let (Some(m), Some(b), Some(l), Some(bands), Some(lk)) = (
-        &s.cc_mode,
-        &s.cc_beep,
-        &s.cc_light,
-        &s.cc_bands,
-        &s.cc_lockout,
-    ) {
-        jobs.push((
-            format!("CLC,{},{},{},{},{}", m, b, l, bands, lk),
-            "CLC".to_string(),
-            m.clone(),
-        ));
-    }
-
-    for (write_cmd, read_cmd, expect) in jobs {
-        match write_setting_verified(&state, &write_cmd, &read_cmd, &expect).await {
-            Ok(()) => settings_applied += 1,
-            Err(e) => errors.push(json!({ "setting": write_cmd, "error": e })),
-        }
-    }
+    // --- settings (capability-gated, write-verified, non-fatal) ---
+    let skipped = apply_ss_settings(
+        &state,
+        &cfg.settings,
+        &caps,
+        &mut settings_applied,
+        &mut errors,
+    )
+    .await;
 
     import_progress(&state, "import-ss", 100, "Import complete");
     Ok(Json(json!({
@@ -687,6 +860,7 @@ pub(crate) async fn import_bc125at_ss(
         // writes, not 0.
         "total": total,
         "settings_applied": settings_applied,
+        "settings_skipped": skipped_json(&skipped),
         "errors": errors,
     })))
 }
@@ -1097,5 +1271,200 @@ mod tests {
             !rows[3].priority,
             "a PROGRAMMED row must keep the file's priority, not the shadow's"
         );
+    }
+
+    /// Every wire command `settings_jobs` produced, in order.
+    fn commands(jobs: &[SettingJob]) -> Vec<String> {
+        jobs.iter()
+            .map(|(w, _, _)| w.split(',').next().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    /// REGRESSION GUARD (#625): a BC75XLT restore applies the settings that
+    /// model CAN take.
+    ///
+    /// `import_bc75xlt_ss` was channels-only and always returned
+    /// `settings_applied: 0`, while the shared UI promised "This overwrites
+    /// all channels and settings". Bank enablement, priority, custom search
+    /// and Close Call all have write paths the settings handlers already
+    /// exercise on that radio -- dropping them along with the four commands it
+    /// genuinely refuses was a much bigger hole than the four.
+    ///
+    /// Paired with `a_bc75xlt_reports_the_settings_it_cannot_take`: this one
+    /// alone passes for a build that writes EVERYTHING, including the four
+    /// that `ERR` and stall the PRG bracket (#436).
+    #[test]
+    fn a_bc75xlt_restore_applies_the_settings_that_model_supports() {
+        let text = include_str!("../../../fixtures/sample.bc75xlt_ss");
+        let cfg = parse_ss_config(text, &BC75XLT);
+        let (jobs, _) = settings_jobs(&cfg.settings, &BC75XLT);
+        let sent = commands(&jobs);
+
+        for expected in ["SQL", "PRI", "SCG", "CSP", "CLC"] {
+            assert!(
+                sent.iter().any(|c| c == expected),
+                "{expected} must be restored on a BC75XLT; got {sent:?}"
+            );
+        }
+    }
+
+    /// The other half: the four commands this radio answers `ERR` to, plus the
+    /// two whose fields are reserved, must NOT reach the wire -- and must be
+    /// REPORTED rather than silently dropped.
+    ///
+    /// A stalled command inside the `PRG` bracket is #436; a reserved field
+    /// carrying a value is a format error that aborts the whole set command.
+    #[test]
+    fn a_bc75xlt_reports_the_settings_it_cannot_take() {
+        let text = include_str!("../../../fixtures/sample.bc75xlt_ss");
+        let cfg = parse_ss_config(text, &BC75XLT);
+        let (jobs, skipped) = settings_jobs(&cfg.settings, &BC75XLT);
+        let sent = commands(&jobs);
+        let named: Vec<&str> = skipped.iter().map(|s| s.command).collect();
+
+        for unsupported in ["BLT", "BSV", "CNT", "WXS", "SSG", "KBP", "SCO"] {
+            assert!(
+                !sent.contains(&unsupported.to_string()),
+                "{unsupported} must never reach a BC75XLT; got {sent:?}"
+            );
+        }
+        // The file carries a backlight column, a service-group section and a
+        // GeneralSearch row, so those must be REPORTED, not merely absent. A
+        // build that dropped them silently -- the #625 bug -- satisfies the
+        // loop above.
+        //
+        // `SCO` is the one measured live rather than read off a spec: the
+        // radio rejects a write of the value it JUST REPORTED (`SCO,1,0` ->
+        // `Err`, hardware 2026-09-02), which is what rules out a bad value and
+        // makes this a capability rather than a validation problem. Left
+        // ungated, the file's constant-2 `GeneralSearch` column put a rejected
+        // `SCO,2,0` in the error list of every otherwise clean restore --
+        // observed on the dev unit before this gate existed.
+        for reported in ["BLT", "SSG", "SCO"] {
+            assert!(
+                named.contains(&reported),
+                "{reported} is in the file and must be reported unsupported; got {named:?}"
+            );
+        }
+    }
+
+    /// The gate is the CAPABILITY, not the file format. The same settings on a
+    /// BC125AT must produce the full job list and report nothing unsupported.
+    ///
+    /// Pinning only the BC75XLT half passes for a build that hardcodes the
+    /// skip list and starves every radio of `BLT`/`BSV`/`CNT`/`WXS`.
+    #[test]
+    fn a_bc125at_takes_every_setting_the_file_carries() {
+        let text = include_str!("../../../fixtures/sample.bc75xlt_ss");
+        let cfg = parse_ss_config(text, &BC125AT_FAMILY);
+        let (jobs, skipped) = settings_jobs(&cfg.settings, &BC125AT_FAMILY);
+        let sent = commands(&jobs);
+
+        assert!(
+            skipped.is_empty(),
+            "nothing is unsupported on a BC125AT; got {:?}",
+            skipped.iter().map(|s| s.command).collect::<Vec<&str>>()
+        );
+        for expected in ["BLT", "BSV", "SSG", "SCG", "CLC"] {
+            assert!(
+                sent.iter().any(|c| c == expected),
+                "{expected} must be restored on a BC125AT; got {sent:?}"
+            );
+        }
+    }
+
+    /// REGRESSION GUARD (#625): `CLC` field 5 is `[RSV]` where the model has
+    /// no hit scan, and a reserved field goes out EMPTY.
+    ///
+    /// Written `1` on a BC75XLT it reads back empty (hardware 2026-08-28), and
+    /// per the vendor spec a value in a reserved slot is a format error that
+    /// aborts the WHOLE `CLC` -- taking the mode, beep, light and band mask
+    /// with it. Both models are asserted: checking only that the BC75XLT field
+    /// is empty passes for a build that blanks it everywhere and quietly drops
+    /// the BC125AT's Close Call lockout.
+    #[test]
+    fn the_reserved_close_call_field_goes_out_empty_where_it_is_reserved() {
+        let text = "CloseCall\tPri\tOn\tOn\tOn\nCloseCallBands\tOn\tOn\tOn\tOff\tOn\n";
+
+        let cfg = parse_ss_config(text, &BC75XLT);
+        let (jobs, _) = settings_jobs(&cfg.settings, &BC75XLT);
+        let clc = jobs
+            .iter()
+            .find(|(w, _, _)| w.starts_with("CLC,"))
+            .expect("CLC is restorable on a BC75XLT");
+        assert!(
+            clc.0.ends_with(','),
+            "the reserved hit-scan field must go out empty: {}",
+            clc.0
+        );
+
+        let cfg = parse_ss_config(text, &BC125AT_FAMILY);
+        let (jobs, _) = settings_jobs(&cfg.settings, &BC125AT_FAMILY);
+        let clc = jobs
+            .iter()
+            .find(|(w, _, _)| w.starts_with("CLC,"))
+            .expect("CLC is restorable on a BC125AT");
+        assert!(
+            clc.0.ends_with(",1"),
+            "a model WITH hit scan must carry the file's value: {}",
+            clc.0
+        );
+    }
+
+    /// A BLANK column is "nothing recorded", not "set this to empty string".
+    ///
+    /// A real `.bc75xlt_ss` leaves volume and contrast blank
+    /// (fixtures/sample.bc75xlt_ss). Sending the literal `VOL,` earns an `ERR`
+    /// and puts a failure in the error list of every otherwise-clean restore,
+    /// which reads to the user exactly like a broken import.
+    #[test]
+    fn a_blank_column_is_not_a_setting_to_write() {
+        let text = include_str!("../../../fixtures/sample.bc75xlt_ss");
+        let cfg = parse_ss_config(text, &BC75XLT);
+        assert_eq!(
+            cfg.settings.volume.as_deref(),
+            Some(""),
+            "this guard is only meaningful while the fixture's volume is blank"
+        );
+        let (jobs, skipped) = settings_jobs(&cfg.settings, &BC75XLT);
+        assert!(
+            !jobs.iter().any(|(w, _, _)| w.starts_with("VOL")),
+            "a blank column must produce no write: {:?}",
+            commands(&jobs)
+        );
+        assert!(
+            !skipped.iter().any(|s| s.command == "VOL"),
+            "a blank column is not an UNSUPPORTED setting either -- there is \
+             nothing to warn about"
+        );
+    }
+
+    /// An all-disabled bank mask is refused by the scanner (vendor spec), so
+    /// it is caught before the wire and named -- not sent and reported as an
+    /// opaque `SCG rejected: Err`. Same guard `set_banks` carries.
+    #[test]
+    fn an_all_disabled_bank_mask_is_refused_before_the_wire() {
+        let mut off = String::new();
+        for i in 1..=10 {
+            off.push_str(&format!("Conventional\t{i}\tBank {i}\tOff\n"));
+        }
+        let cfg = parse_ss_config(&off, &BC75XLT);
+        assert_eq!(cfg.settings.scan_flags.as_deref(), Some("1111111111"));
+        let (jobs, skipped) = settings_jobs(&cfg.settings, &BC75XLT);
+        assert!(
+            !jobs.iter().any(|(w, _, _)| w.starts_with("SCG")),
+            "an all-disabled mask must not reach the wire"
+        );
+        assert!(skipped.iter().any(|s| s.command == "SCG"));
+
+        // One bank on is restorable, so the guard is not just "never write SCG".
+        let mut one_on = off.replace(
+            "Conventional\t3\tBank 3\tOff",
+            "Conventional\t3\tBank 3\tOn",
+        );
+        one_on.push('\n');
+        let cfg = parse_ss_config(&one_on, &BC75XLT);
+        let (jobs, _) = settings_jobs(&cfg.settings, &BC75XLT);
+        assert!(jobs.iter().any(|(w, _, _)| w.starts_with("SCG,")));
     }
 }

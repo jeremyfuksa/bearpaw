@@ -652,39 +652,7 @@ pub(crate) async fn set_custom_search(
             })
             .collect::<String>();
         let _prg = ProgramModeGuard::enter(&state).await?;
-        // The field count is per-family, and the READ reports it. A BC125AT
-        // answers a bare mask; a BC75XLT answers `CSG,<mask>,[DLY],[DIR]` and
-        // rejects the bare form outright -- `CSG,0111010101` -> `CSG,ERR`,
-        // verified on hardware 2026-08-28 (see
-        // docs/wire_captures/2026-08-28/findings.md). A format error aborts the
-        // whole set command, so every bank toggle here was silently a no-op on
-        // that model.
-        //
-        // Echoing the shape the radio just reported beats a capability flag
-        // twice over: it needs no per-model table, and the trailing fields are
-        // a search delay and direction Bearpaw does not model -- writing back
-        // exactly what was read is what keeps them. `CSG,<mask>,,` would be
-        // shorter but is NOT what the probe exercised, and the spec's
-        // "only ',' parameters are not changed" note is not repeated in the
-        // CSG entry.
-        let current = send_raw_command(&state, "CSG", false).await?;
-        if matches!(
-            classify_response(&current),
-            ScannerReply::Ng | ScannerReply::Err
-        ) {
-            return Err(ApiError::BadRequest(
-                "custom_search_read_failed".to_string(),
-            ));
-        }
-        let trailing: Vec<String> = parse_command_parts(&current, "CSG")
-            .into_iter()
-            .skip(1)
-            .collect();
-        let write = if trailing.is_empty() {
-            format!("CSG,{}", flags)
-        } else {
-            format!("CSG,{},{}", flags, trailing.join(","))
-        };
+        let write = csg_write_command(&state, &flags).await?;
         let response = send_raw_command(&state, &write, false).await;
         let response = response?;
         let upper = response.trim().to_uppercase();
@@ -694,6 +662,45 @@ pub(crate) async fn set_custom_search(
     }
     set_setting_section(&state, "custom_search", body);
     Ok(Json(json!({ "status": "ok" })))
+}
+
+/// Shape a `CSG` write the way the CONNECTED radio just said it wants one.
+///
+/// The field count is per-family, and the READ reports it. A BC125AT answers a
+/// bare mask; a BC75XLT answers `CSG,<mask>,[DLY],[DIR]` and rejects the bare
+/// form outright -- `CSG,0111010101` -> `CSG,ERR`, verified on hardware
+/// 2026-08-28 (see docs/wire_captures/2026-08-28/findings.md). A format error
+/// aborts the whole set command, so every bank toggle was silently a no-op on
+/// that model.
+///
+/// Echoing the shape the radio just reported beats a capability flag twice
+/// over: it needs no per-model table, and the trailing fields are a search
+/// delay and direction Bearpaw does not model -- writing back exactly what was
+/// read is what keeps them. `CSG,<mask>,,` would be shorter but is NOT what the
+/// probe exercised, and the spec's "only ',' parameters are not changed" note
+/// is not repeated in the CSG entry.
+///
+/// Caller holds the program-mode bracket. Shared with the `.ss` importer so
+/// that path cannot reproduce the bug this function exists to fix (#625).
+pub(crate) async fn csg_write_command(state: &AppState, flags: &str) -> Result<String, ApiError> {
+    let current = send_raw_command(state, "CSG", false).await?;
+    if matches!(
+        classify_response(&current),
+        ScannerReply::Ng | ScannerReply::Err
+    ) {
+        return Err(ApiError::BadRequest(
+            "custom_search_read_failed".to_string(),
+        ));
+    }
+    let trailing: Vec<String> = parse_command_parts(&current, "CSG")
+        .into_iter()
+        .skip(1)
+        .collect();
+    Ok(if trailing.is_empty() {
+        format!("CSG,{}", flags)
+    } else {
+        format!("CSG,{},{}", flags, trailing.join(","))
+    })
 }
 
 pub(crate) async fn get_custom_range(

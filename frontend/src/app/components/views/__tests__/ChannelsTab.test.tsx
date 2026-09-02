@@ -425,6 +425,69 @@ describe('ChannelsTab', () => {
       });
     });
 
+    // REGRESSION GUARD (#625): a settings restore that skipped settings must
+    // not report an unqualified success.
+    //
+    // `import_bc75xlt_ss` applied no settings at all and returned
+    // `settings_applied: 0`, which this handler ignored -- so the toast read
+    // "Config restored" while the file's bank mask, priority and Close Call
+    // values were never written. The backend now NAMES what it refused, and
+    // the toast has to carry those names or the report is decorative.
+    it('should name the settings the scanner could not accept', async () => {
+      vi.mocked(pickAndReadFile).mockResolvedValue({
+        name: 'scanner.bc75xlt_ss',
+        bytes: new TextEncoder().encode('Misc\tK+S'),
+      });
+      vi.mocked(confirmDialog).mockResolvedValue(true);
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          imported: 300,
+          settings_applied: 6,
+          settings_skipped: [
+            { command: 'BLT', label: 'Backlight' },
+            { command: 'SSG', label: 'Service search groups' },
+          ],
+          errors: [],
+        }),
+      }) as unknown as typeof fetch;
+      mockApiClient.getChannels = vi.fn().mockResolvedValue(mockChannels);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
+
+      await waitFor(() => expect(toast.success).toHaveBeenCalled());
+      const message = vi.mocked(toast.success).mock.calls[0][0] as string;
+      expect(message).toContain('Backlight');
+      expect(message).toContain('Service search groups');
+      expect(message).toContain('300');
+    });
+
+    // The paired half: a restore that skipped NOTHING must stay a clean
+    // success. Asserting only the message above passes for a build that
+    // appends "Not supported by this scanner: ." to every restore.
+    it('should report a clean success when nothing was skipped', async () => {
+      vi.mocked(pickAndReadFile).mockResolvedValue(pickedSs());
+      vi.mocked(confirmDialog).mockResolvedValue(true);
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          imported: 500,
+          settings_applied: 12,
+          settings_skipped: [],
+          errors: [],
+        }),
+      }) as unknown as typeof fetch;
+      mockApiClient.getChannels = vi.fn().mockResolvedValue(mockChannels);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
+
+      await waitFor(() => expect(toast.success).toHaveBeenCalled());
+      const message = vi.mocked(toast.success).mock.calls[0][0] as string;
+      expect(message).toBe('Config restored (500 channels)');
+    });
+
     it('should not import a .ss file when the confirm is declined', async () => {
       vi.mocked(pickAndReadFile).mockResolvedValue(pickedSs());
       vi.mocked(confirmDialog).mockResolvedValue(false);

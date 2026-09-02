@@ -113,6 +113,11 @@ export interface ScannerCapabilities {
    * Service Search page rather than showing ten toggles that cannot write.
    */
   has_service_search_groups: boolean;
+  /** Whether `SCO` (general-search delay, code search) can be WRITTEN.
+   * The BC75XLT answers a read but rejects every write, including a write of
+   * the value it just reported (hardware 2026-09-02). Named for what Bearpaw
+   * can control, per `has_backlight_control`. */
+  has_search_options: boolean;
   /**
    * Close Call band labels, indexed by position in the `CLC` mask.
    *
