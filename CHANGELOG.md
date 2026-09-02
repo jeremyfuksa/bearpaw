@@ -6,6 +6,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-02
+
+Adds support for a second scanner family, the BC75XLT, and fixes a set of
+issues found by running Bearpaw against both radios on the bench.
+
 ### Added
 
 - **BC75XLT support.** Bearpaw now drives a second scanner family. The BC75XLT
@@ -149,6 +154,7 @@ each confirmed against the radio rather than the reference docs.
   "Priority Scan: No Channel" on its own display and the mode doesn't stick.
   Bearpaw now says so, and points at the Channels page.
 
+[1.1.0]: https://github.com/jeremyfuksa/bearpaw/releases/tag/v1.1.0
 [1.0.0]: https://github.com/jeremyfuksa/bearpaw/releases/tag/v1.0.0
 [1.0.0-beta.3]: https://github.com/jeremyfuksa/bearpaw/releases/tag/v1.0.0-beta.3
 
