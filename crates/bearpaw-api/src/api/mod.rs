@@ -6598,6 +6598,109 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn ss_tone_restore_writes_wire_codes_and_caches_readback() {
+        let state = default_state();
+        let scanner_memory = Arc::new(Mutex::new(HashMap::<u16, String>::new()));
+        let responder_memory = scanner_memory.clone();
+        let fake = FakeScanner::attach(&state, move |command: &str| {
+            if command == "PRG" || command == "EPG" {
+                return Ok(format!("{command},OK"));
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                if let Some((index, payload)) = rest.split_once(',') {
+                    let index = index.parse::<u16>().unwrap();
+                    responder_memory
+                        .lock()
+                        .unwrap()
+                        .insert(index, payload.to_string());
+                    return Ok("CIN,OK".to_string());
+                }
+                let index = rest.parse::<u16>().unwrap();
+                let payload = responder_memory
+                    .lock()
+                    .unwrap()
+                    .get(&index)
+                    .cloned()
+                    .expect("read follows write");
+                return Ok(format!("CIN,{index},{payload}"));
+            }
+            for setting in ["SSG", "SCG", "CSG"] {
+                if command == setting {
+                    return Ok(format!("{setting},0000000000"));
+                }
+                if command.starts_with(&format!("{setting},")) {
+                    return Ok(format!("{setting},OK"));
+                }
+            }
+            Ok("OK".to_string())
+        });
+
+        let ss = "C-Freq\t1\tOff\t145130000\tFM\tOff\tOff\t2\tOff\r\n\
+                  C-Freq\t2\tCTCSS\t146520000\tNFM\tC100.0\tOff\t2\tOff\r\n\
+                  C-Freq\t3\tDCS\t147000000\tFM\tD023\tOff\t2\tOff\r\n\
+                  C-Freq\t4\tSearch\t148000000\tAM\tSrch\tOff\t2\tOff\r\n";
+        let boundary = "XbearpawToneX";
+        let body = format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"tones.bc125at_ss\"\r\n\
+             Content-Type: text/plain\r\n\r\n{ss}\r\n--{boundary}--\r\n"
+        );
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/memory/import/bc125at_ss")
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={boundary}"),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["imported"], 4);
+        assert_eq!(body["errors"], json!([]));
+
+        let written_tones: Vec<(u16, String)> = fake
+            .transcript()
+            .iter()
+            .filter_map(|command| {
+                let fields: Vec<&str> = command.split(',').collect();
+                (fields.first() == Some(&"CIN") && fields.len() > 5)
+                    .then(|| (fields[1].parse().unwrap(), fields[5].to_string()))
+            })
+            .collect();
+        assert_eq!(
+            written_tones,
+            vec![
+                (1, "0".to_string()),
+                (2, "76".to_string()),
+                (3, "128".to_string()),
+                (4, "127".to_string()),
+            ]
+        );
+
+        let shadow = state.shadow.read().unwrap();
+        assert_eq!(
+            shadow.channels[&2].tone_squelch_kind,
+            crate::state::ToneSquelchKind::Ctcss
+        );
+        assert_eq!(shadow.channels[&2].tone_squelch, Some(100.0));
+        assert_eq!(
+            shadow.channels[&3].tone_squelch_kind,
+            crate::state::ToneSquelchKind::Dcs
+        );
+        assert_eq!(shadow.channels[&3].tone_dcs_code, Some(128));
+        assert_eq!(
+            shadow.channels[&4].tone_squelch_kind,
+            crate::state::ToneSquelchKind::Search
+        );
+    }
+
     /// REGRESSION GUARD (#598): a drop that QUEUED an EPG leaves the flag set.
     ///
     /// The poll loop yields STS/GLG on `program_mode_active`. The Drop used to

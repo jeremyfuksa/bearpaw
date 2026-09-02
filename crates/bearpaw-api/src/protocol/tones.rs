@@ -212,6 +212,15 @@ pub fn dcs_code_to_number(code: u16) -> Option<u16> {
     Some(value)
 }
 
+/// Translate a three-digit Motorola DCS number back to its wire code.
+///
+/// This is the inverse of [`dcs_code_to_number`]. The `.bc125at_ss` format
+/// stores the Motorola number (`D023`), while `CIN` needs the scanner's
+/// contiguous code (`128`).
+pub fn dcs_number_to_code(number: u16) -> Option<u16> {
+    (128u16..=231).find(|&code| dcs_code_to_number(code) == Some(number))
+}
+
 /// Render a wire tone-code string into a human-readable label for the UI.
 ///
 /// Recognises:
@@ -324,6 +333,15 @@ mod tests {
                 code
             );
         }
+    }
+
+    #[test]
+    fn dcs_number_to_code_inverts_the_table() {
+        for code in 128u16..=231 {
+            let number = dcs_code_to_number(code).expect("all DCS codes map");
+            assert_eq!(dcs_number_to_code(number), Some(code));
+        }
+        assert_eq!(dcs_number_to_code(999), None);
     }
 
     #[test]
