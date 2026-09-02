@@ -731,10 +731,13 @@ export function ChannelsTab() {
 
         const parsedFrequency = Number.parseFloat(draft?.frequency ?? channel.frequency.toString());
         const parsedDelay = Number.parseInt(draft?.delay ?? channel.delay.toString(), 10);
+        const draftTone = draft?.tone_squelch;
         const parsedTone =
-          (draft?.tone_squelch ?? '').trim() === ''
-            ? null
-            : Number.parseFloat(draft?.tone_squelch ?? '');
+          draftTone === undefined
+            ? channel.tone_squelch
+            : draftTone.trim() === ''
+              ? null
+              : Number.parseFloat(draftTone);
 
         const toneHz = Number.isFinite(parsedTone ?? NaN) ? parsedTone : null;
         // Tone discriminator (#132): the edit sheet's tone field is
@@ -745,11 +748,13 @@ export function ChannelsTab() {
         // deserialize as 'none' on the backend and erase DCS on every edit.
         const originalKind = channel.tone_squelch_kind ?? (channel.tone_squelch ? 'ctcss' : 'none');
         const toneKind =
-          toneHz !== null
-            ? ('ctcss' as const)
-            : originalKind === 'dcs' || originalKind === 'search'
-              ? originalKind
-              : ('none' as const);
+          draftTone === undefined
+            ? originalKind
+            : toneHz !== null
+              ? ('ctcss' as const)
+              : originalKind === 'dcs' || originalKind === 'search'
+                ? originalKind
+                : ('none' as const);
 
         const normalized = {
           frequency: Number.isFinite(parsedFrequency) ? parsedFrequency : channel.frequency,
@@ -948,6 +953,21 @@ export function ChannelsTab() {
 
     try {
       await api.startProgramMode();
+      // Snapshot every SOURCE before writing any TARGET. Reorders are
+      // permutations, so a target can also be a source later in this batch.
+      // Reading immediately before each write let an earlier write overwrite
+      // that later source; a two-way swap then duplicated one channel and lost
+      // the other. The up-front snapshot also preserves keypad edits for every
+      // untouched field without observing our own writes.
+      const latestBySource = new Map<number, ChannelData>();
+      for (const change of draftChanges) {
+        try {
+          latestBySource.set(change.channelIndex, await api.getChannel(change.channelIndex));
+        } catch (refreshError) {
+          console.warn('Failed to refresh channel before upload', refreshError);
+        }
+      }
+
       for (const change of draftChanges) {
         try {
           let payload = change.payload;
@@ -957,17 +977,13 @@ export function ChannelsTab() {
             ...payload,
             bank: targetBank,
           };
-          // REGRESSION GUARD (#573): the re-read is UNCONDITIONAL. Only the
-          // adoption block below is gated on `!change.lockoutChanged`, because
-          // taking `latest.lockout` there would discard the staged tick.
-          // Gating the whole re-read on it — which is what shipped with #549 —
-          // meant a batch containing a lockout edit never called getChannel at
-          // all, and the CIN write pushed the draft's cached frequency back
-          // over a keypad retune. Lockout is a BATCHED draft field, so that is
-          // an ordinary edit path, not an edge case. See ChannelsTab.test.tsx
-          // "the pre-upload re-read is not skipped for a lockout edit (#573)".
-          try {
-            const latest = await api.getChannel(change.channelIndex);
+          // REGRESSION GUARD (#573): the snapshot read above is UNCONDITIONAL.
+          // Only adoption of lockout/priority is gated on
+          // `!change.lockoutChanged`, because taking `latest.lockout` there
+          // would discard the staged tick. A failed read leaves `payload` on
+          // the draft, matching the previous best-effort behaviour.
+          const latest = latestBySource.get(change.channelIndex);
+          if (latest) {
             if (!change.lockoutChanged) {
               payload = {
                 ...payload,
@@ -978,17 +994,15 @@ export function ChannelsTab() {
             }
             // Every OTHER field the user did not edit also comes from the
             // scanner, not from the draft's cached basis. See
-            // `reconcileUntouchedFields`. Only reachable when the read
-            // succeeded: the catch below leaves `payload` on the draft, so a
-            // marginal read degrades to today's behaviour rather than
-            // reverting a staged edit.
+            // `reconcileUntouchedFields`. Only reachable when the snapshot
+            // read succeeded; a missing snapshot leaves `payload` on the
+            // draft, so a marginal read degrades to the prior best-effort
+            // behaviour rather than reverting a staged edit.
             const outcome = reconcileUntouchedFields(payload, change.channel, latest);
             payload = outcome.payload;
             if (outcome.reconciled.length > 0) {
               reconciledChannels.push(change.channelIndex);
             }
-          } catch (refreshError) {
-            console.warn('Failed to refresh channel before upload', refreshError);
           }
 
           if (payload.frequency === 0) {
@@ -1032,7 +1046,7 @@ export function ChannelsTab() {
           // is a failure.
           if (detail === 'channel_not_persisted' || detail === 'channel_readback_failed') {
             try {
-              const refreshed = await api.getChannel(change.channelIndex);
+              const refreshed = await api.getChannel(change.targetIndex ?? change.channelIndex);
               const matchesPrimaryFields =
                 refreshed.frequency === change.payload.frequency &&
                 refreshed.alpha_tag === change.payload.alpha_tag &&

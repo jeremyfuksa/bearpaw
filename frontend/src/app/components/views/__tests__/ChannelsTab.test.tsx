@@ -1363,6 +1363,130 @@ describe('ChannelsTab', () => {
       );
     });
   });
+
+  describe('collision-safe reorder upload (#618)', () => {
+    const uploadPermutation = async (sourceIndex: number, arrowUps: number) => {
+      const cached = [
+        createTestChannel({
+          index: 1,
+          bank: 1,
+          alpha_tag: 'Alpha',
+          frequency: 145.1,
+          modulation: 'FM',
+          tone_squelch: 123,
+          tone_squelch_kind: 'ctcss',
+          delay: -5,
+          lockout: true,
+          priority: false,
+        }),
+        createTestChannel({
+          index: 2,
+          bank: 1,
+          alpha_tag: 'Bravo',
+          frequency: 146.2,
+          modulation: 'NFM',
+          tone_squelch: null,
+          tone_squelch_kind: 'dcs',
+          tone_dcs_code: 23,
+          delay: 2,
+          lockout: false,
+          priority: true,
+        }),
+        createTestChannel({
+          index: 3,
+          bank: 1,
+          alpha_tag: 'Charlie',
+          frequency: 147.3,
+          modulation: 'AM',
+          tone_squelch: null,
+          tone_squelch_kind: 'search',
+          delay: 0,
+          lockout: false,
+          priority: false,
+        }),
+      ];
+      // Alpha was edited from the keypad after Bearpaw's cached sync. A
+      // reorder touches no fields, so the scanner's newer value must travel
+      // with this source channel to its new slot.
+      const scannerSources = cached.map((channel) => ({ ...channel }));
+      scannerSources[0] = {
+        ...scannerSources[0],
+        alpha_tag: 'Alpha keypad',
+        frequency: 145.9875,
+        delay: -10,
+      };
+      const scannerMemory = new Map(scannerSources.map((channel) => [channel.index, channel]));
+
+      setMockStore(createMockStore({ channels: cached }));
+      mockApiClient.startProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.getChannel = vi.fn(async (index: number) => ({
+        ...scannerMemory.get(index)!,
+      }));
+      mockApiClient.updateChannel = vi.fn(
+        async (index: number, payload: Omit<ChannelData, 'index'>) => {
+          const updated = { ...payload, index } as ChannelData;
+          scannerMemory.set(index, updated);
+          return { ...updated };
+        },
+      );
+      mockApiClient.getChannels = vi.fn(async () =>
+        [...scannerMemory.values()].sort((a, b) => a.index - b.index),
+      );
+
+      render(<ChannelsTab />);
+      const grip = screen.getByRole('button', {
+        name: new RegExp(`reorder channel ${sourceIndex}, position ${sourceIndex} of 3`, 'i'),
+      });
+      grip.focus();
+      await userEvent.keyboard('{Enter}');
+      for (let move = 0; move < arrowUps; move += 1) {
+        await userEvent.keyboard('{ArrowUp}');
+      }
+      await userEvent.keyboard('{Enter}');
+      await userEvent.click(screen.getByRole('button', { name: /Upload Changes/i }));
+      await waitFor(() => expect(mockApiClient.endProgramMode).toHaveBeenCalled());
+
+      return { scannerMemory, scannerSources };
+    };
+
+    const expectPermutation = (
+      scannerMemory: Map<number, ChannelData>,
+      expectedSources: ChannelData[],
+    ) => {
+      const channelSemantics = (channel: ChannelData) => ({
+        index: channel.index,
+        frequency: channel.frequency,
+        alpha_tag: channel.alpha_tag,
+        modulation: channel.modulation,
+        delay: channel.delay,
+        lockout: channel.lockout,
+        priority: channel.priority,
+        bank: channel.bank,
+        tone_squelch: channel.tone_squelch ?? null,
+        tone_squelch_kind: channel.tone_squelch_kind ?? 'none',
+        tone_dcs_code: channel.tone_dcs_code ?? null,
+      });
+      expectedSources.forEach((source, offset) => {
+        expect(channelSemantics(scannerMemory.get(offset + 1)!)).toEqual(
+          channelSemantics({ ...source, index: offset + 1 }),
+        );
+      });
+      expect(new Set([...scannerMemory.values()].map((channel) => channel.alpha_tag)).size).toBe(3);
+    };
+
+    it('uploads a two-way swap without overwriting the second source', async () => {
+      const { scannerMemory, scannerSources } = await uploadPermutation(2, 1);
+
+      expectPermutation(scannerMemory, [scannerSources[1], scannerSources[0], scannerSources[2]]);
+    });
+
+    it('uploads a three-way rotation with every field and keypad edit intact', async () => {
+      const { scannerMemory, scannerSources } = await uploadPermutation(3, 2);
+
+      expectPermutation(scannerMemory, [scannerSources[2], scannerSources[0], scannerSources[1]]);
+    });
+  });
 });
 
 describe('deriveBankFromIndex (#401)', () => {
