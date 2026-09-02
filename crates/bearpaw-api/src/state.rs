@@ -143,6 +143,21 @@ pub struct DeviceInfo {
     pub data_diagnostic_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_diagnostic_message: Option<String>,
+    /// Something the user should know about their stored data that is NOT a
+    /// problem. Set once, on the launch that upgraded the database.
+    ///
+    /// Deliberately NOT `data_diagnostic_*`. That pair means "something is
+    /// wrong" and the UI renders it as a fault; a successful upgrade dressed as
+    /// a fault teaches people to ignore the channel that also carries real
+    /// failures. Two meanings, two fields.
+    ///
+    /// Self-clearing without any "dismissed" flag: it is only set when a
+    /// migration actually ran, and the next launch finds the schema current and
+    /// sets nothing. Nothing to persist and nothing to reset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_notice_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_notice_message: Option<String>,
     /// Memory model and feature set of the connected scanner, resolved from the
     /// `MDL` reply at connect. Lives on `DeviceInfo` rather than as a sibling
     /// `AppState` field so `model` and `capabilities` are always read under one

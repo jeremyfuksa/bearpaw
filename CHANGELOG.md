@@ -11,6 +11,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Adds support for a second scanner family, the BC75XLT, and fixes a set of
 issues found by running Bearpaw against both radios on the bench.
 
+> **Upgrading changes how your data is stored, and it is one-way.** The first
+> time you open this version, your channels, settings and activity history are
+> upgraded to a new format, and a backup of the old data is saved next to it.
+> Bearpaw 1.0.0 cannot open the upgraded data — if you go back, it will tell you
+> so and point at that backup. Bearpaw now says this on screen when it happens,
+> rather than doing it silently.
+
 ### Added
 
 - **BC75XLT support.** Bearpaw now drives a second scanner family. The BC75XLT

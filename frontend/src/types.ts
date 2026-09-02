@@ -201,6 +201,17 @@ export interface DeviceInfo {
   data_diagnostic_code?: string | null;
   data_diagnostic_message?: string | null;
   /**
+   * Something the user should know about their stored data that is NOT a
+   * problem — today, that the database was upgraded on this launch and older
+   * versions of Bearpaw can no longer open it.
+   *
+   * Separate from `data_diagnostic_*` on purpose: that pair means "something is
+   * wrong", and a successful upgrade shown as a fault teaches people to ignore
+   * the channel that also carries real failures.
+   */
+  data_notice_code?: string | null;
+  data_notice_message?: string | null;
+  /**
    * Absent until a scanner identifies itself. Consumers should use
    * `useScannerCapabilities()` rather than reading this directly — it supplies
    * the BC125AT-family defaults that preserve existing behaviour before a

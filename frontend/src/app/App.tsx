@@ -1125,6 +1125,11 @@ export default function App() {
           else looks fine, which is exactly how the migration failure it
           exists for stayed invisible. */}
         <DataDiagnosticBanner message={deviceInfo?.data_diagnostic_message} />
+        {/* Upgrading the database is a one-way door -- older versions refuse
+            data written by a newer one -- and it used to happen silently. The
+            backend sets this only on the launch that actually upgraded an
+            existing database, so it shows once and never on a fresh install. */}
+        <DataDiagnosticBanner message={deviceInfo?.data_notice_message} variant="notice" />
         {/* `expand` + `gap` make stacked toasts spread vertically instead of
           piling. Colors come from sonner's own CSS variables (not `unstyled`)
           so its stacking/expand layout stays intact — a darker `--normal-bg`

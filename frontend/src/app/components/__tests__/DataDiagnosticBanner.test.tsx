@@ -38,4 +38,39 @@ describe('DataDiagnosticBanner', () => {
     render(<DataDiagnosticBanner message={MESSAGE} />);
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
+
+  describe('notice variant', () => {
+    const NOTICE = 'Your saved data was upgraded. Older versions cannot open it.';
+
+    it('is a status, not an alert', () => {
+      // A successful upgrade is not a fault. Announcing it as one interrupts a
+      // screen-reader user to tell them nothing is wrong, and — worse — trains
+      // everyone to dismiss the channel that also carries real failures.
+      render(<DataDiagnosticBanner message={NOTICE} variant="notice" />);
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says the data was upgraded rather than that it could not be opened', () => {
+      render(<DataDiagnosticBanner message={NOTICE} variant="notice" />);
+      expect(screen.getByText(/upgraded its saved data/i)).toBeInTheDocument();
+      expect(screen.queryByText(/could not open/i)).not.toBeInTheDocument();
+      expect(screen.getByText(NOTICE)).toBeInTheDocument();
+    });
+
+    it('still defaults to the error variant when none is given', () => {
+      // The default must stay `error`: every existing caller passes no variant,
+      // and a default of `notice` would silently downgrade a real data failure
+      // into something that reads as routine.
+      render(<DataDiagnosticBanner message={MESSAGE} />);
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('can be dismissed', async () => {
+      const user = userEvent.setup();
+      render(<DataDiagnosticBanner message={NOTICE} variant="notice" />);
+      await user.click(screen.getByRole('button', { name: /dismiss data notice/i }));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+  });
 });
