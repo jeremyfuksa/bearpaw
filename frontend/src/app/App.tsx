@@ -1124,7 +1124,38 @@ export default function App() {
           problem is still true while the scanner is connected and everything
           else looks fine, which is exactly how the migration failure it
           exists for stayed invisible. */}
-        <DataDiagnosticBanner message={deviceInfo?.data_diagnostic_message} />
+        {/* FIXED, not in flow. In normal flow these push the tab bar and the
+            whole app down the moment they appear, which on launch reads as the
+            window jumping. Overlaying leaves the app where it is.
+
+            `top-14` clears the tab bar. Full-bleed at `top-0` covered
+            Scan/Channels/Device and left the user unable to navigate until they
+            dismissed it -- a bad trade for an informational message. Inset and
+            centred instead, so it reads as a temporary card over the content
+            rather than as part of the window chrome.
+
+            `z-40`, deliberately below the `z-50` used by dialogs, the sync
+            overlay and the dropdown/select menus: a modal must cover a card,
+            never the other way round.
+
+            `pointer-events-none` on the full-width container with
+            `pointer-events-auto` on the card, or the container would swallow
+            clicks on the content to either side of it.
+
+            One container holding both, because both CAN be set at once --
+            preferences upgrading while analytics fails -- and two
+            independently-fixed elements would sit on top of each other. */}
+        <div className="pointer-events-none fixed inset-x-0 top-14 z-40 flex justify-center px-4">
+          <div className="pointer-events-auto flex w-full max-w-3xl flex-col gap-2">
+            <DataDiagnosticBanner message={deviceInfo?.data_diagnostic_message} />
+            {/* Upgrading the database is a one-way door -- older versions refuse
+                data written by a newer one -- and it used to happen silently.
+                The backend sets this only on the launch that actually upgraded
+                an existing database, so it shows once and never on a fresh
+                install. */}
+            <DataDiagnosticBanner message={deviceInfo?.data_notice_message} variant="notice" />
+          </div>
+        </div>
         {/* `expand` + `gap` make stacked toasts spread vertically instead of
           piling. Colors come from sonner's own CSS variables (not `unstyled`)
           so its stacking/expand layout stays intact — a darker `--normal-bg`

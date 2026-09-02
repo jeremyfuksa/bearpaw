@@ -709,11 +709,27 @@ pub fn default_state() -> AppState {
     // surfaces with no frontend change. Bearpaw is offline-first and starts
     // with no network, so this cannot be an error dialog or a stall -- the
     // diagnostic channel is the right surface.
-    let migration_error = init_preferences_db(&preferences_db_path)
-        .err()
-        .or_else(|| init_analytics_db(&analytics_db_path).err());
+    let preferences_result = init_preferences_db(&preferences_db_path);
+    let analytics_result = init_analytics_db(&analytics_db_path);
+    // Upgrading is a ONE-WAY DOOR, so say so. `check_not_from_the_future`
+    // refuses a database whose `user_version` is newer than the running build,
+    // which is right -- old code against a newer schema is silent misbehaviour
+    // -- but it used to happen invisibly. The first a user heard of it was an
+    // error during a downgrade they had already committed to.
+    //
+    // Only fires when a REAL earlier database was upgraded, never on a fresh
+    // install, and only on the launch that did the upgrading: the next start
+    // finds the schema current and reports nothing. That makes it
+    // self-clearing with no "dismissed" flag to store.
+    let upgraded = matches!(preferences_result, Ok(true)) || matches!(analytics_result, Ok(true));
+    let migration_error = preferences_result.err().or(analytics_result.err());
     if let Some(err) = &migration_error {
         tracing::error!("database migration failed: {}", err);
+    }
+    if upgraded {
+        tracing::info!(
+            "database upgraded to this version; a backup of the previous data was written alongside it"
+        );
     }
     let loaded_preferences = load_preferences_from_db(&preferences_db_path);
     let loaded_hits = load_analytics_hits_from_db(&analytics_db_path);
@@ -737,6 +753,13 @@ pub fn default_state() -> AppState {
                 .as_ref()
                 .map(|_| "migration_failed".to_string()),
             data_diagnostic_message: migration_error.as_ref().map(|e| e.to_string()),
+            data_notice_code: upgraded.then(|| "database_upgraded".to_string()),
+            data_notice_message: upgraded.then(|| {
+                "Your saved channels, settings and activity history were upgraded to \
+                 this version's format. A backup of the previous data was saved next to \
+                 it. Older versions of Bearpaw can no longer open this data."
+                    .to_string()
+            }),
             ..Default::default()
         })),
         shadow: Arc::new(std::sync::RwLock::new(ShadowState::default())),
@@ -954,12 +977,22 @@ fn analytics_retention_days(state: &AppState) -> u32 {
     extract_retention_days(&prefs)
 }
 
-fn init_preferences_db(path: &str) -> Result<(), MigrationError> {
+/// Returns whether an EXISTING database was upgraded.
+///
+/// `true` only when there was a real earlier database to lose. A fresh install
+/// also travels 0 -> N, and telling a brand-new user their data was upgraded
+/// and they cannot go back would be both false and alarming. See
+/// `a_fresh_database_does_not_claim_an_upgrade`.
+fn init_preferences_db(path: &str) -> Result<bool, MigrationError> {
     match open_sqlite(path) {
-        Some(conn) => migrate_preferences_db(path, &conn),
+        Some(conn) => {
+            let before = schema_version(&conn);
+            migrate_preferences_db(path, &conn)?;
+            Ok(before > 0 && before < PREFERENCES_SCHEMA_VERSION)
+        }
         // Unopenable is not a migration failure -- every read and write below
         // already degrades to defaults when the file cannot be opened.
-        None => Ok(()),
+        None => Ok(false),
     }
 }
 
@@ -1011,10 +1044,16 @@ pub(crate) fn reset_preferences_db(path: &str) {
     }
 }
 
-fn init_analytics_db(path: &str) -> Result<(), MigrationError> {
+/// Returns whether an EXISTING database was upgraded. See
+/// `init_preferences_db` for why a fresh install must answer `false`.
+fn init_analytics_db(path: &str) -> Result<bool, MigrationError> {
     match open_sqlite(path) {
-        Some(conn) => migrate_analytics_db(path, &conn),
-        None => Ok(()),
+        Some(conn) => {
+            let before = schema_version(&conn);
+            migrate_analytics_db(path, &conn)?;
+            Ok(before > 0 && before < ANALYTICS_SCHEMA_VERSION)
+        }
+        None => Ok(false),
     }
 }
 
@@ -4009,6 +4048,59 @@ mod tests {
             )
             .expect("seed row");
         }
+    }
+
+    /// An EXISTING database that gets upgraded says so, because upgrading is a
+    /// one-way door and the user is the one who needs to know.
+    ///
+    /// Migrations are forward-only, and `check_not_from_the_future` refuses a
+    /// database whose `user_version` is newer than the running build. So once
+    /// 1.1.0 has opened a 1.0.0 database, 1.0.0 can no longer read it. That is
+    /// correct behaviour -- old code against a newer schema is silent
+    /// misbehaviour -- but it happened invisibly, so the first a user heard of
+    /// it was an error message during a downgrade they had already committed to.
+    #[test]
+    fn an_upgraded_database_reports_that_it_was_upgraded() {
+        let path = temp_db_file("analytics-upgrade-notice");
+        seed_v1_analytics_db(&path, &[(146.7, Some("KC FIRE 1"))]);
+        let p = path.to_str().expect("path to string");
+
+        let upgraded = init_analytics_db(p).expect("migrate");
+        assert!(
+            upgraded,
+            "a v1 database taken to v2 must report the upgrade; the user can no \
+             longer open it with the version they had"
+        );
+
+        // Second launch finds the schema current and must NOT claim an upgrade,
+        // or the notice would reappear on every start and stop meaning anything.
+        let again = init_analytics_db(p).expect("second migrate is a no-op");
+        assert!(!again, "an already-current database was not upgraded");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A FRESH install must not claim an upgrade.
+    ///
+    /// Paired with the guard above, and not redundant: a new database also
+    /// travels 0 -> N, so a naive "did the version change?" check reports an
+    /// upgrade on first launch. Telling a brand-new user their data was
+    /// upgraded and they cannot go back is both false and alarming, and it is
+    /// the more likely of the two mistakes to ship because every developer
+    /// testing this has a database already.
+    #[test]
+    fn a_fresh_database_does_not_claim_an_upgrade() {
+        let path = temp_db_file("analytics-fresh-no-notice");
+        let p = path.to_str().expect("path to string");
+
+        let upgraded = init_analytics_db(p).expect("create");
+        assert!(
+            !upgraded,
+            "a database created from nothing was not upgraded -- there was no \
+             earlier version to lose"
+        );
+
+        let _ = std::fs::remove_file(&path);
     }
 
     /// A v1 database carrying real hits must reach v2 with every row intact.
