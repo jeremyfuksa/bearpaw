@@ -116,7 +116,10 @@ export interface AppStore {
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
   clearMemoryDrafts: () => void;
   addToFullActivityLog: (entry: ActivityLogEntry) => void;
-  hydrateActivityLogs: (entries: ActivityLogEntry[]) => void;
+  hydrateActivityLogs: (
+    entries: ActivityLogEntry[],
+    options?: { replace?: boolean; preserveSince?: number },
+  ) => void;
 }
 
 const defaultPreferences: Preferences = {
@@ -263,15 +266,29 @@ export const useStore = create<AppStore>((set) => ({
       fullActivityLog: [entry, ...prev.fullActivityLog],
     })),
 
-  hydrateActivityLogs: (entries) =>
+  hydrateActivityLogs: (entries, options) =>
     set((prev) => {
-      // Only seed from history when nothing is in memory yet. Lets the
-      // user see historical hits at launch without clobbering anything a
-      // WS event might have prepended while the fetch was in flight.
-      if (prev.fullActivityLog.length > 0) {
-        return prev;
-      }
-      const sorted = [...entries].sort((a, b) => b.timestamp - a.timestamp);
+      // Initial hydration merges with live WS hits that may have arrived while
+      // the request was in flight. A scope refresh replaces the old scoped
+      // history, retaining only hits that arrived after that request began.
+      const retained = options?.replace
+        ? prev.fullActivityLog.filter(
+            (entry) => entry.timestamp >= (options.preserveSince ?? Number.POSITIVE_INFINITY),
+          )
+        : prev.fullActivityLog;
+      const byHit = new Map<string, ActivityLogEntry>();
+      const key = (entry: ActivityLogEntry) =>
+        [
+          entry.timestamp,
+          entry.frequency,
+          entry.channel ?? '',
+          entry.alpha_tag ?? '',
+          entry.ended_at ?? '',
+        ].join('|');
+      for (const entry of entries) byHit.set(key(entry), entry);
+      // Live entries win when the backend returned the same just-finished hit.
+      for (const entry of retained) byHit.set(key(entry), entry);
+      const sorted = [...byHit.values()].sort((a, b) => b.timestamp - a.timestamp);
       return {
         fullActivityLog: sorted,
       };
