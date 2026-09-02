@@ -205,6 +205,25 @@ pub(crate) async fn post_memory_sync(
     // guard) so nothing corrupts, but it is 200 pointless round-trips, a
     // progress bar that stalls at 60%, and 200 error-shaped replies in the log.
     let max_channels = state.capabilities().channel_count;
+    // REGRESSION GUARD (`the_sync_is_registered_before_its_command_is_queued`,
+    // #606): REGISTER BEFORE QUEUING. Do not move this below the send.
+    //
+    // `ProgramModeGuard::enter` refuses with 409 based on `sync_task_id`. This
+    // assignment used to sit AFTER the send, so in the gap between the two a
+    // handler entering program mode saw `None`, got no refusal, set
+    // `program_mode_active`, and queued its `PRG` behind the already-queued
+    // `StartSync`. The poll thread then dispatched the sync INLINE for ~5 s
+    // without draining the queue, and that `PRG` expired at its 3-second
+    // budget.
+    //
+    // The window was not theoretical or narrow: the guard above catches it in
+    // roughly half of 50 rounds, and it fired once per launch on hardware
+    // (2026-09-01, `command=PRG elapsed_ms=3010 command_timeout`).
+    //
+    // The `take()` in the error path below is what keeps this safe: a send that
+    // fails un-registers the task, so a failed start cannot leave the API
+    // permanently answering 409.
+    *state.sync_task_id.lock().unwrap() = Some(task_id.clone());
     tx.send(ControlCommand::StartSync {
         task_id: task_id.clone(),
         max_channels,
@@ -213,7 +232,6 @@ pub(crate) async fn post_memory_sync(
         state.sync_task_id.lock().unwrap().take();
         ApiError::SendFailed
     })?;
-    *state.sync_task_id.lock().unwrap() = Some(task_id.clone());
     Ok(Json(MemorySyncResponse {
         status: "started".to_string(),
         task_id,
@@ -442,5 +460,63 @@ mod tests {
         // clears the stuck sync overlay after a WS reconnect (#137).
         assert_eq!(body["in_progress"], serde_json::json!(false));
         assert!(body["task_id"].is_null());
+    }
+
+    /// REGRESSION GUARD (#606): `sync_task_id` is registered BEFORE `StartSync`
+    /// is queued.
+    ///
+    /// `ProgramModeGuard::enter` refuses with 409 based on `sync_task_id`. The
+    /// assignment used to sit AFTER the send, so in the gap between the two a
+    /// handler entering program mode saw `None`, got no refusal, set
+    /// `program_mode_active`, and queued its `PRG` behind the already-queued
+    /// `StartSync`. The poll thread then dispatched the sync INLINE for ~5 s
+    /// without draining the queue, and that `PRG` expired at its 3-second
+    /// budget.
+    ///
+    /// Measured on hardware 2026-09-01, once per page load, twice out of two:
+    /// `scanner command failed command=PRG elapsed_ms=3010 command_timeout`.
+    ///
+    /// THIS IS A SOURCE-LEVEL GUARD, ON PURPOSE, and the reasoning matters
+    /// because the obvious alternative does not work. A behavioural version --
+    /// observe `sync_task_id` from a thread receiving the command -- was
+    /// written first and thrown away: the window is two adjacent statements, so
+    /// the observation is a race. Against the buggy ordering it caught the bug
+    /// in 1 of 50 rounds, and at 500 rounds it still passed outright on one run
+    /// in three. A guard that catches a regression a third of the time trains
+    /// people to rerun, which is the failure shape `each_state_gets_its_own_databases`
+    /// is about.
+    ///
+    /// The ordering IS the fix, so asserting the ordering is the honest test.
+    /// This cannot see timing -- but there is no timing here to see, only two
+    /// statements whose order is the whole behaviour.
+    #[test]
+    fn the_sync_is_registered_before_its_command_is_queued() {
+        const SOURCE: &str = include_str!("memory.rs");
+
+        let handler = SOURCE
+            .split_once("pub(crate) async fn post_memory_sync")
+            .expect("post_memory_sync must exist")
+            .1;
+        // Stop at the next item so a later function's code cannot satisfy this.
+        let handler = handler
+            .split_once("\npub(crate) ")
+            .map(|(before, _)| before)
+            .unwrap_or(handler);
+
+        let register = handler
+            .find("*state.sync_task_id.lock().unwrap() = Some(task_id.clone());")
+            .expect("post_memory_sync must register the task id");
+        let queue = handler
+            .find("tx.send(ControlCommand::StartSync")
+            .expect("post_memory_sync must queue StartSync");
+
+        assert!(
+            register < queue,
+            "sync_task_id must be registered BEFORE StartSync is queued. \n\
+             Between those two statements `ProgramModeGuard::enter` sees `None`, \n\
+             skips its 409, and queues a PRG behind the sync that will not be \n\
+             drained for ~5 s -- a guaranteed 3-second command_timeout, once per \n\
+             launch on real hardware."
+        );
     }
 }
