@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { API_BASE } from '../api/useApi';
 import { useStore } from '../store/useStore';
 import type { ActivityLogEntry } from '../types';
@@ -35,11 +35,14 @@ export function useActivityLogHydrate(): void {
   // scope until an app restart. Three widgets disagreeing reads as a bug
   // rather than a setting.
   const analyticsScope = useStore((s) => s.preferences.analyticsScope);
+  const hydratedScopeRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    const requestStartedAt = Date.now() / 1000;
+    const replace = hydratedScopeRef.current !== null;
 
-    fetch(`${API_BASE}/analytics/activity-log?limit=5000`)
+    fetch(`${API_BASE}/analytics/activity-log?limit=5000&scope=${analyticsScope}`)
       .then((res) => (res.ok ? res.json() : []))
       .then((rows: BackendHit[]) => {
         if (!active || !Array.isArray(rows)) return;
@@ -55,7 +58,8 @@ export function useActivityLogHydrate(): void {
           duration: row.duration ?? null,
           ended_at: row.ended_at ?? null,
         }));
-        hydrateActivityLogs(entries);
+        hydrateActivityLogs(entries, { replace, preserveSince: requestStartedAt });
+        hydratedScopeRef.current = analyticsScope;
       })
       .catch(() => {
         // Non-fatal: live WS hits will still populate the log as they arrive.

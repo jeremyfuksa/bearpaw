@@ -132,7 +132,7 @@ describe('useStore', () => {
       expect(result.current.fullActivityLog.map((e) => e.id)).toEqual(['new', 'mid', 'old']);
     });
 
-    it('does not clobber an existing in-memory log', () => {
+    it('merges initial history with an in-memory live hit', () => {
       const { result } = renderHook(() => useStore());
 
       act(() => {
@@ -150,7 +150,41 @@ describe('useStore', () => {
         ]);
       });
 
-      expect(result.current.fullActivityLog.map((e) => e.id)).toEqual(['live']);
+      expect(result.current.fullActivityLog.map((e) => e.id)).toEqual(['live', 'history']);
+    });
+
+    it('replaces old scope history while preserving and deduplicating new live hits', () => {
+      const { result } = renderHook(() => useStore());
+      useStore.setState({
+        fullActivityLog: [
+          { id: 'old-scope', timestamp: 100, frequency: 145.1, type: 'hit' },
+          {
+            id: 'live',
+            timestamp: 301,
+            frequency: 154.8,
+            channel: 3,
+            type: 'hit',
+          },
+        ],
+      });
+
+      act(() => {
+        result.current.hydrateActivityLogs(
+          [
+            { id: 'history', timestamp: 200, frequency: 151.5, type: 'hit' },
+            {
+              id: 'persisted-copy',
+              timestamp: 301,
+              frequency: 154.8,
+              channel: 3,
+              type: 'hit',
+            },
+          ],
+          { replace: true, preserveSince: 300 },
+        );
+      });
+
+      expect(result.current.fullActivityLog.map((e) => e.id)).toEqual(['live', 'history']);
     });
   });
 

@@ -29,6 +29,14 @@ fn analytics_scanner_filter(state: &AppState) -> Option<String> {
     state.device.read().ok().and_then(|d| d.model.clone())
 }
 
+fn analytics_scanner_filter_for_scope(state: &AppState, scope: Option<&str>) -> Option<String> {
+    match scope {
+        Some("all") => None,
+        Some("scanner") => state.device.read().ok().and_then(|d| d.model.clone()),
+        _ => analytics_scanner_filter(state),
+    }
+}
+
 /// Does this hit belong in a view scoped to `scanner`?
 ///
 /// Unattributed hits (`scanner_id IS NULL`) COUNT. They were recorded before
@@ -215,6 +223,7 @@ pub(crate) struct ActivityLogQuery {
     start_time: Option<f64>,
     end_time: Option<f64>,
     channel: Option<u16>,
+    scope: Option<String>,
 }
 
 pub(crate) async fn analytics_activity_log(
@@ -226,7 +235,10 @@ pub(crate) async fn analytics_activity_log(
     let start = query.start_time.unwrap_or(0.0);
     let end = query.end_time.unwrap_or(f64::MAX);
     let channel_filter = query.channel;
-    let scanner = analytics_scanner_filter(&state);
+    // An explicit scope keeps this refresh deterministic while the preference
+    // PUT that triggered it may still be in flight. Omission preserves the
+    // existing API contract for other clients.
+    let scanner = analytics_scanner_filter_for_scope(&state, query.scope.as_deref());
     let mut rows = state
         .analytics_log
         .lock()
@@ -347,6 +359,33 @@ mod tests {
             .insert("analytics_scope".to_string(), json!("everything"));
 
         assert_eq!(analytics_scanner_filter(&state).as_deref(), Some("BC75XLT"));
+    }
+
+    #[test]
+    fn an_explicit_all_scope_overrides_a_stale_scanner_preference() {
+        let state = crate::api::default_state();
+        state.device.write().unwrap().model = Some("BC75XLT".to_string());
+
+        assert_eq!(
+            analytics_scanner_filter_for_scope(&state, Some("all")),
+            None
+        );
+    }
+
+    #[test]
+    fn an_explicit_scanner_scope_overrides_a_stale_all_preference() {
+        let state = crate::api::default_state();
+        state.device.write().unwrap().model = Some("BC75XLT".to_string());
+        state
+            .preferences
+            .lock()
+            .unwrap()
+            .insert("analytics_scope".to_string(), json!("all"));
+
+        assert_eq!(
+            analytics_scanner_filter_for_scope(&state, Some("scanner")).as_deref(),
+            Some("BC75XLT")
+        );
     }
 
     #[test]
