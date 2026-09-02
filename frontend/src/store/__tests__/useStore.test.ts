@@ -216,7 +216,6 @@ describe('useStore', () => {
       useStore.setState({
         sync: {
           inProgress: false,
-          pending: false,
           hasSyncedInitially: false,
           taskId: null,
           message: '',
