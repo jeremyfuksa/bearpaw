@@ -48,10 +48,15 @@ export function DataDiagnosticBanner({ message, variant = 'error' }: DataDiagnos
       // `status`, not `alert`, for a notice: a screen reader should not
       // interrupt for news that nothing is wrong.
       role={isNotice ? 'status' : 'alert'}
+      // Backgrounds are SOLID, not the `/10` tint they used to be. This floats
+      // over the app now, so a translucent panel let the tab bar and the
+      // scanner display show through the text. The hex values are that same
+      // 10% tint composited over the app background (#0e1014) once, so the
+      // colour is unchanged -- only the transparency is gone.
       className={
         isNotice
-          ? 'flex items-start gap-3 border-b border-sky-500/40 bg-sky-500/10 px-4 py-3 text-sm text-sky-100'
-          : 'flex items-start gap-3 border-b border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100'
+          ? 'flex items-start gap-3 rounded-lg border border-sky-500/40 bg-[#0e1f29] px-4 py-3 text-sm text-sky-100 shadow-lg'
+          : 'flex items-start gap-3 rounded-lg border border-amber-500/40 bg-[#251e13] px-4 py-3 text-sm text-amber-100 shadow-lg'
       }
     >
       <Icon
