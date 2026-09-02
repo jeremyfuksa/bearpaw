@@ -442,6 +442,15 @@ fn settings_jobs(
         value(&s.wx_pri).map(|v| (format!("WXS,{}", v), "WXS".to_string(), v)),
     );
     gated(
+        caps.has_search_options,
+        "SCO",
+        "General search delay and code search",
+        match (value(&s.search_delay), value(&s.search_code)) {
+            (Some(d), Some(c)) => Some((format!("SCO,{},{}", d, c), "SCO".to_string(), d)),
+            _ => None,
+        },
+    );
+    gated(
         caps.has_service_search_groups,
         "SSG",
         "Service search groups",
@@ -474,9 +483,6 @@ fn settings_jobs(
         } else {
             jobs.push((format!("SCG,{}", v), "SCG".to_string(), v));
         }
-    }
-    if let (Some(d), Some(c)) = (value(&s.search_delay), value(&s.search_code)) {
-        jobs.push((format!("SCO,{},{}", d, c), "SCO".to_string(), d));
     }
     for (idx, lo, hi) in &s.custom_ranges {
         jobs.push((
@@ -1294,7 +1300,7 @@ mod tests {
         let (jobs, _) = settings_jobs(&cfg.settings, &BC75XLT);
         let sent = commands(&jobs);
 
-        for expected in ["SQL", "PRI", "SCG", "SCO", "CSP", "CLC"] {
+        for expected in ["SQL", "PRI", "SCG", "CSP", "CLC"] {
             assert!(
                 sent.iter().any(|c| c == expected),
                 "{expected} must be restored on a BC75XLT; got {sent:?}"
@@ -1316,16 +1322,25 @@ mod tests {
         let sent = commands(&jobs);
         let named: Vec<&str> = skipped.iter().map(|s| s.command).collect();
 
-        for unsupported in ["BLT", "BSV", "CNT", "WXS", "SSG", "KBP"] {
+        for unsupported in ["BLT", "BSV", "CNT", "WXS", "SSG", "KBP", "SCO"] {
             assert!(
                 !sent.contains(&unsupported.to_string()),
                 "{unsupported} must never reach a BC75XLT; got {sent:?}"
             );
         }
-        // The file carries a backlight column and a service-group section, so
-        // those two must be REPORTED, not merely absent. A build that dropped
-        // them silently -- the #625 bug -- satisfies the loop above.
-        for reported in ["BLT", "SSG"] {
+        // The file carries a backlight column, a service-group section and a
+        // GeneralSearch row, so those must be REPORTED, not merely absent. A
+        // build that dropped them silently -- the #625 bug -- satisfies the
+        // loop above.
+        //
+        // `SCO` is the one measured live rather than read off a spec: the
+        // radio rejects a write of the value it JUST REPORTED (`SCO,1,0` ->
+        // `Err`, hardware 2026-09-02), which is what rules out a bad value and
+        // makes this a capability rather than a validation problem. Left
+        // ungated, the file's constant-2 `GeneralSearch` column put a rejected
+        // `SCO,2,0` in the error list of every otherwise clean restore --
+        // observed on the dev unit before this gate existed.
+        for reported in ["BLT", "SSG", "SCO"] {
             assert!(
                 named.contains(&reported),
                 "{reported} is in the file and must be reported unsupported; got {named:?}"

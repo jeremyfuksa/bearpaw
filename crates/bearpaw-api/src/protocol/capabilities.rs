@@ -118,6 +118,24 @@ pub struct ScannerCapabilities {
     /// it and there is no `Military Air` -- so the BC125AT band names are
     /// wrong here even where the mask would fit.
     pub has_service_search_groups: bool,
+    /// Whether `SCO` (general-search delay and code search) can be WRITTEN.
+    ///
+    /// The BC75XLT ANSWERS `SCO` -- a read returns its live delay -- but
+    /// rejects every write, including a write of the value it just reported.
+    /// Measured on hardware 2026-09-02: `SCO,2,0` and `SCO,1,0` both came back
+    /// `Err`, and five delay values pushed through `set_search` left the read
+    /// at 1. That rules out a bad value and leaves the command itself.
+    ///
+    /// Named for what Bearpaw can CONTROL, per the rule on
+    /// `has_backlight_control`: the radio has search options and a menu to set
+    /// them, it just cannot be told them over the wire.
+    ///
+    /// A real `.bc75xlt_ss` makes this worse than a silent no-op: its
+    /// `GeneralSearch` delay column carries a constant 2 the same way the
+    /// `C-Freq` delay column does (docs/SS_FILE_FORMAT.md), so an import that
+    /// trusts it puts a rejected `SCO` in the error list of every otherwise
+    /// clean restore.
+    pub has_search_options: bool,
     /// Close Call band labels, indexed by their position in the `CLC` mask.
     ///
     /// `None` marks a reserved position -- present in the 5-character mask,
@@ -254,6 +272,7 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     has_contrast: true,
     has_weather_alert: true,
     has_service_search_groups: true,
+    has_search_options: true,
     close_call_bands: &[
         Some("VHF Low"),
         Some("Air"),
@@ -298,6 +317,7 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_contrast: false,
     has_weather_alert: false,
     has_service_search_groups: false,
+    has_search_options: false,
     close_call_bands: &[
         Some("VHF Low"),
         Some("Air"),
@@ -462,6 +482,7 @@ mod tests {
         assert!(c.has_contrast);
         assert!(c.has_weather_alert);
         assert!(c.has_service_search_groups);
+        assert!(c.has_search_options);
         assert!(c.has_close_call_hit_scan);
         assert!(c.has_priority_clear);
         assert_eq!(c.close_call_bands[3], Some("UHF"));
@@ -503,6 +524,7 @@ mod tests {
         assert!(!c.has_contrast);
         assert!(!c.has_weather_alert);
         assert!(!c.has_service_search_groups);
+        assert!(!c.has_search_options);
         assert!(!c.has_close_call_hit_scan);
         assert!(!c.has_priority_clear);
         // Position 4 is reserved and 5 is UHF -- the reverse of the BC125AT.

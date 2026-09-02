@@ -80,6 +80,7 @@ capabilities are always read under one lock.
 | `has_backlight_control` | true | false (no `BLT` command) |
 | `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) |
 | `has_service_search_groups` | true | false (no `SSG` command) |
+| `has_search_options` | true | false (`SCO` writes rejected, incl. a write of the value it just reported — hardware 2026-09-02) |
 | `close_call_bands` | VHF Low, Air, VHF High, UHF, 800 MHz | VHF Low, Air, VHF High, **reserved**, UHF |
 | `has_close_call_hit_scan` | true | false (`CLC` field 5 is `[RSV]`) |
 | `has_priority_clear` | true (`DCH`+rewrite) | false — no `DCH`, and the firmware swaps within a bank itself |

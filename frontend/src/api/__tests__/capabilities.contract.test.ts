@@ -40,6 +40,7 @@ const EXPECTED_KEYS = [
   'has_contrast',
   'has_weather_alert',
   'has_service_search_groups',
+  'has_search_options',
   'close_call_bands',
   'has_close_call_hit_scan',
   'has_priority_clear',
