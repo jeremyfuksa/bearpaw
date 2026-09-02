@@ -163,8 +163,7 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
                 s.cc_bands = Some(bands);
             }
             Some("C-Freq") if f.len() >= 9 => match parse_ss_channel(&f, caps) {
-                Ok(Some(ch)) => channels.push(ch),
-                Ok(None) => {}
+                Ok(ch) => channels.push(ch),
                 Err(e) => errors.push(e),
             },
             _ => {} // unknown line type: ignore (forward-compatible)
@@ -181,7 +180,35 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
     }
 }
 
-fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<ChannelData>, String> {
+/// The shape a slot takes when the file says it is empty.
+///
+/// A clear is not a special command -- it is a `CIN` write with frequency 0,
+/// and `readback_matches` has a dedicated zero-frequency branch that accepts
+/// the factory-empty signature the scanner stamps back. So an empty row in
+/// the file has to reach the write loop looking like this rather than being
+/// dropped: dropping it is what let stale channels survive a "full restore"
+/// (#621).
+///
+/// `delay` is `cleared_delay` because that is what the radio reports for an
+/// empty slot, and it is model-dependent -- 2 on the BC125AT family, 0 on a
+/// BC75XLT. `lockout` is `true` on both. See `is_factory_empty`.
+fn cleared_channel(index: u16, caps: &ScannerCapabilities) -> ChannelData {
+    ChannelData {
+        index,
+        frequency: 0.0,
+        modulation: "AUTO".to_string(),
+        alpha_tag: String::new(),
+        delay: caps.cleared_delay,
+        lockout: true,
+        priority: false,
+        tone_squelch: None,
+        tone_squelch_kind: ToneSquelchKind::None,
+        tone_dcs_code: None,
+        bank: 1,
+    }
+}
+
+fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<ChannelData, String> {
     let on = |v: &str| v.eq_ignore_ascii_case("On");
     let index: u16 = f[1].parse().map_err(|_| "bad C-Freq index".to_string())?;
     // Bounded by the CONNECTED scanner, not a hardcoded 500 -- the same class
@@ -196,7 +223,12 @@ fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<Cha
         .parse()
         .map_err(|_| "bad C-Freq frequency".to_string())?;
     if freq_hz == 0 {
-        return Ok(None); // empty slot
+        // An empty row is an INSTRUCTION to clear the slot, not an absence of
+        // data. `docs/SS_FILE_FORMAT.md`: every slot is written to the file,
+        // empty ones included, so a blank file is 500 (or 300) explicit
+        // clears. Returning `None` here discarded all of them and left a
+        // "Restore full config" leaving stale channels programmed (#621).
+        return Ok(cleared_channel(index, caps));
     }
     let frequency = freq_hz as f64 / 1_000_000.0;
     if !caps.covers_frequency(frequency) {
@@ -223,7 +255,7 @@ fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<Cha
     let (tone_squelch_kind, tone_squelch, tone_dcs_code) =
         parse_ss_tone(f[5], caps.has_tone_squelch)
             .map_err(|error| format!("C-Freq {} tone: {}", index, error))?;
-    Ok(Some(ChannelData {
+    Ok(ChannelData {
         index,
         frequency,
         modulation: f[4].to_uppercase(),
@@ -235,7 +267,7 @@ fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<Option<Cha
         tone_squelch_kind,
         tone_dcs_code,
         bank: 1,
-    }))
+    })
 }
 
 fn parse_ss_tone(
@@ -333,6 +365,40 @@ async fn read_upload(mut multipart: Multipart) -> Result<Vec<u8>, ApiError> {
     Err(ApiError::BadRequest("file_required".to_string()))
 }
 
+/// Give every cleared row the slot's EXISTING priority bit.
+///
+/// This firmware refuses an in-place priority 1->0 `CIN` write: the only
+/// mechanism is `clear_channel_priority`'s DCH+rewrite, and a BC75XLT has no
+/// `DCH` at all. So clearing a bank's priority channel writes priority=1 and
+/// reads back priority=1 -- exactly the tolerance `readback_matches`'
+/// zero-frequency branch carries, and what the app's own Clear button already
+/// sends. Sending the file's literal `Off` instead would fail that readback
+/// and report a spurious clear failure for every priority channel on every
+/// restore.
+///
+/// Read under one lock BEFORE the program-mode bracket opens, so no lock is
+/// held across a wire round-trip.
+fn carry_stuck_priority(state: &AppState, channels: &mut [ChannelData]) {
+    let shadow = state.shadow.read().unwrap();
+    apply_stuck_priority(&shadow.channels, channels);
+}
+
+/// Body of `carry_stuck_priority`, split out so a guard can drive the REAL
+/// function instead of hand-rolling the rule in a test file.
+fn apply_stuck_priority(
+    existing: &std::collections::HashMap<u16, ChannelData>,
+    channels: &mut [ChannelData],
+) {
+    for ch in channels.iter_mut() {
+        if ch.frequency.abs() < 0.00005 {
+            ch.priority = existing
+                .get(&ch.index)
+                .map(|slot| slot.priority)
+                .unwrap_or(false);
+        }
+    }
+}
+
 /// Import a `.bc75xlt_ss` file.
 ///
 /// Channels only. The settings sections in that file are written by a tool
@@ -367,21 +433,29 @@ pub(crate) async fn import_bc75xlt_ss(
 
     // Substitute each channel's existing delay BEFORE the bracket opens, so
     // the shadow read is not holding a lock across a wire round-trip.
-    let channels: Vec<ChannelData> = {
+    let mut channels: Vec<ChannelData> = {
         let shadow = state.shadow.read().unwrap();
         cfg.channels
             .iter()
             .map(|ch| {
                 let mut ch = ch.clone();
-                ch.delay = shadow
-                    .channels
-                    .get(&ch.index)
-                    .map(|existing| existing.delay)
-                    .unwrap_or(caps.cleared_delay);
+                // A cleared row already carries `cleared_delay`, which is what
+                // the radio stamps on an empty slot and what `is_factory_empty`
+                // checks for. Substituting the slot's old programmed delay
+                // there would describe a channel that is about to stop
+                // existing.
+                if ch.frequency.abs() >= 0.00005 {
+                    ch.delay = shadow
+                        .channels
+                        .get(&ch.index)
+                        .map(|existing| existing.delay)
+                        .unwrap_or(caps.cleared_delay);
+                }
                 ch
             })
             .collect()
     };
+    carry_stuck_priority(&state, &mut channels);
 
     let _prg = ProgramModeGuard::enter(&state).await?;
     for (n, ch) in channels.iter().enumerate() {
@@ -485,12 +559,14 @@ pub(crate) async fn import_bc125at_ss(
     let mut errors: Vec<Value> = cfg.errors.iter().map(|e| json!({ "error": e })).collect();
     let mut imported = 0usize;
     let mut settings_applied = 0usize;
-    let total = cfg.channels.len();
+    let mut channels = cfg.channels.clone();
+    carry_stuck_priority(&state, &mut channels);
+    let total = channels.len();
 
     let _prg = ProgramModeGuard::enter(&state).await?;
 
     // --- channels (fast path, retry once — mirrors CSV import) ---
-    for (n, ch) in cfg.channels.iter().enumerate() {
+    for (n, ch) in channels.iter().enumerate() {
         let mut r = write_channel_to_scanner(&state, ch).await;
         if r.is_err() {
             r = write_channel_to_scanner(&state, ch).await;
@@ -606,6 +682,10 @@ pub(crate) async fn import_bc125at_ss(
     import_progress(&state, "import-ss", 100, "Import complete");
     Ok(Json(json!({
         "imported": imported,
+        // Every slot the file names, INCLUDING the ones it says are empty --
+        // those are clears, not absences (#621). A blank file is 500 attempted
+        // writes, not 0.
+        "total": total,
         "settings_applied": settings_applied,
         "errors": errors,
     })))
@@ -692,9 +772,7 @@ mod tests {
     fn parses_cfreq_channel() {
         let line = "C-Freq\t1\tArarat UHF\t145130000\tAUTO\tOff\tOff\t2\tOff";
         let f: Vec<&str> = line.split('\t').collect();
-        let ch = parse_ss_channel(&f, &BC125AT_FAMILY)
-            .unwrap()
-            .expect("some");
+        let ch = parse_ss_channel(&f, &BC125AT_FAMILY).unwrap();
         assert_eq!(ch.index, 1);
         assert!((ch.frequency - 145.13).abs() < 0.00005);
         assert_eq!(ch.alpha_tag, "Ararat UHF");
@@ -702,20 +780,76 @@ mod tests {
         assert!(!ch.lockout);
     }
 
+    /// REGRESSION GUARD (#621): an empty row is a CLEAR, not an absence.
+    ///
+    /// This used to assert `is_none()` -- the parser dropped every empty row,
+    /// so a "Restore full config" never cleared anything and stale channels
+    /// survived wherever the file said `freqHz=0`. The row must survive
+    /// parsing wearing the exact shape `is_factory_empty` recognises, or
+    /// `write_channel_to_scanner` rejects the readback.
+    ///
+    /// Paired with `an_empty_row_is_shaped_for_the_connected_model`: asserting
+    /// only "some channel came back" passes for a build that emits a row the
+    /// radio will refuse.
     #[test]
-    fn cfreq_zero_freq_is_empty_slot() {
+    fn cfreq_zero_freq_is_a_clear_not_a_dropped_row() {
         let line = "C-Freq\t6\tAUTO\t0\tAUTO\tOff\tOff\t2\tOff";
         let f: Vec<&str> = line.split('\t').collect();
-        assert!(parse_ss_channel(&f, &BC125AT_FAMILY).unwrap().is_none());
+        let ch = parse_ss_channel(&f, &BC125AT_FAMILY).unwrap();
+        assert_eq!(ch.index, 6);
+        assert_eq!(ch.frequency, 0.0);
+        assert!(crate::api::is_factory_empty(&ch, &BC125AT_FAMILY));
+    }
+
+    /// The cleared shape is MODEL-DEPENDENT, and getting it wrong is silent.
+    ///
+    /// `cleared_delay` is 2 on the BC125AT family and 0 on a BC75XLT
+    /// (hardware 2026-08-26). A clear carrying the wrong one fails
+    /// `is_factory_empty` on readback, which surfaces as
+    /// `channel_not_persisted` AFTER the write already landed -- the exact
+    /// shape of #402. Hardcoding either value reproduces that bug on the
+    /// other radio, so both are pinned.
+    #[test]
+    fn an_empty_row_is_shaped_for_the_connected_model() {
+        let line = "C-Freq\t6\t\t0\t\t\tOff\t2\tOff";
+        let f: Vec<&str> = line.split('\t').collect();
+        for caps in [&BC125AT_FAMILY, &BC75XLT] {
+            let ch = parse_ss_channel(&f, caps).unwrap();
+            assert_eq!(ch.delay, caps.cleared_delay, "{}", caps.ss_format);
+            assert!(
+                crate::api::is_factory_empty(&ch, caps),
+                "cleared row is not factory-empty on {}",
+                caps.ss_format
+            );
+        }
+    }
+
+    /// The empty row must also SURVIVE the write payload builder.
+    ///
+    /// `build_cin_write_payload_for` rejects a delay the model does not
+    /// accept, and the vendor spec aborts the whole `CIN` on one bad field.
+    /// A cleared row that cannot be encoded is a clear that never happens.
+    #[test]
+    fn an_empty_row_encodes_to_a_writable_cin_payload() {
+        let line = "C-Freq\t6\t\t0\t\t\tOff\t2\tOff";
+        let f: Vec<&str> = line.split('\t').collect();
+        for caps in [&BC125AT_FAMILY, &BC75XLT] {
+            let ch = parse_ss_channel(&f, caps).unwrap();
+            let payload = crate::api::build_cin_write_payload_for(&ch, caps)
+                .unwrap_or_else(|e| panic!("{} clear is unwritable: {:?}", caps.ss_format, e));
+            assert!(
+                payload.contains("00000000"),
+                "{} clear must send frequency 0: {payload}",
+                caps.ss_format
+            );
+        }
     }
 
     #[test]
     fn cfreq_lockout_priority_on() {
         let line = "C-Freq\t3\tRepeater\t146940000\tFM\tOff\tOn\t2\tOn";
         let f: Vec<&str> = line.split('\t').collect();
-        let ch = parse_ss_channel(&f, &BC125AT_FAMILY)
-            .unwrap()
-            .expect("some");
+        let ch = parse_ss_channel(&f, &BC125AT_FAMILY).unwrap();
         assert!(ch.lockout);
         assert!(ch.priority);
     }
@@ -748,9 +882,7 @@ mod tests {
                 label
             );
             let fields: Vec<&str> = row.split('\t').collect();
-            let parsed = parse_ss_channel(&fields, &BC125AT_FAMILY)
-                .expect("exported row parses")
-                .expect("programmed channel");
+            let parsed = parse_ss_channel(&fields, &BC125AT_FAMILY).expect("exported row parses");
 
             assert_eq!(ss_tone_label(&parsed), label, "round-trip for {label}");
         }
@@ -777,33 +909,97 @@ mod tests {
         ] {
             let row = format!("C-Freq\t1\tTone\t145130000\tFM\t{}\tOff\t2\tOff", label);
             let fields: Vec<&str> = row.split('\t').collect();
-            let parsed = parse_ss_channel(&fields, &BC125AT_FAMILY)
-                .expect("tone parses")
-                .expect("programmed channel");
+            let parsed = parse_ss_channel(&fields, &BC125AT_FAMILY).expect("tone parses");
             let payload = crate::api::build_cin_write_payload_for(&parsed, &BC125AT_FAMILY)
                 .expect("tone encodes");
             assert_eq!(payload.split(',').nth(3), Some(expected_code), "{label}");
         }
     }
 
-    /// The BC75XLT parser must read a real file written by Uniden's tool.
+    /// REGRESSION GUARD (#621): a blank file is 300 CLEARS, not zero work.
     ///
-    /// `fixtures/blank.bc75xlt_ss` is a `New` -> `Save As` from the real
-    /// software: 300 empty channels, so every `C-Freq` row parses to "empty
-    /// slot" and nothing should be imported.
+    /// `fixtures/blank.bc75xlt_ss` is a `New` -> `Save As` from Uniden's own
+    /// software: 300 empty channels. This used to assert `channels.is_empty()`
+    /// and it passed for a build that reported `Config restored (0 channels)`
+    /// while leaving every programmed channel on the radio untouched.
+    ///
+    /// The count must cover `1..=channel_count` with no gaps -- a build that
+    /// emitted only the first row, or shifted the indices, satisfies a bare
+    /// length check.
     #[test]
-    fn a_blank_bc75xlt_file_parses_to_no_channels() {
+    fn a_blank_bc75xlt_file_parses_to_a_clear_for_every_slot() {
         let text = include_str!("../../../fixtures/blank.bc75xlt_ss");
         let cfg = parse_ss_config(text, &BC75XLT);
-        assert!(
-            cfg.channels.is_empty(),
-            "every slot in a blank file is empty"
-        );
         assert!(
             cfg.errors.is_empty(),
             "a file the tool itself wrote must parse cleanly: {:?}",
             cfg.errors
         );
+        assert_eq!(
+            cfg.channels.len(),
+            BC75XLT.channel_count as usize,
+            "every slot in a blank file is an explicit clear"
+        );
+        let indices: Vec<u16> = cfg.channels.iter().map(|c| c.index).collect();
+        assert_eq!(
+            indices,
+            (1..=BC75XLT.channel_count).collect::<Vec<u16>>(),
+            "clears must cover every slot in order"
+        );
+        assert!(
+            cfg.channels
+                .iter()
+                .all(|c| crate::api::is_factory_empty(c, &BC75XLT)),
+            "every row of a blank file must be a factory-empty clear"
+        );
+    }
+
+    /// The same, on the other family -- 500 slots and a different
+    /// `cleared_delay`. Pinning only the BC75XLT half passes for a build that
+    /// hardcodes 300 or 0.
+    #[test]
+    fn a_blank_bc125at_file_parses_to_a_clear_for_every_slot() {
+        let text = include_str!("../../../fixtures/blank.bc125at_ss");
+        let cfg = parse_ss_config(text, &BC125AT_FAMILY);
+        assert!(cfg.errors.is_empty(), "{:?}", cfg.errors);
+        assert_eq!(cfg.channels.len(), BC125AT_FAMILY.channel_count as usize);
+        assert!(
+            cfg.channels
+                .iter()
+                .all(|c| crate::api::is_factory_empty(c, &BC125AT_FAMILY)),
+            "every row of a blank file must be a factory-empty clear"
+        );
+    }
+
+    /// A mixed file must match the file row-for-row: programmed rows stay
+    /// programmed, empty rows become clears. A build that dropped empties
+    /// passes `sample`'s programmed count on its own.
+    #[test]
+    fn a_mixed_file_yields_a_row_per_slot_matching_the_file() {
+        let text = include_str!("../../../fixtures/sample.bc75xlt_ss");
+        let cfg = parse_ss_config(text, &BC75XLT);
+        assert!(cfg.errors.is_empty(), "{:?}", cfg.errors);
+        assert_eq!(cfg.channels.len(), BC75XLT.channel_count as usize);
+
+        let file_empty: Vec<u16> = text
+            .lines()
+            .map(|l| l.split('\t').collect::<Vec<&str>>())
+            .filter(|f| f.first().copied() == Some("C-Freq") && f.len() >= 9 && f[3] == "0")
+            .filter_map(|f| f[1].parse::<u16>().ok())
+            .collect();
+        assert!(
+            !file_empty.is_empty() && file_empty.len() < BC75XLT.channel_count as usize,
+            "this fixture must be genuinely mixed to be a useful guard"
+        );
+        for ch in &cfg.channels {
+            let should_be_empty = file_empty.contains(&ch.index);
+            assert_eq!(
+                crate::api::is_factory_empty(ch, &BC75XLT),
+                should_be_empty,
+                "slot {} disagrees with the file",
+                ch.index
+            );
+        }
     }
 
     /// REGRESSION GUARD: the file's delay column must never reach the wire on
@@ -817,9 +1013,7 @@ mod tests {
     fn the_files_delay_never_reaches_a_bc75xlt() {
         let row = "C-Freq\t1\t\t145130000\t\t\tOff\t2\tOff";
         let f: Vec<&str> = row.split('\t').collect();
-        let ch = parse_ss_channel(&f, &BC75XLT)
-            .expect("parses")
-            .expect("programmed slot");
+        let ch = parse_ss_channel(&f, &BC75XLT).expect("parses");
         assert!(
             BC75XLT.valid_delays.contains(&ch.delay),
             "delay {} is not writable on this model",
@@ -834,9 +1028,7 @@ mod tests {
     fn a_bc125at_keeps_a_delay_the_file_supplies() {
         let row = "C-Freq\t1\tTEST\t145130000\tFM\t\tOff\t2\tOff";
         let f: Vec<&str> = row.split('\t').collect();
-        let ch = parse_ss_channel(&f, &BC125AT_FAMILY)
-            .expect("parses")
-            .expect("programmed slot");
+        let ch = parse_ss_channel(&f, &BC125AT_FAMILY).expect("parses");
         assert_eq!(ch.delay, 2);
     }
 
@@ -849,5 +1041,61 @@ mod tests {
         assert!(parse_ss_channel(&f, &BC125AT_FAMILY).is_ok());
         let err = parse_ss_channel(&f, &BC75XLT).expect_err("301 does not exist here");
         assert!(err.contains("1-300"), "got: {err}");
+    }
+
+    /// REGRESSION GUARD (#621): a clear carries the slot's EXISTING priority
+    /// bit, and touches nothing else.
+    ///
+    /// The firmware refuses an in-place priority 1->0 `CIN` write -- a
+    /// BC75XLT has no `DCH` to force it at all -- so `readback_matches`'
+    /// zero-frequency branch only tolerates a stuck priority when we WROTE
+    /// priority=1. A restore that sent the file's literal `Off` would fail
+    /// the readback and report a clear failure for every priority channel on
+    /// the radio, on every restore, for a clear that actually landed.
+    ///
+    /// The second half is not decoration: a build that stamped priority on
+    /// EVERY row would satisfy the first assertion and would silently
+    /// displace each bank's priority holder as the import walked it.
+    #[test]
+    fn a_clear_carries_the_slots_existing_priority_and_leaves_programmed_rows_alone() {
+        use std::collections::HashMap;
+
+        let mut existing: HashMap<u16, ChannelData> = HashMap::new();
+        // Slot 4 is in the shadow AND holds priority: a build that skipped the
+        // zero-frequency check would stamp that onto the PROGRAMMED row 4 and
+        // silently displace the bank's holder. Without it here, rows[3] falls
+        // through `unwrap_or(false)` and the assertion passes either way.
+        for (index, priority) in [(1u16, true), (2, false), (3, true), (4, true)] {
+            let mut slot = cleared_channel(index, &BC125AT_FAMILY);
+            slot.frequency = 146.0;
+            slot.priority = priority;
+            existing.insert(index, slot);
+        }
+
+        let mut programmed = cleared_channel(4, &BC125AT_FAMILY);
+        programmed.frequency = 145.13;
+        programmed.priority = false;
+
+        let mut rows = vec![
+            cleared_channel(1, &BC125AT_FAMILY), // slot holds priority
+            cleared_channel(2, &BC125AT_FAMILY), // slot does not
+            cleared_channel(9, &BC125AT_FAMILY), // slot unknown to the shadow
+            programmed,
+        ];
+        apply_stuck_priority(&existing, &mut rows);
+
+        assert!(
+            rows[0].priority,
+            "a clear of a priority channel must send 1"
+        );
+        assert!(!rows[1].priority, "a clear of a plain channel must send 0");
+        assert!(
+            !rows[2].priority,
+            "an unknown slot must not invent priority"
+        );
+        assert!(
+            !rows[3].priority,
+            "a PROGRAMMED row must keep the file's priority, not the shadow's"
+        );
     }
 }
