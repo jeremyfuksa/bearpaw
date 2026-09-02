@@ -201,16 +201,17 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   const handlePreferenceChange = useCallback(
     async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
       const backendKey = PREFERENCE_KEY_MAP[key] ?? key;
-      updatePreferences({ [key]: value } as Partial<Preferences>);
       try {
-        await fetch(`${API_BASE}/preferences`, {
+        const response = await fetch(`${API_BASE}/preferences`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [backendKey]: value }),
         });
+        if (!response.ok) throw new Error(`Preference save failed (${response.status})`);
+        updatePreferences({ [key]: value } as Partial<Preferences>);
       } catch (error) {
         console.error('Failed to save preference', error);
-        toast.error('Failed to save preference');
+        toast.error('Failed to save preference. Your previous setting is still active.');
       }
     },
     [updatePreferences],

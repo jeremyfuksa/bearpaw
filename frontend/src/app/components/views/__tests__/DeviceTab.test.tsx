@@ -29,6 +29,7 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('../../../../api/useApi', () => ({
+  API_BASE: 'http://127.0.0.1:3030/api/v1',
   getAPI: vi.fn(() => createMockApiClient()),
 }));
 
@@ -43,7 +44,12 @@ describe('DeviceTab', () => {
       channels: [],
       liveState: createTestLiveState(),
       deviceInfo: createTestDeviceInfo(),
+      preferences: { ...useStore.getState().preferences, analyticsScope: 'scanner' },
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   const renderDeviceTab = () => render(<DeviceTab />);
@@ -634,6 +640,35 @@ describe('DeviceTab', () => {
       await selectCategory(/Preferences/i);
       expect(screen.getByRole('button', { name: /Github/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Buy me a coffee/i })).toBeInTheDocument();
+    });
+
+    it('applies a preference only after the backend confirms persistence', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
+      vi.stubGlobal('fetch', fetchMock);
+      renderDeviceTab();
+      await selectCategory(/Preferences/i);
+
+      await userEvent.click(screen.getByRole('switch', { name: /Combine Scanner Analytics/i }));
+
+      await waitFor(() => expect(useStore.getState().preferences.analyticsScope).toBe('all'));
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/preferences'),
+        expect.objectContaining({ body: JSON.stringify({ analytics_scope: 'all' }) }),
+      );
+    });
+
+    it('keeps the saved preference and reports a persistence failure', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
+      renderDeviceTab();
+      await selectCategory(/Preferences/i);
+
+      await userEvent.click(screen.getByRole('switch', { name: /Combine Scanner Analytics/i }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/previous setting/i)),
+      );
+      expect(useStore.getState().preferences.analyticsScope).toBe('scanner');
+      expect(screen.getByRole('switch', { name: /Combine Scanner Analytics/i })).not.toBeChecked();
     });
   });
 

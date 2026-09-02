@@ -535,6 +535,7 @@ pub enum ApiError {
     BadRequest(String),
     NotFound(String),
     Conflict(String),
+    Internal(String),
 }
 
 impl IntoResponse for ApiError {
@@ -545,6 +546,7 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.as_str()),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.as_str()),
             ApiError::Conflict(msg) => (StatusCode::CONFLICT, msg.as_str()),
+            ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.as_str()),
         };
         (
             status,
@@ -1021,27 +1023,102 @@ fn load_preferences_from_db(path: &str) -> Map<String, Value> {
     prefs
 }
 
-pub(crate) fn save_preference_to_db(path: &str, key: &str, value: &Value) {
-    if let Some(conn) = open_sqlite(path) {
-        let _ = conn.execute(
-            "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
-            [],
-        );
-        let _ = conn.execute(
-            "INSERT OR REPLACE INTO preferences (key, value, updated_at) VALUES (?1, ?2, strftime('%s','now'))",
-            rusqlite::params![key, value.to_string()],
-        );
+#[derive(Debug)]
+pub(crate) struct PreferencePersistenceError {
+    operation: &'static str,
+    detail: String,
+}
+
+impl PreferencePersistenceError {
+    fn new(operation: &'static str, error: impl std::fmt::Display) -> Self {
+        Self {
+            operation,
+            detail: error.to_string(),
+        }
     }
 }
 
-pub(crate) fn reset_preferences_db(path: &str) {
-    if let Some(conn) = open_sqlite(path) {
-        let _ = conn.execute(
+impl std::fmt::Display for PreferencePersistenceError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.operation, self.detail)
+    }
+}
+
+impl std::error::Error for PreferencePersistenceError {}
+
+fn open_preferences_db_for_write(
+    path: &str,
+) -> Result<rusqlite::Connection, PreferencePersistenceError> {
+    let path = PathBuf::from(path);
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| PreferencePersistenceError::new("create database directory", error))?;
+    }
+    let conn = rusqlite::Connection::open(path)
+        .map_err(|error| PreferencePersistenceError::new("open preferences database", error))?;
+    conn.busy_timeout(Duration::from_secs(5)).map_err(|error| {
+        PreferencePersistenceError::new("configure preferences database", error)
+    })?;
+    Ok(conn)
+}
+
+pub(crate) fn save_preference_to_db(
+    path: &str,
+    key: &str,
+    value: &Value,
+) -> Result<(), PreferencePersistenceError> {
+    let mut values = Map::new();
+    values.insert(key.to_string(), value.clone());
+    save_preferences_to_db(path, &values)
+}
+
+pub(crate) fn save_preferences_to_db(
+    path: &str,
+    values: &Map<String, Value>,
+) -> Result<(), PreferencePersistenceError> {
+    let mut conn = open_preferences_db_for_write(path)?;
+    let transaction = conn
+        .transaction()
+        .map_err(|error| PreferencePersistenceError::new("start preference transaction", error))?;
+    transaction
+        .execute(
             "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
             [],
-        );
-        let _ = conn.execute("DELETE FROM preferences", []);
+        )
+        .map_err(|error| PreferencePersistenceError::new("create preferences schema", error))?;
+    for (key, value) in values {
+        transaction
+            .execute(
+                "INSERT OR REPLACE INTO preferences (key, value, updated_at) VALUES (?1, ?2, strftime('%s','now'))",
+                rusqlite::params![key, value.to_string()],
+            )
+            .map_err(|error| PreferencePersistenceError::new("write preference", error))?;
     }
+    transaction
+        .commit()
+        .map_err(|error| PreferencePersistenceError::new("commit preference transaction", error))
+}
+
+pub(crate) fn reset_preferences_db(path: &str) -> Result<(), PreferencePersistenceError> {
+    let mut conn = open_preferences_db_for_write(path)?;
+    let transaction = conn
+        .transaction()
+        .map_err(|error| PreferencePersistenceError::new("start preference reset", error))?;
+    transaction
+        .execute(
+            "CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL)",
+            [],
+        )
+        .map_err(|error| PreferencePersistenceError::new("create preferences schema", error))?;
+    transaction
+        .execute("DELETE FROM preferences", [])
+        .map_err(|error| PreferencePersistenceError::new("delete preferences", error))?;
+    transaction
+        .commit()
+        .map_err(|error| PreferencePersistenceError::new("commit preference reset", error))
 }
 
 /// Returns whether an EXISTING database was upgraded. See
@@ -2847,6 +2924,19 @@ mod tests {
         serde_json::from_slice(&bytes).expect("valid json")
     }
 
+    fn state_with_unwritable_preferences_db() -> AppState {
+        let mut state = default_state();
+        // The normal database is already a file, so treating it as a parent
+        // directory fails on every platform without relying on permissions.
+        state.preferences_db_path = Arc::new(
+            PathBuf::from(state.preferences_db_path.as_str())
+                .join("child.db")
+                .to_string_lossy()
+                .into_owned(),
+        );
+        state
+    }
+
     fn test_channel() -> ChannelData {
         ChannelData {
             index: 42,
@@ -3415,6 +3505,84 @@ mod tests {
         assert!(body.get("mqtt_enabled").is_some());
     }
 
+    #[tokio::test]
+    async fn preference_write_failure_returns_500_without_changing_memory() {
+        let state = state_with_unwritable_preferences_db();
+        let inspection = state.clone();
+        let original = inspection.preferences.lock().unwrap()["theme"].clone();
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri("/api/v1/preferences/theme")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"value":"light"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            json_body(response).await["error"],
+            "preference_persistence_failed"
+        );
+        assert_eq!(inspection.preferences.lock().unwrap()["theme"], original);
+    }
+
+    #[tokio::test]
+    async fn bulk_preference_write_failure_is_atomic_in_memory() {
+        let state = state_with_unwritable_preferences_db();
+        let inspection = state.clone();
+        let before = inspection.preferences.lock().unwrap().clone();
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri("/api/v1/preferences")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"theme":"light","analytics_scope":"all"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            json_body(response).await["error"],
+            "preference_persistence_failed"
+        );
+        assert_eq!(*inspection.preferences.lock().unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn preference_reset_failure_keeps_the_current_values() {
+        let state = state_with_unwritable_preferences_db();
+        state
+            .preferences
+            .lock()
+            .unwrap()
+            .insert("theme".to_string(), json!("field"));
+        let inspection = state.clone();
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/preferences/reset")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            json_body(response).await["error"],
+            "preference_persistence_failed"
+        );
+        assert_eq!(inspection.preferences.lock().unwrap()["theme"], "field");
+    }
+
     // REGRESSION GUARD (#143): out-of-range channel indexes must be rejected
     // with 400 before any scanner round-trip, not sent to the wire as CIN,0 /
     // CIN,501.
@@ -3644,7 +3812,8 @@ mod tests {
         // And writes must not cross over. A deliberately non-default value, so
         // the assertion cannot pass by matching what a fresh database returns.
         let sentinel = Value::from("only-in-a");
-        save_preference_to_db(&a.preferences_db_path, "theme", &sentinel);
+        save_preference_to_db(&a.preferences_db_path, "theme", &sentinel)
+            .expect("preference write");
         assert_eq!(
             load_preferences_from_db(&a.preferences_db_path)
                 .get("theme")
