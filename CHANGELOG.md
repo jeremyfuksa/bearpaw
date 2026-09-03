@@ -8,6 +8,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _In progress. Entries land here as they merge; the date is added at release._
 
+### Fixed
+
+- **Restarting Bearpaw now recovers a scanner that stopped responding after a
+  crash.** On macOS, if Bearpaw was force-quit or crashed while it was talking
+  to a BC125AT, the connection could be left in a state that survived the app
+  closing — so every restart found the scanner, then failed to read from it,
+  and the only way out was to unplug the scanner and plug it back in. Bearpaw
+  now asks the system to re-establish the connection itself, which is the same
+  thing unplugging does. Restarting the app is the first thing anyone tries, and
+  now it works.
+
 ## [1.1.0] — 2026-09-02
 
 Adds support for a second scanner family, the BC75XLT, and fixes a set of

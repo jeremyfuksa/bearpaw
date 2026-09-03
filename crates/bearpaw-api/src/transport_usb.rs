@@ -138,6 +138,27 @@ impl UsbTransport {
         Err(UsbTransportError::NotFound(self.vid, self.pid))
     }
 
+    /// Ask the OS to re-enumerate the device — what physically unplugging and
+    /// replugging it does, minus the walk to the desk.
+    ///
+    /// This is the recovery of last resort for the #513 wedge, where the pipe
+    /// stops carrying data for this host process while the device stays
+    /// enumerated and claimable. `clear_halt` (see `open`) resets an endpoint's
+    /// data toggle and cures the *other* STALL, the one from #307; it provably
+    /// does not cure this one, because it already runs on every open and the
+    /// wedge survives every open.
+    ///
+    /// **The session does not survive this call, whether or not it succeeds.**
+    /// libusb may report the re-enumerated device as a different one
+    /// (`NoDevice`), and even when it does not, the interface claim is gone.
+    /// The caller must drop the session and re-open. An error is worth logging
+    /// and nothing more: the caller was already unable to talk to the scanner,
+    /// which is why it asked.
+    pub fn reset(&self, session: &mut UsbSession) -> Result<(), UsbTransportError> {
+        session.handle.reset()?;
+        Ok(())
+    }
+
     pub fn send(&self, session: &mut UsbSession, cmd: &str) -> Result<String, UsbTransportError> {
         self.send_with_timeout(session, cmd, Duration::from_millis(self.timeout_ms))
     }

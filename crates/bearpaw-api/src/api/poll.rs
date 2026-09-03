@@ -404,6 +404,9 @@ fn run_poll_loop_usb(
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
     let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
+    // One USB re-enumeration per wedge episode (#513). See
+    // `is_wedged_after_open` for why it is bounded and what clears it.
+    let mut wedge_reset_used = false;
 
     // Outer reconnect loop. Loops forever, opening and re-opening the session
     // as the scanner appears and disappears -- including before it has ever
@@ -455,7 +458,37 @@ fn run_poll_loop_usb(
             }
             thread::sleep(Duration::from_millis(120));
         }
-        if !mdl_set {
+        // REGRESSION GUARD (#513): a device we just claimed cannot be gone. If
+        // its FIRST read says otherwise, the endpoint is wedged, and only
+        // re-enumeration heals it -- `clear_halt` already ran during `open` and
+        // demonstrably does not. Re-enumerating invalidates this session, so
+        // drop it and let the outer loop open a fresh one. Bounded to one
+        // attempt per episode by `wedge_reset_used`; see `is_wedged_after_open`.
+        if is_wedged_after_open(mdl_set, device_gone, wedge_reset_used) {
+            warn!(
+                "USB endpoint appears wedged on {} (claimed, then reported gone \
+                 on the first read) — re-enumerating, which is what a replug does",
+                port_label
+            );
+            wedge_reset_used = true;
+            if let Err(e) = transport.reset(&mut session) {
+                // Expected on a device that re-enumerated under us, and not a
+                // reason to skip the reopen: the reset is what we came for and
+                // the session is spent either way.
+                warn!("USB reset returned {} — reopening regardless", e);
+            }
+            drop(session);
+            mark_disconnected(&state, "USB endpoint wedged; re-enumerated, reopening");
+            thread::sleep(reconnect_backoff);
+            reconnect_backoff = next_backoff(reconnect_backoff);
+            continue;
+        }
+        if mdl_set {
+            // A scanner that answered is not wedged. Re-arm, so a wedge later
+            // in this process's life gets its own reset rather than inheriting
+            // a spent one.
+            wedge_reset_used = false;
+        } else {
             warn!("Unable to read valid MDL response after retries (usb)");
             // See the serial path: a device that vanished must not be
             // announced as connected. This transport is the one the USB STALL
@@ -729,6 +762,33 @@ fn mark_port_opened(state: &AppState, port_label: &str) {
 /// Test: `a_vanished_device_is_never_announced_as_connected`.
 fn should_announce_connect(mdl_set: bool, device_gone: bool) -> bool {
     !mdl_set && !device_gone
+}
+
+/// True when a failed first `MDL` means the USB endpoint is WEDGED rather than
+/// the scanner unplugged — so re-enumerating it is worth a try (#513).
+///
+/// The discriminator is that `open()` already succeeded. It walked the bus,
+/// matched the VID/PID, opened the device and claimed the interface, so the
+/// scanner demonstrably IS attached. A device that is genuinely gone fails
+/// EARLIER, at `open()`, with `NotFound` — it never reaches this decision at
+/// all. So a "device gone" verdict on the very first read after a successful
+/// claim is not a report of an absent device; it is `rusb::Error::Io`, which
+/// `is_device_gone` classifies as gone (correctly, for every other caller)
+/// arriving from a pipe that has stopped carrying data for this process.
+///
+/// That is the #513 wedge: SIGTERM the backend mid-poll and every later open
+/// succeeds, then fails its first read with `Input/Output Error`, forever. Only
+/// a physical replug clears it — which is exactly what `UsbTransport::reset`
+/// asks the OS to do.
+///
+/// `reset_used` bounds it to ONE reset per wedge episode, cleared by the next
+/// `MDL` that answers. Without that bound a scanner that is powered off but
+/// still attached — a state that also opens, claims and then cannot talk —
+/// would be re-enumerated on every reconnect for as long as it stayed off.
+///
+/// Test: `a_claimed_device_that_says_gone_on_the_first_read_is_wedged`.
+fn is_wedged_after_open(mdl_set: bool, device_gone: bool, reset_used: bool) -> bool {
+    !mdl_set && device_gone && !reset_used
 }
 
 /// Report connected when the port is open but `MDL` never answered.
@@ -2317,6 +2377,53 @@ mod tests {
         // it, with a model. The fallback must not fire a second time.
         assert!(!should_announce_connect(true, false));
         assert!(!should_announce_connect(true, true));
+    }
+
+    /// REGRESSION GUARD (#513): the wedge and an unplug are told apart by WHERE
+    /// the failure happened, not by what it says.
+    ///
+    /// This predicate reads a "device gone" verdict as a wedge, which sounds
+    /// backwards until you notice it is only ever consulted AFTER `open()`
+    /// found the scanner on the bus, opened it and claimed its interface. A
+    /// device that is actually absent fails at `open()` with `NotFound` and
+    /// never arrives here. What arrives here is `rusb::Error::Io` — which
+    /// `is_device_gone` folds in with the real ones, correctly for every other
+    /// caller — from a pipe that has quietly stopped carrying data.
+    ///
+    /// Asserted on the predicate rather than the loop for the same reason as
+    /// `a_vanished_device_is_never_announced_as_connected` above: `rusb`'s
+    /// `DeviceHandle` is a thin FFI wrapper with no injectable backend, so
+    /// neither the wedge nor the reset can be produced in a test. The DECISION
+    /// is pinned here; the reset's effect on hardware is verified by hand.
+    #[test]
+    fn a_claimed_device_that_says_gone_on_the_first_read_is_wedged() {
+        // The #513 report, exactly: open and claim succeed, the first MDL read
+        // returns Input/Output Error. Only re-enumeration heals it.
+        assert!(
+            is_wedged_after_open(false, true, false),
+            "a claimed device reporting gone on its first read is wedged, not absent"
+        );
+
+        // A garbled-but-answering scanner is the #539 case: it is talking, the
+        // bytes are just wrong. Re-enumerating a working pipe would turn a
+        // cosmetic fault into a dropped session.
+        assert!(
+            !is_wedged_after_open(false, false, false),
+            "a garbled MDL is not a wedge — the pipe is carrying data"
+        );
+
+        // MDL answered. Nothing to heal.
+        assert!(!is_wedged_after_open(true, false, false));
+        assert!(!is_wedged_after_open(true, true, false));
+
+        // Bounded to one reset per episode. A scanner powered off but still
+        // attached also opens, claims and then cannot talk — and would
+        // otherwise be re-enumerated on every reconnect until someone switched
+        // it back on.
+        assert!(
+            !is_wedged_after_open(false, true, true),
+            "the reset must not repeat while the episode is unresolved"
+        );
     }
 
     /// REGRESSION GUARD: a DIFFERENT radio must not inherit the last one's
