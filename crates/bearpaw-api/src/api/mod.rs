@@ -6721,6 +6721,287 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD (#621): a blank `.ss` file clears every slot, on BOTH
+    /// families, through the REAL route.
+    ///
+    /// Ported from #635, which fixed the same issue independently and reached
+    /// for route-level coverage the merged fix did not have. The pure guards in
+    /// `import_ss.rs` pin what the parser produces; this pins that the produced
+    /// rows actually reach the wire as zero-frequency `CIN` writes and land in
+    /// the shadow. A parser that emits perfect cleared rows into a handler that
+    /// drops them satisfies every pure guard and none of this one.
+    ///
+    /// The BC125AT half is the half that matters most here: the fix was
+    /// verified on a BC75XLT on real hardware (PR #636), and that model was the
+    /// only one plugged in.
+    ///
+    /// The `DCH` assertion is deliberate. #635 cleared via `DCH` where
+    /// `has_priority_clear`; the merged fix writes frequency 0 on both
+    /// families, which is what the app's own Clear button does and what
+    /// `readback_matches`' zero-frequency branch is built to verify. Pinning
+    /// "no `DCH`" makes a future switch to the other mechanism a deliberate
+    /// edit rather than a silent one.
+    #[tokio::test]
+    async fn a_blank_ss_file_clears_every_slot_on_both_families() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        for (caps, uri, filename, ss) in [
+            (
+                BC125AT_FAMILY,
+                "/api/v1/memory/import/bc125at_ss",
+                "blank.bc125at_ss",
+                include_str!("../../fixtures/blank.bc125at_ss"),
+            ),
+            (
+                BC75XLT,
+                "/api/v1/memory/import/bc75xlt_ss",
+                "blank.bc75xlt_ss",
+                include_str!("../../fixtures/blank.bc75xlt_ss"),
+            ),
+        ] {
+            let state = default_state();
+            state.device.write().unwrap().capabilities = Some(caps);
+            // Every slot starts PROGRAMMED. That is the precondition the bug
+            // needed: with an empty shadow, "cleared" and "never written" look
+            // identical.
+            {
+                let mut shadow = state.shadow.write().unwrap();
+                for index in 1..=caps.channel_count {
+                    shadow.channels.insert(
+                        index,
+                        ChannelData {
+                            index,
+                            frequency: 145.13,
+                            bank: caps.index_to_bank(index),
+                            ..test_channel()
+                        },
+                    );
+                }
+            }
+
+            let fake = FakeScanner::attach(&state, move |command: &str| {
+                if command == "PRG" || command == "EPG" {
+                    return Ok(format!("{command},OK"));
+                }
+                if command.starts_with("DCH,") {
+                    return Ok("DCH,OK".to_string());
+                }
+                if let Some(rest) = command.strip_prefix("CIN,") {
+                    if rest.contains(',') {
+                        return Ok("CIN,OK".to_string());
+                    }
+                    // The factory-empty signature this model stamps on a
+                    // cleared slot. Delay is model-dependent -- 2 on the
+                    // BC125AT family, 0 on a BC75XLT (hardware 2026-08-26).
+                    let index = rest.parse::<u16>().unwrap();
+                    return if caps.has_priority_clear {
+                        Ok(format!("CIN,{index},,00000000,AUTO,0,2,1,0"))
+                    } else {
+                        Ok(format!("CIN,{index},,00000000,,,0,1,0"))
+                    };
+                }
+                if command.contains(',') {
+                    let name = command.split(',').next().unwrap();
+                    return Ok(format!("{name},OK"));
+                }
+                Ok(format!("{command},0"))
+            });
+
+            let boundary = format!("XbearpawBlank{}X", caps.channel_count);
+            let body = format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n\
+                 Content-Type: text/plain\r\n\r\n{ss}\r\n--{boundary}--\r\n"
+            );
+            let response = router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(uri)
+                        .header(
+                            "content-type",
+                            format!("multipart/form-data; boundary={boundary}"),
+                        )
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK, "{filename}");
+            let response_body = json_body(response).await;
+            // A blank file is `channel_count` explicit clears, not zero work.
+            assert_eq!(
+                response_body["total"], caps.channel_count,
+                "{filename}: {response_body}"
+            );
+            assert_eq!(
+                response_body["imported"], caps.channel_count,
+                "{filename}: {response_body}"
+            );
+
+            let shadow = state.shadow.read().unwrap();
+            assert_eq!(shadow.channels.len(), caps.channel_count as usize);
+            assert!(
+                shadow
+                    .channels
+                    .values()
+                    .all(|channel| channel.frequency.abs() < 0.00005),
+                "{filename}: a programmed channel survived the restore"
+            );
+            drop(shadow);
+
+            let transcript = fake.transcript_with_closed_bracket();
+            let writes = transcript
+                .iter()
+                .filter(|command| {
+                    command.starts_with("CIN,")
+                        && command.matches(',').count() > 1
+                        && command.contains("00000000")
+                })
+                .count();
+            assert_eq!(
+                writes, caps.channel_count as usize,
+                "{filename}: every slot must be cleared ON THE WIRE"
+            );
+            assert_eq!(
+                transcript
+                    .iter()
+                    .filter(|command| command.starts_with("DCH,"))
+                    .count(),
+                0,
+                "{filename}: the clear is a zero-frequency CIN write, not DCH"
+            );
+        }
+    }
+
+    /// REGRESSION GUARD (#621): a MIXED file matches the file row for row.
+    ///
+    /// Ported from #635. The blank-file guard above passes for a handler that
+    /// clears unconditionally; this one fails there, because row 1 must stay
+    /// programmed. The two are paired on purpose.
+    ///
+    /// The fake holds real memory so the readback reflects what was written --
+    /// a stateless fake would accept a handler that wrote nothing.
+    #[tokio::test]
+    async fn a_mixed_ss_file_programs_and_clears_per_row_on_both_families() {
+        use crate::protocol::capabilities::BC75XLT;
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+
+        for (caps, uri, filename) in [
+            (
+                BC125AT_FAMILY,
+                "/api/v1/memory/import/bc125at_ss",
+                "mixed.bc125at_ss",
+            ),
+            (
+                BC75XLT,
+                "/api/v1/memory/import/bc75xlt_ss",
+                "mixed.bc75xlt_ss",
+            ),
+        ] {
+            let state = default_state();
+            state.device.write().unwrap().capabilities = Some(caps);
+            for index in 1..=2 {
+                state.shadow.write().unwrap().channels.insert(
+                    index,
+                    ChannelData {
+                        index,
+                        frequency: 146.52,
+                        delay: caps.cleared_delay,
+                        priority: false,
+                        bank: 1,
+                        ..test_channel()
+                    },
+                );
+            }
+
+            let memory = Arc::new(Mutex::new(HashMap::from([
+                (1_u16, "Old,01465200,FM,0,2,0,0".to_string()),
+                (2_u16, "Old,01465200,FM,0,2,0,0".to_string()),
+            ])));
+            let scanner_memory = memory.clone();
+            let _fake = FakeScanner::attach(&state, move |command: &str| {
+                if command == "PRG" || command == "EPG" {
+                    return Ok(format!("{command},OK"));
+                }
+                if let Some(rest) = command.strip_prefix("CIN,") {
+                    if let Some((index, payload)) = rest.split_once(',') {
+                        let index = index.parse::<u16>().unwrap();
+                        let frequency = payload.split(',').nth(1).unwrap_or_default();
+                        if frequency == "00000000" {
+                            scanner_memory.lock().unwrap().remove(&index);
+                        } else {
+                            scanner_memory
+                                .lock()
+                                .unwrap()
+                                .insert(index, payload.to_string());
+                        }
+                        return Ok("CIN,OK".to_string());
+                    }
+                    let index = rest.parse::<u16>().unwrap();
+                    if let Some(payload) = scanner_memory.lock().unwrap().get(&index).cloned() {
+                        return Ok(format!("CIN,{index},{payload}"));
+                    }
+                    return if caps.has_priority_clear {
+                        Ok(format!("CIN,{index},,00000000,AUTO,0,2,1,0"))
+                    } else {
+                        Ok(format!("CIN,{index},,00000000,,,0,1,0"))
+                    };
+                }
+                if command.contains(',') {
+                    let name = command.split(',').next().unwrap();
+                    return Ok(format!("{name},OK"));
+                }
+                Ok(format!("{command},0"))
+            });
+
+            let (name, modulation) = if caps.has_alpha_tags {
+                ("New", "FM")
+            } else {
+                ("", "")
+            };
+            let ss = format!(
+                "C-Freq\t1\t{name}\t145130000\t{modulation}\tOff\tOff\t2\tOff\r\n\
+                 C-Freq\t2\t\t0\t{modulation}\tOff\tOff\t2\tOff\r\n"
+            );
+            let boundary = format!("XbearpawMixed{}X", caps.channel_count);
+            let body = format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n\
+                 Content-Type: text/plain\r\n\r\n{ss}\r\n--{boundary}--\r\n"
+            );
+            let response = router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(uri)
+                        .header(
+                            "content-type",
+                            format!("multipart/form-data; boundary={boundary}"),
+                        )
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response.status(), StatusCode::OK, "{filename}");
+            let response_body = json_body(response).await;
+            assert_eq!(response_body["total"], 2, "{filename}: {response_body}");
+            assert_eq!(response_body["imported"], 2, "{filename}: {response_body}");
+
+            let shadow = state.shadow.read().unwrap();
+            assert!(
+                (shadow.channels[&1].frequency - 145.13).abs() < 0.00005,
+                "{filename}: the programmed row must be written, not cleared"
+            );
+            assert!(
+                shadow.channels[&2].frequency.abs() < 0.00005,
+                "{filename}: the empty row must be cleared"
+            );
+        }
+    }
+
     /// REGRESSION GUARD (#598): a drop that QUEUED an EPG leaves the flag set.
     ///
     /// The poll loop yields STS/GLG on `program_mode_active`. The Drop used to
