@@ -25,6 +25,10 @@ jobs:
           else
             python3 scripts/release_preflight.py
           fi
+      - name: Test docs readability
+        run: python3 -m unittest discover -s scripts -p 'test_docs_readability.py'
+      - name: Check docs readability
+        run: python3 scripts/docs_readability.py --check
 
   quality:
     name: Quality Gates
