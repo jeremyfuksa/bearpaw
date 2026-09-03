@@ -125,6 +125,36 @@ issues found by running Bearpaw against both radios on the bench.
   appeared, and the radio never changed. Those controls are now hidden on models
   that cannot accept them, and a rejected write is reported as one.
 
+- **Channels no longer go missing when you reorder them.** Uploading a reorder
+  wrote the moved channels one at a time, so a later write could read a slot an
+  earlier write had already changed — a swap or a rotation could duplicate one
+  channel and lose another. Every source channel is now read before any of them
+  is written. Edits made on the scanner's own keypad that Bearpaw hadn't loaded
+  survive the move, and a channel's tone survives a reorder that didn't
+  otherwise touch it.
+
+- **Restoring a BC125AT settings file keeps your channel tones.** Tone values as
+  Uniden's own tools write them — off, a CTCSS frequency, a DCS code, or search
+  — weren't understood, so every restored channel came back with its tone turned
+  off. They're read correctly now, and a tone value Bearpaw can't make sense of
+  is reported as an error on that row instead of quietly becoming "off".
+
+- **Exporting a BC75XLT now includes its search settings.** Custom search
+  ranges, per-service search, Close Call mode and search direction were left out
+  of the native export, so a backup taken from that radio couldn't put them
+  back.
+
+- **A setting that fails to save now says so.** When Bearpaw couldn't write a
+  preference to disk, the control moved on screen and silently reverted later.
+  Preferences are written to storage before the interface changes, and a failure
+  is reported instead of hidden.
+
+- **The activity list no longer shows the wrong scanner's history.** Switching
+  between a single scanner and all scanners could show the previous selection's
+  data, because the request didn't say which scope it was being made for. Hits
+  arriving live while the list was loading are no longer dropped or counted
+  twice.
+
 ## [1.0.0] — 2026-08-26
 
 First stable release. Every major feature has been exercised against the
