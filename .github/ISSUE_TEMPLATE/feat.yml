@@ -3,6 +3,20 @@ description: Something Bearpaw should do and does not.
 labels: ["feat"]
 body:
   - type: textarea
+    id: user_story
+    attributes:
+      label: User story
+      description: |
+        Lead with the situation, not a role. Bearpaw has one kind of user, so
+        "as a user" is always true and tells us nothing — when you hit this is
+        what carries the information.
+      value: "When I'm "
+      placeholder: |
+        When I'm entering a long list of frequencies from a spreadsheet, I want to
+        paste them in one go, so that I'm not making six clicks per channel.
+    validations:
+      required: true
+  - type: textarea
     id: problem
     attributes:
       label: The problem

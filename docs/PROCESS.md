@@ -36,6 +36,25 @@ Blank issues are turned off on purpose: each template applies its own type
 label and asks for the fields that were missing last cycle, so the correct
 label is the default rather than something remembered.
 
+### Every issue opens by saying who it is for
+
+A `feat` starts with a **user story**, written situation-first:
+
+> When I'm *&lt;situation&gt;*, I want *&lt;capability&gt;*, so that *&lt;outcome&gt;*.
+
+Lead with the situation rather than a role. Bearpaw has one kind of user, so
+"as a user" is always true and carries no information; *when* someone hits this
+is the part that does. A story you cannot write without saying "as a user" is
+usually a sign the issue is a solution in search of a problem.
+
+A `bug` answers the same question as **impact** — who is affected, and what
+they cannot do. That is the honest form for a defect, and it is what decides
+the severity.
+
+A `chore` has neither, on purpose. A flaky test has no user, and a required
+field that can only be filled with filler teaches everyone to skim the whole
+form.
+
 > *Enforced by:* `PR Preflight` checks for a closing keyword in the pull request
 > body. Advisory.
 
