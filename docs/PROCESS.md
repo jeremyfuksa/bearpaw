@@ -94,11 +94,15 @@ Dependabot writes its own labels (`dependencies`, `javascript`,
 | **Epic** — a container that spawns items across releases | `epic` | **Never** |
 | **Item** — one shippable change | none | **Always** |
 
-A milestone holding "Android port" can never close, and the release gate blocks
-on open milestone items — so a goal filed into a milestone freezes releases on
-that line permanently. An epic spans releases on purpose: #412 (multiple
-scanner profiles) gives one release the scanner picker and a later one
-hot-swap, rather than one release trying to swallow all of it.
+**An epic spans releases by design** — that is what makes it an epic. #412
+(multiple scanner profiles) gives one release the scanner picker and a later
+one hot-swap, rather than one release trying to swallow all of it. So an epic
+in a milestone is still open when that milestone's tag goes out, and the
+release gate blocks on open milestone items. A goal spans years, so more so.
+
+They are not *unclosable* — GitHub does not close a parent automatically when
+its sub-issues close, but a person closes it by hand once the children are
+done. The problem is the span, not the closing.
 
 **Items** go in a milestone named for the tag: `v1.1.1`, `v1.2.0`. **No
 milestone means the item is not in a release** — that is the whole definition,
@@ -106,8 +110,23 @@ and there is no other list.
 
 > *Enforced by:* `PR Preflight` checks that a pull request has a milestone
 > (advisory). `release_status.py` reports a milestone that contains a `goal` or
-> an `epic`, because those can never close. The **release gate blocks a tag
-> whose milestone has open items** — see step 10.
+> an `epic`, because neither will close inside one release. The **release gate
+> blocks a tag whose milestone has open items** — see step 10.
+
+### Where the roadmap lives instead
+
+A milestone is load-bearing: the release gate reads it, so it has to be able to
+reach zero. That makes it the wrong place to record intent.
+
+Intent goes on the **`Horizon` field** of the
+[Bearpaw project](https://github.com/users/jeremyfuksa/projects/1) —
+`Now` / `Next` / `Later` / `Someday`. Nothing gates on it, so it is free to be
+aspirational. A goal like #504 (Android port) sits at `Someday` with no
+milestone: visible on the roadmap, invisible to the release gate.
+
+Use **sub-issues** to attach an epic's children to it — that is what gives the
+epic a real progress bar, rather than a list of "part of #412" written in prose
+that nothing can read.
 
 ## 4. How much goes in a release
 
