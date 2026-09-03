@@ -29,6 +29,11 @@ See [`CLAUDE.md`](CLAUDE.md) for the details.
 
 ## The bar for a change
 
+[`docs/PROCESS.md`](docs/PROCESS.md) is the full description of how work is
+filed, labelled, built, documented and released, and each rule there names the
+check that enforces it. The short version:
+
+
 1. **Small, single-purpose PRs.** One concern per PR, independently revertible,
    reviewable in under ten minutes. If a change grows past ~250 lines, split it.
 2. **All CI checks green locally before you push.** Never push to retry CI —

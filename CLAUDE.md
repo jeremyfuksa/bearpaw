@@ -300,6 +300,9 @@ Gated by the `check_updates_on_launch` preference (default `true`, toggled on th
 
 ## Documentation
 
+- [`docs/PROCESS.md`](docs/PROCESS.md) — how work is filed, labelled, built,
+  documented and released, and which check enforces each rule. Read it before
+  opening an issue or a PR.
 - [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) — canonical wire-protocol reference
 - [`docs/API_SPEC.md`](docs/API_SPEC.md) — REST + WebSocket API contract
 - [`docs/WEBSOCKET_SCHEMA.md`](docs/WEBSOCKET_SCHEMA.md) — WS message shapes
@@ -362,7 +365,17 @@ If a path filter is ever wanted back, it must ship together with a companion wor
 
 ## Definition of done / PR discipline
 
+[`docs/PROCESS.md`](docs/PROCESS.md) is the authoritative description of this
+process; what follows is the part that matters most while writing code. Where
+the two disagree, `PROCESS.md` is the one that is kept current against the
+checks.
+
 Every change lands via a PR to `main` — never push to `main` directly, even for one-line fixes.
+
+**Every PR links an issue** (`Fixes #123`), carries exactly one type label
+(`bug`, `feat`, `docs`, `chore`), and has a milestone. A `bug` or `feat` PR
+writes its own `CHANGELOG.md` entry under `[Unreleased]` — not at release time.
+The advisory `PR Preflight` check reports all four.
 
 1. **Branch off `main`** with a semantic prefix: `phase/`, `feat/`, `fix/`, `cleanup/`, `chore/`, `docs/`.
 2. **Tiny, single-purpose PRs.** One concern per PR, independently revertible, reviewable in under 10 minutes. If it's growing past ~250 LOC, split it.

@@ -1,6 +1,14 @@
 # Release checklist
 
-Use this checklist for every stable or pre-release tag.
+Use this checklist for every stable or pre-release tag. It is step 9 of
+[`PROCESS.md`](PROCESS.md), which describes everything leading up to it.
+
+Start here — it answers "are we ready?" in ten lines, and every item below that
+it can check, it checks:
+
+```bash
+python3 scripts/release_status.py
+```
 
 - Confirm the version and date in `CHANGELOG.md`.
 - Confirm the shipped version fields in both Cargo manifests,
