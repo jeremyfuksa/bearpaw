@@ -19,7 +19,7 @@ Where two objects could answer the same question, one of them is deleted.
 | What kind of change is this, and how bad? | Labels — one value per axis |
 | What is in this release? | The milestone |
 | Where is this right now? | The project board |
-| What changed for a user? | `CHANGELOG.md`, under `[Unreleased]` |
+| What changed for a user? | `CHANGELOG.md`, under the version being built |
 | Is this branch finished? | It does not exist — merged branches are deleted |
 
 ## 1. File an issue first
@@ -209,7 +209,8 @@ If you spot unrelated mess while working, file it. Do not fix it here.
 ## 8. Write the changelog entry in the pull request that earns it
 
 A `bug` or `feat` change adds its own entry to `CHANGELOG.md` under
-`[Unreleased]`, in plain language, describing what a **user** will notice —
+the section for the version currently being built — today `## [1.1.1]` — in
+plain language, describing what a **user** will notice —
 not what the code now does.
 
 Do not save this for release time. Reconstructing the changelog at the end is
@@ -250,7 +251,7 @@ python3 scripts/release_status.py
 ```
 
 It reports the declared version, whether the preflight passes, whether the tag
-exists, the milestone state, anything still sitting under `[Unreleased]`, and
+exists, the milestone state, what has landed in this version's section, and
 any remote branch that is fully merged and undeleted.
 
 Then work through [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) and push the
