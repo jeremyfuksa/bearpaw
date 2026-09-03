@@ -459,11 +459,16 @@ fn run_poll_loop_usb(
             thread::sleep(Duration::from_millis(120));
         }
         // REGRESSION GUARD (#513): a device we just claimed cannot be gone. If
-        // its FIRST read says otherwise, the endpoint is wedged, and only
-        // re-enumeration heals it -- `clear_halt` already ran during `open` and
-        // demonstrably does not. Re-enumerating invalidates this session, so
-        // drop it and let the outer loop open a fresh one. Bounded to one
-        // attempt per episode by `wedge_reset_used`; see `is_wedged_after_open`.
+        // its FIRST read says otherwise, the endpoint is wedged, and the replug
+        // is the only cure anyone has confirmed -- `clear_halt` already ran
+        // during `open` and demonstrably does not heal it. Re-enumerating is
+        // that replug in software; it invalidates this session, so drop it and
+        // let the outer loop open a fresh one. Bounded to one attempt per
+        // episode by `wedge_reset_used`.
+        //
+        // `is_wedged_after_open` carries what is and is not evidenced here:
+        // the recovery is hardware-verified, the wedge itself never
+        // reproduced. Read it before concluding anything from this branch.
         if is_wedged_after_open(mdl_set, device_gone, wedge_reset_used) {
             warn!(
                 "USB endpoint appears wedged on {} (claimed, then reported gone \
@@ -776,10 +781,32 @@ fn should_announce_connect(mdl_set: bool, device_gone: bool) -> bool {
 /// `is_device_gone` classifies as gone (correctly, for every other caller)
 /// arriving from a pipe that has stopped carrying data for this process.
 ///
-/// That is the #513 wedge: SIGTERM the backend mid-poll and every later open
-/// succeeds, then fails its first read with `Input/Output Error`, forever. Only
-/// a physical replug clears it — which is exactly what `UsbTransport::reset`
-/// asks the OS to do.
+/// That is the #513 wedge as reported: after the backend stopped mid-poll,
+/// every later open succeeded and then failed its first read with
+/// `Input/Output Error`, indefinitely, until the scanner was physically
+/// replugged. `UsbTransport::reset` asks the OS to do what that replug does.
+///
+/// **This has never been observed curing a real wedge, because the wedge would
+/// not reproduce.** On 2026-09-03, against a BC125AT on macOS 27.0, thirteen
+/// attempts produced thirteen clean reconnects: one `SIGTERM` mid-poll (the
+/// issue's own recipe), six `SIGKILL` mid-poll at varying offsets in the tick,
+/// and six `SIGKILL` inside the `PRG` bracket of a memory sync. What IS
+/// verified is the recovery: forcing this branch on real hardware made
+/// `reset()` re-enumerate the radio in ~2.6 s, after which the reopen succeeded
+/// and `MDL` answered normally.
+///
+/// Note the issue's recipe cannot be right as written: `SIGTERM` is handled,
+/// via `SignalKind::terminate` feeding `with_graceful_shutdown` in
+/// `api::run_server`, so `kill <pid>` is the CLEAN shutdown path rather than a
+/// crash. Whether that handler postdates the 2026-08-29 sighting, or the wedge
+/// needs a kill landing inside a bulk transfer that was never hit, is unknown.
+///
+/// So if this is being read while chasing a recurrence: the log line
+/// `USB endpoint appears wedged` is the diagnostic. Its presence confirms this
+/// path fired and says whether the reopen after it succeeded; its absence rules
+/// this path out entirely, and the fault is elsewhere. Do not assume the
+/// reasoning above has been proven against hardware — only the recovery has.
+/// See #672.
 ///
 /// `reset_used` bounds it to ONE reset per wedge episode, cleared by the next
 /// `MDL` that answers. Without that bound a scanner that is powered off but
