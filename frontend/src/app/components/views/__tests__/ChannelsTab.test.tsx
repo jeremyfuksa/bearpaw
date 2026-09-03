@@ -542,6 +542,31 @@ describe('ChannelsTab', () => {
         expect(toast.error).toHaveBeenCalledWith('Failed to export channels');
       });
     });
+
+    // REGRESSION GUARD (#639): an export refused because channel memory is
+    // incomplete must SAY SO.
+    //
+    // The backend refuses rather than inventing the missing rows, but every
+    // export handler collapsed non-200 into "Failed to export", which reads as
+    // a broken app rather than an action the user can take. The generic case
+    // above is the paired half: a build that returns the sync message for
+    // every failure passes this one alone.
+    it('should tell the user to sync when the channel image is incomplete', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        json: vi.fn().mockResolvedValue({ error: 'memory_not_synced', code: 409 }),
+      } as unknown as Response);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Export/i }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: /^CSV$/i }));
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          'Sync scanner memory before exporting — the channel list is incomplete',
+        );
+      });
+    });
   });
 
   describe('Table Header', () => {

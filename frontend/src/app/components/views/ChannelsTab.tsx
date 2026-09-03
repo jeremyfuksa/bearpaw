@@ -1162,11 +1162,28 @@ export function ChannelsTab() {
     toast.success('Drafts discarded');
   }, [draftChanges, isUploading, clearMemoryDrafts, setBankOrders]);
 
+  // An export is a backup, so the backend refuses one built from a partial
+  // channel image rather than inventing the missing rows (#639). That is not a
+  // failure the user can do anything about unless we say what it is — every
+  // export handler used to collapse it into "Failed to export", which reads as
+  // a broken app rather than "sync first".
+  const exportFailureMessage = async (response: Response, fallback: string) => {
+    try {
+      const body = await response.json();
+      if (body?.error === 'memory_not_synced') {
+        return 'Sync scanner memory before exporting — the channel list is incomplete';
+      }
+    } catch {
+      // Non-JSON body: fall through to the generic message.
+    }
+    return fallback;
+  };
+
   const handleExportCSV = async () => {
     try {
       const response = await fetch(`${API_BASE}/memory/export/csv`);
       if (!response.ok) {
-        throw new Error('Failed to export CSV');
+        throw new Error(await exportFailureMessage(response, 'Failed to export channels'));
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
       const where = await saveExport('channels.csv', bytes);
@@ -1174,7 +1191,7 @@ export function ChannelsTab() {
       toast.success(where === 'saved' ? 'Channels saved' : 'Channels exported successfully');
     } catch (error) {
       console.error('Failed to export CSV', error);
-      toast.error('Failed to export channels');
+      toast.error(error instanceof Error ? error.message : 'Failed to export channels');
     }
   };
 
@@ -1184,7 +1201,11 @@ export function ChannelsTab() {
     const toastId = toast.loading('Exporting BC75XLT format…');
     try {
       const response = await fetch(`${API_BASE}/memory/export/bc75xlt_ss`);
-      if (!response.ok) throw new Error(String(response.status));
+      if (!response.ok) {
+        throw new Error(
+          await exportFailureMessage(response, 'Failed to export BC75XLT settings file'),
+        );
+      }
       const bytes = new Uint8Array(await response.arrayBuffer());
       const where = await saveExport('scanner.bc75xlt_ss', bytes);
       toast.dismiss(toastId);
@@ -1194,7 +1215,9 @@ export function ChannelsTab() {
     } catch (error) {
       console.error('Failed to export BC75XLT settings file', error);
       toast.dismiss(toastId);
-      toast.error('Failed to export BC75XLT settings file');
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to export BC75XLT settings file',
+      );
     } finally {
       setIsExportingSs(false);
     }
@@ -1210,7 +1233,7 @@ export function ChannelsTab() {
     try {
       const response = await fetch(`${API_BASE}/memory/export/bc125at_ss`);
       if (!response.ok) {
-        throw new Error('Failed to export BC125AT format');
+        throw new Error(await exportFailureMessage(response, 'Failed to export BC125AT format'));
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
       const where = await saveExport('scanner.bc125at_ss', bytes);
@@ -1224,7 +1247,9 @@ export function ChannelsTab() {
       );
     } catch (error) {
       console.error('Failed to export BC125AT format', error);
-      toast.error('Failed to export BC125AT format', { id: toastId });
+      toast.error(error instanceof Error ? error.message : 'Failed to export BC125AT format', {
+        id: toastId,
+      });
     } finally {
       setIsExportingSs(false);
     }
