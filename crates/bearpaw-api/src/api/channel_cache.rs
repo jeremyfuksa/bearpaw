@@ -69,7 +69,7 @@ fn tone_kind_from_text(text: &str) -> ToneSquelchKind {
 /// This does NOT identify the radio -- that is `scanner_id`'s job (#570), and
 /// keeping the two questions apart is what stops one number from quietly
 /// answering both, the way the hardcoded `/ 50` did for bank derivation.
-fn is_complete_image(channels: &HashMap<u16, ChannelData>, channel_count: u16) -> bool {
+pub(crate) fn is_complete_image(channels: &HashMap<u16, ChannelData>, channel_count: u16) -> bool {
     channel_count > 0
         && channels.len() == channel_count as usize
         && channels.keys().max().copied() == Some(channel_count)

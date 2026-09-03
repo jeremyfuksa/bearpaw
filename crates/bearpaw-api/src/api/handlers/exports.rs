@@ -128,6 +128,47 @@ pub(crate) fn ss_tone_label(ch: &ChannelData) -> String {
     }
 }
 
+/// Refuse to export unless the shadow is a COMPLETE image of the radio.
+///
+/// An export is the user's backup, and since #636 an empty `.ss` row is an
+/// explicit CLEAR -- so a file written from a partial shadow is not merely
+/// incomplete on disk, it is a set of instructions that will be written BACK
+/// to the radio on the next restore.
+///
+/// The three exporters failed differently from this one cause, which is why
+/// the check lives here rather than being patched into each:
+///
+/// - `export_bc75xlt_ss_file` INVENTED a row for a missing channel
+///   (`ch.map(..).unwrap_or(false)`), producing `freq 0, lockout Off,
+///   priority Off` -- indistinguishable from a real empty slot, and wrong.
+///   Observed on the dev unit 2026-09-02: 49 slots absent from the shadow
+///   after an import, all exported as `lockout Off` where the radio reports
+///   `On`.
+/// - `export_bc125at_ss_file` OMITTED it (`if let Some(..) = by_index.get`),
+///   writing a file with fewer than `channel_count` `C-Freq` rows. Uniden's
+///   own tool always writes every slot, so that file is malformed too.
+/// - `export_csv` omits it as well.
+///
+/// `is_complete_image` is the same predicate the cache-write side uses (#567,
+/// #569) and asks exactly this question: `channel_count` entries covering
+/// `1..=channel_count`. Reusing it keeps one answer to one question instead of
+/// three call sites each guessing.
+///
+/// 409 rather than 500: nothing is broken, the caller just has to sync first.
+/// It matches `sync_in_progress`, which the `.ss` exporters already return.
+fn require_complete_channel_image(state: &AppState) -> Result<(), ApiError> {
+    let channel_count = state.capabilities().channel_count;
+    let complete = {
+        let shadow = state.shadow.read().unwrap();
+        crate::api::channel_cache::is_complete_image(&shadow.channels, channel_count)
+    };
+    if complete {
+        Ok(())
+    } else {
+        Err(ApiError::Conflict("memory_not_synced".to_string()))
+    }
+}
+
 pub(crate) async fn export_bc125at_ss_file(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -135,6 +176,7 @@ pub(crate) async fn export_bc125at_ss_file(
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
+    require_complete_channel_image(&state)?;
     // Capability, not a substring match on the model name. The old gate --
     // `model.contains("BC125AT")` -- worked only by luck: "BC125AT" is a
     // substring of "BCT125AT". The BC75XLT has its own settings-file layout
@@ -533,6 +575,7 @@ pub(crate) async fn export_bc75xlt_ss_file(
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
+    require_complete_channel_image(&state)?;
     let caps = state.capabilities();
     if caps.ss_format != "bc75xlt" {
         return Err(ApiError::BadRequest("unsupported_model".to_string()));
@@ -756,7 +799,13 @@ fn on_off_bool(v: bool) -> &'static str {
     }
 }
 
-pub(crate) async fn export_csv(State(state): State<AppState>) -> impl IntoResponse {
+pub(crate) async fn export_csv(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
+    // Same reason as the `.ss` exporters: a CSV written from a partial shadow
+    // is a partial backup that looks whole. This one omits rows rather than
+    // inventing them, which is less dangerous and still wrong.
+    require_complete_channel_image(&state)?;
     let mut rows = Vec::new();
     rows.push(
         "Index,Frequency,Modulation,Alpha Tag,Delay,Lockout,Priority,CTCSS/DCS,Bank".to_string(),
@@ -784,13 +833,13 @@ pub(crate) async fn export_csv(State(state): State<AppState>) -> impl IntoRespon
         ));
     }
 
-    (
+    Ok((
         [
             ("content-type", "text/csv"),
             ("content-disposition", "attachment; filename=channels.csv"),
         ],
         rows.join("\n"),
-    )
+    ))
 }
 
 pub(crate) async fn import_csv(
@@ -1390,10 +1439,16 @@ mod tests {
         state.device.write().unwrap().capabilities = Some(BC125AT_FAMILY);
         {
             let mut shadow = state.shadow.write().unwrap();
-            // Banks 1, 2 and 10 on a 50-per-bank model. Index 1 is deliberately
-            // included: it derives to bank 1, so a hardcoded 1 would pass on
-            // that row alone and fail on the other two.
-            for index in [1u16, 60, 500] {
+            // The whole map, because `require_complete_channel_image` refuses
+            // to export a partial shadow (#639) -- an export is a backup, and a
+            // backup written from an incomplete image is wrong in a way the
+            // file cannot show. The fill is a PRECONDITION, not the subject:
+            // only indices 1, 60 and 500 are asserted below.
+            //
+            // Every slot is programmed. A cleared slot would be skipped by
+            // `parse_import_csv_row` before the bank check, which is the
+            // silent half of #604 and would hide rows from the assertion.
+            for index in 1..=BC125AT_FAMILY.channel_count {
                 shadow.channels.insert(
                     index,
                     ChannelData {
@@ -1426,11 +1481,121 @@ mod tests {
             seen.push((parsed.index, parsed.bank));
         }
 
+        // EVERY row must survive the round trip -- the bug this guards was
+        // "350 programmed channels, 350 errors, 0 imported".
+        assert_eq!(seen.len(), BC125AT_FAMILY.channel_count as usize);
+
+        // Banks 1, 2 and 10 on a 50-per-bank model. Index 1 is deliberately
+        // included: it derives to bank 1, so a hardcoded 1 would pass on that
+        // row alone and fail on the other two.
         seen.sort();
+        let sampled: Vec<(u16, u8)> = seen
+            .iter()
+            .copied()
+            .filter(|(index, _)| matches!(index, 1 | 60 | 500))
+            .collect();
         assert_eq!(
-            seen,
+            sampled,
             vec![(1u16, 1u8), (60, 2), (500, 10)],
             "export must write the bank derived from the connected scanner"
+        );
+    }
+
+    /// REGRESSION GUARD (#639): an export from an INCOMPLETE shadow is
+    /// refused, not invented.
+    ///
+    /// `export_bc75xlt_ss_file` filled a missing channel with
+    /// `ch.map(..).unwrap_or(false)`, emitting `freq 0, lockout Off, priority
+    /// Off` -- a row indistinguishable from a real empty slot and wrong.
+    /// Observed on the dev unit 2026-09-02: 49 slots absent from the shadow
+    /// after an import, every one exported as `lockout Off` where the radio
+    /// reports `On`. The other two exporters OMIT the row instead, which is a
+    /// short file rather than a lying one, and still not a backup.
+    ///
+    /// Since #636 an empty `.ss` row is an explicit CLEAR, so such a file is
+    /// not merely wrong on disk -- restoring it writes the invented state to
+    /// the radio.
+    ///
+    /// The shape asserted is the one actually seen: a shadow holding only the
+    /// PROGRAMMED channels, with the empty slots absent. Seeding an empty
+    /// shadow would pass for a build that only rejects `is_empty()`.
+    #[tokio::test]
+    async fn an_export_from_an_incomplete_shadow_is_refused() {
+        for caps in [BC125AT_FAMILY, BC75XLT] {
+            let state = default_state();
+            state.device.write().unwrap().capabilities = Some(caps);
+            {
+                // Every slot but the last: exactly what an import of a file
+                // with one empty row leaves behind.
+                let mut shadow = state.shadow.write().unwrap();
+                for index in 1..caps.channel_count {
+                    shadow.channels.insert(
+                        index,
+                        ChannelData {
+                            index,
+                            frequency: 146.52,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+
+            let err = require_complete_channel_image(&state)
+                .expect_err("a partial shadow must not be exportable");
+            // The CODE matters, not just that it errored: the frontend keys
+            // its "sync first" message off it, and a different 409 would send
+            // the user somewhere useless.
+            assert!(
+                matches!(&err, ApiError::Conflict(code) if code == "memory_not_synced"),
+                "{}: got {err:?}",
+                caps.ss_format
+            );
+
+            let response = export_csv(State(state)).await.into_response();
+            assert_eq!(
+                response.status(),
+                axum::http::StatusCode::CONFLICT,
+                "{}: csv export must refuse too",
+                caps.ss_format
+            );
+        }
+    }
+
+    /// The paired half: a COMPLETE shadow still exports, with a row per slot.
+    ///
+    /// Without this, a build that refuses every export passes the guard above
+    /// perfectly. The row count is asserted rather than "it returned 200",
+    /// because omitting rows is one of the two failure modes being fixed.
+    #[tokio::test]
+    async fn a_complete_shadow_still_exports_every_row() {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC125AT_FAMILY);
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for index in 1..=BC125AT_FAMILY.channel_count {
+                shadow.channels.insert(
+                    index,
+                    ChannelData {
+                        index,
+                        frequency: 146.52,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        require_complete_channel_image(&state).expect("a full shadow is exportable");
+
+        let response = export_csv(State(state)).await.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let csv = String::from_utf8(bytes.to_vec()).unwrap();
+        assert_eq!(
+            csv.lines().count(),
+            BC125AT_FAMILY.channel_count as usize + 1,
+            "one header plus one row per slot"
         );
     }
 
