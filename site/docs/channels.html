@@ -349,33 +349,55 @@
         <h3 id="exporting">Exporting</h3>
         <p>
           <strong>Export</strong> saves your channels to a file. Pick
-          <strong>CSV</strong> for just the channel list, or
-          <strong>BC125AT</strong> for the full backup. The app writes
-          <code>channels.csv</code> or <code>scanner.bc125at_ss</code> and lets
-          you choose where it goes.
+          <strong>CSV</strong> for just the channel list, or your radio's
+          <strong>settings file</strong> for the full backup. The app writes
+          <code>channels.csv</code>, <code>scanner.bc125at_ss</code> or
+          <code>scanner.bc75xlt_ss</code> and lets you choose where it goes.
         </p>
         <p>
-          The <code>.bc125at_ss</code> format is the one Uniden's own software
-          uses, and it describes a 500-channel BC125AT-family radio. It isn't
-          offered for a BC75XLT — use CSV there.
+          The settings-file format is the one Uniden's own software uses, and
+          there is one per radio family: <code>.bc125at_ss</code> describes a
+          500-channel BC125AT-family radio, <code>.bc75xlt_ss</code> a
+          300-channel BC75XLT. Bearpaw offers whichever matches the scanner
+          that's plugged in.
+        </p>
+        <p>
+          Export needs the full channel list first. If Bearpaw hasn't finished
+          reading your scanner, it stops and asks you to sync — a backup written
+          from a half-read list looks complete without being complete, and you
+          would only find out when you tried to restore it.
         </p>
 
         <h3 id="importing">Importing</h3>
         <p>
           <strong>Import</strong> loads channels from a file, and reads either
-          format automatically. A CSV brings in just the channels. A
-          <code>.bc125at_ss</code> file brings in everything it holds and
+          format automatically. A CSV brings in just the channels. A settings
+          file brings in everything it holds and
           <strong>overwrites all channels and settings</strong> on the radio, so
           the app asks you to confirm before it does.
         </p>
         <div class="callout">
           <p>
+            <strong>A settings file is a complete picture of the radio, not a
+            list of additions.</strong> Restoring one makes the scanner match
+            the file exactly. Where the file records a channel as empty, Bearpaw
+            <strong>erases that channel on the radio</strong> — including
+            channels you programmed after you saved the file. Restore a file
+            saved from a blank scanner and you clear every channel.
+          </p>
+          <p>
+            If you only want to add channels without touching the rest, use a
+            CSV instead.
+          </p>
+        </div>
+        <div class="callout">
+          <p>
             Import writes straight to the scanner. Unlike a hand edit, it isn't
             held as a draft: the file's channels are written to the radio as the
-            import runs, with a progress bar covering the screen while it works (a
-            full native-file restore is around 80 seconds of writes). When it
-            finishes, Bearpaw re-reads the channels so the list matches what's now
-            in the radio.
+            import runs, with a progress bar covering the screen while it works.
+            A full settings-file restore writes every channel slot, empty ones
+            included, so it takes a few minutes. When it finishes, Bearpaw
+            re-reads the channels so the list matches what's now in the radio.
           </p>
         </div>
 
