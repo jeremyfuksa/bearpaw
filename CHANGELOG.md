@@ -4,9 +4,10 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.1]
+## [1.1.1] — 2026-09-03
 
-_In progress. Entries land here as they merge; the date is added at release._
+A single reliability fix for macOS, plus test and process work a user does not
+see.
 
 ### Fixed
 
@@ -16,8 +17,10 @@ _In progress. Entries land here as they merge; the date is added at release._
   closing — so every restart found the scanner, then failed to read from it,
   and the only way out was to unplug the scanner and plug it back in. Bearpaw
   now asks the system to re-establish the connection itself, which is the same
-  thing unplugging does. Restarting the app is the first thing anyone tries, and
-  now it works.
+  thing unplugging does. Restarting the app is the first thing anyone tries, so
+  it should now be the last thing you need. If a scanner ever does still refuse
+  to connect after a restart, unplugging it and plugging it back in remains the
+  sure cure.
 
 ## [1.1.0] — 2026-09-02
 
