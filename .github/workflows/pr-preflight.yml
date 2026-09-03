@@ -84,7 +84,8 @@ jobs:
               if (!files.some((f) => f.filename === 'CHANGELOG.md')) {
                 problems.push(
                   'CHANGELOG.md is untouched. A `bug` or `feat` change writes its ' +
-                    'own entry under `[Unreleased]`, in this pull request. ' +
+                    'own entry under the current version\'s heading, in this ' +
+                    'pull request. ' +
                     'Reconstructing the changelog at release time is how five 1.1 ' +
                     'fixes went unrecorded. If there is genuinely nothing a user ' +
                     'would notice, label it `chore`.'

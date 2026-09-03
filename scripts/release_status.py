@@ -22,13 +22,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import release_preflight as preflight  # noqa: E402  (needs the path above)
 
-UNRELEASED = re.compile(r"^## \[Unreleased\]\s*$", re.MULTILINE)
 NEXT_HEADING = re.compile(r"^## \[", re.MULTILINE)
 
 
-def unreleased_entries(changelog: str) -> list[str]:
-    """The bullet leads recorded under [Unreleased], in order."""
-    start = UNRELEASED.search(changelog)
+def section_entries(changelog: str, version: str) -> list[str]:
+    """The bullet leads recorded under this version's heading, in order.
+
+    The declared version always has its own section — `tests.yml` runs
+    release_preflight on every pull request, which fails when it does not — so
+    that section is the staging area for the cycle, not a separate
+    `[Unreleased]` block.
+    """
+    start = re.compile(rf"^## \[{re.escape(version)}\].*$", re.MULTILINE).search(changelog)
     if not start:
         return []
     rest = changelog[start.end() :]
@@ -158,13 +163,14 @@ def main() -> int:
             for item in unreleasable:
                 print(f"                   - {item}")
 
-    entries = unreleased_entries((root / "CHANGELOG.md").read_text(encoding="utf-8"))
+    entries = section_entries((root / "CHANGELOG.md").read_text(encoding="utf-8"), version)
+    label = f"[{version}]"
     if entries:
-        print(f"[Unreleased]       {len(entries)} entr{'y' if len(entries) == 1 else 'ies'} not yet in a release:")
+        print(f"{label:<19}{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} so far this cycle:")
         for entry in entries:
             print(f"                   - {entry[:88]}")
     else:
-        print("[Unreleased]       empty")
+        print(f"{label:<19}empty — nothing user-visible has landed yet")
 
     stale = merged_undeleted_branches()
     if stale is None:
