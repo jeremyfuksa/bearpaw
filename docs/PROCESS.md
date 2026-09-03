@@ -56,28 +56,84 @@ There is deliberately **no release label.** The milestone already says which
 release something is in, and a second home for that fact is exactly the defect
 this document exists to prevent.
 
+`goal` and `epic` are not type labels — they describe how big a thing is, not
+what kind it is, and they are what keeps an unreleasable item out of a
+milestone. See step 3.
+
 Dependabot writes its own labels (`dependencies`, `javascript`,
 `github_actions`). Leave those alone.
 
 > *Enforced by:* `PR Preflight` checks for exactly one type label. Advisory.
 
-## 3. Put it in a milestone
+## 3. Put it in a milestone — if it is an item
 
-One milestone per release, named for the tag: `v1.1.0`, `v1.2.0`. Every issue
-and every pull request gets one.
+**Three sizes of thing, and only the smallest one is releasable.**
 
-**No milestone means the item is not in a release.** That is the whole
-definition — there is no other list.
+| Size | Label | Milestone? |
+| --- | --- | --- |
+| **Goal** — a direction, possibly a year of work | `goal` | **Never** |
+| **Epic** — a container that spawns items across releases | `epic` | **Never** |
+| **Item** — one shippable change | none | **Always** |
 
-If something turns out not to be needed for the release it is in, move it to
-the next milestone. Deferring is a decision you record, not one you make by
-letting a tag go out with the work still open.
+A milestone holding "Android port" can never close, and the release gate blocks
+on open milestone items — so a goal filed into a milestone freezes releases on
+that line permanently. An epic spans releases on purpose: #412 (multiple
+scanner profiles) gives one release the scanner picker and a later one
+hot-swap, rather than one release trying to swallow all of it.
+
+**Items** go in a milestone named for the tag: `v1.1.1`, `v1.2.0`. **No
+milestone means the item is not in a release** — that is the whole definition,
+and there is no other list.
 
 > *Enforced by:* `PR Preflight` checks that a pull request has a milestone
-> (advisory). The **release gate blocks a tag whose milestone has open items** —
-> see step 8.
+> (advisory). `release_status.py` reports a milestone that contains a `goal` or
+> an `epic`, because those can never close. The **release gate blocks a tag
+> whose milestone has open items** — see step 10.
 
-## 4. Track it on the board
+## 4. How much goes in a release
+
+**A minor (`X.Y.0`) carries exactly one headline feature**, plus only the fixes
+that make that feature correct. **A patch (`X.Y.Z`) carries the fix tail and
+never a feature.**
+
+Exactly **two milestones are open at any time**: the one shipping next, and the
+one after it. So a bug found mid-cycle always has an obvious home, and nothing
+lands in the current release merely because the current release happens to be
+the only thing open.
+
+### Triaging a bug found while a release is in flight
+
+| Severity | Goes to | Effect |
+| --- | --- | --- |
+| `high` — data loss, security boundary, or the headline feature does not work | the current release | blocks the tag |
+| `medium`, `low` | the next milestone | delays nothing |
+
+**This is the rule that closes a release.** Ship when the milestone is clear
+and nothing `severity: high` is open against the headline feature. Discovery
+carries on; it just stops moving the tag.
+
+### Why this rule exists
+
+1.1 was **188 commits in eight days** — 94 fixes, 31 features, 162 files,
++29,981 lines. It was not over-scoped when it was planned. It was one feature,
+BC75XLT support, and adding a second scanner family exposed every place the
+code assumed one: 36 of those 94 fixes name a scanner, model, bank or family.
+
+You cannot plan an unknown fix tail, so scoping the milestone smaller would
+have changed nothing — the tail was never in a milestone. What was missing was
+a closing condition. While 1.1 was unshipped, every new fix belonged to it by
+default, and the tag date receded exactly as fast as bugs were found.
+
+Under the rule above, 1.1.0 would have shipped when BC75XLT worked, and the
+tail would have been 1.1.1, 1.1.2, 1.1.3 — each small enough that its changelog
+reads in a minute.
+
+The same pattern shows up twice more in that release: 29 documentation commits
+bunched at the very end, and a changelog reconstructed at release time that
+missed five user-visible fixes. **Anything that can only be done "at the end"
+is a thing the end will be too crowded to do.**
+
+## 5. Track it on the board
 
 The `Bearpaw` project board has one Status field: **Inbox → Ready → Doing → In
 review → Done.** New issues arrive in Inbox; merged pull requests move to Done.
@@ -86,7 +142,7 @@ review → Done.** New issues arrive in Inbox; merged pull requests move to Done
 repository and cannot gate CI. Where the board and the milestone disagree, the
 milestone wins.
 
-## 5. Branch
+## 6. Branch
 
 Off `main`, never off another unmerged branch. Prefix with the type:
 `fix/`, `feat/`, `docs/`, `chore/`, `ci/`, `cleanup/`, `phase/`.
@@ -97,7 +153,7 @@ cycle felt like work had been lost — fifteen of them held nothing that was not
 already on `main`, and the sixteenth belonged to a pull request that had been
 closed on purpose. Nothing was lost. There was just no cheap way to see that.
 
-## 6. Keep it small and single-purpose
+## 7. Keep it small and single-purpose
 
 One concern per pull request, independently revertible, reviewable in under ten
 minutes. Past roughly 250 lines, split it — unless the change is mechanically
@@ -106,7 +162,7 @@ intermediate state, in which case say so in the description.
 
 If you spot unrelated mess while working, file it. Do not fix it here.
 
-## 7. Write the changelog entry in the pull request that earns it
+## 8. Write the changelog entry in the pull request that earns it
 
 A `bug` or `feat` change adds its own entry to `CHANGELOG.md` under
 `[Unreleased]`, in plain language, describing what a **user** will notice —
@@ -119,7 +175,7 @@ exempt, because by definition a user notices nothing.
 > *Enforced by:* `PR Preflight` checks that a `bug` or `feat` pull request
 > touched `CHANGELOG.md`. Advisory.
 
-## 8. Green before push, then merge deliberately
+## 9. Green before push, then merge deliberately
 
 All five checks pass **locally** before you push. Never push to retry CI.
 
@@ -141,7 +197,7 @@ Auto-merge is **off** on this repository, and `--auto` does not fail cleanly
 when it is off — it silently merges immediately. Never pass it. Wait for the
 checks, confirm, then `gh pr merge <n> --squash`.
 
-## 9. Release
+## 10. Release
 
 Run this first — it answers "are we ready?" without archaeology:
 
