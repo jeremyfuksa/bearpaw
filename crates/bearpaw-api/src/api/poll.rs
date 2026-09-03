@@ -2396,11 +2396,51 @@ mod tests {
         );
     }
 
-    /// Long enough for the first open to fail and the loop to sleep through
-    /// `RECONNECT_BACKOFF_INITIAL_MS` (500 ms) into a second attempt. The two
-    /// outcomes are far apart in time — the bug ends the thread in
-    /// milliseconds, the fix never ends it — so this does not need to be tight.
-    const OPEN_RETRY_OBSERVE_MS: u64 = 900;
+    /// Ceiling for `wait_until` below, not a tuning knob. The two guards that
+    /// use it assert a state transition a correct loop reaches in milliseconds
+    /// on Linux and in about a second on macOS, where `UsbTransport::open`
+    /// pays for a full libusb `Context::new()` and bus enumeration before it
+    /// can report "no such device". A build carrying the #513 bug never
+    /// reaches it at all — so this is how long a FAILING run takes, and has no
+    /// bearing on how long a passing one does.
+    ///
+    /// This replaced a fixed 900 ms sleep that sampled the transition at an
+    /// arbitrary instant (#623). The sleep was tuned for the liveness half of
+    /// the guard, where longer is safer, and silently raced the diagnostic
+    /// half, where longer is *required*: on macOS with no scanner attached the
+    /// first enumeration outran it and `diagnostic_code` was still `None` when
+    /// the assertion fired. It failed on the one platform whose users actually
+    /// take the USB path.
+    const OPEN_FAILURE_WAIT: Duration = Duration::from_secs(15);
+
+    /// One full `RECONNECT_BACKOFF_INITIAL_MS` plus slack. The loop must
+    /// survive this window AFTER its first failed open to have demonstrably
+    /// retried rather than returned.
+    const RETRY_INTERVAL_OBSERVE: Duration =
+        Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS + 200);
+
+    /// Poll `predicate` until it holds or `timeout` elapses; report whether it
+    /// held. A bounded wait, unlike a sleep, cannot pass or fail on how busy
+    /// the host was — it only reports sooner or later.
+    fn wait_until(timeout: Duration, mut predicate: impl FnMut() -> bool) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if predicate() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// True once a failed open has been reported through `mark_disconnected`.
+    fn reported_disconnected(state: &AppState) -> bool {
+        let device = state.device.read().expect("device lock");
+        device.connection_status == "disconnected"
+            && device.diagnostic_code.as_deref() == Some("scanner_disconnected")
+    }
 
     /// REGRESSION GUARD (#513): a failed open must RETRY, not end the loop.
     ///
@@ -2416,8 +2456,14 @@ mod tests {
     /// "Bearpaw won't reconnect after I unplugged it", which is the original
     /// #513 report.
     ///
-    /// The observable is thread liveness. Restoring the `return Err` makes the
-    /// thread finish almost immediately; the correct loop never finishes.
+    /// Two observables, in this order, because they need opposite timing and a
+    /// single sleep cannot serve both (#623):
+    ///
+    /// 1. The failure is reported through `mark_disconnected` — an UPPER bound,
+    ///    waited for, since restoring the `return Err` never reports it at all.
+    /// 2. The thread is still running one retry interval later — a LOWER bound,
+    ///    since the bug ends it almost immediately and the fix never ends it.
+    ///
     /// Mutation-verified in both directions before this landed.
     ///
     /// NOTE: the spawned thread is deliberately detached and runs for the life
@@ -2440,30 +2486,28 @@ mod tests {
             )
         });
 
-        thread::sleep(Duration::from_millis(OPEN_RETRY_OBSERVE_MS));
+        // The failure goes through `mark_disconnected`, not the fatal exit
+        // path. That is what makes it MORE visible than the old behaviour: it
+        // sets `diagnostic_code` and the liveState `stale` flag the frontend
+        // keys its disconnect UI on, which the old `return Err` path did not.
+        assert!(
+            wait_until(OPEN_FAILURE_WAIT, || reported_disconnected(&state)),
+            "the retry path must report through mark_disconnected; nothing did \
+             within {:?}, which is what restoring the #513 `return Err` looks \
+             like — the loop leaves without saying why",
+            OPEN_FAILURE_WAIT
+        );
+        assert!(
+            state.live.read().expect("live lock").stale,
+            "mark_disconnected must flag liveState stale so the disconnect UI fires"
+        );
 
+        thread::sleep(RETRY_INTERVAL_OBSERVE);
         assert!(
             !handle.is_finished(),
             "a failed serial open must retry; the loop ended instead, which is \
              the #513 bug — Bearpaw serves a permanently disconnected API until \
              it is relaunched"
-        );
-
-        // And the failure goes through `mark_disconnected`, not the fatal exit
-        // path. That is what makes it MORE visible than the old behaviour: it
-        // sets `diagnostic_code` and the liveState `stale` flag the frontend
-        // keys its disconnect UI on, which the old `return Err` path did not.
-        let device = state.device.read().expect("device lock");
-        assert_eq!(device.connection_status, "disconnected");
-        assert_eq!(
-            device.diagnostic_code.as_deref(),
-            Some("scanner_disconnected"),
-            "the retry path must report through mark_disconnected"
-        );
-        drop(device);
-        assert!(
-            state.live.read().expect("live lock").stale,
-            "mark_disconnected must flag liveState stale so the disconnect UI fires"
         );
     }
 
@@ -2477,6 +2521,10 @@ mod tests {
     /// thread on a failed open. That is the exact shape the original report
     /// described: "this logged `Poll loop exited: usb device not found` once and
     /// the thread ended, so plugging the scanner back in did nothing."
+    ///
+    /// This is also the half that was environment-dependent under the old fixed
+    /// sleep (#623): it is the one whose open cost is a libusb enumeration, so
+    /// it is the one that outran a 900 ms sample on macOS.
     #[test]
     fn a_failed_usb_open_retries_instead_of_ending_the_loop() {
         let state = device_only_state();
@@ -2487,20 +2535,18 @@ mod tests {
         // attached to the machine running the suite.
         let handle = thread::spawn(move || run_poll_loop_usb(loop_state, 0xFFFF, 0xFFFF, cmd_rx));
 
-        thread::sleep(Duration::from_millis(OPEN_RETRY_OBSERVE_MS));
+        assert!(
+            wait_until(OPEN_FAILURE_WAIT, || reported_disconnected(&state)),
+            "the retry path must report through mark_disconnected; nothing did \
+             within {:?}, on the transport macOS uses for a BC125AT",
+            OPEN_FAILURE_WAIT
+        );
 
+        thread::sleep(RETRY_INTERVAL_OBSERVE);
         assert!(
             !handle.is_finished(),
             "a failed USB open must retry; the loop ended instead, which is the \
              #513 bug on the transport macOS uses for a BC125AT"
-        );
-
-        let device = state.device.read().expect("device lock");
-        assert_eq!(device.connection_status, "disconnected");
-        assert_eq!(
-            device.diagnostic_code.as_deref(),
-            Some("scanner_disconnected"),
-            "the retry path must report through mark_disconnected"
         );
     }
 }
