@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Service Search — Bearpaw docs</title>
-    <meta name="description" content="Service Search: sweep the BC125AT's factory-set frequency ranges for common radio services." />
+    <meta name="description" content="Service Search: sweep your scanner's factory-set frequency ranges for common radio services." />
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32.png" />
     <link rel="stylesheet" href="../style.css" />
     <link rel="stylesheet" href="docs.css" />
@@ -48,10 +48,23 @@
       <main class="docs-content" id="content">
         <h1>Service Search</h1>
         <p>
-          The BC125AT has built-in, factory-set frequency ranges for common radio
-          services. Service Search sweeps those ranges without you programming any
-          channels.
+          Your scanner has built-in, factory-set frequency ranges for common
+          radio services. Service Search sweeps those ranges without you
+          programming any channels.
         </p>
+        <div class="callout">
+          <p>
+            <strong>On a BC75XLT, Bearpaw can't switch these on and off.</strong>
+            The radio has service search — it's the <strong>Svc</strong> key on
+            the keypad — but it accepts no command for choosing which services
+            are included, so the switches below don't appear on the Device tab.
+            Pick your services on the radio itself.
+          </p>
+          <p>
+            The service list differs there too: <strong>WX</strong> (weather)
+            leads it, and there is no Military Air.
+          </p>
+        </div>
 
         <figure class="docs-figure">
           <img
@@ -70,13 +83,19 @@
           </p>
         </div>
         <p>
-          Ten on/off switches, one per service: <strong>Police, Fire/Emergency,
-          Ham, Marine, Railroad, Civil Air, Military Air, CB, FRS/GMRS/MURS,
-          Racing.</strong>
+          On a BC125AT-family scanner, ten on/off switches, one per service:
+          <strong>Police, Fire/Emergency, Ham, Marine, Railroad, Civil Air,
+          Military Air, CB, FRS/GMRS/MURS, Racing.</strong>
         </p>
 
         <h2 id="search-settings">Search settings</h2>
-        <p>Below the service switches, two search settings:</p>
+        <p>
+          Below the service switches, two search settings. Like the switches
+          above, <strong>these don't appear on a BC75XLT</strong> — that radio
+          reports its search settings but rejects any attempt to change them, so
+          Bearpaw hides controls it can't honour rather than showing you a slider
+          that does nothing.
+        </p>
         <ul>
           <li>
             <strong>Code Search</strong>: also decode CTCSS/DCS

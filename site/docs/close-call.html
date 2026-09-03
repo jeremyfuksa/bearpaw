@@ -113,10 +113,28 @@
             is detected.
           </li>
           <li>
-            <strong>Enabled Bands</strong>: five switches (<strong>VHF Low, Air,
-            VHF High, UHF, 800 MHz</strong>) choosing which radio bands Close Call
-            watches. Turning off bands you don't care about makes it faster and
-            reduces false hits.
+            <strong>Enabled Bands</strong>: five switches choosing which radio
+            bands Close Call watches. Turning off bands you don't care about
+            makes it faster and reduces false hits.
+          </li>
+        </ul>
+
+        <h2 id="on-a-bc75xlt">On a BC75XLT</h2>
+        <p>Two differences, both worth knowing before you go looking:</p>
+        <ul>
+          <li>
+            <strong>The bands are different, and one switch is dead.</strong>
+            A BC125AT-family scanner watches <strong>VHF Low, Air, VHF High,
+            UHF, 800 MHz</strong>. A BC75XLT watches <strong>VHF Low, Air,
+            VHF High</strong> and <strong>UHF</strong> — and its fourth switch
+            corresponds to nothing at all. Bearpaw still shows five switches
+            because that is what the radio accepts; the fourth one does nothing
+            on this model. If it looks wrong, that's why.
+          </li>
+          <li>
+            <strong>Lockout Hits While Scanning doesn't appear.</strong> That
+            radio has no command for it, so Bearpaw hides the toggle rather than
+            showing you a switch it can't set.
           </li>
         </ul>
         <nav class="docs-pagination" aria-label="Guide pages">
