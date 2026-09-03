@@ -74,6 +74,41 @@ def merged_undeleted_branches() -> list[str] | None:
     return stale
 
 
+def milestone_unreleasables(tag: str) -> list[str] | None:
+    """Open items in a milestone that are labelled `goal` or `epic`.
+
+    Neither is a shippable unit, so neither can close — and the release gate
+    blocks on open milestone items, which means one of these filed into a
+    milestone freezes every release on that line, silently and forever.
+    """
+    listing = gh(
+        "issue",
+        "list",
+        "--milestone",
+        tag,
+        "--state",
+        "open",
+        "--limit",
+        "200",
+        "--json",
+        "number,title,labels",
+    )
+    if listing is None:
+        return None
+    return unreleasable_items(json.loads(listing))
+
+
+def unreleasable_items(issues: list[dict]) -> list[str]:
+    """Of these issues, the ones labelled `goal` or `epic`."""
+    found = []
+    for issue in issues:
+        names = {label["name"] for label in issue.get("labels", [])}
+        blocking = names & {"goal", "epic"}
+        if blocking:
+            found.append(f"#{issue['number']} [{'/'.join(sorted(blocking))}] {issue['title']}")
+    return found
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
@@ -95,7 +130,10 @@ def main() -> int:
     tags = subprocess.run(
         ["git", "tag", "--list", tag], capture_output=True, text=True, check=False
     ).stdout.strip()
-    print(f"Tag {tag:<14} {'exists' if tags else 'DOES NOT EXIST — this release is unpublished'}")
+    if tags:
+        print(f"Tag {tag:<14} exists — {version} is SHIPPED; bump the version files for the next release")
+    else:
+        print(f"Tag {tag:<14} DOES NOT EXIST — this release is unpublished")
 
     milestones = gh("api", "--paginate", "repos/{owner}/{repo}/milestones?state=all")
     if milestones is None:
@@ -108,6 +146,15 @@ def main() -> int:
             print(f"Milestone          {found['open_issues']} OPEN, {found['closed_issues']} closed — the release gate will refuse this tag")
         else:
             print(f"Milestone          clear ({found['closed_issues']} closed)")
+
+        unreleasable = milestone_unreleasables(tag)
+        if unreleasable is None:
+            print("                   (could not check for goal/epic items)")
+        elif unreleasable:
+            print(f"                   {len(unreleasable)} item(s) that can NEVER close — a goal or an")
+            print("                   epic in a milestone freezes this line's releases:")
+            for item in unreleasable:
+                print(f"                   - {item}")
 
     entries = unreleased_entries((root / "CHANGELOG.md").read_text(encoding="utf-8"))
     if entries:
