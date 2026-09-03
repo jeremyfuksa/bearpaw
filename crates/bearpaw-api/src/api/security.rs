@@ -2,11 +2,12 @@
 //!
 //! Bearpaw binds to a loopback port and has no authentication, so the
 //! browser-origin attacker is the primary threat: any page the user visits
-//! can `fetch('http://127.0.0.1:8000/...')` cross-origin unless we both
-//! restrict CORS to known-good frontend origins *and* reject requests whose
-//! `Host` header is not a loopback name we expect. The second check closes
-//! the DNS-rebinding path that would otherwise reach the API through an
-//! attacker-controlled hostname.
+//! can send requests to `http://127.0.0.1:8000/...` cross-origin unless we
+//! reject untrusted `Origin` headers before routing. CORS alone only prevents
+//! the hostile page from reading the response; it does not stop simple form
+//! requests from changing state. We also reject requests whose `Host` header
+//! is not a loopback name we expect, closing the DNS-rebinding path that would
+//! otherwise reach the API through an attacker-controlled hostname.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -45,6 +46,33 @@ pub(crate) fn cors_layer() -> CorsLayer {
             Method::OPTIONS,
         ])
         .allow_headers([header::CONTENT_TYPE])
+}
+
+/// Reject browser requests from outside the frontend allowlist before a route
+/// handler can read or mutate scanner/application state. Browsers attach an
+/// `Origin` header to cross-origin requests, including simple form requests
+/// that do not trigger a CORS preflight. Requests without `Origin` remain
+/// available to trusted local, non-browser clients such as curl.
+pub(crate) async fn validate_origin(req: Request, next: Next) -> Response {
+    let origin = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok());
+    if origin_allowed(origin) {
+        next.run(req).await
+    } else {
+        (StatusCode::FORBIDDEN, "origin_not_allowed").into_response()
+    }
+}
+
+fn origin_allowed(origin: Option<&str>) -> bool {
+    match origin {
+        None => true,
+        Some(origin) => {
+            let lower = origin.to_ascii_lowercase();
+            ALLOWED_ORIGINS.iter().any(|allowed| *allowed == lower)
+        }
+    }
 }
 
 /// Build the `Host` header allowlist for a given bind address. Browsers
@@ -113,13 +141,7 @@ pub(crate) fn validate_wire_command(cmd: &str) -> Result<(), &'static str> {
 /// so absence implies a non-browser client, which we allow. Same allowlist
 /// as the CORS layer.
 pub(crate) fn ws_origin_allowed(origin: Option<&str>) -> bool {
-    match origin {
-        None => true,
-        Some(o) => {
-            let lower = o.to_ascii_lowercase();
-            ALLOWED_ORIGINS.iter().any(|allowed| *allowed == lower)
-        }
-    }
+    origin_allowed(origin)
 }
 
 #[cfg(test)]
@@ -173,5 +195,15 @@ mod tests {
         assert!(ws_origin_allowed(Some("HTTP://localhost:5173")));
         assert!(!ws_origin_allowed(Some("https://evil.example")));
         assert!(!ws_origin_allowed(Some("http://127.0.0.1:8000")));
+    }
+
+    #[test]
+    fn http_origin_allows_known_frontends_and_non_browser_clients() {
+        assert!(origin_allowed(None));
+        assert!(origin_allowed(Some("tauri://localhost")));
+        assert!(origin_allowed(Some("https://tauri.localhost")));
+        assert!(origin_allowed(Some("HTTP://localhost:5173")));
+        assert!(!origin_allowed(Some("https://attacker.example")));
+        assert!(!origin_allowed(Some("null")));
     }
 }

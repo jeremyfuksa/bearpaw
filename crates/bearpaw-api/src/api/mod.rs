@@ -383,6 +383,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/ws", get(ws::ws_handler))
         .layer(security::cors_layer())
+        .layer(axum::middleware::from_fn(security::validate_origin))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO))
@@ -2913,7 +2914,7 @@ mod tests {
     use super::*;
     use crate::protocol::capabilities::BC125AT_FAMILY;
     use axum::body::{to_bytes, Body};
-    use axum::http::{Method, Request};
+    use axum::http::{header, Method, Request};
     use std::path::PathBuf;
     use tower::util::ServiceExt;
 
@@ -3466,6 +3467,75 @@ mod tests {
         assert_eq!(body["status"], "ok");
         assert!(body.get("version").is_some());
         assert!(body.get("timestamp").is_some());
+    }
+
+    #[tokio::test]
+    async fn disallowed_browser_origins_are_rejected_before_any_handler_runs() {
+        let state = default_state();
+        state
+            .preferences
+            .lock()
+            .unwrap()
+            .insert("theme".to_string(), json!("origin-guard-sentinel"));
+        let inspection = state.clone();
+        let app = router(state);
+
+        let routes = [
+            (Method::POST, "/api/v1/preferences/reset"),
+            (Method::POST, "/api/v1/commands/hold"),
+            (Method::POST, "/api/v1/commands/scan"),
+            (Method::POST, "/api/v1/memory/sync"),
+            (Method::POST, "/api/v1/memory/sync/cancel"),
+            (Method::POST, "/api/v1/memory/program-mode/start"),
+            (Method::POST, "/api/v1/memory/program-mode/end"),
+            (Method::POST, "/api/v1/lockouts/temporary/clear"),
+            (Method::POST, "/api/v1/lockouts/clear"),
+            (Method::POST, "/api/v1/lockouts/channels/clear"),
+            (Method::DELETE, "/api/v1/lockouts/frequencies"),
+            (Method::GET, "/api/v1/memory/export/bc125at_ss"),
+        ];
+
+        for (method, uri) in routes {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(uri)
+                        .header(header::ORIGIN, "https://attacker.example")
+                        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{uri}");
+        }
+
+        assert_eq!(
+            inspection.preferences.lock().unwrap()["theme"],
+            "origin-guard-sentinel",
+            "the rejected reset must not mutate preferences"
+        );
+    }
+
+    #[tokio::test]
+    async fn trusted_browser_and_originless_local_requests_still_reach_routes() {
+        for origin in [
+            Some("tauri://localhost"),
+            Some("http://localhost:5173"),
+            None,
+        ] {
+            let mut request = Request::builder().method(Method::GET).uri("/api/v1/health");
+            if let Some(origin) = origin {
+                request = request.header(header::ORIGIN, origin);
+            }
+            let response = router(default_state())
+                .oneshot(request.body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "origin={origin:?}");
+        }
     }
 
     #[tokio::test]

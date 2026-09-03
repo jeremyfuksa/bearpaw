@@ -27,7 +27,8 @@ Bearpaw is a desktop control interface for the Uniden BC125AT family and
 BC75XLT scanner. The parts worth flagging:
 
 - **The backend is an unauthenticated loopback HTTP + WebSocket server** bound to
-  `127.0.0.1` by default. It relies on CORS and Host-header hardening
+  `127.0.0.1` by default. It rejects untrusted browser `Origin` headers before
+  routing, restricts response access with CORS, and validates the Host header
   ([`crates/bearpaw-api/src/api/security.rs`](crates/bearpaw-api/src/api/security.rs))
   to keep other web pages the user visits from reaching it. Bypasses of that
   boundary (cross-origin fetch, DNS rebinding) are in scope.
