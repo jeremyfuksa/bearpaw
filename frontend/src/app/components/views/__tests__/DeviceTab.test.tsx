@@ -12,6 +12,7 @@ import {
 } from '../DeviceTab';
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import {
+  BC125AT_CAPS,
   BC75XLT_CAPS,
   createTestChannel,
   createTestDeviceInfo,
@@ -459,6 +460,57 @@ describe('DeviceTab', () => {
       expect(screen.queryByRole('switch', { name: /Police/i })).not.toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Device Config');
       expect(screen.getByRole('heading', { level: 2 })).not.toHaveTextContent('Service Search');
+    });
+  });
+
+  // REGRESSION GUARD (#638): Search Settings are HIDDEN on a model that cannot
+  // take them.
+  //
+  // The BC75XLT answers a `SCO` read but rejects every write, including a write
+  // of the value it just reported (hardware 2026-09-02). Worse, `set_search`
+  // treated `SCO,ERR` as success, so the slider moved, the toast said OK, and
+  // the radio never changed — a control that looks like it works.
+  //
+  // Both halves are pinned. Asserting only that it disappears on a BC75XLT
+  // passes for a build that hides Search Settings from everyone.
+  describe('Search Settings visibility (#638)', () => {
+    it('shows the controls on a model that can take SCO', async () => {
+      renderDeviceTab();
+      await selectCategory(/Service Search/i);
+
+      expect(screen.getByRole('heading', { name: /Search Settings/i })).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: /Code Search/i })).toBeInTheDocument();
+      expect(screen.getByRole('slider', { name: /Search Delay/i })).toBeInTheDocument();
+    });
+
+    // Swapping to BC75XLT_CAPS would be the obvious way to write this, and it
+    // is WRONG: that model also lacks `SSG`, so the whole Service Search
+    // category leaves the list and the panel falls back to Device Config (see
+    // the #533 guard above). The block then disappears whether or not the gate
+    // exists — the first draft of this test passed with the gate replaced by
+    // `{true && (...)}`, caught by mutation rather than review.
+    //
+    // Varying ONLY `has_search_options` keeps the category on screen, so the
+    // gate is the single thing under test.
+    it('hides them on a model that cannot', async () => {
+      renderDeviceTab();
+      await selectCategory(/Service Search/i);
+      expect(screen.getByRole('heading', { name: /Search Settings/i })).toBeInTheDocument();
+
+      act(() => {
+        useStore.setState({
+          deviceInfo: {
+            ...createTestDeviceInfo(),
+            capabilities: { ...BC125AT_CAPS, has_search_options: false },
+          },
+        });
+      });
+
+      // The category is still here — only the SCO controls went away.
+      expect(screen.getByRole('switch', { name: /Police/i })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /Search Settings/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: /Code Search/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('slider', { name: /Search Delay/i })).not.toBeInTheDocument();
     });
   });
 
