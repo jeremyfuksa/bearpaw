@@ -32,6 +32,17 @@ issues found by running Bearpaw against both radios on the bench.
   and bank layout — so it's obvious which radio Bearpaw picked up when more than
   one is on the desk.
 
+### Security
+
+- **A web page you visit can no longer drive your scanner.** Bearpaw's local
+  API had no protection against requests sent from another site open in your
+  browser. Blocking a site from _reading_ Bearpaw's replies was never enough:
+  the request still arrived and still took effect, so a page could clear
+  channels, rewrite banks or start an import while only the response was
+  withheld. Requests from unknown websites are now refused before they reach
+  anything. Local tools that aren't a browser, such as scripts using `curl`,
+  are unaffected. Tracked as GHSA-fwgr-5f9j-r7q6.
+
 ### Fixed
 
 - **Exporting channels to CSV and importing them back now works.** Every
@@ -76,6 +87,43 @@ issues found by running Bearpaw against both radios on the bench.
   claim a generic serial adapter — including unrelated devices like development
   boards — and on Linux that could take the device's serial port away until it
   was unplugged.
+
+- **Restoring a settings file now clears the channels the file says are empty,
+  which means it can erase channels it previously left alone.** Bearpaw asks
+  "this overwrites all channels and settings" before a restore, and it did not:
+  any slot the file recorded as empty was skipped, so channels programmed since
+  the file was saved survived a restore that was supposed to replace them. A
+  file saved from a blank scanner reported "0 channels" and changed nothing.
+  Restoring now makes the scanner match the file exactly — **including emptying
+  slots** — so treat a settings file as a complete picture of the radio, not a
+  set of additions. Verified on a BC75XLT.
+
+- **Restoring a settings file on a BC75XLT now restores its settings.** It
+  applied channels only and always reported no settings written, while the same
+  confirmation promised "all channels and settings". Bank enablement, priority,
+  squelch, custom search and Close Call are all restored now. The handful of
+  settings that radio genuinely cannot accept are named in the result instead of
+  being dropped in silence, so a restore no longer claims to have done more than
+  it did.
+
+- **Exporting can no longer write a backup with invented data in it.** If
+  Bearpaw had not yet read the whole channel list from the radio, the export
+  filled the gaps: one format made up plausible-looking empty channels, the
+  other left rows out entirely. Either way the file looked complete and was not
+  — and with the restore change above, restoring such a file would write that
+  invented state back to the scanner. Exporting now refuses and tells you to
+  sync first.
+
+- **The scanner no longer reports a failed command at launch.** Starting a
+  memory sync registered it a moment after queueing it, and anything that
+  slipped into that gap waited behind a five-second sync and timed out. It
+  showed up as a failure reading banks on almost every launch.
+
+- **Search settings on a BC75XLT no longer pretend to work.** That radio accepts
+  the command that reads them but rejects every attempt to change them, and
+  Bearpaw treated the rejection as success — the slider moved, the confirmation
+  appeared, and the radio never changed. Those controls are now hidden on models
+  that cannot accept them, and a rejected write is reported as one.
 
 ## [1.0.0] — 2026-08-26
 

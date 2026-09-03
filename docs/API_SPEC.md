@@ -610,7 +610,14 @@ Download full scanner memory in Uniden `.bc125at_ss` format.
 **Errors:**
 - `400 Bad Request` (`unsupported_model`) if the model is not a BC125AT/UBC125-family scanner
 - `409 Conflict` (`sync_in_progress`) if a memory sync is in progress
+- `409 Conflict` (`memory_not_synced`) if channel memory has not been fully read — see below
 - `503 Service Unavailable` if scanner disconnected
+
+**Completeness precondition:** all three exporters require a complete channel
+image — `channel_count` entries covering `1..=channel_count` — and return
+`409 memory_not_synced` otherwise. `GET /memory/export/bc75xlt_ss` is identical
+for that model. Rationale: `require_complete_channel_image` in
+`api/handlers/exports.rs`.
 
 ---
 
@@ -650,6 +657,7 @@ Download scanner channels in CSV format.
 - No program mode required (uses cached shadow state)
 
 **Errors:**
+- `409 Conflict` (`memory_not_synced`) if channel memory has not been fully read (#639 — same precondition as the `.ss` exporters above)
 - `503 Service Unavailable` if backend error
 
 **CSV Format:**
