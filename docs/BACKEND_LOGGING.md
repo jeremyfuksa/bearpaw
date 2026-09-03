@@ -1,6 +1,6 @@
 # Backend Logging
 
-The Rust backend now uses structured tracing with both console and rotating file output.
+The Rust backend uses structured tracing, writing to both the console and rotating log files.
 
 ## Log Files
 

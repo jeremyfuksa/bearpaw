@@ -1,6 +1,6 @@
 # Bearpaw API Specification
 
-**Version:** 1.0.0 (the backend echoes its crate version at `GET /health`)
+**Version:** the backend echoes its crate version at `GET /health` — that is the authority, and this document deliberately does not restate it.
 **Protocol:** HTTP REST + WebSocket
 **Format:** JSON
 **Base URL:** `http://localhost:8000/api/v1`
