@@ -77,9 +77,11 @@ def merged_undeleted_branches() -> list[str] | None:
 def milestone_unreleasables(tag: str) -> list[str] | None:
     """Open items in a milestone that are labelled `goal` or `epic`.
 
-    Neither is a shippable unit, so neither can close — and the release gate
-    blocks on open milestone items, which means one of these filed into a
-    milestone freezes every release on that line, silently and forever.
+    Neither closes inside one release — an epic spans releases by design and a
+    goal spans years — and the release gate blocks on open milestone items. So
+    one of these filed into a milestone blocks that tag until someone notices.
+    They are not unclosable; a person closes an epic by hand once its
+    sub-issues are done. The problem is the span, not the closing.
     """
     listing = gh(
         "issue",
@@ -151,8 +153,8 @@ def main() -> int:
         if unreleasable is None:
             print("                   (could not check for goal/epic items)")
         elif unreleasable:
-            print(f"                   {len(unreleasable)} item(s) that can NEVER close — a goal or an")
-            print("                   epic in a milestone freezes this line's releases:")
+            print(f"                   {len(unreleasable)} item(s) that will not close inside one")
+            print("                   release — an epic or goal here blocks this tag:")
             for item in unreleasable:
                 print(f"                   - {item}")
 
