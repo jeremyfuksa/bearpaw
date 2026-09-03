@@ -24,12 +24,18 @@ Where two objects could answer the same question, one of them is deleted.
 
 ## 1. File an issue first
 
-**Every pull request links an issue.** The issue carries the labels, the
-severity and the milestone; the pull request points at it with a closing
-keyword — `Fixes #123`.
+**Every `feat` links an issue.** A feature is planned work: the issue carries
+the user story, the labels and the milestone, and the pull request points at it
+with a closing keyword — `Fixes #123`.
 
-This is what makes "is someone already fixing this?" answerable, and it is what
-keeps a release scope query from missing work.
+**A `fix`, `docs` or `chore` does not need one.** A fix is usually *discovered*
+work — 94 of the 1.1 fixes were found on the bench — and demanding an issue for
+each would have fired this check constantly during the busiest week of the
+cycle. An advisory check that fires on legitimate pull requests teaches people
+to ignore it, which is worse than not having it.
+
+File an issue for a fix when you want it tracked: something you are not fixing
+today, something a user reported, anything you want in a release scope query.
 
 Use a template — <https://github.com/jeremyfuksa/bearpaw/issues/new/choose>.
 Blank issues are turned off on purpose: each template applies its own type
@@ -55,8 +61,8 @@ A `chore` has neither, on purpose. A flaky test has no user, and a required
 field that can only be filled with filler teaches everyone to skim the whole
 form.
 
-> *Enforced by:* `PR Preflight` checks for a closing keyword in the pull request
-> body. Advisory.
+> *Enforced by:* `PR Preflight` checks a `feat` for a closing keyword in the
+> pull request body. Advisory.
 
 ## 2. Label it on exactly four axes
 
@@ -130,14 +136,14 @@ that nothing can read.
 
 ## 4. How much goes in a release
 
-**A minor (`X.Y.0`) carries exactly one headline feature**, plus only the fixes
-that make that feature correct. **A patch (`X.Y.Z`) carries the fix tail and
-never a feature.**
+**A minor (`X.Y.0`) ships one feature big enough to have a discovery tail, or
+several small ones.** The test is a sentence: if you cannot say what the release
+is in one, it is too big. **A patch (`X.Y.Z`) carries the fix tail and never a
+feature.**
 
-Exactly **two milestones are open at any time**: the one shipping next, and the
-one after it. So a bug found mid-cycle always has an obvious home, and nothing
-lands in the current release merely because the current release happens to be
-the only thing open.
+Keep the next milestone open as well as the current one, so a bug found
+mid-cycle has somewhere obvious to go. Nothing should land in the current
+release merely because the current release is the only thing open.
 
 ### Triaging a bug found while a release is in flight
 

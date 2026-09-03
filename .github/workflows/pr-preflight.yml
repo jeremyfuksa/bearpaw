@@ -31,18 +31,9 @@ jobs:
             const labels = pr.labels.map((l) => l.name);
             const problems = [];
 
-            // 1. Links an issue. GitHub's own closing keywords are the contract.
-            const closes = /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#\d+/i;
-            if (!closes.test(pr.body || '')) {
-              problems.push(
-                'No linked issue. The body needs a closing keyword and an issue ' +
-                  'number, e.g. `Fixes #123`. The issue is where the labels, the ' +
-                  'severity and the milestone live; this pull request points at it.'
-              );
-            }
-
-            // 2. Exactly one type label. Two answers to one question is the
-            //    defect this process exists to prevent.
+            // 1. Exactly one type label. Two answers to one question is the
+            //    defect this process exists to prevent. Checked first, because
+            //    the issue-link and changelog rules below key off it.
             const types = labels.filter((l) => TYPES.includes(l));
             if (types.length === 0) {
               problems.push(`No type label. Add exactly one of: ${TYPES.join(', ')}.`);
@@ -51,6 +42,25 @@ jobs:
                 `More than one type label (${types.join(', ')}). A change is one ` +
                   'kind of thing. If it is genuinely two, it is two pull requests.'
               );
+            }
+
+            // 2. A FEATURE links an issue. Deliberately not every pull request:
+            //    a feature is planned work and should have a stated user story
+            //    and a milestone, but a fix is usually discovered work. 94 of
+            //    the 1.1 fixes were found on the bench, and demanding an issue
+            //    for each would have fired this check constantly during the
+            //    busiest week. An advisory check that fires on legitimate pull
+            //    requests teaches people to ignore it, which is worse than not
+            //    having it at all.
+            if (types.includes('feat')) {
+              const closes = /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#\d+/i;
+              if (!closes.test(pr.body || '')) {
+                problems.push(
+                  'A `feat` needs a linked issue — a closing keyword and a number, ' +
+                    'e.g. `Fixes #123`. The issue is where the user story, the ' +
+                    'labels and the milestone live; this pull request points at it.'
+                );
+              }
             }
 
             // 3. Belongs to a release.
