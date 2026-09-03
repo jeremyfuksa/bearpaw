@@ -12,6 +12,9 @@ jobs:
   preflight:
     name: Release Preflight
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -25,10 +28,40 @@ jobs:
           else
             python3 scripts/release_preflight.py
           fi
+      - name: Test release status
+        run: python3 -m unittest discover -s scripts -p 'test_release_status.py'
       - name: Test docs readability
         run: python3 -m unittest discover -s scripts -p 'test_docs_readability.py'
       - name: Check docs readability
         run: python3 scripts/docs_readability.py --check
+
+      # A release is defined by its milestone. Tagging while that milestone
+      # still has open work is what produced 1.1.0: PR #616 set every version
+      # file on 2 September and nineteen commits landed afterwards, five of
+      # them user-visible fixes nobody wrote up. The version files agreed with
+      # each other the whole time, so no existing check could see it.
+      - name: Check the release milestone is clear
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          open=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/milestones?state=all" \
+            --jq "[.[] | select(.title == \"${tag}\")] | first | .open_issues" 2>/dev/null || true)
+          if [ -z "${open}" ] || [ "${open}" = "null" ]; then
+            echo "::error::No milestone named ${tag}. A release is defined by its" \
+                 "milestone: create it, file this release's work into it, and close" \
+                 "that work before tagging."
+            exit 1
+          fi
+          if [ "${open}" != "0" ]; then
+            echo "::error::Milestone ${tag} has ${open} open item(s). A release" \
+                 "cannot be tagged while its milestone has open work. Close them," \
+                 "or move them to a later milestone if they are genuinely deferred."
+            exit 1
+          fi
+          echo "milestone ${tag} is clear"
 
   quality:
     name: Quality Gates
