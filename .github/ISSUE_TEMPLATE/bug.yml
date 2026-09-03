@@ -8,6 +8,19 @@ body:
         One bug per issue. If you have found two, file two — they get fixed,
         labelled and released separately.
   - type: textarea
+    id: impact
+    attributes:
+      label: Who this affects, and what they cannot do
+      description: |
+        The situation this breaks — the bug's version of a user story. This is
+        what decides the severity below, so it matters more than the stack
+        trace.
+      placeholder: |
+        Anyone restoring a settings file to a BC75XLT: the restore reports success
+        and silently leaves every channel unchanged, so a backup cannot be put back.
+    validations:
+      required: true
+  - type: textarea
     id: what-happened
     attributes:
       label: What happened
