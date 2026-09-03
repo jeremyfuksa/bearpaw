@@ -333,6 +333,16 @@ pub(crate) async fn set_search(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
+    // The BC75XLT answers a `SCO` READ but rejects every write, including a
+    // write of the value it just reported (hardware 2026-09-02). Refused here
+    // rather than sent and hoped, the same guard `set_key_beep` and
+    // `set_weather` carry — the UI hides the control on such a model, so
+    // reaching this is an API client or a stale frontend.
+    if !state.capabilities().has_search_options {
+        return Err(ApiError::BadRequest(
+            "search_options_unsupported".to_string(),
+        ));
+    }
     // Validate before narrowing — a large i64 could wrap into a valid i32
     // delay. #143.
     let delay = body
@@ -354,8 +364,22 @@ pub(crate) async fn set_search(
         )
         .await;
         let response = response?;
-        let upper = response.trim().to_uppercase();
-        if !(upper == "OK" || upper.ends_with(",OK") || upper.starts_with("SCO,")) {
+        // REGRESSION GUARD (`a_rejected_sco_write_is_not_success`): the old
+        // check was `upper.starts_with("SCO,")`, which `SCO,ERR` satisfies --
+        // so a rejection was reported as `{"status":"ok"}` AND written into the
+        // settings cache, showing the user a value the radio never took.
+        //
+        // `classify_response` is the canonical classifier and already draws
+        // this distinction; `write_setting_verified` uses it. Only `Err` and
+        // `Ng` are refused, not "anything that is not OK" -- the `starts_with`
+        // clause was presumably protecting a non-OK ACK shape on some model,
+        // and there is no BC125AT here to prove otherwise. Narrowing it to the
+        // two known-bad replies fixes the reported bug without betting on an
+        // ACK shape this hardware cannot show us.
+        if matches!(
+            classify_response(&response),
+            ScannerReply::Err | ScannerReply::Ng
+        ) {
             return Err(ApiError::BadRequest("search_failed".to_string()));
         }
     }

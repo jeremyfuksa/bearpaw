@@ -7002,6 +7002,135 @@ mod tests {
         }
     }
 
+    /// REGRESSION GUARD (#638): a rejected `SCO` write is NOT success.
+    ///
+    /// The check was `upper.starts_with("SCO,")`, which `SCO,ERR` satisfies.
+    /// So a refused write returned `{"status":"ok"}` AND wrote the value into
+    /// the settings cache, showing the user a setting the radio never took.
+    /// Found on the dev BC75XLT 2026-09-02: five delay values all reported OK
+    /// and the live read never moved off 1.
+    ///
+    /// The cache assertion is the half that matters. A guard checking only the
+    /// status code passes for a build that returns 400 and caches the value
+    /// anyway -- which is the same lie, one layer down, and survives a restart
+    /// because the settings cache is persisted.
+    #[tokio::test]
+    async fn a_rejected_sco_write_is_not_success() {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC125AT_FAMILY);
+        let _fake = FakeScanner::attach(&state, |command: &str| {
+            if command == "PRG" || command == "EPG" {
+                return Ok(format!("{command},OK"));
+            }
+            if command.starts_with("SCO,") {
+                return Ok("SCO,ERR".to_string());
+            }
+            Ok("OK".to_string())
+        });
+
+        // `default_state()` already carries a `search` section, so "absent"
+        // was never the right question -- the first draft of this guard
+        // asserted it and failed for that reason rather than for the bug.
+        // UNCHANGED is what matters.
+        let before = state.settings.read().unwrap()["search"].clone();
+
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/settings/search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"delay":4,"code_search":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let after = state.settings.read().unwrap()["search"].clone();
+        assert_eq!(
+            after, before,
+            "a refused write must not reach the settings cache"
+        );
+        assert_ne!(
+            after["delay"], 4,
+            "the rejected value must not be what the UI reads back"
+        );
+    }
+
+    /// The paired half: an ACCEPTED `SCO` write still succeeds and still
+    /// caches. Without it, narrowing the check to "refuse everything" passes
+    /// the guard above perfectly.
+    #[tokio::test]
+    async fn an_accepted_sco_write_is_still_success() {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC125AT_FAMILY);
+        let _fake = FakeScanner::attach(&state, |command: &str| {
+            if command == "PRG" || command == "EPG" {
+                return Ok(format!("{command},OK"));
+            }
+            if command.starts_with("SCO,") {
+                return Ok("SCO,OK".to_string());
+            }
+            Ok("OK".to_string())
+        });
+
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/settings/search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"delay":4,"code_search":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let cached = state.settings.read().unwrap().clone();
+        assert_eq!(cached["search"]["delay"], 4);
+    }
+
+    /// REGRESSION GUARD (#638): `SCO` is refused BEFORE the wire on a model
+    /// that cannot take it.
+    ///
+    /// The BC75XLT answers a `SCO` read but rejects every write, including a
+    /// write of the value it just reported (`SCO,1,0` -> `Err`, hardware
+    /// 2026-09-02). Same guard `set_key_beep` and `set_weather` carry.
+    ///
+    /// "Nothing reached the wire" is asserted, not just the status: refusing
+    /// after sending would still stall the PRG bracket, which is #436.
+    #[tokio::test]
+    async fn sco_is_refused_before_the_wire_where_the_model_cannot_take_it() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        let fake = FakeScanner::attach(&state, |command: &str| Ok(format!("{command},OK")));
+
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/settings/search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"delay":1,"code_search":false}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            !fake
+                .transcript_with_closed_bracket()
+                .iter()
+                .any(|command| command.starts_with("SCO,")),
+            "no SCO write may reach a model that cannot take one"
+        );
+    }
+
     /// REGRESSION GUARD (#598): a drop that QUEUED an EPG leaves the flag set.
     ///
     /// The poll loop yields STS/GLG on `program_mode_active`. The Drop used to

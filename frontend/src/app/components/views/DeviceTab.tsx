@@ -1723,39 +1723,47 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 ))}
               </div>
 
-              <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
-                <h3 className="text-base font-bold text-white">Search Settings</h3>
+              {/* Hidden, not disabled, on a model that cannot take `SCO`: the
+                  BC75XLT answers a SCO read but rejects every write, including
+                  a write of the value it just reported (hardware 2026-09-02).
+                  A greyed-out control the scanner cannot honour is noise; an
+                  absent one asks no questions. See CLAUDE.md frontend pitfall
+                  #5 and #638. */}
+              {capabilities.has_search_options && (
+                <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
+                  <h3 className="text-base font-bold text-white">Search Settings</h3>
 
-                <div className="flex items-center justify-between">
-                  <label htmlFor="code-search" className="text-base font-medium text-white/70">
-                    Code Search
-                  </label>
-                  <Switch
-                    id="code-search"
-                    className="data-[state=checked]:bg-brand-primary"
-                    checked={codeSearchEnabled}
-                    onCheckedChange={handleCodeSearchToggle}
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-sm font-medium text-white/70 mb-2">
-                    {/* Radix puts an id on the slider Root, not the role=slider
-                        thumb, so htmlFor can't target it — name via aria-label. */}
-                    <span>Search Delay</span>
-                    <span className="text-white">{searchDelay}s</span>
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="code-search" className="text-base font-medium text-white/70">
+                      Code Search
+                    </label>
+                    <Switch
+                      id="code-search"
+                      className="data-[state=checked]:bg-brand-primary"
+                      checked={codeSearchEnabled}
+                      onCheckedChange={handleCodeSearchToggle}
+                    />
                   </div>
-                  <Slider
-                    aria-label="Search Delay"
-                    min={0}
-                    max={5}
-                    step={1}
-                    value={[searchDelay]}
-                    onValueChange={handleSearchDelayChange}
-                    className="w-full"
-                  />
+
+                  <div>
+                    <div className="flex justify-between text-sm font-medium text-white/70 mb-2">
+                      {/* Radix puts an id on the slider Root, not the role=slider
+                        thumb, so htmlFor can't target it — name via aria-label. */}
+                      <span>Search Delay</span>
+                      <span className="text-white">{searchDelay}s</span>
+                    </div>
+                    <Slider
+                      aria-label="Search Delay"
+                      min={0}
+                      max={5}
+                      step={1}
+                      value={[searchDelay]}
+                      onValueChange={handleSearchDelayChange}
+                      className="w-full"
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
