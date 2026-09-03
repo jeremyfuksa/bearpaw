@@ -1,0 +1,59 @@
+name: Bug
+description: Something Bearpaw does that it should not, or fails to do.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One bug per issue. If you have found two, file two — they get fixed,
+        labelled and released separately.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what Bearpaw did in response.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: dropdown
+    id: scanner
+    attributes:
+      label: Which scanner
+      description: The two families have different memory models, so this changes the answer.
+      options:
+        - BC125AT family (BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H)
+        - BC75XLT
+        - Both
+        - No scanner connected / not applicable
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: |
+        high — data loss, a security boundary failure, or equivalent.
+        medium — a real functional or reliability problem with a workaround.
+        low — polish, test reliability, or documentation.
+      options:
+        - high
+        - medium
+        - low
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Bearpaw version
+      placeholder: "1.1.0"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Help → Show Log Files. Paste the lines around the failure.
+      render: text

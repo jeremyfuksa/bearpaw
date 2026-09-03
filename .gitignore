@@ -1,10 +1,11 @@
 # OS files
 .DS_Store
 
-# Local runtime artifacts
-config.yaml
-config.yml
-config.toml
+# Local runtime artifacts — anchored to the repository root, so these do not
+# also swallow files like .github/ISSUE_TEMPLATE/config.yml
+/config.yaml
+/config.yml
+/config.toml
 logs/
 # Playwright MCP session dumps (console/page captures) — throwaway debug output
 .playwright-mcp/

@@ -1,0 +1,17 @@
+name: Chore
+description: Maintenance, dependencies, CI, refactoring, or cleanup.
+labels: ["chore"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What needs doing
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why now
+      description: What breaks, slows down, or stays risky if this is left alone?
+    validations:
+      required: true
