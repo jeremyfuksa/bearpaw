@@ -151,6 +151,32 @@ export function priorityWireToMode(wire: number): string | null {
   return PRIORITY_WIRE_TO_MODE[wire] ?? null;
 }
 
+// Service search band labels by region. The EU (UBC) firmware exposes 7 bands
+// with different names; the US firmware exposes 10.
+export const SERVICE_SEARCH_LABELS: Record<string, string[]> = {
+  USA: [
+    'Police',
+    'Fire/Emergency',
+    'Ham',
+    'Marine',
+    'Railroad',
+    'Civil Air',
+    'Military Air',
+    'CB',
+    'FRS/GMRS/MURS',
+    'Racing',
+  ],
+  EUR: [
+    'Emergency',
+    'Freenet',
+    'PMR',
+    'Marine',
+    'Aircraft',
+    'CB Radio',
+    'HAM Radio',
+  ],
+};
+
 export interface DeviceTabProps {
   /**
    * Run a manual update check (#273). Owned by App.tsx rather than by a
@@ -1694,18 +1720,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 searching with the new settings.
               </p>
               <div className="grid grid-cols-2 gap-x-16 gap-y-4">
-                {[
-                  'Police',
-                  'Fire/Emergency',
-                  'Ham',
-                  'Marine',
-                  'Railroad',
-                  'Civil Air',
-                  'Military Air',
-                  'CB',
-                  'FRS/GMRS/MURS',
-                  'Racing',
-                ].map((service, index) => (
+                {SERVICE_SEARCH_LABELS[capabilities.ss_region]?.map((service, index) => (
                   <div key={service} className="flex items-center justify-between group">
                     <label
                       htmlFor={`service-${service}`}

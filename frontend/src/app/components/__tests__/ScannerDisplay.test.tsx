@@ -12,8 +12,10 @@ describe('ScannerDisplay', () => {
     isError: false,
     isScanning: false,
     volume: 8,
+    squelch: 2,
     isHolding: false,
     onVolumeChange: vi.fn(),
+    onSquelchChange: vi.fn(),
     onHoldToggle: vi.fn(),
     onLockout: vi.fn(),
     banks: [true, true, true, false, false, false, false, false, false, false],
@@ -42,6 +44,11 @@ describe('ScannerDisplay', () => {
     it('renders the current volume on the VOL button', () => {
       render(<ScannerDisplay {...defaultProps} volume={12} />);
       expect(screen.getByRole('button', { name: 'Volume 12' })).toHaveTextContent('VOL 12');
+    });
+
+    it('renders the current squelch on the SQL button', () => {
+      render(<ScannerDisplay {...defaultProps} squelch={5} />);
+      expect(screen.getByRole('button', { name: 'Squelch 5' })).toHaveTextContent('SQL 5');
     });
 
     it('toggles HOLD button aria-pressed and aria-label when isHolding flips', () => {

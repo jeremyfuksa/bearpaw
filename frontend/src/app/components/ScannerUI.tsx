@@ -171,6 +171,8 @@ export type LockoutKind = 'temporary' | 'permanent';
 interface ScannerControlsProps {
   volume: number;
   onVolumeChange: (volume: number) => void;
+  squelch: number;
+  onSquelchChange: (squelch: number) => void;
   isHolding: boolean;
   onHoldToggle: () => void;
   onLockout: (type: LockoutKind) => void;
@@ -182,6 +184,8 @@ const CONTROL_BUTTON_CLASSES =
 function ScannerControls({
   volume,
   onVolumeChange,
+  squelch,
+  onSquelchChange,
   isHolding,
   onHoldToggle,
   onLockout,
@@ -201,6 +205,22 @@ function ScannerControls({
             max={15}
             step={1}
             onValueChange={(vals) => onVolumeChange(vals[0])}
+          />
+        </PopoverContent>
+      </Popover>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button className={CONTROL_BUTTON_CLASSES} aria-label={`Squelch ${squelch}`}>
+            SQL {squelch}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="scanner-select-content w-40 p-4" side="bottom" align="center">
+          <span className="sr-only">Squelch {squelch}</span>
+          <Slider
+            defaultValue={[squelch]}
+            max={15}
+            step={1}
+            onValueChange={(vals) => onSquelchChange(vals[0])}
           />
         </PopoverContent>
       </Popover>
@@ -303,6 +323,8 @@ export interface ScannerDisplayProps {
   isError?: boolean;
   errorType?: 'usb' | 'socket';
   volume: number;
+  squelch: number;
+  onSquelchChange: (squelch: number) => void;
   isHolding: boolean;
   onVolumeChange: (volume: number) => void;
   onHoldToggle: () => void;
@@ -329,6 +351,8 @@ export function ScannerDisplay({
   isError,
   errorType,
   volume,
+  squelch,
+  onSquelchChange,
   isHolding,
   onVolumeChange,
   onHoldToggle,
@@ -369,6 +393,8 @@ export function ScannerDisplay({
           <ScannerControls
             volume={volume}
             onVolumeChange={onVolumeChange}
+            squelch={squelch}
+            onSquelchChange={onSquelchChange}
             isHolding={isHolding}
             onHoldToggle={onHoldToggle}
             onLockout={onLockout}
