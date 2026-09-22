@@ -187,6 +187,16 @@ fn should_resume_scan_after_lockout(state: &AppState, mode_before: ScannerMode) 
         && !state.program_mode_active.load(Ordering::Relaxed)
 }
 
+/// How long to let the radio leave program mode before pressing Scan.
+///
+/// `EPG` is a mode transition, and `ProgramModeGuard` documents that the
+/// firmware answers `NG` to a command that lands before a transition settles.
+/// Its `MODE_TRANSITION_SETTLE` (100 ms) was measured for `PRG` entry only. The
+/// one delay with any field history for a Scan after `EPG` is the 1 s the
+/// frontend waited before this resume moved here, so that is what this keeps.
+/// Unmeasured on hardware: shorten it only against a capture.
+const LOCKOUT_RESUME_SETTLE: Duration = Duration::from_millis(1000);
+
 /// Put the scanner back into scan after a lockout bracket.
 ///
 /// Runs whether or not the lockout write succeeded: a failure after `PRG`
@@ -195,6 +205,7 @@ fn should_resume_scan_after_lockout(state: &AppState, mode_before: ScannerMode) 
 /// committed (or already reported as failed), and turning a landed write into
 /// an error is the #532 mistake.
 async fn resume_scan_after_lockout(state: &AppState) {
+    tokio::time::sleep(LOCKOUT_RESUME_SETTLE).await;
     if let Err(e) = send_mode_command(
         state,
         |reply| ControlCommand::Scan {
