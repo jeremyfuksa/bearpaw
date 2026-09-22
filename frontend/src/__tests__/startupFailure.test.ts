@@ -9,10 +9,16 @@ import viteConfig from '../../vite.config';
 const frontendRoot = path.resolve(__dirname, '../..');
 const indexHtml = readFileSync(path.join(frontendRoot, 'index.html'), 'utf-8');
 
+// Parsed, not pattern-matched: a regex over HTML misses <SCRIPT>, attributes
+// and comments (CodeQL js/bad-tag-filter). The startup script is the one
+// inline, non-module script in the document.
 function startupScript(): string {
-  const match = indexHtml.match(/<script>([\s\S]*?)<\/script>/);
-  if (!match) throw new Error('index.html has no inline startup-failure script');
-  return match[1];
+  const doc = new DOMParser().parseFromString(indexHtml, 'text/html');
+  const script = Array.from(doc.querySelectorAll('script')).find(
+    (s) => !s.src && s.type !== 'module',
+  );
+  if (!script?.textContent) throw new Error('index.html has no inline startup-failure script');
+  return script.textContent;
 }
 
 function load() {
