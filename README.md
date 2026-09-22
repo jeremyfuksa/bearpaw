@@ -76,6 +76,15 @@ file for your system:
 | **Windows**                           | `Bearpaw_…_x64-setup.exe`                             |
 | **Linux**                             | `.AppImage` (runs anywhere) or `.deb` (Debian/Ubuntu) |
 
+**Requirements:**
+
+- **Mac**: macOS 10.15 (Catalina) or later, with Safari 15.4 or later. Bearpaw
+  draws its window with the same engine as Safari, so an outdated Safari can
+  leave the window blank.
+- **Windows**: Windows 10 or later, 64-bit.
+- **Linux**: Ubuntu 22.04, Linux Mint 21, Debian 12, or newer (glibc 2.35 or
+  later).
+
 These builds aren't code-signed yet, so your computer flags them the first
 time you open the app.
 

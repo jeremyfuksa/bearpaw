@@ -4,6 +4,63 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bearpaw</title>
+    <!--
+      REGRESSION GUARD (#679): a startup failure shows a message, never a blank
+      window. Guarded by src/__tests__/startupFailure.test.ts.
+
+      The app is one ES module. If this machine's web view cannot parse it (an
+      older macOS WebKit) or it throws before React mounts, nothing renders and
+      the user sees a white window with no way to tell us why. This script is
+      deliberately ES5 and inline, so it still runs on a web view too old for
+      the app itself. main.tsx sets __bearpawStarted once its module has run;
+      after that, React's onUncaughtError reports crashes through the same
+      function.
+    -->
+    <script>
+      (function () {
+        function show(detail) {
+          if (window.__bearpawStartupFailureShown) return;
+          window.__bearpawStartupFailureShown = true;
+          var root = document.getElementById('root');
+          if (!root) return;
+          var box = document.createElement('div');
+          box.setAttribute('role', 'alert');
+          box.style.cssText =
+            'font:15px/1.5 -apple-system,system-ui,sans-serif;color:#e8e8e8;' +
+            'background:#16181d;padding:40px;min-height:100vh;box-sizing:border-box';
+          var title = document.createElement('h1');
+          title.style.cssText = 'font-size:20px;margin:0 0 12px';
+          title.textContent = "Bearpaw couldn't start its window.";
+          var body = document.createElement('p');
+          body.style.cssText = 'max-width:640px;margin:0 0 12px';
+          body.textContent =
+            'On a Mac this usually means the system web view is too old. Bearpaw ' +
+            'needs macOS 10.15 or later with Safari 15.4 or later, so updating ' +
+            'macOS or Safari may fix it. If it does not, please report it at ' +
+            'github.com/jeremyfuksa/bearpaw/issues and include the text below.';
+          var pre = document.createElement('pre');
+          pre.style.cssText =
+            'white-space:pre-wrap;user-select:text;-webkit-user-select:text;' +
+            'background:#0d0e11;padding:12px;border-radius:6px;font-size:12px';
+          pre.textContent = navigator.userAgent + '\n' + (detail || 'No error was reported.');
+          box.appendChild(title);
+          box.appendChild(body);
+          box.appendChild(pre);
+          root.innerHTML = '';
+          root.appendChild(box);
+        }
+        window.__bearpawShowStartupFailure = show;
+        window.addEventListener('error', function (event) {
+          if (window.__bearpawStarted) return;
+          var e = event.error;
+          show((e && (e.stack || e.message)) || event.message || String(e));
+        });
+        // A web view that fails to load the module may report nothing at all.
+        setTimeout(function () {
+          if (!window.__bearpawStarted) show('The app did not start within 20 seconds.');
+        }, 20000);
+      })();
+    </script>
   </head>
 
   <body>

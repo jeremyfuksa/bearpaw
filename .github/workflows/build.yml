@@ -83,7 +83,14 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             platform: windows-x86_64
-          - os: ubuntu-latest
+          # Pinned to the oldest supported Ubuntu LTS, not ubuntu-latest. A Linux
+          # binary needs at least the glibc it was linked against, so the build
+          # host IS the users' minimum. On ubuntu-latest (24.04) that was glibc
+          # 2.39: Ubuntu 22.04, Linux Mint 21 and Debian 12 installed the .deb
+          # and could not run it (#679). The AppImage does not bundle glibc, so
+          # the same floor applies there. The "Check the Linux glibc floor" step
+          # below fails the build if this ever drifts upward again.
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             platform: linux-x86_64
 
@@ -110,10 +117,10 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install Linux build dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libudev-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libudev-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -129,9 +136,13 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target/
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          # matrix.os is in the key, not just runner.os: runner.os reads "Linux"
+          # on every Ubuntu image, so moving the Linux job to 22.04 would restore
+          # a target/ built on 24.04 -- build scripts linked against a glibc
+          # 22.04 lacks, and C objects that could pull 2.39 symbols back in.
+          key: ${{ matrix.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-cargo-
+            ${{ matrix.os }}-${{ matrix.target }}-cargo-
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -140,6 +151,22 @@ jobs:
       - name: Build Tauri app
         working-directory: frontend
         run: npm run tauri build -- --target ${{ matrix.target }}
+
+      # The documented Linux requirement (README, site, release notes) is
+      # glibc 2.35. Measure it rather than trust the runner label: this is what
+      # would have caught the 2.39 floor that shipped in 1.1.1.
+      - name: Check the Linux glibc floor
+        if: runner.os == 'Linux'
+        env:
+          GLIBC_CEILING: "2.35"
+        run: |
+          bin="target/${{ matrix.target }}/release/bearpaw-desktop"
+          max=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -uV | tail -1)
+          echo "bearpaw-desktop needs glibc $max (ceiling $GLIBC_CEILING)"
+          if [ "$(printf '%s\n%s\n' "$max" "$GLIBC_CEILING" | sort -V | tail -1)" != "$GLIBC_CEILING" ]; then
+            echo "::error::bearpaw-desktop needs glibc $max, above the documented $GLIBC_CEILING. Build on an older runner, or raise the documented requirement everywhere it is stated."
+            exit 1
+          fi
 
       - name: Sign macOS app
         if: matrix.os == 'macos-latest' && env.APPLE_SIGNING_IDENTITY != ''
@@ -268,6 +295,10 @@ jobs:
             ad-hoc signed but **not notarized by Apple**, so your OS will warn
             you the first time you open the app. That's expected — here's how
             to run it:
+
+            **Requirements:** macOS 10.15 or later with Safari 15.4 or later;
+            Windows 10 or later (64-bit); or Ubuntu 22.04, Linux Mint 21, Debian 12,
+            or newer (glibc 2.35).
 
             **macOS** (`.dmg`): open the dmg and drag Bearpaw to Applications. On
             first launch macOS says it "cannot verify the developer" — right-click

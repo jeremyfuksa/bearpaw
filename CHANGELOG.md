@@ -4,9 +4,24 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.2] — 2026-09-22
+
+Fixes for scanning after a channel lockout, a blank window on older Macs, and
+Linux downloads that would not start on 2022-era releases.
 
 ### Fixed
+
+- **Bearpaw no longer opens to a blank white window on older Macs.** The app
+  was built for the newest web engines only, so a Mac running an older version
+  of macOS or Safari could open it and show nothing at all. It is now built to
+  run on macOS 10.15 or later with Safari 15.4 or later. If it still cannot
+  start, it now says so and shows details you can include in a bug report,
+  instead of a blank window.
+
+- **Bearpaw now runs on Ubuntu 22.04, Linux Mint 21 and Debian 12.** The Linux
+  downloads needed a newer system library than those releases have, so they
+  installed but would not start. They are now built to run on Linux from 2022
+  onward.
 
 - **Locking out a channel no longer stops the scan.** Using Temporary or
   Permanent Lockout while scanning left the scanner stopped on channel 1, while

@@ -41,7 +41,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    target: 'esnext',
+    // REGRESSION GUARD (#679): never 'esnext'. That shipped whatever syntax
+    // the source and its dependencies used, untranspiled -- class fields, and
+    // a class static block (Safari 16.4+) that esbuild itself emits for Radix.
+    // One unparseable token and the single ES module does not run, so an older
+    // macOS web view showed a blank window. The floor is Safari 15.4, not 15:
+    // the bundle calls Object.hasOwn and Array.prototype.at, which a syntax
+    // target cannot transpile. Keep `minimumSystemVersion` in tauri.conf.json
+    // (10.15, the oldest macOS that gets Safari 15.4) in step with this.
+    // See src/__tests__/startupFailure.test.ts.
+    target: ['safari15', 'chrome105'],
     // Tauri loads this bundle from local disk over file://, not over the
     // network, so the default 500 kB warning is measuring a cost we don't
     // pay. Raised above the current ~990 kB entry chunk with headroom, but
