@@ -269,6 +269,11 @@ jobs:
             you the first time you open the app. That's expected — here's how
             to run it:
 
+            **Requirements:** macOS 10.15 or later with Safari 15.4 or later;
+            Windows 10 or later (64-bit); or Ubuntu 24.04, Fedora 40, Debian 13,
+            or newer (glibc 2.39). An older Linux can install the `.deb` but
+            can't run it.
+
             **macOS** (`.dmg`): open the dmg and drag Bearpaw to Applications. On
             first launch macOS says it "cannot verify the developer" — right-click
             the app → **Open** → **Open** to run it anyway. If a plain
