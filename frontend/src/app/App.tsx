@@ -918,6 +918,11 @@ export default function App() {
     }
   }, [api, connected, getScannerMode, toggleBusy]);
 
+  // No scan resume in either lockout handler: the backend resumes after the
+  // lockout's PRG/EPG bracket itself (#678), so the Ctrl+L shortcut, which
+  // never came through here, gets it too. The resume used to live here gated
+  // on HOLD, which a scanning user never produces.
+  //
   // See the preserve-manual-memoization note on handleToggle above.
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const triggerTemporaryLockout = useCallback(async () => {
@@ -942,14 +947,11 @@ export default function App() {
             ? `Temporary lockout cleared for CH ${lockoutChannel}`
             : 'Temporary lockout cleared',
       );
-      if (getScannerMode() === 'HOLD') {
-        requestScanResume('temporary lockout', { delayMs: 1000 });
-      }
     } catch (error) {
       console.warn('Failed to toggle lockout', error);
       toast.error('Failed to toggle lockout');
     }
-  }, [api, connected, getScannerMode, liveState?.channel, liveState?.frequency, requestScanResume]);
+  }, [api, connected, liveState?.channel, liveState?.frequency]);
 
   // See the preserve-manual-memoization note on handleToggle above.
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
@@ -966,22 +968,11 @@ export default function App() {
       toast.info(
         `Permanent lockout ${updated.lockout ? 'enabled' : 'cleared'} for CH ${updated.index}`,
       );
-      if (getScannerMode() === 'HOLD') {
-        requestScanResume('permanent lockout', { delayMs: 1000 });
-      }
     } catch (error) {
       console.warn('Failed to toggle lockout', error);
       toast.error('Failed to toggle lockout');
     }
-  }, [
-    api,
-    channels,
-    connected,
-    getScannerMode,
-    liveState?.channel,
-    requestScanResume,
-    setChannels,
-  ]);
+  }, [api, channels, connected, liveState?.channel, setChannels]);
 
   // Switch on every variant explicitly rather than
   // `if (permanent) ... else temporary`.
