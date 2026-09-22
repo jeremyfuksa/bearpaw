@@ -7451,6 +7451,145 @@ mod tests {
         );
     }
 
+    /// A scanner that persists lockout writes: a `CIN` read returns whatever
+    /// the last `CIN` write for that index sent, so the readback check passes.
+    fn responder_that_persists() -> impl Fn(&str) -> Result<String, String> + Send + 'static {
+        let written: Mutex<HashMap<u16, String>> = Mutex::new(HashMap::new());
+        move |command: &str| {
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let mut fields = rest.splitn(2, ',');
+                let index: u16 = fields.next().unwrap_or("").parse().unwrap_or(0);
+                let mut written = written.lock().unwrap();
+                return match fields.next() {
+                    Some(payload) => {
+                        written.insert(index, payload.to_string());
+                        Ok("CIN,OK\r".to_string())
+                    }
+                    None => Ok(match written.get(&index) {
+                        Some(payload) => format!("CIN,{index},{payload}\r"),
+                        None => format!("CIN,{index},Pager,01465200,FM,0,2,0,0\r"),
+                    }),
+                };
+            }
+            Ok("OK\r".to_string())
+        }
+    }
+
+    async fn post_lockout_in_mode(
+        mode: ScannerMode,
+        lockout_mode: &str,
+        responder: impl Fn(&str) -> Result<String, String> + Send + 'static,
+    ) -> (StatusCode, Vec<String>) {
+        let state = default_state();
+        state.live.write().unwrap().mode = mode;
+        let scanner = FakeScanner::attach(&state, responder);
+        let status = router(state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/commands/lockout")
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(
+                        r#"{{"mode":"{lockout_mode}","channel":5}}"#
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status();
+        (status, scanner.transcript())
+    }
+
+    /// REGRESSION GUARD (#678): a lockout during a scan puts the scanner back
+    /// into scan.
+    ///
+    /// The lockout is a `PRG` / `CIN` / `EPG` bracket, and `EPG` parks the
+    /// radio in HOLD at channel 1. `commanded_mode` still reads `SCAN`, so the
+    /// frontend's `HOLD`-gated resume never fired and the scanner sat at
+    /// channel 1 while the UI said "Scanning...". The assertion is on ORDER as
+    /// well as presence: a `KEY,S,P` sent before `EPG` lands inside program
+    /// mode and resumes nothing.
+    ///
+    /// Both modes, because both run the same bracket from the same UI control.
+    #[tokio::test]
+    async fn a_lockout_during_scan_resumes_scanning() {
+        for lockout_mode in ["temporary", "permanent"] {
+            let (status, transcript) =
+                post_lockout_in_mode(ScannerMode::Scan, lockout_mode, responder_that_persists())
+                    .await;
+            assert_eq!(status, StatusCode::OK, "{lockout_mode}: {transcript:?}");
+            let epg = transcript.iter().rposition(|c| c == "EPG");
+            let scan = transcript.iter().position(|c| c == super::poll::KEY_SCAN);
+            assert!(
+                matches!((epg, scan), (Some(e), Some(s)) if s > e),
+                "{lockout_mode}: scan must resume AFTER the bracket closes: {transcript:?}"
+            );
+        }
+    }
+
+    /// REGRESSION GUARD (#678): a lockout while HELD resumes too.
+    ///
+    /// `EPG` drops the held channel either way, and resuming after a held
+    /// lockout is what the frontend did before the resume moved to the
+    /// backend. Losing this would leave a held user parked at channel 1.
+    #[tokio::test]
+    async fn a_lockout_while_held_resumes_scanning() {
+        let (status, transcript) =
+            post_lockout_in_mode(ScannerMode::Hold, "temporary", responder_that_persists()).await;
+        assert_eq!(status, StatusCode::OK, "{transcript:?}");
+        assert!(
+            transcript.iter().any(|c| c == super::poll::KEY_SCAN),
+            "{transcript:?}"
+        );
+    }
+
+    /// REGRESSION GUARD (#678): the resume follows the user's mode; it is not
+    /// unconditional.
+    ///
+    /// Paired with the two guards above because they alone pass for a build
+    /// that sends `KEY,S,P` after every lockout -- which would throw a user
+    /// off a manually tuned frequency and into scan.
+    #[tokio::test]
+    async fn a_lockout_while_tuned_direct_does_not_resume_scanning() {
+        for lockout_mode in ["temporary", "permanent"] {
+            let (status, transcript) =
+                post_lockout_in_mode(ScannerMode::Direct, lockout_mode, responder_that_persists())
+                    .await;
+            assert_eq!(status, StatusCode::OK, "{lockout_mode}: {transcript:?}");
+            assert!(
+                !transcript.iter().any(|c| c == super::poll::KEY_SCAN),
+                "{lockout_mode}: a direct tune is not a scan to resume: {transcript:?}"
+            );
+        }
+    }
+
+    /// REGRESSION GUARD (#678): a lockout that FAILS after opening the
+    /// bracket still resumes scan.
+    ///
+    /// The failure is reported, but `EPG` has already parked the radio. Only
+    /// resuming on success would strand a scanning user at channel 1 on
+    /// exactly the path where they are already looking at an error.
+    #[tokio::test]
+    async fn a_failed_lockout_during_scan_still_resumes_scanning() {
+        let (status, transcript) = post_lockout_in_mode(
+            ScannerMode::Scan,
+            "temporary",
+            responder_that_never_persists(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{transcript:?}");
+        assert!(
+            transcript.iter().any(|c| c == super::poll::KEY_SCAN),
+            "the radio is parked whether or not the write stuck: {transcript:?}"
+        );
+    }
+
     /// REGRESSION GUARD (#556, findings 8/11): the same for a full channel
     /// write.
     ///
