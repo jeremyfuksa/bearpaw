@@ -4,6 +4,16 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Locking out a channel no longer stops the scan.** Using Temporary or
+  Permanent Lockout while scanning left the scanner stopped on channel 1, while
+  Bearpaw still showed "Scanning...". Scanning now carries on after the lockout,
+  the way pressing L/O on the scanner itself does. This applies to the lockout
+  button and the Ctrl+L shortcut alike.
+
 ## [1.1.1] — 2026-09-03
 
 A single reliability fix for macOS, plus test and process work a user does not
