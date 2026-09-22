@@ -31,7 +31,8 @@
     "targets": ["app", "dmg", "nsis", "deb", "appimage"],
     "icon": ["icons/icon.png"],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "minimumSystemVersion": "10.15"
     }
   }
 }

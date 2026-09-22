@@ -6,9 +6,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.1.2] — 2026-09-22
 
-A single fix for scanning after a channel lockout.
+Two fixes: scanning after a channel lockout, and a blank window on older Macs.
 
 ### Fixed
+
+- **Bearpaw no longer opens to a blank white window on older Macs.** The app
+  was built for the newest web engines only, so a Mac running an older version
+  of macOS or Safari could open it and show nothing at all. It is now built to
+  run on macOS 10.15 or later with Safari 15.4 or later. If it still cannot
+  start, it now says so and shows details you can include in a bug report,
+  instead of a blank window.
 
 - **Locking out a channel no longer stops the scan.** Using Temporary or
   Permanent Lockout while scanning left the scanner stopped on channel 1, while
