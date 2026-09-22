@@ -6,7 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.1.2] — 2026-09-22
 
-Two fixes: scanning after a channel lockout, and a blank window on older Macs.
+Fixes for scanning after a channel lockout, a blank window on older Macs, and
+Linux downloads that would not start on 2022-era releases.
 
 ### Fixed
 
@@ -16,6 +17,11 @@ Two fixes: scanning after a channel lockout, and a blank window on older Macs.
   run on macOS 10.15 or later with Safari 15.4 or later. If it still cannot
   start, it now says so and shows details you can include in a bug report,
   instead of a blank window.
+
+- **Bearpaw now runs on Ubuntu 22.04, Linux Mint 21 and Debian 12.** The Linux
+  downloads needed a newer system library than those releases have, so they
+  installed but would not start. They are now built to run on Linux from 2022
+  onward.
 
 - **Locking out a channel no longer stops the scan.** Using Temporary or
   Permanent Lockout while scanning left the scanner stopped on channel 1, while

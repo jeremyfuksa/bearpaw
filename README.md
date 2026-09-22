@@ -82,8 +82,8 @@ file for your system:
   draws its window with the same engine as Safari, so an outdated Safari can
   leave the window blank.
 - **Windows**: Windows 10 or later, 64-bit.
-- **Linux**: Ubuntu 24.04, Fedora 40, Debian 13, or newer (glibc 2.39 or later).
-  Older releases can install the `.deb` but can't run it.
+- **Linux**: Ubuntu 22.04, Linux Mint 21, Debian 12, or newer (glibc 2.35 or
+  later).
 
 These builds aren't code-signed yet, so your computer flags them the first
 time you open the app.
