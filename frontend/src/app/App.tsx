@@ -1080,6 +1080,18 @@ export default function App() {
     [api],
   );
 
+  const handleSquelchChange = useCallback(
+    async (value: number) => {
+      try {
+        await api.setSquelch(value);
+      } catch (error) {
+        console.warn('Failed to set squelch', error);
+        toast.error('Failed to set squelch');
+      }
+    },
+    [api],
+  );
+
   // Focus management + trap for the blocking sync overlay (a11y S2). Standalone
   // effect keyed on isMemorySyncing — it touches none of the four
   // regression-guarded sync flows (WS deps, overlay gate, handleCancelSync,
@@ -1203,6 +1215,8 @@ export default function App() {
                 busiestChannels={busiestChannels}
                 hourlyHeatmap={hourlyHeatmap}
                 heatmapStats={heatmapStats}
+                squelch={liveState?.squelch_level ?? 0}
+                onSquelchChange={handleSquelchChange}
                 onHoldToggle={handleToggle}
                 onLockout={handleLockout}
                 onVolumeChange={handleVolumeChange}

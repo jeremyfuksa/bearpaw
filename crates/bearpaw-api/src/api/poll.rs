@@ -21,6 +21,10 @@ use crate::transport_usb::UsbTransport;
 const POLL_INTERVAL_MS: u64 = 200;
 /// Send PWR every Nth tick (200ms × 3 = ~600ms cadence).
 const PWR_INTERVAL_TICKS: u32 = 3;
+/// Query squelch level every Nth tick (200ms × 10 = ~2s cadence).
+const SQL_INTERVAL_TICKS: u32 = 10;
+/// Query volume every Nth tick (200ms × 10 = ~2s cadence).
+const VOL_INTERVAL_TICKS: u32 = 10;
 /// First reconnect attempt fires this many ms after a disconnect is
 /// detected. Subsequent attempts back off via `next_backoff` up to
 /// `RECONNECT_BACKOFF_MAX_MS`.
@@ -174,6 +178,17 @@ fn run_poll_loop(
             if let Some(v) = parse_vol_response(&vol_resp) {
                 if let Ok(mut live) = state.live.write() {
                     live.volume = v;
+                }
+            }
+        }
+
+        // Initial squelch query. Writes to `state.live.squelch_level` so the
+        // first poll tick (and the UI) sees the real scanner squelch rather
+        // than 0.
+        if let Ok(sql_resp) = transport.send(port.as_mut(), "SQL") {
+            if let Some(v) = parse_sql_response(&sql_resp) {
+                if let Ok(mut live) = state.live.write() {
+                    live.squelch_level = v;
                 }
             }
         }
@@ -364,6 +379,34 @@ fn run_poll_loop(
             }
             tick = tick.wrapping_add(1);
 
+            // Periodic squelch-level refresh (~2s). Catches changes made on
+            // the radio itself, which no frame broadcasts.
+            if tick.is_multiple_of(SQL_INTERVAL_TICKS)
+                && !state.program_mode_active.load(Ordering::Relaxed)
+            {
+                if let Ok(sql_resp) = transport.send(port.as_mut(), "SQL") {
+                    if let Some(v) = parse_sql_response(&sql_resp) {
+                        if let Ok(mut live) = state.live.write() {
+                            live.squelch_level = v;
+                        }
+                    }
+                }
+            }
+
+            // Periodic volume refresh (~2s). Catches changes made on the radio
+            // itself, which no frame broadcasts.
+            if tick.is_multiple_of(VOL_INTERVAL_TICKS)
+                && !state.program_mode_active.load(Ordering::Relaxed)
+            {
+                if let Ok(vol_resp) = transport.send(port.as_mut(), "VOL") {
+                    if let Some(v) = parse_vol_response(&vol_resp) {
+                        if let Ok(mut live) = state.live.write() {
+                            live.volume = v;
+                        }
+                    }
+                }
+            }
+
             process_poll_tick(
                 &state,
                 &mut poll_state,
@@ -509,6 +552,17 @@ fn run_poll_loop_usb(
             if let Some(v) = parse_vol_response(&vol_resp) {
                 if let Ok(mut live) = state.live.write() {
                     live.volume = v;
+                }
+            }
+        }
+
+        // Initial squelch query. Writes to `state.live.squelch_level` so the
+        // first poll tick (and the UI) sees the real scanner squelch rather
+        // than 0.
+        if let Ok(sql_resp) = transport.send(&mut session, "SQL") {
+            if let Some(v) = parse_sql_response(&sql_resp) {
+                if let Ok(mut live) = state.live.write() {
+                    live.squelch_level = v;
                 }
             }
         }
@@ -695,6 +749,34 @@ fn run_poll_loop_usb(
                 break;
             }
             tick = tick.wrapping_add(1);
+
+            // Periodic squelch-level refresh (~2s). Catches changes made on
+            // the radio itself, which no frame broadcasts.
+            if tick.is_multiple_of(SQL_INTERVAL_TICKS)
+                && !state.program_mode_active.load(Ordering::Relaxed)
+            {
+                if let Ok(sql_resp) = transport.send(&mut session, "SQL") {
+                    if let Some(v) = parse_sql_response(&sql_resp) {
+                        if let Ok(mut live) = state.live.write() {
+                            live.squelch_level = v;
+                        }
+                    }
+                }
+            }
+
+            // Periodic volume refresh (~2s). Catches changes made on the radio
+            // itself, which no frame broadcasts.
+            if tick.is_multiple_of(VOL_INTERVAL_TICKS)
+                && !state.program_mode_active.load(Ordering::Relaxed)
+            {
+                if let Ok(vol_resp) = transport.send(&mut session, "VOL") {
+                    if let Some(v) = parse_vol_response(&vol_resp) {
+                        if let Ok(mut live) = state.live.write() {
+                            live.volume = v;
+                        }
+                    }
+                }
+            }
 
             if !process_poll_tick(
                 &state,
@@ -1197,6 +1279,7 @@ fn process_poll_tick(
     // frame, which clobbered user-initiated `set_volume` writes ~200ms
     // after they landed.
     let volume = state.live.read().map(|g| g.volume).unwrap_or(0);
+    let squelch_level = state.live.read().map(|g| g.squelch_level).unwrap_or(0);
     let sts = sts_resp.and_then(parse_sts_frame);
     let glg = glg_resp.and_then(parse_glg_response);
 
@@ -1253,6 +1336,7 @@ fn process_poll_tick(
         pwr_effective,
         commanded_mode,
         volume,
+        squelch_level,
     );
     broadcast_live_update(state, live);
     true
@@ -1285,6 +1369,7 @@ fn broadcast_live_update(state: &AppState, live: LiveState) {
             "channel": live.channel,
             "alpha_tag": live.alpha_tag,
             "volume": live.volume,
+            "squelch_level": live.squelch_level,
             "battery": live.battery,
             "stale": live.stale,
             "tone_squelch_kind": live.tone_squelch_kind,
@@ -1335,6 +1420,17 @@ fn parse_vol_response(resp: &str) -> Option<u8> {
     let line = line.strip_suffix('\r').unwrap_or(line);
     let (head, val) = line.split_once(',')?;
     if !head.eq_ignore_ascii_case("VOL") {
+        return None;
+    }
+    val.trim().parse::<u8>().ok().map(|v| v.min(15))
+}
+
+/// Parse `SQL,n` response. Returns None for malformed input.
+fn parse_sql_response(resp: &str) -> Option<u8> {
+    let line = resp.lines().find(|l| !l.trim().is_empty())?.trim();
+    let line = line.strip_suffix('\r').unwrap_or(line);
+    let (head, val) = line.split_once(',')?;
+    if !head.eq_ignore_ascii_case("SQL") {
         return None;
     }
     val.trim().parse::<u8>().ok().map(|v| v.min(15))
