@@ -193,6 +193,10 @@ const PREFERENCES_SCHEMA_VERSION: i32 = 3;
 /// *hard kill* (SIGKILL, panic, power loss) can lose — and losing it costs a
 /// re-sync, never data, because every write reaches the scanner first.
 const CHANNEL_CACHE_FLUSH_SECS: u64 = 30;
+/// How long shutdown waits for the poll thread to finish its tick and drop the
+/// scanner session (#688). One USB tick is at worst three 500 ms transfers plus
+/// the 200 ms interval, so 3 s covers it with room; past that, exit anyway.
+const POLL_LOOP_STOP_TIMEOUT: Duration = Duration::from_secs(3);
 const ANALYTICS_SCHEMA_VERSION: i32 = 2;
 
 /// How many recorded hits are loaded into the in-memory activity log at
@@ -627,10 +631,17 @@ pub async fn run_server_with_shutdown(
     serial_port: Option<(String, u32, bool)>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut poll_loop = None;
     if let Some((port_name, baud, assert_dtr)) = serial_port {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
         state.command_tx = Arc::new(Mutex::new(Some(cmd_tx)));
-        spawn_poll_loop(state.clone(), port_name, baud, assert_dtr, cmd_rx);
+        poll_loop = Some(spawn_poll_loop(
+            state.clone(),
+            port_name,
+            baud,
+            assert_dtr,
+            cmd_rx,
+        ));
         if let Ok(mut d) = state.device.write() {
             d.connection_status = "connecting".to_string();
             d.diagnostic_code = None;
@@ -695,6 +706,21 @@ pub async fn run_server_with_shutdown(
     axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(shutdown)
         .await?;
+    // Stop the poll thread before exit (#688), so the scanner session drops and
+    // releases its interface instead of dying mid-transfer. After `serve`, so
+    // in-flight requests -- and any PRG bracket they hold open -- have drained.
+    if let Some(poll_loop) = poll_loop {
+        let stopped =
+            tokio::task::spawn_blocking(move || poll_loop.stop_and_join(POLL_LOOP_STOP_TIMEOUT))
+                .await
+                .unwrap_or(false);
+        if !stopped {
+            warn!(
+                "poll loop did not stop within {:?}; exiting with it running",
+                POLL_LOOP_STOP_TIMEOUT
+            );
+        }
+    }
     // Final flush before exit. This is the one that makes a clean quit lose
     // nothing: without it, up to CHANNEL_CACHE_FLUSH_SECS of channel edits
     // would be absent from the cache on next launch, and the user would see
