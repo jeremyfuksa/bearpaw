@@ -11,7 +11,12 @@ name: PR Preflight
 
 on:
   pull_request:
-    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review]
+    # Every PR field the script reads needs its own event here, because it
+    # reads the event's payload and a re-run reuses the original one. Labels
+    # change on labeled/unlabeled, the body on edited, files on synchronize,
+    # and the milestone ONLY on milestoned/demilestoned — without those, a
+    # milestone added after the last push stays "No milestone" for good (#685).
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, milestoned, demilestoned, ready_for_review]
 
 permissions:
   contents: read
