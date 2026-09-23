@@ -529,6 +529,7 @@ fn main() {
     let backend_state = Arc::new(BackendRuntimeState::default());
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+    let exit_backend = backend_state.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -593,9 +594,23 @@ fn main() {
             // to a closure passed to AppHandle::run. Signal the backend to
             // shut down gracefully when the OS asks the app to quit.
             if let tauri::RunEvent::ExitRequested { .. } = &event {
+                let mut signalled = false;
                 if let Ok(mut tx) = shutdown_tx.lock() {
                     if let Some(tx) = tx.take() {
-                        let _ = tx.send(());
+                        signalled = tx.send(()).is_ok();
+                    }
+                }
+                // Wait for the backend to finish (#688). Returning lets the
+                // process exit at once, which killed the poll thread mid-tick
+                // with the USB interface claimed before shutdown could stop it.
+                // Bounded above the backend's own 3 s poll-loop stop timeout,
+                // so a stuck backend delays quit but cannot hang it.
+                if signalled {
+                    let deadline = std::time::Instant::now() + Duration::from_secs(4);
+                    while exit_backend.running.load(Ordering::Relaxed)
+                        && std::time::Instant::now() < deadline
+                    {
+                        thread::sleep(Duration::from_millis(20));
                     }
                 }
             }

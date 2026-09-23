@@ -1,8 +1,9 @@
 //! Blocking serial poll loop: drain control commands, then STS -> LiveState -> broadcast.
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::json;
 use tracing::{debug, error, info, warn};
@@ -39,6 +40,36 @@ const MDL_CMD: &str = "MDL";
 pub(crate) const KEY_HOLD: &str = "KEY,H,P";
 pub(crate) const KEY_SCAN: &str = "KEY,S,P";
 
+/// The running poll thread, and the way to stop it (#688).
+///
+/// REGRESSION GUARD (#688): `with_graceful_shutdown` stops the HTTP server, not
+/// this thread. Without an explicit stop the process exited with the thread
+/// mid-poll and the USB interface still claimed -- the state #600 names as the
+/// precondition for the #513 wedge. Stopping lets the loop return between
+/// ticks, which drops the session; `rusb`'s `DeviceHandle` releases its claimed
+/// interfaces and closes the device on drop.
+pub struct PollLoopHandle {
+    stop: Arc<AtomicBool>,
+    thread: thread::JoinHandle<()>,
+}
+
+impl PollLoopHandle {
+    /// Ask the loop to stop and wait up to `timeout` for it. True when the
+    /// thread ended in time. Blocking: call from `spawn_blocking` in async code.
+    pub fn stop_and_join(self, timeout: Duration) -> bool {
+        self.stop.store(true, Ordering::Relaxed);
+        let deadline = Instant::now() + timeout;
+        while !self.thread.is_finished() {
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        let _ = self.thread.join();
+        true
+    }
+}
+
 /// Spawn a blocking thread: open serial, process command channel + STS poll, broadcast state.
 pub fn spawn_poll_loop(
     state: AppState,
@@ -46,13 +77,22 @@ pub fn spawn_poll_loop(
     baud: u32,
     assert_dtr: bool,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
-) {
-    thread::spawn(move || {
+) -> PollLoopHandle {
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = stop.clone();
+    let thread = thread::spawn(move || {
         // catch_unwind (#143): a panic inside the poll loop (e.g. a poisoned
         // mutex unwrap) unwinds the thread WITHOUT hitting the Err branch —
         // the UI stayed "connected" forever while every command timed out.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_poll_loop(state.clone(), &port_name, baud, assert_dtr, cmd_rx)
+            run_poll_loop(
+                state.clone(),
+                &port_name,
+                baud,
+                assert_dtr,
+                cmd_rx,
+                &thread_stop,
+            )
         }));
         let message = match result {
             Ok(Ok(())) => return,
@@ -72,6 +112,7 @@ pub fn spawn_poll_loop(
             d.diagnostic_message = Some(message);
         }
     });
+    PollLoopHandle { stop, thread }
 }
 
 fn run_poll_loop(
@@ -80,9 +121,10 @@ fn run_poll_loop(
     baud: u32,
     assert_dtr: bool,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
+    stop: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some((vid, pid)) = parse_usb_target(port_name) {
-        return run_poll_loop_usb(state, vid, pid, cmd_rx);
+        return run_poll_loop_usb(state, vid, pid, cmd_rx, stop);
     }
 
     let transport = SerialTransport::new(port_name, baud).with_dtr_on_open(assert_dtr);
@@ -94,6 +136,10 @@ fn run_poll_loop(
     let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
 
     loop {
+        if stop.load(Ordering::Relaxed) {
+            info!("Poll loop stopped for shutdown");
+            return Ok(());
+        }
         let mut port = match transport.open() {
             Ok(p) => p,
             Err(e) => {
@@ -112,7 +158,7 @@ fn run_poll_loop(
                 // on. So the failure is MORE visible now, and it heals itself
                 // when the scanner appears.
                 mark_disconnected(&state, &format!("serial open failed: {}", e));
-                thread::sleep(reconnect_backoff);
+                sleep_unless_stopped(reconnect_backoff, stop);
                 reconnect_backoff = next_backoff(reconnect_backoff);
                 continue;
             }
@@ -179,7 +225,7 @@ fn run_poll_loop(
         }
 
         let mut session_dead = false;
-        while !session_dead {
+        while !session_dead && !stop.load(Ordering::Relaxed) {
             // Drain control commands (hold, scan, direct, start sync)
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
@@ -377,12 +423,17 @@ fn run_poll_loop(
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
         }
 
+        if !session_dead {
+            // Stopped (#688), not disconnected: returning drops the port.
+            info!("Poll loop stopped for shutdown");
+            return Ok(());
+        }
         warn!(
             "Serial session ended for {} — scanner disconnected. Will attempt to reconnect.",
             port_name
         );
         mark_disconnected(&state, "scanner disconnected");
-        thread::sleep(reconnect_backoff);
+        sleep_unless_stopped(reconnect_backoff, stop);
         reconnect_backoff = next_backoff(reconnect_backoff);
     }
 }
@@ -392,6 +443,7 @@ fn run_poll_loop_usb(
     vid: u16,
     pid: u16,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
+    stop: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let transport = UsbTransport::new(vid, pid);
     let port_label = format!("usb:{:04x}:{:04x}", vid, pid);
@@ -412,6 +464,10 @@ fn run_poll_loop_usb(
     // as the scanner appears and disappears -- including before it has ever
     // appeared (#513).
     loop {
+        if stop.load(Ordering::Relaxed) {
+            info!("Poll loop stopped for shutdown");
+            return Ok(());
+        }
         let mut session = match transport.open() {
             Ok(s) => s,
             Err(e) => {
@@ -422,7 +478,7 @@ fn run_poll_loop_usb(
                 // ended, so plugging the scanner back in did nothing until the
                 // app was relaunched.
                 mark_disconnected(&state, &format!("USB open failed: {}", e));
-                thread::sleep(reconnect_backoff);
+                sleep_unless_stopped(reconnect_backoff, stop);
                 reconnect_backoff = next_backoff(reconnect_backoff);
                 continue;
             }
@@ -485,7 +541,7 @@ fn run_poll_loop_usb(
             }
             drop(session);
             mark_disconnected(&state, "USB endpoint wedged; re-enumerated, reopening");
-            thread::sleep(reconnect_backoff);
+            sleep_unless_stopped(reconnect_backoff, stop);
             reconnect_backoff = next_backoff(reconnect_backoff);
             continue;
         }
@@ -517,7 +573,7 @@ fn run_poll_loop_usb(
         // Inner per-session loop. Breaks out (to the outer reconnect loop)
         // the moment any transport call signals the device is gone.
         let mut session_dead = false;
-        while !session_dead {
+        while !session_dead && !stop.load(Ordering::Relaxed) {
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
                     ControlCommand::Hold { reply, deadline } => {
@@ -712,6 +768,12 @@ fn run_poll_loop_usb(
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
         }
 
+        if !session_dead {
+            // Stopped (#688), not disconnected: returning drops the session,
+            // which releases the claimed interface.
+            info!("Poll loop stopped for shutdown");
+            return Ok(());
+        }
         // Session dropped here. Log once (not per failed poll) and let the
         // outer loop reopen with backoff.
         warn!(
@@ -719,7 +781,7 @@ fn run_poll_loop_usb(
             port_label
         );
         mark_disconnected(&state, "scanner disconnected");
-        thread::sleep(reconnect_backoff);
+        sleep_unless_stopped(reconnect_backoff, stop);
         reconnect_backoff = next_backoff(reconnect_backoff);
     }
 }
@@ -802,10 +864,11 @@ fn should_announce_connect(mdl_set: bool, device_gone: bool) -> bool {
 /// The issue's recipe (`kill <pid>`, a `SIGTERM`) was right for the build it
 /// was written against. `SIGTERM` had no handler until `faf5918` (#600),
 /// committed 2026-08-31, two days after the 2026-08-29 sighting, so it killed
-/// the process mid-poll. The handler does not make the USB side clean either:
-/// `with_graceful_shutdown` stops the HTTP server, not the poll thread, so the
-/// process still exits mid-poll with the interface claimed (#688). The bench
-/// `SIGTERM` was therefore a fair attempt at the recipe. Why none of the
+/// the process mid-poll. The handler alone did not make the USB side clean
+/// either: `with_graceful_shutdown` stopped the HTTP server, not the poll
+/// thread, so the process still exited mid-poll with the interface claimed
+/// until #688 stopped the thread first. The bench runs predate #688, so the
+/// bench `SIGTERM` was a fair attempt at the recipe. Why none of the
 /// thirteen reproduced is unknown; a kill landing inside a bulk transfer that
 /// was never hit is one candidate.
 ///
@@ -937,6 +1000,21 @@ fn broadcast_state_stale(state: &AppState) {
         "timestamp": timestamp,
     });
     let _ = state.ws_tx.send(msg.to_string());
+}
+
+/// Sleep for a reconnect backoff, ending early once `stop` is set (#688). The
+/// backoff reaches `RECONNECT_BACKOFF_MAX_MS` (5 s), longer than shutdown waits
+/// for this thread, so a plain sleep made quitting with the scanner unplugged
+/// time out.
+fn sleep_unless_stopped(duration: Duration, stop: &AtomicBool) {
+    let deadline = Instant::now() + duration;
+    while !stop.load(Ordering::Relaxed) {
+        let now = Instant::now();
+        if now >= deadline {
+            return;
+        }
+        thread::sleep((deadline - now).min(Duration::from_millis(50)));
+    }
 }
 
 /// Double the reconnect delay, capped at RECONNECT_BACKOFF_MAX_MS, so a
@@ -2614,9 +2692,10 @@ mod tests {
     /// Mutation-verified in both directions before this landed.
     ///
     /// NOTE: the spawned thread is deliberately detached and runs for the life
-    /// of the test binary — a loop with no scanner cannot be asked to stop. It
-    /// settles at one failed open per `RECONNECT_BACKOFF_MAX_MS` (5 s), which
-    /// costs nothing measurable.
+    /// of the test binary; its stop flag is never set, so that the lower-bound
+    /// check below measures the retry and not a stop. It settles at one failed
+    /// open per `RECONNECT_BACKOFF_MAX_MS` (5 s), which costs nothing
+    /// measurable.
     #[test]
     fn a_failed_serial_open_retries_instead_of_ending_the_loop() {
         let state = device_only_state();
@@ -2630,6 +2709,7 @@ mod tests {
                 115_200,
                 false,
                 cmd_rx,
+                &AtomicBool::new(false),
             )
         });
 
@@ -2680,7 +2760,9 @@ mod tests {
 
         // Not an assigned USB vendor id, so this cannot collide with hardware
         // attached to the machine running the suite.
-        let handle = thread::spawn(move || run_poll_loop_usb(loop_state, 0xFFFF, 0xFFFF, cmd_rx));
+        let handle = thread::spawn(move || {
+            run_poll_loop_usb(loop_state, 0xFFFF, 0xFFFF, cmd_rx, &AtomicBool::new(false))
+        });
 
         assert!(
             wait_until(OPEN_FAILURE_WAIT, || reported_disconnected(&state)),
@@ -2695,5 +2777,66 @@ mod tests {
             "a failed USB open must retry; the loop ended instead, which is the \
              #513 bug on the transport macOS uses for a BC125AT"
         );
+    }
+
+    /// REGRESSION GUARD (#688): a stopped poll loop ends, on both transports.
+    ///
+    /// Shutdown used to stop only the HTTP server, so the process exited with
+    /// this thread mid-poll and the USB interface still claimed. Driven through
+    /// `spawn_poll_loop`, the entry point `run_server_with_shutdown` uses, so a
+    /// handle that is never wired to the loop fails here too.
+    ///
+    /// No scanner is attached, so these exercise the stop check in the
+    /// reconnect loop. The check inside a live session cannot be reached
+    /// without hardware (`rusb` has no injectable backend); it needs a real
+    /// scanner to verify.
+    fn assert_stops(target: &str) {
+        let (_cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let handle = spawn_poll_loop(
+            device_only_state(),
+            target.to_string(),
+            115_200,
+            false,
+            cmd_rx,
+        );
+        // Let it reach the reconnect backoff first, so the stop has to be
+        // observed by a running loop rather than before it began.
+        thread::sleep(Duration::from_millis(300));
+        assert!(
+            handle.stop_and_join(Duration::from_secs(3)),
+            "a stopped poll loop on {target} must end; it kept running, which is \
+             the #688 bug -- the process exits with the scanner session mid-transfer"
+        );
+    }
+
+    #[test]
+    fn a_stopped_serial_poll_loop_ends() {
+        assert_stops("/dev/bearpaw-nonexistent-test-port");
+    }
+
+    /// REGRESSION GUARD (#688): a reconnect backoff wakes on stop. At its 5 s
+    /// cap a plain sleep outlasts `POLL_LOOP_STOP_TIMEOUT`, so quitting with the
+    /// scanner unplugged would time out instead of stopping.
+    #[test]
+    fn a_reconnect_backoff_ends_early_when_stopped() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let setter = stop.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            setter.store(true, Ordering::Relaxed);
+        });
+        let started = Instant::now();
+        sleep_unless_stopped(Duration::from_millis(RECONNECT_BACKOFF_MAX_MS), &stop);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "a 5 s backoff must end soon after stop; it took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_stopped_usb_poll_loop_ends() {
+        // Not an assigned USB vendor id; see the #513 USB guard above.
+        assert_stops("usb:ffff:ffff");
     }
 }

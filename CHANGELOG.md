@@ -4,6 +4,16 @@ All notable changes to Bearpaw are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Quitting Bearpaw now lets go of the scanner cleanly.** Quitting the app, or
+  stopping the backend with Ctrl-C or `kill`, used to end it in the middle of
+  talking to the scanner over USB. Bearpaw now finishes its current exchange
+  and releases the scanner before it exits. Quitting can take up to a few
+  seconds longer while it does.
+
 ## [1.1.2] — 2026-09-22
 
 Fixes for scanning after a channel lockout, a blank window on older Macs, and
