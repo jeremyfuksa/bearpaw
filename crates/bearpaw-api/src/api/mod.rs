@@ -7469,8 +7469,9 @@ mod tests {
         }
     }
 
-    /// A scanner that refuses program mode, as it does while sitting in its own
-    /// on-device menu, and answers everything else.
+    /// A scanner that refuses program mode and answers everything else. Which
+    /// real state produces `PRG,NG` is unobserved; its own menu is not one on a
+    /// BC125AT (audit-reconciliation Conflict 6).
     fn responder_that_refuses_prg() -> impl Fn(&str) -> Result<String, String> + Send + 'static {
         |command: &str| match command {
             "PRG" => Ok("PRG,NG\r".to_string()),

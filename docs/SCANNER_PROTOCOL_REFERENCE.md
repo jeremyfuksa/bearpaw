@@ -103,7 +103,7 @@ The protocol is **half-duplex, synchronous, ASCII, case-sensitive, single-line b
 
 - **Fields** for "get" commands (`MDL,BC125AT\r`, `GLG,01545500,FM,…\r`)
 - **`OK`** for "set" commands (`KEY,OK\r`, `PRG,OK\r`)
-- **`NG`** when the command is syntactically correct but invalid in the current mode (`PRG,NG\r` if already in a menu)
+- **`NG`** when the command is syntactically correct but invalid in the current mode (`CSG,NG\r` outside program mode, captured on a BC75XLT in `docs/wire_captures/2026-08-28/custom-search-probe.txt`). `PRG` was documented as answering `PRG,NG` in a menu or mid direct entry; a BC125AT accepts it in both (audit-reconciliation Conflict 6)
 - **`ERR\r`** (bare token, no command echo) for syntax or out-of-range errors
 
 The scanner **sends no unsolicited data**, no banner, and no echo of your raw command bytes. **Pipelining is not supported** — wait for the response to each command before sending the next. Pipelined commands produce `ERR`, `NG`, or mangled output.
@@ -307,7 +307,7 @@ The BC125AT/BCT125AT protocol does **not expose battery level**. Treat any `batt
 |---|---|---|---|
 | `MDL` | get | `MDL,BC125AT` | Both modes |
 | `VER` | get | `VER,Version 1.04.02` | Both modes |
-| `PRG` | enter | `PRG,OK` or `PRG,NG` | NG if in menu / direct entry |
+| `PRG` | enter | `PRG,OK` or `PRG,NG` | Accepted in a menu and mid direct entry on a BC125AT (audit-reconciliation Conflict 6); what yields NG is unobserved |
 | `EPG` | exit | `EPG,OK` | Returns to scan or hold |
 | `VOL` / `VOL,n` | get/set | `VOL,8` / `VOL,OK` | Range 0–15; both modes |
 | `SQL` / `SQL,n` | get/set | `SQL,5` / `SQL,OK` | Range 0–15; both modes |

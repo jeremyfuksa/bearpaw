@@ -319,6 +319,14 @@ This compounds the 2026-07-21 priority finding above: setting the flag works via
 
 Method note: the probe computes its prompt order from the baseline so the mode already held is prompted **last**, guaranteeing every reading is a real transition. That exists because the `CLC` probe shipped twice with an unnoticed non-transition step (see Conflict 4's two captures). Any future "which digit means which label" probe should carry the same property.
 
+### Conflict 6 — `PRG` in a menu or mid direct entry (added 2026-09-23)
+
+- **Our own reference said:** `PRG` answers `PRG,NG` "if in menu / direct entry" (`SCANNER_PROTOCOL_REFERENCE.md` §response codes and the `PRG` row). The `PRG,NG` refusal in `ProgramModeGuard::enter` (#140) and `program_mode_start`, and the five helpers #684 moved onto it, all name "the scanner is in its own on-device menu" as the case they handle.
+- **Our hardware says:** a BC125AT accepted `PRG` in both states (`docs/wire_captures/2026-09-23/prg-in-menu-probe.txt`). In its program-mode menu, the remote `PRG` ended the menu and the bracket ran; `EPG` then left the radio in HOLD. Mid direct entry ("146" typed, E not pressed), `PRG` was accepted and a `CIN` read succeeded.
+- **Verdict:** neither state produces `PRG,NG` on this radio, and what does remains unobserved. The refusal code stays — it is cheap, correct for any non-OK reply, and `NG` is still documented for the general case — but the menu is no longer given as its reason. Comments, the reference and the changelog were corrected to match.
+
+Method note: the backend log records reply lengths, not text, and `PRG,OK`/`PRG,NG` are both 6 bytes. The reply was read off the outcome: since #694 every path goes through `ProgramModeGuard::enter`, which fails the request on anything but OK, so a bracket that went on to `CIN` got `PRG,OK`. A future probe should log the reply text directly.
+
 ### Governing rule
 
 Whenever `BC125AT_PROTOCOL.md` disagrees with a wire capture from this hardware, the capture wins. Document the disagreement in `docs/SCANNER_PROTOCOL_REFERENCE.md`; do not reshape the Rust code to match the reference's claim.
