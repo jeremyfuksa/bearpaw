@@ -1,0 +1,50 @@
+PRG while the scanner is in a menu or mid direct entry -- 2026-09-23
+===================================================================
+
+Hardware: BC125AT (usb:1965:0017), macOS 27.0, direct-USB path.
+Backend: main at d924033 (after #694), standalone `bearpaw` binary, log level
+`bearpaw_api=info`. Firmware was not re-read this session.
+
+Question: SCANNER_PROTOCOL_REFERENCE.md said `PRG` answers `PRG,NG` "if in
+menu / direct entry". #140/#684 name "the scanner is in its own on-device menu"
+as the case the `PRG,NG` refusal exists for. Does this radio refuse?
+
+Method
+------
+The operator put the radio in each state from its own keypad, then one API call
+opened a `PRG` bracket. The backend log records each command and the LENGTH of
+its reply, not the reply text -- and `PRG,OK` and `PRG,NG` are both 6 bytes. The
+reply is read off the outcome instead: since #694 every path here goes through
+`ProgramModeGuard::enter`, which fails the request with `program_mode_refused`
+on anything but OK. A request that went on to send `CIN` and succeed therefore
+got `PRG,OK`.
+
+Channel 401 (bank 9, disposable) was used throughout and left unlocked.
+
+1. Radio in its program-mode MENU (operator-reported)
+   POST /api/v1/commands/lockout {"mode":"temporary","channel":401}  -> 200
+
+   21:36:58.230109Z command=PRG     response_len=6
+   21:36:58.440065Z command=CIN,401 response_len=38
+   21:36:58.677280Z command=CIN,401,pri test,01234500,AUTO,0,2,1,0 response_len=6
+   21:36:58.888341Z command=CIN,401 response_len=38
+   21:36:59.138542Z command=EPG     response_len=6
+
+   Afterwards the radio was out of its menu and in HOLD (operator-reported):
+   the remote PRG ended the menu, and EPG parked the radio in HOLD, as #683
+   found for EPG generally.
+
+   (Lockout undone: POST /api/v1/lockouts/temporary/clear -> {"cleared":[401]})
+
+2. Radio mid DIRECT ENTRY: "146" typed on the keypad, E not pressed
+   (operator-reported)
+   GET /api/v1/memory/channels/401  -> 200, lockout:false
+
+   21:39:48.882847Z command=PRG     response_len=6
+   21:39:49.097962Z command=CIN,401 response_len=38
+   21:39:49.345060Z command=EPG     response_len=6
+
+Result
+------
+Neither state produced PRG,NG. In both, PRG was accepted and the bracket ran.
+What, if anything, makes this firmware answer PRG,NG remains unobserved.

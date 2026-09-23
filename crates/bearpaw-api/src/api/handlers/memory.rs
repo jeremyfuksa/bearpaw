@@ -303,8 +303,9 @@ pub(crate) async fn program_mode_start(
     // The matching EPG is in program_mode_end.
     //
     // REGRESSION GUARD (#262): a transport-level Ok is not enough — the scanner
-    // answers `PRG,NG`/`ERR` when it can't enter program mode (e.g. it's sitting
-    // in its own on-device menu), and that comes back as Ok("PRG,NG"). Treating
+    // answers `PRG,NG`/`ERR` when it can't enter program mode, and that comes
+    // back as Ok("PRG,NG"). (Its own menu is not such a state on a BC125AT --
+    // audit-reconciliation Conflict 6.) Treating
     // it as success sets program_mode_active (freezing the live display on
     // "Programming") while every later CIN/SCG write fails against a scanner
     // that never left normal operation. Classify the reply as

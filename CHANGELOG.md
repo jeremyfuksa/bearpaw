@@ -14,12 +14,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and releases the scanner before it exits. Quitting can take up to a few
   seconds longer while it does.
 
-- **Channel edits and lockouts fail clearly when the scanner is busy.** If the
-  scanner is in its own on-device menu, locking out, reading or editing a
-  channel, or loading settings, now stops and says the scanner refused program
-  mode, instead of carrying on and reporting a confusing failure. The same
-  actions during a memory sync are now turned away straight away, instead of
-  waiting three seconds and timing out.
+- **Channel edits and lockouts no longer stall during a memory sync.** Locking
+  out, reading or editing a channel, or loading settings while a memory sync is
+  running is now turned away straight away, instead of waiting three seconds and
+  timing out. And if the scanner ever refuses to be programmed, these actions
+  now stop and say so, instead of carrying on and reporting a confusing failure.
 
 ## [1.1.2] — 2026-09-22
 

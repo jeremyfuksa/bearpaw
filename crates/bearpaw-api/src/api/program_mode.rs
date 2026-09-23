@@ -93,8 +93,9 @@ impl ProgramModeGuard {
         match send_raw_command(state, "PRG", false).await {
             Ok(resp) => {
                 // REGRESSION GUARD (#140): a transport-level Ok is not enough —
-                // the scanner can answer `PRG,NG`/`ERR` (e.g. it's in a menu).
-                // Treating that as success leaves an "active" guard that
+                // the scanner can answer `PRG,NG`/`ERR`. (Not from its menu or
+                // mid direct entry: a BC125AT accepts PRG in both -- see
+                // audit-reconciliation Conflict 6.) Treating that as success leaves an "active" guard that
                 // suspends polling and whose Drop sends a spurious EPG, while
                 // every subsequent CIN/SCG fails. Require an actual OK.
                 if !matches!(classify_response(&resp), ScannerReply::Ok) {
