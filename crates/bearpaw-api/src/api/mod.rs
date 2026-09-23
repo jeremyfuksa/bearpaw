@@ -1848,13 +1848,11 @@ pub(crate) fn parse_command_parts(response: &str, command: &str) -> Vec<String> 
 pub(crate) async fn read_frequency_lockouts_from_scanner(
     state: &AppState,
 ) -> Result<Vec<u32>, ApiError> {
-    let _ = send_raw_command(state, "PRG", false).await?;
     // REGRESSION GUARD (#138): run the GLF walk in a helper so EPG is ALWAYS
-    // sent afterward, even if a GLF read errors mid-walk. A `?` that returned
-    // early before the EPG would strand the scanner in program mode and leave
-    // the poll loop suspended (program_mode_active never clears).
+    // sent afterward, even if a GLF read errors mid-walk.
+    let prg = ProgramModeGuard::enter_or_join(state).await?;
     let result = read_frequency_lockouts_walk(state).await;
-    let _ = send_raw_command(state, "EPG", false).await;
+    prg.close().await;
     result
 }
 
@@ -1898,7 +1896,7 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
         parts.join(",").trim().to_string()
     };
 
-    let _ = send_raw_command(state, "PRG", false).await?;
+    let prg = ProgramModeGuard::enter_or_join(state).await?;
     // Per-section strictness (#143): a section whose reply is NG/ERR or whose
     // primary field doesn't parse becomes `null` instead of a fabricated
     // zero/default. `get_config` merges only non-null sections over the
@@ -2128,7 +2126,7 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
         }))
     }
     .await;
-    let _ = send_raw_command(state, "EPG", false).await;
+    prg.close().await;
     result
 }
 
@@ -2136,14 +2134,9 @@ pub(crate) async fn read_channel_from_scanner(
     state: &AppState,
     index: u16,
 ) -> Result<ChannelData, ApiError> {
-    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
-    if !in_program_mode {
-        let _ = send_raw_command(state, "PRG", false).await?;
-    }
+    let prg = ProgramModeGuard::enter_or_join(state).await?;
     let response = send_raw_command(state, &format!("CIN,{}", index), false).await;
-    if !in_program_mode {
-        let _ = send_raw_command(state, "EPG", false).await;
-    }
+    prg.close().await;
     let response = response?;
     parse_cin_response(index, &response)
         .ok_or_else(|| ApiError::BadRequest("channel_read_failed".to_string()))
@@ -2447,10 +2440,7 @@ pub(crate) async fn write_channel_to_scanner(
 ) -> Result<ChannelData, ApiError> {
     let payload = build_cin_write_payload_for(channel, &state.capabilities())?;
 
-    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
-    if !in_program_mode {
-        let _ = send_raw_command(state, "PRG", false).await?;
-    }
+    let prg = ProgramModeGuard::enter_or_join(state).await?;
     let write_cmd = format!("CIN,{},{}", channel.index, payload);
     let write_response = send_raw_command(state, &write_cmd, false).await;
     let read_response = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
@@ -2517,9 +2507,7 @@ pub(crate) async fn write_channel_to_scanner(
 
     // REGRESSION GUARD (#138): EPG must be sent before any early return so
     // the scanner isn't left stuck in program mode with polling suspended.
-    if !in_program_mode {
-        let _ = send_raw_command(state, "EPG", false).await;
-    }
+    prg.close().await;
 
     // Store the displaced reads before any early return below: they are
     // verified reads, and they are true whether or not the write we came here
@@ -2844,50 +2832,24 @@ pub(crate) async fn set_channel_lockout_on_scanner(
     // with the has_tone heuristic and, for the common tone=0 layout, wrote
     // into the TONE field instead (#132) — "unlock" reported success while
     // leaving the channel locked.
-    let in_program_mode = state.program_mode_active.load(Ordering::Relaxed);
-    if !in_program_mode {
-        let _ = send_raw_command(state, "PRG", false).await?;
+    // REGRESSION GUARD (#138): a read or build error inside the bracket must
+    // still leave program mode, so the bracket body is one block and `close`
+    // runs after it whatever it returned.
+    let prg = ProgramModeGuard::enter_or_join(state).await?;
+    let bracket = async {
+        let response = send_raw_command(state, &format!("CIN,{}", index), false).await?;
+        let mut updated = parse_cin_response(index, &response)
+            .ok_or_else(|| ApiError::BadRequest("lockout_failed".to_string()))?;
+        updated.lockout = locked;
+        let payload = build_cin_write_payload_for(&updated, &state.capabilities())?;
+        let write_cmd = format!("CIN,{},{}", index, payload);
+        let write_response = send_raw_command(state, &write_cmd, false).await;
+        let read_response = send_raw_command(state, &format!("CIN,{}", index), false).await;
+        Ok::<_, ApiError>((write_response, read_response))
     }
-    let response = send_raw_command(state, &format!("CIN,{}", index), false).await;
-    // REGRESSION GUARD (#138): send EPG before propagating a read error so the
-    // scanner isn't left in program mode with polling suspended.
-    let response = match response {
-        Ok(r) => r,
-        Err(e) => {
-            if !in_program_mode {
-                let _ = send_raw_command(state, "EPG", false).await;
-            }
-            return Err(e);
-        }
-    };
-    let channel = match parse_cin_response(index, &response) {
-        Some(c) => c,
-        None => {
-            if !in_program_mode {
-                let _ = send_raw_command(state, "EPG", false).await;
-            }
-            return Err(ApiError::BadRequest("lockout_failed".to_string()));
-        }
-    };
-
-    let mut updated = channel;
-    updated.lockout = locked;
-    let payload = match build_cin_write_payload_for(&updated, &state.capabilities()) {
-        Ok(p) => p,
-        Err(e) => {
-            if !in_program_mode {
-                let _ = send_raw_command(state, "EPG", false).await;
-            }
-            return Err(e);
-        }
-    };
-
-    let write_cmd = format!("CIN,{},{}", index, payload);
-    let write_response = send_raw_command(state, &write_cmd, false).await;
-    let read_response = send_raw_command(state, &format!("CIN,{}", index), false).await;
-    if !in_program_mode {
-        let _ = send_raw_command(state, "EPG", false).await;
-    }
+    .await;
+    prg.close().await;
+    let (write_response, read_response) = bracket?;
 
     match classify_response(&write_response?) {
         ScannerReply::Ok => {}
@@ -7505,6 +7467,140 @@ mod tests {
             }
             Ok("OK\r".to_string())
         }
+    }
+
+    /// A scanner that refuses program mode, as it does while sitting in its own
+    /// on-device menu, and answers everything else.
+    fn responder_that_refuses_prg() -> impl Fn(&str) -> Result<String, String> + Send + 'static {
+        |command: &str| match command {
+            "PRG" => Ok("PRG,NG\r".to_string()),
+            "VER" => Ok("VER,1.06.06\r".to_string()),
+            _ => Ok("OK\r".to_string()),
+        }
+    }
+
+    /// REGRESSION GUARD (#684): a refused `PRG` stops every hand-bracketed
+    /// helper before the wire, with `program_mode_refused`.
+    ///
+    /// These five helpers sent `PRG` by hand and threw its reply away, so
+    /// `PRG,NG` counted as success (the #140 bug `ProgramModeGuard` already
+    /// guards): they went on to send `CIN`/`GLF`/settings reads to a radio that
+    /// never entered program mode, then a stray `EPG`, and reported the wrong
+    /// error. One state per helper, so each starts with no bracket open.
+    #[tokio::test]
+    async fn a_refused_prg_stops_every_program_mode_helper() {
+        let wanted = ChannelData {
+            index: 5,
+            frequency: 146.52,
+            modulation: "FM".to_string(),
+            ..Default::default()
+        };
+        for helper in ["lockouts", "settings", "read", "write", "lockout"] {
+            let state = default_state();
+            let scanner = FakeScanner::attach(&state, responder_that_refuses_prg());
+            let err = match helper {
+                "lockouts" => read_frequency_lockouts_from_scanner(&state).await.err(),
+                "settings" => read_settings_snapshot_from_scanner(&state).await.err(),
+                "read" => read_channel_from_scanner(&state, 5).await.err(),
+                "write" => write_channel_to_scanner(&state, &wanted).await.err(),
+                _ => set_channel_lockout_on_scanner(&state, 5, true).await.err(),
+            };
+            assert!(
+                matches!(&err, Some(ApiError::BadRequest(m)) if m.starts_with("program_mode_refused")),
+                "{helper}: a PRG,NG must fail as program_mode_refused, got {err:?}"
+            );
+            let sent: Vec<String> = scanner
+                .transcript()
+                .into_iter()
+                .filter(|c| c != "VER")
+                .collect();
+            assert_eq!(
+                sent,
+                vec!["PRG".to_string()],
+                "{helper}: nothing may follow a refused PRG -- no CIN/GLF on a radio \
+                 outside program mode, and no EPG for a bracket that never opened"
+            );
+            assert!(
+                !state.program_mode_active.load(Ordering::Relaxed),
+                "{helper}: a refused PRG must not leave the poll loop suspended"
+            );
+        }
+    }
+
+    /// REGRESSION GUARD (#684): a helper refuses during a memory sync with
+    /// `sync_in_progress` instead of queueing behind it and timing out.
+    ///
+    /// A sync sets `program_mode_active` too, so this also pins that
+    /// `enter_or_join` does not JOIN a sync's bracket.
+    #[tokio::test]
+    async fn a_program_mode_helper_refuses_during_a_memory_sync() {
+        let state = default_state();
+        let scanner = FakeScanner::attach(&state, responder_that_persists());
+        *state.sync_task_id.lock().unwrap() = Some("sync-1".to_string());
+        state.program_mode_active.store(true, Ordering::Relaxed);
+
+        let err = set_channel_lockout_on_scanner(&state, 5, true).await.err();
+
+        assert!(
+            matches!(&err, Some(ApiError::Conflict(m)) if m == "sync_in_progress"),
+            "a lockout during a sync must be refused as sync_in_progress, got {err:?}"
+        );
+        assert!(
+            scanner.transcript().is_empty(),
+            "nothing may be queued behind a running sync: {:?}",
+            scanner.transcript()
+        );
+    }
+
+    /// REGRESSION GUARD (#684): inside a bracket someone else holds, a helper
+    /// sends neither `PRG` nor `EPG`, and leaves the bracket open.
+    #[tokio::test]
+    async fn a_program_mode_helper_joins_an_open_bracket() {
+        let state = default_state();
+        let scanner = FakeScanner::attach(&state, responder_that_persists());
+        state.program_mode_active.store(true, Ordering::Relaxed);
+
+        read_channel_from_scanner(&state, 5)
+            .await
+            .expect("the read must succeed inside the open bracket");
+
+        assert_eq!(scanner.transcript(), vec!["CIN,5".to_string()]);
+        assert!(
+            state.program_mode_active.load(Ordering::Relaxed),
+            "a helper must not close a bracket it did not open"
+        );
+    }
+
+    /// REGRESSION GUARD (#684): back-to-back standalone calls each open and
+    /// CLOSE their own bracket.
+    ///
+    /// `ProgramModeGuard`'s Drop only queues its `EPG`, leaving the flag set
+    /// until the poll thread sends it (#598). A helper that closed that way
+    /// would hand the next call a flag that says "bracket open": it would join
+    /// a bracket already closing and send its `CIN` after the `EPG`.
+    /// `clear_temporary_lockouts` makes exactly these calls, one per channel.
+    #[tokio::test]
+    async fn back_to_back_helper_calls_each_open_their_own_bracket() {
+        let state = default_state();
+        let scanner = FakeScanner::attach(&state, responder_that_persists());
+
+        set_channel_lockout_on_scanner(&state, 5, true)
+            .await
+            .expect("first lockout");
+        set_channel_lockout_on_scanner(&state, 6, true)
+            .await
+            .expect("second lockout");
+
+        let brackets: Vec<String> = scanner
+            .transcript()
+            .into_iter()
+            .filter(|c| c == "PRG" || c == "EPG")
+            .collect();
+        assert_eq!(
+            brackets,
+            ["PRG", "EPG", "PRG", "EPG"].map(String::from).to_vec(),
+            "each standalone call must open and close its own bracket"
+        );
     }
 
     async fn post_lockout_in_mode(

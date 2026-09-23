@@ -54,6 +54,10 @@ pub struct ProgramModeGuard {
     flag: Arc<AtomicBool>,
     /// True if PRG entry succeeded. Drop should only send EPG in that case.
     active: bool,
+    /// True for a guard from `enter_or_join` that joined a bracket someone
+    /// else opened. Its Drop touches nothing: the bracket and its flag belong
+    /// to the opener.
+    joined: bool,
 }
 
 impl ProgramModeGuard {
@@ -84,6 +88,7 @@ impl ProgramModeGuard {
             state: state.clone(),
             flag,
             active: false,
+            joined: false,
         };
         match send_raw_command(state, "PRG", false).await {
             Ok(resp) => {
@@ -113,6 +118,51 @@ impl ProgramModeGuard {
             }
         }
     }
+
+    /// Enter program mode, or join the bracket that is already open.
+    ///
+    /// For helpers that run both standalone and inside a caller's bracket --
+    /// a `ProgramModeGuard` further up the stack, or the session
+    /// `program_mode_start` holds open across requests. Joining sends no `PRG`
+    /// and its Drop sends no `EPG`; opening goes through `enter`.
+    ///
+    /// REGRESSION GUARD (#684): these helpers used to send `PRG`/`EPG` by hand
+    /// and so skipped `enter`'s `PRG,NG` refusal (#140), its settle delay and
+    /// its `sync_in_progress` refusal. The refusal is checked on BOTH paths: a
+    /// memory sync sets `program_mode_active` too, and joining it would queue
+    /// behind the sync and time out.
+    ///
+    /// Whether a bracket is open is still read from the one global flag, so
+    /// two overlapping requests cannot tell whose bracket it is.
+    pub async fn enter_or_join(state: &AppState) -> Result<Self, ApiError> {
+        if state.program_mode_active.load(Ordering::Relaxed)
+            && state.sync_task_id.lock().unwrap().is_none()
+        {
+            return Ok(Self {
+                state: state.clone(),
+                flag: state.program_mode_active.clone(),
+                active: false,
+                joined: true,
+            });
+        }
+        Self::enter(state).await
+    }
+
+    /// Leave program mode now, awaiting the `EPG`. A joined guard does nothing.
+    ///
+    /// Drop cannot await, so it only QUEUES the `EPG`, and the flag stays set
+    /// until the poll thread sends it (#598). A caller that returns and is
+    /// called again at once -- `clear_temporary_lockouts` walks channels this
+    /// way -- would then see the flag, join the closing bracket, and send its
+    /// `CIN` after the `EPG`. Awaiting it here clears the flag before return,
+    /// which is what the hand-written brackets did. Drop still covers early
+    /// returns.
+    pub async fn close(mut self) {
+        if self.active && !self.joined {
+            let _ = send_raw_command(&self.state, "EPG", false).await;
+            self.active = false;
+        }
+    }
 }
 
 impl Drop for ProgramModeGuard {
@@ -135,6 +185,10 @@ impl Drop for ProgramModeGuard {
         // arrive, because then nothing else ever would: the stuck flag freezes
         // the live display, which is the hazard the original comment named and
         // it has not gone away.
+        if self.joined {
+            // Someone else's bracket: leave its EPG and its flag to them.
+            return;
+        }
         if !self.active {
             // PRG never succeeded; nothing to EPG.
             self.flag.store(false, Ordering::Relaxed);
