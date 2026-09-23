@@ -459,12 +459,13 @@ fn run_poll_loop_usb(
             thread::sleep(Duration::from_millis(120));
         }
         // REGRESSION GUARD (#513): a device we just claimed cannot be gone. If
-        // its FIRST read says otherwise, the endpoint is wedged, and the replug
-        // is the only cure anyone has confirmed -- `clear_halt` already ran
-        // during `open` and demonstrably does not heal it. Re-enumerating is
-        // that replug in software; it invalidates this session, so drop it and
-        // let the outer loop open a fresh one. Bounded to one attempt per
-        // episode by `wedge_reset_used`.
+        // the `MDL` handshake above says otherwise -- on any attempt, write or
+        // read, by any error `is_device_gone` accepts -- the endpoint is
+        // treated as wedged. The replug is the only cure anyone has confirmed;
+        // `clear_halt` already ran during `open` and demonstrably does not
+        // heal it. Re-enumerating is that replug in software; it invalidates
+        // this session, so drop it and let the outer loop open a fresh one.
+        // Bounded to one attempt per episode by `wedge_reset_used`.
         //
         // `is_wedged_after_open` carries what is and is not evidenced here:
         // the recovery is hardware-verified, the wedge itself never
@@ -776,10 +777,13 @@ fn should_announce_connect(mdl_set: bool, device_gone: bool) -> bool {
 /// matched the VID/PID, opened the device and claimed the interface, so the
 /// scanner demonstrably IS attached. A device that is genuinely gone fails
 /// EARLIER, at `open()`, with `NotFound` — it never reaches this decision at
-/// all. So a "device gone" verdict on the very first read after a successful
-/// claim is not a report of an absent device; it is `rusb::Error::Io`, which
-/// `is_device_gone` classifies as gone (correctly, for every other caller)
-/// arriving from a pipe that has stopped carrying data for this process.
+/// all. So a "device gone" verdict from the `MDL` handshake after a successful
+/// claim is not a report of an absent device. In the #513 report it was
+/// `rusb::Error::Io` on the first read, which `is_device_gone` classifies as
+/// gone (correctly, for every other caller), arriving from a pipe that has
+/// stopped carrying data for this process. The predicate is broader than that
+/// symptom: it fires on any error `is_device_gone` accepts (`NoDevice`, `Io`,
+/// `Pipe`, `Other`), from any of the handshake's attempts, write or read.
 ///
 /// That is the #513 wedge as reported: after the backend stopped mid-poll,
 /// every later open succeeded and then failed its first read with
@@ -795,18 +799,26 @@ fn should_announce_connect(mdl_set: bool, device_gone: bool) -> bool {
 /// `reset()` re-enumerate the radio in ~2.6 s, after which the reopen succeeded
 /// and `MDL` answered normally.
 ///
-/// Note the issue's recipe cannot be right as written: `SIGTERM` is handled,
-/// via `SignalKind::terminate` feeding `with_graceful_shutdown` in
-/// `api::run_server`, so `kill <pid>` is the CLEAN shutdown path rather than a
-/// crash. Whether that handler postdates the 2026-08-29 sighting, or the wedge
-/// needs a kill landing inside a bulk transfer that was never hit, is unknown.
+/// The issue's recipe (`kill <pid>`, a `SIGTERM`) was right for the build it
+/// was written against. `SIGTERM` had no handler until `faf5918` (#600),
+/// committed 2026-08-31, two days after the 2026-08-29 sighting, so it killed
+/// the process mid-poll. The handler does not make the USB side clean either:
+/// `with_graceful_shutdown` stops the HTTP server, not the poll thread, so the
+/// process still exits mid-poll with the interface claimed (#688). The bench
+/// `SIGTERM` was therefore a fair attempt at the recipe. Why none of the
+/// thirteen reproduced is unknown; a kill landing inside a bulk transfer that
+/// was never hit is one candidate.
 ///
 /// So if this is being read while chasing a recurrence: the log line
-/// `USB endpoint appears wedged` is the diagnostic. Its presence confirms this
-/// path fired and says whether the reopen after it succeeded; its absence rules
-/// this path out entirely, and the fault is elsewhere. Do not assume the
-/// reasoning above has been proven against hardware — only the recovery has.
-/// See #672.
+/// `USB endpoint appears wedged` (a `warn`, so it survives the default filter)
+/// marks this branch firing. It is logged BEFORE the reset, so it says nothing
+/// about the outcome. A reopen that fails logs further `warn`s (`MDL read
+/// failed`, `Unable to read valid MDL response`); one that succeeds logs only
+/// `USB opened` at `info`, which the default filter drops. Its absence rules
+/// out only the FIRST wedge of an episode: once `reset_used` is set, a wedge
+/// that persists or recurs before an `MDL` answers takes the ordinary path and
+/// logs nothing here. Do not assume the reasoning above has been proven
+/// against hardware — only the recovery has. See #672.
 ///
 /// `reset_used` bounds it to ONE reset per wedge episode, cleared by the next
 /// `MDL` that answers. Without that bound a scanner that is powered off but
@@ -2413,9 +2425,9 @@ mod tests {
     /// backwards until you notice it is only ever consulted AFTER `open()`
     /// found the scanner on the bus, opened it and claimed its interface. A
     /// device that is actually absent fails at `open()` with `NotFound` and
-    /// never arrives here. What arrives here is `rusb::Error::Io` — which
-    /// `is_device_gone` folds in with the real ones, correctly for every other
-    /// caller — from a pipe that has quietly stopped carrying data.
+    /// never arrives here. What arrived here in #513 was `rusb::Error::Io` —
+    /// which `is_device_gone` folds in with the real ones, correctly for every
+    /// other caller — from a pipe that has quietly stopped carrying data.
     ///
     /// Asserted on the predicate rather than the loop for the same reason as
     /// `a_vanished_device_is_never_announced_as_connected` above: `rusb`'s
@@ -2425,7 +2437,8 @@ mod tests {
     #[test]
     fn a_claimed_device_that_says_gone_on_the_first_read_is_wedged() {
         // The #513 report, exactly: open and claim succeed, the first MDL read
-        // returns Input/Output Error. Only re-enumeration heals it.
+        // returns Input/Output Error. The replug is the only confirmed cure;
+        // re-enumeration is that replug in software.
         assert!(
             is_wedged_after_open(false, true, false),
             "a claimed device reporting gone on its first read is wedged, not absent"
