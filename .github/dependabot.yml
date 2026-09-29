@@ -43,6 +43,20 @@ updates:
           - "major"
           - "minor"
           - "patch"
+      # Vitest and its plugins pin each other's exact version, so a solo major
+      # is un-installable: #700, #701 and #702 each bumped one of the three to
+      # 5.x, npm ci died with ERESOLVE, and every CI job failed. #706 did them
+      # together. They release in lockstep from one monorepo, so unlike the
+      # typescript group above, grouping alone should hold. Listed before
+      # npm-minor-patch for the same claim-first reason.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       # Batch minor/patch bumps into one PR to cut review noise; majors still
       # come through individually so breaking changes get a dedicated review.
       npm-minor-patch:
