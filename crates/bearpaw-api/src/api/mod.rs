@@ -16,7 +16,7 @@ mod ws;
 pub(crate) use program_mode::ProgramModeGuard;
 pub(crate) use ws::broadcast_banks_update;
 
-pub use control::{validate_frequency, ControlCommand};
+pub use control::ControlCommand;
 pub use poll::spawn_poll_loop;
 
 use axum::{
