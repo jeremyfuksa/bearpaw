@@ -4,13 +4,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 
-use crate::protocol::{classify_response, ScannerReply};
 use crate::state::{ChannelData, ScannerMode};
 
 use super::super::security::validate_wire_field;
 use super::super::{
     command_sender, read_channel_from_scanner, send_raw_command, uuid_simple,
-    write_channel_to_scanner, ApiError, AppState, ControlCommand,
+    write_channel_to_scanner, ApiError, AppState, ControlCommand, ProgramModeGuard,
 };
 
 #[derive(Deserialize)]
@@ -298,34 +297,21 @@ pub(crate) async fn program_mode_start(
             let _ = send_raw_command(&state, "KEY,H", false).await;
         }
     }
-    // Manual PRG/EPG here (instead of ProgramModeGuard) because this handler
-    // intentionally leaves the scanner in program mode across HTTP requests.
-    // The matching EPG is in program_mode_end.
+    // This handler leaves the scanner in program mode across HTTP requests, so
+    // its guard is parked on AppState; program_mode_end drops it. Requests in
+    // between join the same bracket, and the EPG waits for the last of them
+    // (#695).
     //
-    // REGRESSION GUARD (#262): a transport-level Ok is not enough — the scanner
-    // answers `PRG,NG`/`ERR` when it can't enter program mode, and that comes
-    // back as Ok("PRG,NG"). (Its own menu is not such a state on a BC125AT --
-    // audit-reconciliation Conflict 6.) Treating
+    // REGRESSION GUARD (#262): `enter` refuses a `PRG,NG`/`ERR` reply. Treating
     // it as success sets program_mode_active (freezing the live display on
     // "Programming") while every later CIN/SCG write fails against a scanner
-    // that never left normal operation. Classify the reply as
-    // ProgramModeGuard::enter does. See `program_mode_start_rejects_prg_ng`.
-    let resp = send_raw_command(&state, "PRG", false).await?;
-    if !matches!(classify_response(&resp), ScannerReply::Ok) {
-        // send_raw_command set program_mode_active on the PRG at the command
-        // level and only clears it on a transport error — an NG/ERR reply
-        // leaves it stranded, which would keep the poll loop suspended. Clear
-        // it here before returning.
-        state.program_mode_active.store(false, Ordering::Relaxed);
-        return Err(ApiError::BadRequest(format!(
-            "program_mode_refused: {}",
-            resp.trim()
-        )));
-    }
+    // that never left normal operation. See `program_mode_start_rejects_prg_ng`.
+    let guard = ProgramModeGuard::enter(&state).await?;
+    // Replacing a previous session's guard drops it: still one share.
+    *state.program_mode_session.lock().unwrap() = Some(guard);
     state
         .program_mode_forced_hold
         .store(forced_hold, Ordering::Relaxed);
-    state.program_mode_active.store(true, Ordering::Relaxed);
     if let Ok(mut live) = state.live.write() {
         live.mode = ScannerMode::Programming;
     }
@@ -336,8 +322,10 @@ pub(crate) async fn program_mode_end(
     State(state): State<AppState>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
-    let _ = send_raw_command(&state, "EPG", false).await?;
-    state.program_mode_active.store(false, Ordering::Relaxed);
+    // Queues the EPG, unless another request is still inside the bracket, in
+    // which case it goes out when that one finishes (#695). A raw EPG here
+    // would cut that request off.
+    drop(state.program_mode_session.lock().unwrap().take());
     let forced_hold = state
         .program_mode_forced_hold
         .swap(false, Ordering::Relaxed);

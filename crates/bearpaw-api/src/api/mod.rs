@@ -68,6 +68,14 @@ pub struct AppState {
     pub command_tx: Arc<Mutex<Option<std::sync::mpsc::Sender<ControlCommand>>>>,
     pub program_mode_forced_hold: Arc<AtomicBool>,
     pub program_mode_active: Arc<AtomicBool>,
+    /// How many `ProgramModeGuard`s are inside the open bracket. The `EPG` goes
+    /// out when the last one leaves (#695).
+    pub program_mode_holders: Arc<Mutex<usize>>,
+    /// Held while a bracket is being opened, so nobody joins one whose `PRG`
+    /// has not been answered yet.
+    pub program_mode_opening: Arc<tokio::sync::Mutex<()>>,
+    /// The bracket `program_mode_start` holds open across requests.
+    pub program_mode_session: Arc<Mutex<Option<program_mode::ProgramModeGuard>>>,
 }
 
 impl AppState {
@@ -810,6 +818,9 @@ pub fn default_state() -> AppState {
         sequence_send: Arc::new(Mutex::new(())),
         command_tx: Arc::new(Mutex::new(None)),
         program_mode_forced_hold: Arc::new(AtomicBool::new(false)),
+        program_mode_holders: Arc::new(Mutex::new(0)),
+        program_mode_opening: Arc::new(tokio::sync::Mutex::new(())),
+        program_mode_session: Arc::new(Mutex::new(None)),
         program_mode_active: Arc::new(AtomicBool::new(false)),
     }
 }
@@ -1850,9 +1861,9 @@ pub(crate) async fn read_frequency_lockouts_from_scanner(
 ) -> Result<Vec<u32>, ApiError> {
     // REGRESSION GUARD (#138): run the GLF walk in a helper so EPG is ALWAYS
     // sent afterward, even if a GLF read errors mid-walk.
-    let prg = ProgramModeGuard::enter_or_join(state).await?;
+    let prg = ProgramModeGuard::enter(state).await?;
     let result = read_frequency_lockouts_walk(state).await;
-    prg.close().await;
+    drop(prg);
     result
 }
 
@@ -1896,7 +1907,7 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
         parts.join(",").trim().to_string()
     };
 
-    let prg = ProgramModeGuard::enter_or_join(state).await?;
+    let prg = ProgramModeGuard::enter(state).await?;
     // Per-section strictness (#143): a section whose reply is NG/ERR or whose
     // primary field doesn't parse becomes `null` instead of a fabricated
     // zero/default. `get_config` merges only non-null sections over the
@@ -2126,7 +2137,7 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
         }))
     }
     .await;
-    prg.close().await;
+    drop(prg);
     result
 }
 
@@ -2134,9 +2145,9 @@ pub(crate) async fn read_channel_from_scanner(
     state: &AppState,
     index: u16,
 ) -> Result<ChannelData, ApiError> {
-    let prg = ProgramModeGuard::enter_or_join(state).await?;
+    let prg = ProgramModeGuard::enter(state).await?;
     let response = send_raw_command(state, &format!("CIN,{}", index), false).await;
-    prg.close().await;
+    drop(prg);
     let response = response?;
     parse_cin_response(index, &response)
         .ok_or_else(|| ApiError::BadRequest("channel_read_failed".to_string()))
@@ -2440,7 +2451,7 @@ pub(crate) async fn write_channel_to_scanner(
 ) -> Result<ChannelData, ApiError> {
     let payload = build_cin_write_payload_for(channel, &state.capabilities())?;
 
-    let prg = ProgramModeGuard::enter_or_join(state).await?;
+    let prg = ProgramModeGuard::enter(state).await?;
     let write_cmd = format!("CIN,{},{}", channel.index, payload);
     let write_response = send_raw_command(state, &write_cmd, false).await;
     let read_response = send_raw_command(state, &format!("CIN,{}", channel.index), false).await;
@@ -2507,7 +2518,7 @@ pub(crate) async fn write_channel_to_scanner(
 
     // REGRESSION GUARD (#138): EPG must be sent before any early return so
     // the scanner isn't left stuck in program mode with polling suspended.
-    prg.close().await;
+    drop(prg);
 
     // Store the displaced reads before any early return below: they are
     // verified reads, and they are true whether or not the write we came here
@@ -2833,9 +2844,9 @@ pub(crate) async fn set_channel_lockout_on_scanner(
     // into the TONE field instead (#132) — "unlock" reported success while
     // leaving the channel locked.
     // REGRESSION GUARD (#138): a read or build error inside the bracket must
-    // still leave program mode, so the bracket body is one block and `close`
-    // runs after it whatever it returned.
-    let prg = ProgramModeGuard::enter_or_join(state).await?;
+    // still leave program mode, so the bracket body is one block and the
+    // guard drops after it whatever it returned.
+    let prg = ProgramModeGuard::enter(state).await?;
     let bracket = async {
         let response = send_raw_command(state, &format!("CIN,{}", index), false).await?;
         let mut updated = parse_cin_response(index, &response)
@@ -2848,7 +2859,7 @@ pub(crate) async fn set_channel_lockout_on_scanner(
         Ok::<_, ApiError>((write_response, read_response))
     }
     .await;
-    prg.close().await;
+    drop(prg);
     let (write_response, read_response) = bracket?;
 
     match classify_response(&write_response?) {
@@ -3041,13 +3052,18 @@ mod tests {
         ///
         /// Waits only when a bracket was actually opened. Commands valid in any
         /// mode (`VOL`, `SQL`) never open one, so waiting for their EPG would
-        /// burn the whole timeout on every such test.
+        /// burn the whole timeout on every such test. With several brackets,
+        /// waits until every `PRG` has its `EPG`.
         fn transcript_with_closed_bracket(&self) -> Vec<String> {
-            let t = self.transcript();
-            if !t.iter().any(|c| c == "PRG") {
-                return t;
+            let count = |t: &[String], c: &str| t.iter().filter(|x| *x == c).count();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                let t = self.transcript();
+                if count(&t, "EPG") >= count(&t, "PRG") || std::time::Instant::now() > deadline {
+                    return t;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
             }
-            self.transcript_once_seen("EPG")
         }
 
         /// The transcript, once `command` appears in it.
@@ -7532,7 +7548,7 @@ mod tests {
     /// `sync_in_progress` instead of queueing behind it and timing out.
     ///
     /// A sync sets `program_mode_active` too, so this also pins that
-    /// `enter_or_join` does not JOIN a sync's bracket.
+    /// `ProgramModeGuard::enter` does not JOIN a sync's bracket.
     #[tokio::test]
     async fn a_program_mode_helper_refuses_during_a_memory_sync() {
         let state = default_state();
@@ -7559,16 +7575,45 @@ mod tests {
     async fn a_program_mode_helper_joins_an_open_bracket() {
         let state = default_state();
         let scanner = FakeScanner::attach(&state, responder_that_persists());
-        state.program_mode_active.store(true, Ordering::Relaxed);
+        let outer = ProgramModeGuard::enter(&state)
+            .await
+            .expect("outer bracket");
 
         read_channel_from_scanner(&state, 5)
             .await
             .expect("the read must succeed inside the open bracket");
 
-        assert_eq!(scanner.transcript(), vec!["CIN,5".to_string()]);
-        assert!(
-            state.program_mode_active.load(Ordering::Relaxed),
+        assert_eq!(
+            scanner.transcript(),
+            vec!["PRG".to_string(), "CIN,5".to_string()],
             "a helper must not close a bracket it did not open"
+        );
+        drop(outer);
+    }
+
+    /// REGRESSION GUARD (#695): a bracket stays open until EVERY request in it
+    /// is done, not just the one that opened it.
+    ///
+    /// Joining used to read the one global flag, so a request that joined
+    /// someone else's bracket had nothing keeping it open: the opener finished,
+    /// sent `EPG`, and the joiner's `CIN` went to a radio that had left program
+    /// mode. Reproduced on a BC125AT (2026-09-29): 240 overlapping channel reads
+    /// sent 19 `CIN`s after an `EPG`, every one answered `CIN,NG`.
+    #[tokio::test]
+    async fn a_joined_request_keeps_the_bracket_open_after_the_opener_leaves() {
+        let state = default_state();
+        let scanner = FakeScanner::attach(&state, responder_that_persists());
+
+        let a = ProgramModeGuard::enter(&state).await.expect("A opens");
+        let b = ProgramModeGuard::enter(&state).await.expect("B joins");
+        drop(a); // A finishes first...
+        send_raw_command(&state, "CIN,5", false).await.unwrap(); // ...B is still working
+        drop(b);
+
+        assert_eq!(
+            scanner.transcript_with_closed_bracket(),
+            vec!["PRG".to_string(), "CIN,5".to_string(), "EPG".to_string()],
+            "one PRG, B's CIN inside it, and the EPG only after the last request leaves"
         );
     }
 
@@ -7576,10 +7621,10 @@ mod tests {
     /// CLOSE their own bracket.
     ///
     /// `ProgramModeGuard`'s Drop only queues its `EPG`, leaving the flag set
-    /// until the poll thread sends it (#598). A helper that closed that way
-    /// would hand the next call a flag that says "bracket open": it would join
-    /// a bracket already closing and send its `CIN` after the `EPG`.
-    /// `clear_temporary_lockouts` makes exactly these calls, one per channel.
+    /// until the poll thread sends it (#598). If joining read that flag, the
+    /// next call would join a bracket already closing and send its `CIN` after
+    /// the `EPG`. `clear_temporary_lockouts` makes exactly these calls, one per
+    /// channel.
     #[tokio::test]
     async fn back_to_back_helper_calls_each_open_their_own_bracket() {
         let state = default_state();
@@ -7593,7 +7638,7 @@ mod tests {
             .expect("second lockout");
 
         let brackets: Vec<String> = scanner
-            .transcript()
+            .transcript_with_closed_bracket()
             .into_iter()
             .filter(|c| c == "PRG" || c == "EPG")
             .collect();
