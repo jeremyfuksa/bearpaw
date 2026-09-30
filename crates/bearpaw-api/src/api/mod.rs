@@ -919,12 +919,19 @@ pub(crate) fn set_setting_section(state: &AppState, key: &str, value: Value) {
     }
 }
 
-pub(crate) fn track_analytics_transition(
-    state: &AppState,
-    live: &LiveState,
-    prev_squelch_open: bool,
-) {
-    if live.squelch_open && !prev_squelch_open {
+/// Whether a live frame is a hit: squelch open on a real frequency.
+///
+/// Nothing transmits at 0 MHz. After `EPG` the scanner parks on channel 1, and
+/// with squelch fully open on an empty slot it reports an open squelch at
+/// frequency 0 (#711). The analytics log and the `scan_hit` broadcast both
+/// read this so they cannot disagree about what a hit is.
+pub(crate) fn is_hit(live: &LiveState) -> bool {
+    live.squelch_open && live.frequency > 0.0
+}
+
+pub(crate) fn track_analytics_transition(state: &AppState, live: &LiveState, prev_hit: bool) {
+    let hit = is_hit(live);
+    if hit && !prev_hit {
         let mut active = state.active_hit.lock().unwrap();
         *active = Some(ActiveHit {
             timestamp: live.timestamp,
@@ -939,7 +946,7 @@ pub(crate) fn track_analytics_transition(
         return;
     }
 
-    if !live.squelch_open && prev_squelch_open {
+    if !hit && prev_hit {
         let mut active = state.active_hit.lock().unwrap();
         if let Some(open_hit) = active.take() {
             let duration = (live.timestamp - open_hit.timestamp).max(0.0);
