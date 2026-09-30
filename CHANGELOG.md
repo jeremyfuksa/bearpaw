@@ -20,6 +20,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **No more fake 0.000 MHz hits after a memory sync.** With squelch fully
+  open, the scanner sits on an empty channel 1 for a few seconds after a sync,
+  and Bearpaw logged that as a hit at 0.000 MHz in Recent Hits, the activity
+  history and exports. A frequency of 0 is no longer counted as a hit.
+
 - **Quitting Bearpaw now lets go of the scanner cleanly.** Quitting the app, or
   stopping the backend with Ctrl-C or `kill`, used to end it in the middle of
   talking to the scanner over USB. Bearpaw now finishes its current exchange
