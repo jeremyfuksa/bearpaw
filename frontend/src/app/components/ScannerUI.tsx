@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Usb } from 'lucide-react';
+import * as SliderPrimitive from '@radix-ui/react-slider';
 import { cn } from '../../lib/utils';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,7 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { Slider } from './ui/slider';
 import usbSvgPaths from '../../imports/svg-4af8p5er03';
 import socketSvgPaths from '../../imports/svg-10gl6kikm0';
 import { FitText } from './FitText';
@@ -170,9 +170,9 @@ export type LockoutKind = 'temporary' | 'permanent';
 
 interface ScannerControlsProps {
   volume: number;
-  onVolumeChange: (volume: number) => void;
+  onVolumeChange: (volume: number) => void | Promise<void>;
   squelch: number;
-  onSquelchChange: (squelch: number) => void;
+  onSquelchChange: (squelch: number) => void | Promise<void>;
   isHolding: boolean;
   onHoldToggle: () => void;
   onLockout: (type: LockoutKind) => void;
@@ -180,6 +180,58 @@ interface ScannerControlsProps {
 
 const CONTROL_BUTTON_CLASSES =
   'inline-flex items-center justify-center rounded-scanner-xs border border-[rgba(28,31,38,0.8)] px-[clamp(4px,3cqmin,32px)] py-[clamp(2px,1cqmin,16px)] font-mono font-medium text-[clamp(9px,4.5cqmin,52px)] leading-none text-[rgba(28,31,38,0.9)] transition-colors hover:bg-[rgba(28,31,38,0.1)] active:translate-y-[1px]';
+
+/**
+ * Inline 0–15 slider drawn in the display's LCD vocabulary: stroked track and
+ * thumb in the dark-slate ink, no fill. The thumb is painted amber only to
+ * mask the track line behind it. 15 is the hardware max for both VOL and SQL
+ * (write + readback on a BC125AT, 2026-09-29).
+ *
+ * Controlled by the live value so it follows changes made on the radio. While
+ * dragging, a local draft holds the thumb; the write goes out once on release
+ * (or per arrow-key step), not once per step crossed mid-drag.
+ */
+function LcdSlider({
+  label,
+  shortLabel,
+  value,
+  onCommit,
+}: {
+  label: string;
+  shortLabel: string;
+  value: number;
+  onCommit: (value: number) => void | Promise<void>;
+}) {
+  const [draft, setDraft] = useState<number | null>(null);
+  const shown = draft ?? value;
+  return (
+    <div className="mr-[clamp(4px,2.5cqmin,32px)] flex items-center gap-[clamp(3px,1.5cqmin,20px)] font-mono font-medium text-[clamp(9px,4.5cqmin,52px)] leading-none text-[rgba(28,31,38,0.9)]">
+      <span aria-hidden="true">{shortLabel}</span>
+      <SliderPrimitive.Root
+        className="relative flex w-[clamp(36px,16cqmin,200px)] touch-none select-none items-center py-[clamp(2px,1cqmin,16px)]"
+        value={[shown]}
+        min={0}
+        max={15}
+        step={1}
+        onValueChange={(vals) => setDraft(vals[0])}
+        onValueCommit={(vals) => {
+          void Promise.resolve(onCommit(vals[0])).finally(() => setDraft(null));
+        }}
+      >
+        <SliderPrimitive.Track className="relative h-[clamp(4px,1.6cqmin,20px)] grow rounded-scanner-xs border border-[rgba(28,31,38,0.8)]">
+          <SliderPrimitive.Range className="absolute h-full" />
+        </SliderPrimitive.Track>
+        <SliderPrimitive.Thumb
+          aria-label={label}
+          className="block h-[clamp(10px,5cqmin,60px)] w-[clamp(5px,2cqmin,24px)] rounded-scanner-xs border border-[rgba(28,31,38,0.8)] bg-[#e48813] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgba(28,31,38,0.8)]"
+        />
+      </SliderPrimitive.Root>
+      <span aria-hidden="true" className="w-[2ch] text-right tabular-nums">
+        {shown}
+      </span>
+    </div>
+  );
+}
 
 function ScannerControls({
   volume,
@@ -192,38 +244,8 @@ function ScannerControls({
 }: ScannerControlsProps) {
   return (
     <div className="flex shrink-0 items-center gap-[clamp(4px,2cqmin,28px)]">
-      <Popover>
-        <PopoverTrigger asChild>
-          <button className={CONTROL_BUTTON_CLASSES} aria-label={`Volume ${volume}`}>
-            VOL {volume}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="scanner-select-content w-40 p-4" side="bottom" align="center">
-          <span className="sr-only">Volume {volume}</span>
-          <Slider
-            defaultValue={[volume]}
-            max={15}
-            step={1}
-            onValueChange={(vals) => onVolumeChange(vals[0])}
-          />
-        </PopoverContent>
-      </Popover>
-      <Popover>
-        <PopoverTrigger asChild>
-          <button className={CONTROL_BUTTON_CLASSES} aria-label={`Squelch ${squelch}`}>
-            SQL {squelch}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="scanner-select-content w-40 p-4" side="bottom" align="center">
-          <span className="sr-only">Squelch {squelch}</span>
-          <Slider
-            defaultValue={[squelch]}
-            max={15}
-            step={1}
-            onValueChange={(vals) => onSquelchChange(vals[0])}
-          />
-        </PopoverContent>
-      </Popover>
+      <LcdSlider label="Volume" shortLabel="VOL" value={volume} onCommit={onVolumeChange} />
+      <LcdSlider label="Squelch" shortLabel="SQL" value={squelch} onCommit={onSquelchChange} />
       {/* A real DropdownMenu (not a Popover with hand-written menu roles): it
           brings correct role=menu/menuitem, arrow-key navigation, Escape, and
           close-on-select for free. Styled as a chip cut from the amber display

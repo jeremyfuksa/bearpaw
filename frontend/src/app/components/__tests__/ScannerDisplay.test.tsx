@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { ScannerDisplay, StatusBar, formatSyncedAt } from '../ScannerUI';
@@ -41,14 +41,29 @@ describe('ScannerDisplay', () => {
       expect(screen.queryByText('Scanning...')).not.toBeInTheDocument();
     });
 
-    it('renders the current volume on the VOL button', () => {
-      render(<ScannerDisplay {...defaultProps} volume={12} />);
-      expect(screen.getByRole('button', { name: 'Volume 12' })).toHaveTextContent('VOL 12');
+    it('renders the current volume and squelch on inline 0–15 sliders', () => {
+      render(<ScannerDisplay {...defaultProps} volume={12} squelch={5} />);
+      const vol = screen.getByRole('slider', { name: 'Volume' });
+      const sql = screen.getByRole('slider', { name: 'Squelch' });
+      expect(vol).toHaveAttribute('aria-valuenow', '12');
+      expect(vol).toHaveAttribute('aria-valuemax', '15');
+      expect(sql).toHaveAttribute('aria-valuenow', '5');
+      expect(sql).toHaveAttribute('aria-valuemax', '15');
     });
 
-    it('renders the current squelch on the SQL button', () => {
-      render(<ScannerDisplay {...defaultProps} squelch={5} />);
-      expect(screen.getByRole('button', { name: 'Squelch 5' })).toHaveTextContent('SQL 5');
+    it('moves the sliders when the live value changes on the radio', () => {
+      const { rerender } = render(<ScannerDisplay {...defaultProps} volume={3} squelch={1} />);
+      rerender(<ScannerDisplay {...defaultProps} volume={9} squelch={4} />);
+      expect(screen.getByRole('slider', { name: 'Volume' })).toHaveAttribute('aria-valuenow', '9');
+      expect(screen.getByRole('slider', { name: 'Squelch' })).toHaveAttribute('aria-valuenow', '4');
+    });
+
+    it('writes once per keyboard step', () => {
+      const onVolumeChange = vi.fn();
+      render(<ScannerDisplay {...defaultProps} volume={8} onVolumeChange={onVolumeChange} />);
+      fireEvent.keyDown(screen.getByRole('slider', { name: 'Volume' }), { key: 'ArrowRight' });
+      expect(onVolumeChange).toHaveBeenCalledTimes(1);
+      expect(onVolumeChange).toHaveBeenCalledWith(9);
     });
 
     it('toggles HOLD button aria-pressed and aria-label when isHolding flips', () => {
