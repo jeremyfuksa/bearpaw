@@ -90,7 +90,7 @@ capabilities are always read under one lock.
 | `cleared_delay` | 2 | 0 |
 | `has_unique_usb_serial` | false (every unit reports `0001`) | true (per-unit CP2104) |
 | `default_baud` | 115200 | 57600 |
-| `coverage_bands` | 25–54, 108–174, 225–380, 400–512 | 25–54, 108–174, 406–512 |
+| `coverage_bands` | 25–54, 108–174, 225–380, 400–512 (UBC125XLT: 25–88, 108–174, 225–512, 806–960) | 25–54, 108–174, 406–512 |
 
 **Rules:**
 

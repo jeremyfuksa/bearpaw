@@ -27,6 +27,19 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   then failed with an error that went away on a retry. The scanner now stays
   in program mode until every change in progress is done.
 
+- **No more fake 0.000 MHz hits after a memory sync.** With squelch fully
+  open, the scanner sits on an empty channel 1 for a few seconds after a sync,
+  and Bearpaw logged that as a hit at 0.000 MHz in Recent Hits, the activity
+  history and exports. A frequency of 0 is no longer counted as a hit.
+
+- **A UBC125XLT can be programmed across its full range.** Bearpaw was
+  checking frequencies against the US BC125AT's bands, so a UBC125XLT refused
+  frequencies it can tune, such as 398.025 MHz or anything from 806 to 960 MHz.
+  It now uses the UBC125XLT's own bands (25–88, 108–174, 225–512 and
+  806–960 MHz) for channel edits and CSV import. CSV import also now checks the
+  connected scanner's bands on every model, so a file can no longer program a
+  frequency the scanner cannot tune.
+
 - **Quitting Bearpaw now lets go of the scanner cleanly.** Quitting the app, or
   stopping the backend with Ctrl-C or `kill`, used to end it in the middle of
   talking to the scanner over USB. Bearpaw now finishes its current exchange

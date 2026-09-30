@@ -1026,11 +1026,11 @@ fn parse_import_csv_row(
     if frequency == 0.0 {
         return Ok(None);
     }
-    // Enforce the canonical 25–512 MHz bound (FREQ_MIN/FREQ_MAX) that the
-    // single-channel edit path already applies (#263). Import previously used
-    // a wider 25–1300 range, letting a CSV write channels the receiver can't
-    // tune — inconsistent with every other channel-write path.
-    if super::super::control::validate_frequency(frequency).is_err() {
+    // Enforce the connected model's coverage, the same check the
+    // single-channel edit path applies (#263, #703). Import previously used a
+    // wider 25–1300 range, then a fixed 25–512, letting a CSV write channels
+    // the receiver can't tune and refusing ones a UBC125XLT can.
+    if !caps.covers_frequency(frequency) {
         return Err(format!("Invalid frequency: {}", frequency));
     }
 
@@ -1194,7 +1194,7 @@ mod tests {
     #[test]
     fn parse_frequency_above_512_is_error() {
         // Regression guard (#263): import must enforce the same 25–512 MHz
-        // bound (FREQ_MAX) as the single-channel edit path. A value like
+        // bound as the single-channel edit path. A value like
         // 900 MHz — inside the old, wrong 25–1300 import bound but outside the
         // scanner's tunable range — must be rejected, not silently programmed.
         let r = row(&[("Index", "6"), ("Frequency", "900")]);
@@ -1203,9 +1203,22 @@ mod tests {
 
     #[test]
     fn parse_frequency_at_512_is_accepted() {
-        // The upper bound is inclusive (FREQ_MAX = 512.0).
+        // The upper band edge is inclusive.
         let r = row(&[("Index", "7"), ("Frequency", "512")]);
         assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).unwrap().is_some());
+    }
+
+    #[test]
+    fn import_bounds_come_from_the_connected_model() {
+        // #703: a UBC125XLT tunes 806–960 and 380–400, which a US BC125AT
+        // cannot. A hardcoded 25–512 rejected the first and let the second
+        // through to fail on the wire.
+        let xlt = ScannerCapabilities::for_model("UBC125XLT").unwrap();
+        for freq in ["900", "398.025"] {
+            let r = row(&[("Index", "6"), ("Frequency", freq)]);
+            assert!(parse_import_csv_row(&r, &xlt).unwrap().is_some(), "{freq}");
+            assert!(parse_import_csv_row(&r, &BC125AT_FAMILY).is_err(), "{freq}");
+        }
     }
 
     #[test]

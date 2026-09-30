@@ -8,9 +8,9 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 use tracing::{debug, error, info, warn};
 
-use crate::api::track_analytics_transition;
 use crate::api::AppState;
 use crate::api::ControlCommand;
+use crate::api::{is_hit, track_analytics_transition};
 use crate::protocol::{
     livestate_from_frames, parse_glg_response, parse_mdl_response, parse_pwr_response,
     parse_sts_frame, PwrFrame,
@@ -1433,9 +1433,9 @@ fn process_poll_tick(
 }
 
 fn broadcast_live_update(state: &AppState, live: LiveState) {
-    let prev_squelch_open = state.live.read().map(|g| g.squelch_open).unwrap_or(false);
+    let prev_hit = state.live.read().map(|g| is_hit(&g)).unwrap_or(false);
 
-    track_analytics_transition(state, &live, prev_squelch_open);
+    track_analytics_transition(state, &live, prev_hit);
 
     if let Ok(mut g) = state.live.write() {
         *g = live.clone();
@@ -1470,7 +1470,7 @@ fn broadcast_live_update(state: &AppState, live: LiveState) {
     });
     let _ = state.ws_tx.send(msg.to_string());
 
-    if live.squelch_open && !prev_squelch_open {
+    if is_hit(&live) && !prev_hit {
         let event = json!({
             "type": "event",
             "timestamp": live.timestamp,
@@ -1529,6 +1529,50 @@ fn parse_sql_response(resp: &str) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// REGRESSION GUARD (#711): an open squelch at 0 MHz is not a hit.
+    ///
+    /// After `EPG` the scanner parks on channel 1. With squelch fully open and
+    /// channel 1 empty, it reports `squelch_open` at frequency 0, which used to
+    /// broadcast `scan_hit` and write a 0.000 MHz row to `scan_hits`. The real
+    /// hit afterwards is the other half: a build that suppressed every hit
+    /// would pass the first half alone.
+    #[test]
+    fn an_open_squelch_at_zero_mhz_is_not_a_hit() {
+        let state = crate::api::default_state();
+        let mut rx = state.ws_tx.subscribe();
+        let frame = |t: f64, frequency: f64, squelch_open: bool| LiveState {
+            timestamp: t,
+            frequency,
+            squelch_open,
+            ..LiveState::default()
+        };
+        let scan_hits = |rx: &mut tokio::sync::broadcast::Receiver<String>| {
+            let mut n = 0;
+            while let Ok(m) = rx.try_recv() {
+                n += m.contains("\"scan_hit\"") as usize;
+            }
+            n
+        };
+
+        // The post-sync park: empty ch1, squelch open on noise for 26 s.
+        broadcast_live_update(&state, frame(0.0, 0.0, false));
+        broadcast_live_update(&state, frame(1.0, 0.0, true));
+        broadcast_live_update(&state, frame(27.0, 0.0, false));
+        assert_eq!(scan_hits(&mut rx), 0, "no scan_hit at 0 MHz");
+        assert!(
+            state.analytics_log.lock().unwrap().is_empty(),
+            "no 0 MHz row in the activity log"
+        );
+
+        // A real hit still records.
+        broadcast_live_update(&state, frame(30.0, 162.55, true));
+        broadcast_live_update(&state, frame(40.0, 162.55, false));
+        assert_eq!(scan_hits(&mut rx), 1, "a real hit still broadcasts");
+        let log = state.analytics_log.lock().unwrap();
+        assert_eq!(log.len(), 1, "a real hit still logs");
+        assert_eq!(log[0].frequency, 162.55);
+    }
 
     /// REGRESSION GUARD (#389): an unsupported scanner must be flagged with a
     /// diagnostic at the point of CONNECTION, not the point of discovery.
