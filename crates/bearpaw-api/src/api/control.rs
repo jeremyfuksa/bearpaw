@@ -77,17 +77,3 @@ mod tests {
         assert!(should_execute_queued(" EPG ", deadline));
     }
 }
-
-/// Frequency range for BC125AT (MHz).
-pub const FREQ_MIN: f64 = 25.0;
-pub const FREQ_MAX: f64 = 512.0;
-
-pub fn validate_frequency(freq: f64) -> Result<(), String> {
-    if !freq.is_finite() || freq < FREQ_MIN || freq > FREQ_MAX {
-        return Err(format!(
-            "Frequency must be between {} and {} MHz",
-            FREQ_MIN, FREQ_MAX
-        ));
-    }
-    Ok(())
-}
