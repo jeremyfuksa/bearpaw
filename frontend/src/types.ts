@@ -12,6 +12,7 @@ export interface LiveState {
   volume: number;
   battery?: number | null;
   stale?: boolean;
+  squelch_level?: number;
   /** Tone discriminator from the live GLG frame during a hit; mirrors ChannelData. */
   tone_squelch_kind?: 'none' | 'ctcss' | 'dcs' | 'search';
   /** CTCSS frequency in Hz when tone_squelch_kind === 'ctcss'. */

@@ -6,6 +6,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Set squelch from the scanner display.** Squelch now sits next to volume on
+  the Scan view, so you can adjust it without going to the Device tab. Both
+  volume and squelch also keep up with changes made on the radio's own
+  controls, within about two seconds.
+
+- **European scanners show their own service-search bands.** On a UBC125XLT or
+  UBC126AT, the Device tab now lists the European bands (Emergency, Freenet,
+  PMR, Marine, Aircraft, CB Radio, HAM Radio) instead of the US ones.
+
 ### Fixed
 
 - **Quitting Bearpaw now lets go of the scanner cleanly.** Quitting the app, or
