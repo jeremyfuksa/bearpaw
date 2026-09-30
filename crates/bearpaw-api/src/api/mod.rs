@@ -3073,29 +3073,6 @@ mod tests {
             }
         }
 
-        /// The transcript, once `command` appears in it.
-        ///
-        /// `EPG` is sent fire-and-forget from `ProgramModeGuard::drop` -- it
-        /// goes down the command channel without awaiting a reply, by design,
-        /// because Drop cannot await. So a test that reads the transcript the
-        /// instant the HTTP response returns is racing the fake scanner's
-        /// thread. That race is invisible on a fast idle machine and shows up
-        /// on a loaded CI runner as an unreproducible failure, which is the
-        /// worst shape a test failure can take.
-        ///
-        /// Waits rather than sleeping a fixed amount: the assertion is "EPG
-        /// eventually arrives", so the test should express exactly that.
-        fn transcript_once_seen(&self, command: &str) -> Vec<String> {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-            loop {
-                let t = self.transcript();
-                if t.iter().any(|c| c == command) || std::time::Instant::now() > deadline {
-                    return t;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-        }
-
         /// Commands the fake saw, keeping only those starting with `prefix`.
         fn commands_starting_with(&self, prefix: &str) -> Vec<String> {
             self.transcript()
@@ -7572,6 +7549,39 @@ mod tests {
         assert!(
             scanner.transcript().is_empty(),
             "nothing may be queued behind a running sync: {:?}",
+            scanner.transcript()
+        );
+    }
+
+    /// REGRESSION GUARD (#695): a sync that registers while a caller waits to
+    /// open a bracket still refuses that caller.
+    ///
+    /// `enter` waits on `program_mode_opening` while another bracket's `PRG` is
+    /// answered and settled. Checking `sync_task_id` only before that wait let
+    /// a sync register in between, and the caller then queued its command
+    /// behind the whole walk and timed out at 3 s.
+    #[tokio::test]
+    async fn a_sync_registered_during_the_opening_wait_is_refused() {
+        let state = default_state();
+        let scanner = FakeScanner::attach(&state, responder_that_persists());
+
+        let opening = state.program_mode_opening.lock().await;
+        let waiter = tokio::spawn({
+            let state = state.clone();
+            async move { ProgramModeGuard::enter(&state).await.err() }
+        });
+        tokio::task::yield_now().await; // the waiter is now parked on the lock
+        *state.sync_task_id.lock().unwrap() = Some("sync-1".to_string());
+        drop(opening);
+
+        let err = waiter.await.unwrap();
+        assert!(
+            matches!(&err, Some(ApiError::Conflict(m)) if m == "sync_in_progress"),
+            "a caller that waited through a sync's registration must be refused, got {err:?}"
+        );
+        assert!(
+            scanner.transcript().is_empty(),
+            "nothing may be queued behind the sync: {:?}",
             scanner.transcript()
         );
     }

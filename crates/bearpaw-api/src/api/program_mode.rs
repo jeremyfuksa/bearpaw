@@ -66,6 +66,13 @@ impl ProgramModeGuard {
     /// Conflict here lets the frontend retry once the sync finishes. A sync
     /// sets `program_mode_active` too, and is not a bracket anyone may join.
     pub async fn enter(state: &AppState) -> Result<Self, ApiError> {
+        // Held until the PRG is answered and settled: a second caller must not
+        // join a bracket that is not open yet.
+        let _opening = state.program_mode_opening.lock().await;
+        // REGRESSION GUARD (#695,
+        // `a_sync_registered_during_the_opening_wait_is_refused`): checked
+        // AFTER the wait above. Checked before it, a sync that registered
+        // during the wait got this caller queued behind the whole walk.
         if state.sync_task_id.lock().unwrap().is_some() {
             // `sync_in_progress`, matching the six other sites and the three
             // places API_SPEC documents this 409. This guard used to answer
@@ -74,9 +81,6 @@ impl ProgramModeGuard {
             // generic failure from the one guard that fires most often.
             return Err(ApiError::Conflict("sync_in_progress".to_string()));
         }
-        // Held until the PRG is answered and settled: a second caller must not
-        // join a bracket that is not open yet.
-        let _opening = state.program_mode_opening.lock().await;
         {
             let mut holders = state.program_mode_holders.lock().unwrap();
             if *holders > 0 {
