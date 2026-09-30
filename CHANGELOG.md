@@ -8,10 +8,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Set squelch from the scanner display.** Squelch now sits next to volume on
-  the Scan view, so you can adjust it without going to the Device tab. Both
-  volume and squelch also keep up with changes made on the radio's own
-  controls, within about two seconds.
+- **Set volume and squelch right on the scanner display.** Both are now small
+  sliders along the top of the Scan view's display, so you can adjust squelch
+  without going to the Device tab, and neither needs a click to open first.
+  They keep up with changes made on the radio's own controls, within about two
+  seconds, and a drag sends one change to the scanner when you let go.
 
 - **European scanners show their own service-search bands.** On a UBC125XLT or
   UBC126AT, the Device tab now lists the European bands (Emergency, Freenet,
