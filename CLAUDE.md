@@ -135,8 +135,8 @@ The poll loop is single-threaded. User commands enter via an mpsc channel ([`cra
 
 **Program mode** is a RAII guard ([`crates/bearpaw-api/src/api/program_mode.rs`](crates/bearpaw-api/src/api/program_mode.rs)):
 
-1. `enter()` sends `PRG`, waits for `PRG,OK`, sets `program_mode_active` atomic.
-2. Drop sends `EPG` via the command channel.
+1. `enter()` sends `PRG`, waits for `PRG,OK`, sets `program_mode_active` atomic. If a bracket is already open — an outer guard, the `program-mode/start` session, or an overlapping request — it joins instead and sends nothing.
+2. Each guard is one share of the bracket. The `EPG` goes out via the command channel when the **last** share drops (#695); a joiner never has the bracket closed under it.
 3. The poll loop checks `program_mode_active` and yields its `STS`/`GLG` polling while program mode is in effect.
 
 Always use the guard — never send `PRG`/`EPG` manually.

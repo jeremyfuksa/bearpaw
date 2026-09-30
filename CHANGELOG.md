@@ -20,6 +20,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Overlapping changes no longer fail at random.** When two changes that need
+  the scanner's program mode ran at the same time, such as a lockout from the
+  Scan view during a channel upload, the first to finish could take the
+  scanner out of program mode while the other was still working. The second
+  then failed with an error that went away on a retry. The scanner now stays
+  in program mode until every change in progress is done.
+
 - **No more fake 0.000 MHz hits after a memory sync.** With squelch fully
   open, the scanner sits on an empty channel 1 for a few seconds after a sync,
   and Bearpaw logged that as a hit at 0.000 MHz in Recent Hits, the activity
