@@ -200,6 +200,24 @@ pub(crate) async fn post_memory_sync(
         }));
     }
 
+    // REGRESSION GUARD (#721, `a_sync_is_refused_while_a_bracket_is_open`,
+    // `a_sync_is_refused_while_a_bracket_is_opening`): the mirror of the 409
+    // `ProgramModeGuard::enter` gives while a sync runs. The poll thread runs a
+    // sync inline with its own PRG...EPG and does not drain the queue, so a
+    // bracket open underneath it times out and then finds the radio out of
+    // program mode.
+    //
+    // Holding `program_mode_opening` until the task is registered makes this
+    // check and `enter`'s atomic: an opener either holds the lock now (its PRG
+    // is in flight, and no holder is counted until PRG,OK) or takes it after,
+    // and then sees `sync_task_id`.
+    let Ok(_opening) = state.program_mode_opening.try_lock() else {
+        return Err(ApiError::Conflict("program_mode_active".to_string()));
+    };
+    if *state.program_mode_holders.lock().unwrap() > 0 {
+        return Err(ApiError::Conflict("program_mode_active".to_string()));
+    }
+
     let task_id = format!("sync-{}", uuid_simple());
     let tx = state.command_tx.lock().unwrap();
     let tx: &Sender<ControlCommand> = tx.as_ref().ok_or(ApiError::NoScanner)?;
@@ -391,6 +409,59 @@ mod tests {
         seen
     }
 
+    /// Attach a command channel that records nothing and answers nothing, so a
+    /// test can see whether a handler queued anything at all.
+    fn silent_channel(state: &AppState) -> std::sync::mpsc::Receiver<ControlCommand> {
+        let (tx, rx) = std::sync::mpsc::channel::<ControlCommand>();
+        *state.command_tx.lock().unwrap() = Some(tx);
+        rx
+    }
+
+    fn assert_sync_refused(
+        state: &AppState,
+        rx: &std::sync::mpsc::Receiver<ControlCommand>,
+        result: Result<Json<MemorySyncResponse>, ApiError>,
+    ) {
+        assert!(
+            matches!(&result, Err(ApiError::Conflict(m)) if m == "program_mode_active"),
+            "a sync must not start inside a program-mode bracket, got {:?}",
+            result.as_ref().map(|r| &r.status)
+        );
+        assert!(state.sync_task_id.lock().unwrap().is_none());
+        assert!(rx.try_recv().is_err(), "nothing may be queued");
+    }
+
+    /// REGRESSION GUARD (#721): a sync refuses to start while a bracket is
+    /// open.
+    ///
+    /// `ProgramModeGuard::enter` refuses while a sync runs; the reverse check
+    /// did not exist. The poll thread runs a sync inline with its own
+    /// `PRG`...`EPG` and does not drain the queue meanwhile, so the bracket's
+    /// next command timed out behind it, and every one after that met a radio
+    /// the sync's `EPG` had taken out of program mode.
+    #[tokio::test]
+    async fn a_sync_is_refused_while_a_bracket_is_open() {
+        let state = default_state();
+        let rx = silent_channel(&state);
+        *state.program_mode_holders.lock().unwrap() = 1;
+
+        let result = post_memory_sync(State(state.clone())).await;
+        assert_sync_refused(&state, &rx, result);
+    }
+
+    /// The other half of #721: a bracket whose `PRG` is still in flight has no
+    /// holder yet -- the count is set once `PRG,OK` arrives -- so the open
+    /// count alone misses it.
+    #[tokio::test]
+    async fn a_sync_is_refused_while_a_bracket_is_opening() {
+        let state = default_state();
+        let rx = silent_channel(&state);
+        let _opening = state.program_mode_opening.lock().await;
+
+        let result = post_memory_sync(State(state.clone())).await;
+        assert_sync_refused(&state, &rx, result);
+    }
+
     // REGRESSION GUARD (#262): a `PRG,NG` reply (scanner refused program mode,
     // e.g. it's in its own menu) must NOT be treated as success. Before the
     // fix, program_mode_start set program_mode_active=true and mode=Programming
@@ -404,7 +475,7 @@ mod tests {
         let result = program_mode_start(State(state.clone())).await;
 
         assert!(matches!(result, Err(ApiError::BadRequest(_))));
-        // The command-level flag set by send_raw_command must be cleared.
+        // The flag `ProgramModeGuard::enter` set before PRG must be cleared.
         assert!(!state.program_mode_active.load(Ordering::Relaxed));
         // Live mode must stay out of Programming.
         assert_ne!(state.live.read().unwrap().mode, ScannerMode::Programming);
