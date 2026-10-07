@@ -27,6 +27,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   then failed with an error that went away on a retry. The scanner now stays
   in program mode until every change in progress is done.
 
+- **The scanner is no longer left stuck in "Remote Mode".** If the scanner's
+  reply to entering program mode got lost, Bearpaw treated the change as
+  failed and never told the radio to leave program mode, so its keypad stayed
+  locked until you power-cycled it. Bearpaw now releases it either way. Back-
+  to-back changes also no longer let the live display's polling slip into the
+  middle of the second one.
+
 - **No more fake 0.000 MHz hits after a memory sync.** With squelch fully
   open, the scanner sits on an empty channel 1 for a few seconds after a sync,
   and Bearpaw logged that as a hit at 0.000 MHz in Recent Hits, the activity

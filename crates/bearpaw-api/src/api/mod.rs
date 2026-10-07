@@ -437,18 +437,11 @@ pub(crate) async fn send_raw_command(
     let command = command.to_string();
     let command_for_log = command.clone();
 
-    // Track program-mode entry/exit at the command level so the poll loop can
-    // suppress its STS/GLG/PWR fetch while the scanner is in PRG. Otherwise
-    // the poll loop interleaves operational commands with the PRG bracket and
-    // races against the API handler for the bulk endpoint, causing SCG /
-    // CIN reads to time out or read back stale ACKs.
-    let upper = command.to_uppercase();
-    let is_prg = upper == "PRG";
-    let is_epg = upper == "EPG";
-    let prg_flag = state.program_mode_active.clone();
-    if is_prg {
-        prg_flag.store(true, Ordering::Relaxed);
-    }
+    // REGRESSION GUARD (#720, #724): `program_mode_active` is not touched here.
+    // `ProgramModeGuard::enter` sets it before PRG and the poll thread keeps it
+    // in wire order (`control::track_program_mode`). This function used to clear
+    // it after an EPG reply -- after the NEXT bracket may already have set it --
+    // and after a failed PRG, which could follow a PRG the scanner accepted.
 
     let join_result = tokio::task::spawn_blocking(move || {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
@@ -493,12 +486,6 @@ pub(crate) async fn send_raw_command(
         }
     }
 
-    // Always clear the flag on EPG (even on failure — leaving it stuck would
-    // freeze the live display). On PRG failure, also clear so the flag never
-    // gets stranded.
-    if is_epg || (is_prg && join_result.is_err()) {
-        prg_flag.store(false, Ordering::Relaxed);
-    }
     join_result
 }
 
@@ -7583,6 +7570,51 @@ mod tests {
             scanner.transcript().is_empty(),
             "nothing may be queued behind the sync: {:?}",
             scanner.transcript()
+        );
+    }
+
+    /// REGRESSION GUARD (#724): a `PRG` that fails without a reply is followed
+    /// by an `EPG`.
+    ///
+    /// Both transports write the command before reading its reply, so a lost
+    /// or late reply can follow a `PRG` the scanner accepted. `enter` used to
+    /// treat every error as "never entered", built no guard, and so sent no
+    /// `EPG`: the radio stayed in Remote Mode until power-cycled.
+    #[tokio::test]
+    async fn a_prg_that_fails_without_a_reply_is_followed_by_an_epg() {
+        let state = default_state();
+        let scanner = FakeScanner::attach(&state, |command: &str| match command {
+            "PRG" => Err("read timed out".to_string()),
+            _ => Ok(format!("{command},OK\r")),
+        });
+
+        let err = ProgramModeGuard::enter(&state).await.err();
+        assert!(err.is_some(), "the failed PRG is still an error");
+        let transcript = scanner.transcript_with_closed_bracket();
+        assert_eq!(
+            transcript,
+            ["PRG", "EPG"].map(String::from).to_vec(),
+            "an ambiguous PRG failure must release the radio"
+        );
+    }
+
+    /// The other half of #724: an explicit refusal is not ambiguous. The
+    /// scanner answered, it is not in program mode, and no `EPG` follows.
+    #[tokio::test]
+    async fn a_refused_prg_is_not_followed_by_an_epg() {
+        let state = default_state();
+        let scanner = FakeScanner::attach(&state, |command: &str| match command {
+            "PRG" => Ok("PRG,NG\r".to_string()),
+            _ => Ok(format!("{command},OK\r")),
+        });
+
+        assert!(ProgramModeGuard::enter(&state).await.is_err());
+        // Give a wrongly queued EPG time to reach the fake before asserting.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert_eq!(scanner.transcript(), ["PRG"].map(String::from).to_vec());
+        assert!(
+            !state.program_mode_active.load(Ordering::Relaxed),
+            "a refused PRG leaves polling running"
         );
     }
 
