@@ -19,6 +19,10 @@ Define how Bearpaw stores, migrates, retains, and cleans up local data so app up
   `channel_memory` table (schema version 2, #413): cached channel memory keyed
   by `(scanner_id, channel_index)`. `scanner_id` is the fixed placeholder
   `_default` until #414 introduces real scanner identity.
+  Also `bank_names` (schema version 4, #677): a user-chosen name per bank,
+  keyed by `(scanner_id, bank)`. Unlike channel memory these are NOT
+  disposable: the radio cannot store a bank name, so this table is the only
+  copy.
 - Analytics DB: `analytics.db` (scan hit history and aggregates)
 
 Cached channel memory is **disposable**. It is a read accelerator; the scanner

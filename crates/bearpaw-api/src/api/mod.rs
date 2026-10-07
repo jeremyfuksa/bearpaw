@@ -188,7 +188,7 @@ pub struct ActiveHit {
     pub bank: Option<u8>,
 }
 
-const PREFERENCES_SCHEMA_VERSION: i32 = 3;
+const PREFERENCES_SCHEMA_VERSION: i32 = 4;
 
 /// How often the channel cache is snapshotted to SQLite.
 ///
@@ -232,6 +232,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/banks",
             get(handlers::banks::get_banks).post(handlers::banks::set_banks),
+        )
+        .route(
+            "/api/v1/banks/names",
+            get(handlers::banks::get_bank_names).put(handlers::banks::put_bank_names),
         )
         .route("/api/v1/commands/hold", post(handlers::commands::post_hold))
         .route("/api/v1/commands/scan", post(handlers::commands::post_scan))
@@ -1676,6 +1680,25 @@ fn migrate_preferences_db(path: &str, conn: &rusqlite::Connection) -> Result<(),
                 display_name TEXT,
                 first_seen   REAL NOT NULL,
                 last_seen    REAL NOT NULL
+            );
+            ",
+        )?;
+    }
+    if current < 4 {
+        // #677: a name per bank, per scanner. The radio has nowhere to keep
+        // one -- no command carries a bank name, and Scan125's manual says
+        // its own bank names are "a program specific function only" -- so
+        // Bearpaw stores them. Keyed like `channel_memory`, by the profile a
+        // connect resolves, so a BC125AT and a BC75XLT keep separate names.
+        run_migration_step(
+            conn,
+            4,
+            "
+            CREATE TABLE IF NOT EXISTS bank_names (
+                scanner_id TEXT NOT NULL,
+                bank       INTEGER NOT NULL,
+                name       TEXT NOT NULL,
+                PRIMARY KEY (scanner_id, bank)
             );
             ",
         )?;
@@ -4164,6 +4187,45 @@ mod tests {
         assert_eq!(tag, "KEEP ME");
     }
 
+    /// A v3 database gains `bank_names` (#677) and keeps its scanner profiles.
+    #[test]
+    fn preferences_v3_migrates_to_bank_names_v4() {
+        let path = temp_db_file("bank-names-v3-to-v4");
+        let p = path.to_str().unwrap();
+
+        init_preferences_db(p).expect("build current schema");
+        {
+            let conn = rusqlite::Connection::open(&path).expect("reopen");
+            conn.execute(
+                "INSERT INTO scanners
+                     (scanner_id, match_index, model, first_seen, last_seen)
+                 VALUES ('keep-me', 'BC125AT', 'BC125AT', 1.0, 1.0)",
+                [],
+            )
+            .expect("seed a scanner profile");
+            conn.execute("DROP TABLE bank_names", []).expect("undo v4");
+            conn.pragma_update(None, "user_version", 3)
+                .expect("mark as v3");
+        }
+
+        init_preferences_db(p).expect("migration must succeed");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        assert_eq!(schema_version(&conn), PREFERENCES_SCHEMA_VERSION);
+        let cols: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('bank_names')")
+            .expect("bank_names table must exist")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query columns")
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(cols, ["scanner_id", "bank", "name"]);
+        let id: String = conn
+            .query_row("SELECT scanner_id FROM scanners", [], |r| r.get(0))
+            .expect("scanner profiles must survive the step");
+        assert_eq!(id, "keep-me");
+    }
+
     /// REGRESSION GUARD: a failed step must NOT bump `user_version`.
     ///
     /// The bump used to run unconditionally after `let _ = conn.execute(...)`,
@@ -6164,6 +6226,8 @@ mod tests {
         ("GET", "/api/v1/preferences/theme"),
         ("PUT", "/api/v1/preferences/theme"),
         ("PUT", "/api/v1/preferences"),
+        ("GET", "/api/v1/banks/names"),
+        ("PUT", "/api/v1/banks/names"),
     ];
 
     #[tokio::test]
@@ -8515,6 +8579,105 @@ mod tests {
                 Ok("OK".to_string())
             }
         }
+    }
+
+    async fn bank_names_request(
+        state: &AppState,
+        method: Method,
+        body: Option<String>,
+    ) -> (StatusCode, Value) {
+        let mut req = Request::builder().method(method).uri("/api/v1/banks/names");
+        if body.is_some() {
+            req = req.header("content-type", "application/json");
+        }
+        let response = router(state.clone())
+            .oneshot(
+                req.body(body.map(Body::from).unwrap_or_else(Body::empty))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    fn bank_names_body(names: &[&str]) -> Option<String> {
+        Some(json!({ "names": names }).to_string())
+    }
+
+    fn connect_scanner(state: &AppState, scanner_id: &str) {
+        state.device.write().unwrap().scanner_id = Some(scanner_id.to_string());
+    }
+
+    /// #677: names round-trip per scanner. Switching profiles must show the
+    /// other scanner's names, not carry these over, and switching back must
+    /// find them again; a store keyed on nothing passes the round trip alone.
+    #[tokio::test]
+    async fn bank_names_are_stored_per_scanner() {
+        let state = default_state();
+        connect_scanner(&state, "scanner-a");
+        let names = ["Ham", "Sea", "", "  Work  ", "", "", "Jakt", "", "", "Air"];
+        let (status, saved) =
+            bank_names_request(&state, Method::PUT, bank_names_body(&names)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(saved["names"][3], "Work", "names are trimmed");
+
+        let (_, read) = bank_names_request(&state, Method::GET, None).await;
+        assert_eq!(read, saved);
+
+        connect_scanner(&state, "scanner-b");
+        let (_, other) = bank_names_request(&state, Method::GET, None).await;
+        assert_eq!(other["names"], json!(vec![""; 10]));
+
+        connect_scanner(&state, "scanner-a");
+        let (_, back) = bank_names_request(&state, Method::GET, None).await;
+        assert_eq!(back, saved);
+
+        // A blank name clears that bank and leaves the others alone.
+        let mut cleared = names;
+        cleared[0] = "";
+        bank_names_request(&state, Method::PUT, bank_names_body(&cleared)).await;
+        let (_, read) = bank_names_request(&state, Method::GET, None).await;
+        assert_eq!(read["names"][0], "");
+        assert_eq!(read["names"][1], "Sea");
+    }
+
+    /// Before `MDL` resolves a profile there is nowhere to file a name, and
+    /// the placeholder profile would hand it to the next radio that connects.
+    #[tokio::test]
+    async fn bank_names_are_refused_without_a_scanner() {
+        let state = default_state();
+        let (status, _) =
+            bank_names_request(&state, Method::PUT, bank_names_body(&["Ham"; 10])).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+
+        connect_scanner(&state, channel_cache::PLACEHOLDER_SCANNER_ID);
+        let (_, read) = bank_names_request(&state, Method::GET, None).await;
+        assert_eq!(read["names"], json!(vec![""; 10]), "nothing was stored");
+    }
+
+    #[tokio::test]
+    async fn bank_names_reject_a_bad_payload() {
+        let state = default_state();
+        connect_scanner(&state, "scanner-a");
+        let too_long = "x".repeat(17);
+        let mut long_names = [""; 10];
+        long_names[0] = &too_long;
+        for body in [
+            bank_names_body(&["Ham"; 9]),
+            bank_names_body(&["Ham"; 11]),
+            bank_names_body(&long_names),
+            bank_names_body(&["Ham\tSea"; 10]),
+        ] {
+            let (status, _) = bank_names_request(&state, Method::PUT, body).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+        }
+        let (_, read) = bank_names_request(&state, Method::GET, None).await;
+        assert_eq!(read["names"], json!(vec![""; 10]), "nothing was stored");
     }
 
     #[tokio::test]
