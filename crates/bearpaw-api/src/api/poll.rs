@@ -1513,6 +1513,9 @@ mod tests {
             timestamp: t,
             frequency,
             squelch_open,
+            // Not 0: a fully open squelch is never a hit (#722), and this
+            // guard must fail on the frequency, not pass on the level.
+            squelch_level: 2,
             ..LiveState::default()
         };
         let scan_hits = |rx: &mut tokio::sync::broadcast::Receiver<String>| {
@@ -1540,6 +1543,54 @@ mod tests {
         let log = state.analytics_log.lock().unwrap();
         assert_eq!(log.len(), 1, "a real hit still logs");
         assert_eq!(log[0].frequency, 162.55);
+    }
+
+    /// REGRESSION GUARD (#722): an open squelch at `SQL,0` is not a hit.
+    ///
+    /// At squelch 0 the squelch never closes. Opening it while parked on a
+    /// programmed channel 1, where every `EPG` leaves the scanner, logged a
+    /// 52.7 s "hit" of pure noise on hardware (2026-10-07). The frame here is
+    /// that one: a real, non-zero frequency, so only the level can reject it.
+    /// The second half is the same frame with the squelch set to 2, which must
+    /// still record; a build that suppressed every hit would pass the first
+    /// half alone.
+    #[test]
+    fn an_open_squelch_at_level_zero_is_not_a_hit() {
+        let state = crate::api::default_state();
+        let mut rx = state.ws_tx.subscribe();
+        let frame = |t: f64, squelch_open: bool, squelch_level: u8| LiveState {
+            timestamp: t,
+            frequency: 156.0,
+            channel: Some(1),
+            squelch_open,
+            squelch_level,
+            ..LiveState::default()
+        };
+        let scan_hits = |rx: &mut tokio::sync::broadcast::Receiver<String>| {
+            let mut n = 0;
+            while let Ok(m) = rx.try_recv() {
+                n += m.contains("\"scan_hit\"") as usize;
+            }
+            n
+        };
+
+        // Parked on ch1, squelch dragged to 0, then back up 52 s later.
+        broadcast_live_update(&state, frame(0.0, false, 2));
+        broadcast_live_update(&state, frame(1.0, true, 0));
+        broadcast_live_update(&state, frame(53.0, false, 2));
+        assert_eq!(scan_hits(&mut rx), 0, "no scan_hit at squelch 0");
+        assert!(
+            state.analytics_log.lock().unwrap().is_empty(),
+            "no activity-log row at squelch 0"
+        );
+
+        // The same channel with the squelch set to 2 is a real hit.
+        broadcast_live_update(&state, frame(60.0, true, 2));
+        broadcast_live_update(&state, frame(70.0, false, 2));
+        assert_eq!(scan_hits(&mut rx), 1, "a real hit still broadcasts");
+        let log = state.analytics_log.lock().unwrap();
+        assert_eq!(log.len(), 1, "a real hit still logs");
+        assert_eq!(log[0].frequency, 156.0);
     }
 
     /// REGRESSION GUARD (#389): an unsupported scanner must be flagged with a
