@@ -66,6 +66,13 @@ impl ProgramModeGuard {
     /// Conflict here lets the frontend retry once the sync finishes. A sync
     /// sets `program_mode_active` too, and is not a bracket anyone may join.
     pub async fn enter(state: &AppState) -> Result<Self, ApiError> {
+        // Held until the PRG is answered and settled: a second caller must not
+        // join a bracket that is not open yet.
+        let _opening = state.program_mode_opening.lock().await;
+        // REGRESSION GUARD (#695,
+        // `a_sync_registered_during_the_opening_wait_is_refused`): checked
+        // AFTER the wait above. Checked before it, a sync that registered
+        // during the wait got this caller queued behind the whole walk.
         if state.sync_task_id.lock().unwrap().is_some() {
             // `sync_in_progress`, matching the six other sites and the three
             // places API_SPEC documents this 409. This guard used to answer
@@ -74,9 +81,6 @@ impl ProgramModeGuard {
             // generic failure from the one guard that fires most often.
             return Err(ApiError::Conflict("sync_in_progress".to_string()));
         }
-        // Held until the PRG is answered and settled: a second caller must not
-        // join a bracket that is not open yet.
-        let _opening = state.program_mode_opening.lock().await;
         {
             let mut holders = state.program_mode_holders.lock().unwrap();
             if *holders > 0 {
@@ -94,7 +98,18 @@ impl ProgramModeGuard {
         let resp = match send_raw_command(state, "PRG", false).await {
             Ok(resp) => resp,
             Err(e) => {
-                flag.store(false, Ordering::Relaxed);
+                // REGRESSION GUARD (#724,
+                // `a_prg_that_fails_without_a_reply_is_followed_by_an_epg`):
+                // an error here is ambiguous. Both transports write the command
+                // before reading its reply, so a lost or late reply can follow
+                // a PRG the scanner accepted. No guard is built, so no Drop will
+                // ever send the EPG -- send it now. An EPG to a radio that never
+                // entered program mode is harmless; a radio left in Remote Mode
+                // needs a power cycle. The poll thread clears the flag when the
+                // EPG goes out, whichever way the PRG went.
+                if !queue_epg(state) {
+                    flag.store(false, Ordering::Relaxed);
+                }
                 return Err(e);
             }
         };
@@ -154,40 +169,43 @@ impl Drop for ProgramModeGuard {
         // the live display, which is the hazard the original comment named and
         // it has not gone away.
 
-        // Send EPG synchronously via the channel. We're in Drop so we
-        // can't await; fire-and-forget through the same mechanism
-        // send_raw_command uses, but without waiting for the reply.
-        let tx = self.state.command_tx.lock().ok().and_then(|g| g.clone());
-        let queued = match tx {
-            Some(tx) => {
-                let (reply_tx, _) = std::sync::mpsc::channel();
-                tx.send(crate::api::control::ControlCommand::Raw {
-                    command: "EPG".to_string(),
-                    multiline: false,
-                    reply: reply_tx,
-                    // EPG is exempt from expiry in the drain (see
-                    // control::should_execute_queued), but give it a generous
-                    // deadline anyway so the intent is explicit: the bracket
-                    // closer must run no matter how late.
-                    deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
-                })
-                .is_ok()
-                // Don't block on the reply: the poll thread executes EPG on its
-                // next drain and clears the flag there (#598).
-            }
-            None => {
-                warn!("ProgramModeGuard dropped with no command channel; EPG not sent");
-                false
-            }
-        };
-
         // Nothing is coming to clear it, so clear it here. Covers a missing
         // sender and a receiver that has hung up -- in both cases the poll loop
         // will never see the EPG, and a flag left set freezes the live display.
-        if !queued {
+        if !queue_epg(&self.state) {
             self.state
                 .program_mode_active
                 .store(false, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Queue an `EPG` without waiting for its reply, and say whether it was queued.
+///
+/// Fire-and-forget through the same channel `send_raw_command` uses: a Drop
+/// cannot await. The poll thread executes the EPG on its next drain and clears
+/// `program_mode_active` there (#598). When this returns false nothing will
+/// clear the flag, so the caller must.
+fn queue_epg(state: &AppState) -> bool {
+    let tx = state.command_tx.lock().ok().and_then(|g| g.clone());
+    match tx {
+        Some(tx) => {
+            let (reply_tx, _) = std::sync::mpsc::channel();
+            tx.send(crate::api::control::ControlCommand::Raw {
+                command: "EPG".to_string(),
+                multiline: false,
+                reply: reply_tx,
+                // EPG is exempt from expiry in the drain (see
+                // control::should_execute_queued), but give it a generous
+                // deadline anyway so the intent is explicit: the bracket
+                // closer must run no matter how late.
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+            })
+            .is_ok()
+        }
+        None => {
+            warn!("no command channel; EPG not sent");
+            false
         }
     }
 }

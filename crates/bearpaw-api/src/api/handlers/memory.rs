@@ -12,6 +12,11 @@ use super::super::{
     write_channel_to_scanner, ApiError, AppState, ControlCommand, ProgramModeGuard,
 };
 
+/// How long `program_mode_end` waits for requests still inside the session's
+/// bracket before resuming scan anyway. Each of their commands has a 3 s
+/// budget, and a request sends a few.
+const SESSION_END_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Deserialize)]
 pub(crate) struct MemoryChannelsQuery {
     bank: Option<u8>,
@@ -330,6 +335,17 @@ pub(crate) async fn program_mode_end(
         .program_mode_forced_hold
         .swap(false, Ordering::Relaxed);
     if forced_hold {
+        // REGRESSION GUARD (#695, `ending_a_session_resumes_scan_after_the_last_epg`):
+        // wait for the last holder. Its Drop queues the EPG before the count
+        // reaches 0, so the Scan below queues behind it; pressed earlier, that
+        // EPG parks the radio in HOLD again. Bounded, because a stuck request
+        // must not leave the scanner stopped for good.
+        let deadline = std::time::Instant::now() + SESSION_END_WAIT;
+        while *state.program_mode_holders.lock().unwrap() > 0
+            && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
         if send_raw_command(&state, "KEY,S,P", false).await.is_err() {
             let _ = send_raw_command(&state, "KEY,S", false).await;
         }
@@ -394,6 +410,48 @@ mod tests {
         assert_ne!(state.live.read().unwrap().mode, ScannerMode::Programming);
         // It really did send PRG (and refuse on the reply, not before).
         assert!(seen.lock().unwrap().iter().any(|c| c == "PRG"));
+    }
+
+    /// REGRESSION GUARD (#695): ending a session resumes scan AFTER the
+    /// bracket's `EPG`, not before it.
+    ///
+    /// A request that joined the session's bracket keeps it open after the
+    /// session's share drops. `program_mode_end` used to press Scan at once, so
+    /// the joiner's `EPG` arrived after it and parked the radio in HOLD again
+    /// -- a stopped scanner behind a successful response.
+    #[tokio::test]
+    async fn ending_a_session_resumes_scan_after_the_last_epg() {
+        let state = default_state();
+        state.live.write().unwrap().mode = ScannerMode::Scan;
+        let seen = fake_responder(&state, "PRG,OK");
+        let _ = program_mode_start(State(state.clone()))
+            .await
+            .expect("session starts in forced hold");
+        let joiner = ProgramModeGuard::enter(&state).await.expect("joins");
+
+        let end = tokio::spawn(program_mode_end(State(state.clone())));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        drop(joiner); // the joiner finishes after the session was ended
+        let _ = end.await.unwrap().expect("end succeeds");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !seen.lock().unwrap().iter().any(|c| c == "EPG")
+            && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let order: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| *c == "EPG" || c.starts_with("KEY,S"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            order,
+            ["EPG", "KEY,S,P"].map(String::from).to_vec(),
+            "Scan must follow the EPG that actually closes the bracket"
+        );
     }
 
     #[tokio::test]
