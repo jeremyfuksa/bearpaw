@@ -20,6 +20,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A UBC126AT can be set to its full frequency range.** It used to be
+  checked against the US BC125AT's bands, which refused frequencies it can
+  tune. It now uses the bands from its owner's manual (25–88, 108–174, 225–520
+  and 806–960 MHz) for channel edits and CSV import.
+
 - **Overlapping changes no longer fail at random.** When two changes that need
   the scanner's program mode ran at the same time, such as a lockout from the
   Scan view during a channel upload, the first to finish could take the
