@@ -243,7 +243,8 @@ pub struct ScannerCapabilities {
     ///
     /// The two families do NOT cover the same spectrum. The BC125AT family
     /// tunes 25–54, 108–174, 225–380, and 400–512 MHz, except the UBC125XLT,
-    /// which tunes 25–88, 108–174, 225–512 and 806–960. The BC75XLT has no
+    /// which tunes 25–88, 108–174, 225–512 and 806–960, and the UBC126AT,
+    /// which tunes 25–88, 108–174, 225–520 and 806–960. The BC75XLT has no
     /// 225–380 band at all and its UHF range starts at 406, not 400 (owner's
     /// manual, "FREQUENCY RANGE", USA and Canada band plans agree on the
     /// edges).
@@ -299,6 +300,13 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
 /// continuous 225–512 band, 54–88 MHz, and 806–960 MHz.
 const UBC125XLT_COVERAGE: &[(f64, f64)] =
     &[(25.0, 88.0), (108.0, 174.0), (225.0, 512.0), (806.0, 960.0)];
+
+/// The UBC126AT's receive coverage, from its owner's manual, "Frequency
+/// Range" (#723). Like the UBC125XLT, but UHF runs to 520, not 512. The manual
+/// lists 225–399.975 and 400–520 as two rows; with a 25 kHz step the first
+/// ends one step below the second, so they are one continuous band here.
+const UBC126AT_COVERAGE: &[(f64, f64)] =
+    &[(25.0, 88.0), (108.0, 174.0), (225.0, 520.0), (806.0, 960.0)];
 
 /// BC75XLT: 300 channels in 10 banks of 30, no alpha tags, no per-channel
 /// modulation or tone, boolean delay, 57600 baud, no `BLT`.
@@ -364,12 +372,13 @@ impl ScannerCapabilities {
             if EUR_MODELS.iter().any(|m| model.eq_ignore_ascii_case(m)) {
                 caps.ss_region = "EUR";
             }
-            // UBC125XLT owner's manual, "Frequency Range; Band Plan 1" (#703).
-            // The UBC126AT is left on the US bands: the sources for it
-            // disagree, and a guess that is too wide lets through a frequency
-            // the radio rejects.
+            // UBC125XLT owner's manual, "Frequency Range; Band Plan 1" (#703);
+            // UBC126AT owner's manual, "Frequency Range" (#723).
             if model.eq_ignore_ascii_case("UBC125XLT") {
                 caps.coverage_bands = UBC125XLT_COVERAGE;
+            }
+            if model.eq_ignore_ascii_case("UBC126AT") {
+                caps.coverage_bands = UBC126AT_COVERAGE;
             }
             return Some(caps);
         }
@@ -489,6 +498,30 @@ mod tests {
 
         let us = ScannerCapabilities::for_model("BC125AT").unwrap();
         for mhz in [60.0, 398.025, 870.0] {
+            assert!(!us.covers_frequency(mhz), "BC125AT cannot tune {mhz}");
+        }
+    }
+
+    // #723: the UBC126AT's owner's manual lists 25–88, 108–174, 225–399.975,
+    // 400–520 and 806–960 MHz. 515 is the edge that tells it apart from the
+    // UBC125XLT; the BC125AT half fails a build that widens the whole family.
+    #[test]
+    fn ubc126at_tunes_its_own_bands_not_the_us_ones() {
+        let ubc = ScannerCapabilities::for_model("UBC126AT").unwrap();
+        for mhz in [
+            60.0, 88.0, 390.0, 399.975, 515.0, 520.0, 806.0, 900.0, 960.0,
+        ] {
+            assert!(ubc.covers_frequency(mhz), "UBC126AT should tune {mhz}");
+        }
+        for mhz in [100.0, 200.0, 521.0, 600.0, 961.0] {
+            assert!(!ubc.covers_frequency(mhz), "UBC126AT cannot tune {mhz}");
+        }
+
+        let xlt = ScannerCapabilities::for_model("UBC125XLT").unwrap();
+        assert!(!xlt.covers_frequency(515.0), "UBC125XLT cannot tune 515");
+
+        let us = ScannerCapabilities::for_model("BC125AT").unwrap();
+        for mhz in [60.0, 390.0, 515.0, 900.0] {
             assert!(!us.covers_frequency(mhz), "BC125AT cannot tune {mhz}");
         }
     }
