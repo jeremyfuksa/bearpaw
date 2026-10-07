@@ -263,6 +263,14 @@
     {
       "method": "PUT",
       "path": "/api/v1/preferences"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/banks/names"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/banks/names"
     }
   ]
 }

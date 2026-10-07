@@ -6,8 +6,12 @@ use tracing::warn;
 use crate::protocol::{classify_response, ScannerReply};
 
 use super::super::{
-    broadcast_banks_update, command_sender, send_raw_command, ApiError, AppState, ProgramModeGuard,
+    broadcast_banks_update, command_sender, open_sqlite, send_raw_command, ApiError, AppState,
+    ProgramModeGuard,
 };
+
+/// Longest bank name accepted, in characters. Matches a channel's alpha tag.
+const BANK_NAME_MAX_CHARS: usize = 16;
 
 #[derive(Serialize)]
 pub(crate) struct BanksResponse {
@@ -113,4 +117,94 @@ pub(crate) async fn set_banks(
     *state.banks.write().unwrap() = body.banks.clone();
     broadcast_banks_update(&state);
     Ok(Json(BanksResponse { banks: body.banks }))
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct BankNames {
+    /// One per bank, in bank order; `""` is a bank with no name.
+    names: Vec<String>,
+}
+
+/// The connected scanner's profile id, or `None` before `MDL` has resolved one.
+///
+/// Deliberately not `AppState::scanner_id()`: that falls back to a placeholder
+/// profile, and names saved under it would follow whichever radio connects
+/// next.
+fn connected_scanner_id(state: &AppState) -> Option<String> {
+    state.device.read().ok().and_then(|d| d.scanner_id.clone())
+}
+
+fn load_bank_names(path: &str, scanner_id: &str, bank_count: u8) -> Vec<String> {
+    let mut names = vec![String::new(); bank_count as usize];
+    let Some(conn) = open_sqlite(path) else {
+        return names;
+    };
+    let Ok(mut stmt) = conn.prepare("SELECT bank, name FROM bank_names WHERE scanner_id = ?1")
+    else {
+        return names;
+    };
+    let rows = stmt.query_map(rusqlite::params![scanner_id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    });
+    for (bank, name) in rows.into_iter().flatten().flatten() {
+        if let Some(slot) = usize::try_from(bank - 1)
+            .ok()
+            .and_then(|i| names.get_mut(i))
+        {
+            *slot = name;
+        }
+    }
+    names
+}
+
+/// Bank names for the connected scanner. Names live only in Bearpaw (#677):
+/// the radio has no command that carries one.
+pub(crate) async fn get_bank_names(State(state): State<AppState>) -> Json<BankNames> {
+    let bank_count = state.capabilities().bank_count;
+    let names = match connected_scanner_id(&state) {
+        Some(id) => load_bank_names(&state.preferences_db_path, &id, bank_count),
+        None => vec![String::new(); bank_count as usize],
+    };
+    Json(BankNames { names })
+}
+
+/// Replace the connected scanner's bank names. Each is trimmed; an empty one
+/// removes that bank's name.
+pub(crate) async fn put_bank_names(
+    State(state): State<AppState>,
+    Json(body): Json<BankNames>,
+) -> Result<Json<BankNames>, ApiError> {
+    let scanner_id =
+        connected_scanner_id(&state).ok_or_else(|| ApiError::Conflict("no_scanner".to_string()))?;
+    let bank_count = state.capabilities().bank_count;
+    if body.names.len() != bank_count as usize {
+        return Err(ApiError::BadRequest(
+            "bank_names_length_invalid".to_string(),
+        ));
+    }
+    let names: Vec<String> = body.names.iter().map(|n| n.trim().to_string()).collect();
+    if names
+        .iter()
+        .any(|n| n.chars().count() > BANK_NAME_MAX_CHARS || n.chars().any(char::is_control))
+    {
+        return Err(ApiError::BadRequest("bank_name_invalid".to_string()));
+    }
+
+    let failed = || ApiError::Internal("bank_names_persistence_failed".to_string());
+    let mut conn = open_sqlite(&state.preferences_db_path).ok_or_else(failed)?;
+    let tx = conn.transaction().map_err(|_| failed())?;
+    tx.execute(
+        "DELETE FROM bank_names WHERE scanner_id = ?1",
+        rusqlite::params![scanner_id],
+    )
+    .map_err(|_| failed())?;
+    for (i, name) in names.iter().enumerate().filter(|(_, n)| !n.is_empty()) {
+        tx.execute(
+            "INSERT INTO bank_names (scanner_id, bank, name) VALUES (?1, ?2, ?3)",
+            rusqlite::params![scanner_id, i as i64 + 1, name],
+        )
+        .map_err(|_| failed())?;
+    }
+    tx.commit().map_err(|_| failed())?;
+    Ok(Json(BankNames { names }))
 }

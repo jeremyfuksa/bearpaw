@@ -927,6 +927,7 @@ request/response shapes.
 | Method(s) | Path | Purpose |
 | --- | --- | --- |
 | GET, POST | `/api/v1/banks` | Read / set the 10-char bank-enable mask (`'1'` = disabled). |
+| GET, PUT | `/api/v1/banks/names` | Read / replace the connected scanner's bank names, `{"names": [...]}` with one string per bank (`""` = no name, at most 16 characters, trimmed). Stored by Bearpaw per scanner profile; the radio has no bank names (#677). PUT is `409 no_scanner` before a profile is resolved. |
 | GET, POST | `/api/v1/volume` | Read / set scanner volume (0–15). |
 | GET, POST | `/api/v1/squelch` | Read / set squelch level. |
 | GET | `/api/v1/config` (alias `/api/v1/settings/all`) | Full settings snapshot read from the scanner. |
