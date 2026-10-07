@@ -34,6 +34,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to-back changes also no longer let the live display's polling slip into the
   middle of the second one.
 
+- **A memory sync no longer cuts off a change in progress.** Starting a sync
+  (File → Sync Memory, or Refresh on the Channels tab) while a channel upload
+  or other program-mode change was still running took the scanner out of
+  program mode underneath it, so the rest of that change failed. The sync now
+  waits its turn: it is turned away until the change is done.
+
 - **No more fake 0.000 MHz hits after a memory sync.** With squelch fully
   open, the scanner sits on an empty channel 1 for a few seconds after a sync,
   and Bearpaw logged that as a hit at 0.000 MHz in Recent Hits, the activity
