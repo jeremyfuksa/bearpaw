@@ -76,6 +76,9 @@ pub struct AppState {
     pub program_mode_opening: Arc<tokio::sync::Mutex<()>>,
     /// The bracket `program_mode_start` holds open across requests.
     pub program_mode_session: Arc<Mutex<Option<program_mode::ProgramModeGuard>>>,
+    /// Held for a whole `GLF` walk: the scanner has one cursor, and two walks
+    /// that interleave split the list between them (#725).
+    pub lockout_walk: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl AppState {
@@ -822,6 +825,7 @@ pub fn default_state() -> AppState {
         program_mode_opening: Arc::new(tokio::sync::Mutex::new(())),
         program_mode_session: Arc::new(Mutex::new(None)),
         program_mode_active: Arc::new(AtomicBool::new(false)),
+        lockout_walk: Arc::new(tokio::sync::Mutex::new(())),
     }
 }
 
@@ -1884,6 +1888,14 @@ pub(crate) async fn read_frequency_lockouts_walk(state: &AppState) -> Result<Vec
     // `GLF,<value>`) are answered with a payload-less `GLF,OK` and do NOT
     // iterate — that's why at most one lockout was ever read (#142). The
     // firmware caps the list at 100 entries; 110 bounds a runaway loop.
+    //
+    // REGRESSION GUARD (#725, `overlapping_lockout_walks_each_read_the_whole_list`):
+    // the walk is exclusive. That cursor is shared by every caller, and
+    // `send_raw_command` serializes single commands, not walks, so two walks
+    // that overlapped split the list and each returned a subset that looked
+    // complete. Held here rather than at the call sites so the export, which
+    // calls this directly, cannot miss it.
+    let _walk = state.lockout_walk.lock().await;
     let mut values = Vec::new();
     for _ in 0..110 {
         let response = send_raw_command(state, "GLF", false).await?;
@@ -5088,6 +5100,38 @@ mod tests {
             !out.contains("\tAUTO\t"),
             "the wire's upper-case AUTO must never reach the file"
         );
+    }
+
+    /// REGRESSION GUARD (#725): overlapping lockout walks each get the WHOLE
+    /// list.
+    ///
+    /// `GLF` steps one cursor on the scanner. Two walks that interleave split
+    /// the list between them -- `GLF` (A: F1), `GLF` (B: F2), `GLF` (A: end) --
+    /// and both return a subset that looks complete. The fake keeps a real
+    /// cursor that restarts after `GLF,-1`, as the 2026-07-08 capture shows.
+    #[tokio::test]
+    async fn overlapping_lockout_walks_each_read_the_whole_list() {
+        let state = default_state();
+        let cursor = std::sync::Mutex::new(0usize);
+        let _scanner = FakeScanner::attach(&state, move |cmd: &str| {
+            assert_eq!(cmd, "GLF");
+            let mut n = cursor.lock().unwrap();
+            let reply = match *n {
+                0 => "GLF,01167333",
+                1 => "GLF,01228833",
+                _ => "GLF,-1",
+            };
+            *n = if *n >= 2 { 0 } else { *n + 1 };
+            Ok(reply.to_string())
+        });
+
+        let (a, b) = tokio::join!(
+            read_frequency_lockouts_walk(&state),
+            read_frequency_lockouts_walk(&state)
+        );
+        let both = vec![1_167_333u32, 1_228_833];
+        assert_eq!(a.unwrap(), both, "first walk");
+        assert_eq!(b.unwrap(), both, "second walk");
     }
 
     /// REGRESSION GUARD (#459): `AvoidFreqs` must reach the file, and must sit

@@ -52,6 +52,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   timing out. And if the scanner ever refuses to be programmed, these actions
   now stop and say so, instead of carrying on and reporting a confusing failure.
 
+- **Lockout lists are no longer read in pieces.** When the lockout list was
+  read twice at once, for example by the Scan view and the Device page, each
+  read could come back with only part of the list, or with entries repeated,
+  and still look complete. A settings export taken at that moment saved the
+  partial list, so restoring that file later dropped lockouts from the radio.
+  Each read now gets the whole list.
+
 ## [1.1.2] — 2026-09-22
 
 Fixes for scanning after a channel lockout, a blank window on older Macs, and
