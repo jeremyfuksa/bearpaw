@@ -557,6 +557,8 @@ If a sync is already running, this returns `200 OK` with
 
 **Errors:**
 - `503 Service Unavailable` if scanner disconnected
+- `409 Conflict` (`program_mode_active`) while a program-mode bracket is open
+  or opening, such as a `program-mode/start` session or a channel write (#721)
 
 **Progress Tracking:** Subscribe to WebSocket `progress` messages with `task_id`
 
