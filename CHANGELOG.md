@@ -20,6 +20,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Squelch set fully open no longer fills the activity log with noise.** At
+  squelch 0 the scanner's squelch never closes, so Bearpaw recorded the whole
+  time as one long hit, often on channel 1, where the scanner waits after a
+  memory sync or a Device-page change. Hits are no longer recorded while
+  squelch is at 0.
+
 - **A UBC126AT can be set to its full frequency range.** It used to be
   checked against the US BC125AT's bands, which refused frequencies it can
   tune. It now uses the bands from its owner's manual (25–88, 108–174, 225–520

@@ -921,14 +921,19 @@ pub(crate) fn set_setting_section(state: &AppState, key: &str, value: Value) {
     }
 }
 
-/// Whether a live frame is a hit: squelch open on a real frequency.
+/// Whether a live frame is a hit: squelch open on a real frequency, with the
+/// squelch set above fully open.
 ///
 /// Nothing transmits at 0 MHz. After `EPG` the scanner parks on channel 1, and
 /// with squelch fully open on an empty slot it reports an open squelch at
-/// frequency 0 (#711). The analytics log and the `scan_hit` broadcast both
-/// read this so they cannot disagree about what a hit is.
+/// frequency 0 (#711). At `SQL,0` an open squelch carries no information at
+/// all: it never closes, so a session became one "hit" spanning channels and
+/// recording only its first frequency, and opening it while parked on a
+/// programmed channel 1 logged that channel's noise (#722, hardware
+/// 2026-10-07). The analytics log and the `scan_hit` broadcast both read this
+/// so they cannot disagree about what a hit is.
 pub(crate) fn is_hit(live: &LiveState) -> bool {
-    live.squelch_open && live.frequency > 0.0
+    live.squelch_open && live.frequency > 0.0 && live.squelch_level > 0
 }
 
 pub(crate) fn track_analytics_transition(state: &AppState, live: &LiveState, prev_hit: bool) {
