@@ -105,7 +105,8 @@ describe('ChannelsTab', () => {
     it('should highlight active bank', () => {
       render(<ChannelsTab />);
       const bank1 = screen.getByRole('button', { name: /^Bank 1$/i });
-      expect(bank1).toHaveClass('bg-brand-primary/20');
+      // The highlight is on the row, which also holds the rename button (#677).
+      expect(bank1.parentElement).toHaveClass('bg-brand-primary/20');
     });
 
     it('should set active bank when button clicked', async () => {
@@ -113,7 +114,7 @@ describe('ChannelsTab', () => {
       const bank2 = screen.getByRole('button', { name: /Bank 2/i });
       await userEvent.click(bank2);
 
-      expect(bank2).toHaveClass('bg-brand-primary/20');
+      expect(bank2.parentElement).toHaveClass('bg-brand-primary/20');
     });
 
     it('should filter channels by bank', async () => {

@@ -162,4 +162,32 @@ describe('BankControls', () => {
       expect(screen.getByRole('button', { name: /bank 1 \(enabled\)/i })).toBeEnabled();
     });
   });
+
+  describe('bank names (#677)', () => {
+    const NAMES = ['Ham', 'Sea', '', 'Work', '', '', '', '', '', 'Air'];
+
+    it('shows each name under its button, and in its accessible name and tooltip', () => {
+      render(<BankControls {...defaultProps} bankNames={NAMES} />);
+      const bank1 = screen.getByRole('button', { name: 'Bank 1: Ham (enabled)' });
+      expect(bank1).toHaveAttribute('title', 'Ham');
+      expect(bank1.parentElement).toHaveTextContent('Ham');
+      // Bank 10 is labelled "0", so its name must land on the "0" button.
+      expect(screen.getByRole('button', { name: 'Bank 0: Air (enabled)' })).toBeInTheDocument();
+      // An unnamed bank keeps its plain label.
+      expect(screen.getByRole('button', { name: 'Bank 3 (enabled)' })).not.toHaveAttribute('title');
+    });
+
+    // The strip costs display height, so it appears only once a bank is named.
+    it('adds no label strip while every bank is unnamed', () => {
+      const { container } = render(
+        <BankControls {...defaultProps} bankNames={Array(10).fill('')} />,
+      );
+      expect(container.querySelectorAll('span[aria-hidden]')).toHaveLength(0);
+    });
+
+    it('gives every bank a strip cell once any bank is named', () => {
+      const { container } = render(<BankControls {...defaultProps} bankNames={NAMES} />);
+      expect(container.querySelectorAll('span[aria-hidden]')).toHaveLength(10);
+    });
+  });
 });

@@ -10,6 +10,7 @@ import { useStore, mapStoredPreferences } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
 import { useActivityLogHydrate } from '../hooks/useActivityLogHydrate';
 import { useAutoMemorySync } from '../hooks/useAutoMemorySync';
+import { useBankNames } from '../hooks/useBankNames';
 import { useBankRefresh } from '../hooks/useBankRefresh';
 import { useActivityLogTracker } from '../hooks/useActivityLogTracker';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
@@ -545,6 +546,8 @@ export default function App() {
       active = false;
     };
   }, [api, connected, currentTab, requestScanResume, setChannels, updateSync]);
+
+  useBankNames(api);
 
   useEffect(() => {
     let active = true;

@@ -18,6 +18,7 @@ import appIcon from '@/assets/app-icon.png';
 import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore, type Preferences } from '../../../store/useStore';
+import { bankLabel } from '../../../lib/bankNames';
 import { openExternalUrl, revealLogs, isTauriRuntime } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
@@ -193,6 +194,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // channels is null, which lands in the `lockedChannels` deps array and
   // defeats that memo (react-hooks/exhaustive-deps).
   const channels = useStore((state) => state.channels);
+  const bankNames = useStore((state) => state.bankNames);
   const setChannels = useStore((state) => state.setChannels);
   // A memory sync 409s every settings read (`ProgramModeGuard` refuses while
   // `sync_task_id` is set), so a sync running when this page mounts is the
@@ -1096,7 +1098,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   </span>
                   {bankFilter !== 'all' && (
                     <span className="px-2 py-1 rounded bg-white/10 border border-white/10 text-white/70">
-                      Bank {bankFilter}
+                      {bankLabel(bankFilter, bankNames)}
                     </span>
                   )}
                 </div>
@@ -1122,7 +1124,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                       <SelectItem value="all">All Banks</SelectItem>
                       {Array.from({ length: 10 }, (_, i) => i + 1).map((bank) => (
                         <SelectItem key={bank} value={String(bank)}>
-                          Bank {bank}
+                          {bankLabel(bank, bankNames)}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { Search, Lock, GripVertical, ChevronDown, RefreshCw } from 'lucide-react';
+import { Search, Lock, GripVertical, ChevronDown, RefreshCw, Pencil } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 // TouchBackend, not HTML5Backend: the app ships in Tauri's WKWebView, where
 // react-dnd's HTML5 backend never fires dragover/drop — rows show the (+)
@@ -527,6 +527,116 @@ export function buildEmptyDraft(clearedDelay = 2): ChannelDraft {
   };
 }
 
+interface BankNavItemProps {
+  bank: number;
+  name: string;
+  active: boolean;
+  /** False before a scanner profile is known: there is nowhere to save a name. */
+  canRename: boolean;
+  onSelect: () => void;
+  onRename: (name: string) => Promise<void>;
+}
+
+/**
+ * One bank in the Channels sidebar: its number and Bearpaw's name for it
+ * (#677), with an in-place rename on the selected bank. Enter or leaving the
+ * field saves; Esc cancels.
+ */
+export function BankNavItem({
+  bank,
+  name,
+  active,
+  canRename,
+  onSelect,
+  onRename,
+}: BankNavItemProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  // Enter submits and then unmounting the input blurs it; without this the
+  // blur would save a second time.
+  const settled = useRef(false);
+
+  const startEditing = () => {
+    settled.current = false;
+    setDraft(name);
+    setEditing(true);
+  };
+  const commit = async () => {
+    if (settled.current) return;
+    settled.current = true;
+    if (draft.trim() !== name) await onRename(draft.trim());
+    setEditing(false);
+  };
+  const cancel = () => {
+    settled.current = true;
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void commit();
+        }}
+        className="flex items-center gap-2 rounded bg-brand-primary/20 px-3 py-1.5"
+      >
+        <span className="font-mono text-xs text-white/40">{bank}</span>
+        <input
+          autoFocus
+          value={draft}
+          maxLength={16}
+          aria-label={`Name for bank ${bank}`}
+          placeholder={`Bank ${bank}`}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => void commit()}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') cancel();
+          }}
+          className="min-w-0 flex-1 rounded bg-black/30 px-1.5 py-0.5 text-xs text-white focus:outline-none"
+        />
+      </form>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'flex items-center rounded text-xs font-medium transition-all',
+        active
+          ? 'bg-brand-primary/20 text-brand-primary shadow-brand-inset'
+          : 'text-white/60 hover:bg-white/5 hover:text-white',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onSelect}
+        title={name || undefined}
+        aria-label={name ? `Bank ${bank}: ${name}` : `Bank ${bank}`}
+        className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
+      >
+        <span aria-hidden className="font-mono text-white/40">
+          {bank}
+        </span>
+        <span className="truncate">{name || `Bank ${bank}`}</span>
+      </button>
+      {active && canRename && (
+        <button
+          type="button"
+          onClick={startEditing}
+          aria-label={`Rename bank ${bank}`}
+          className="shrink-0 px-2 py-2 text-brand-primary/70 hover:text-brand-primary"
+        >
+          <Pencil aria-hidden className="h-3 w-3" />
+        </button>
+      )}
+      {active && !canRename && (
+        <div className="mr-3 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-primary shadow-glow" />
+      )}
+    </div>
+  );
+}
+
 export function ChannelsTab() {
   const api = getAPI();
   // The `?? []` fallback is memoized rather than applied inline: a bare
@@ -574,6 +684,21 @@ export function ChannelsTab() {
 
   const capabilities = useScannerCapabilities();
   const { channels_per_bank: channelsPerBank, bank_count: bankCount } = capabilities;
+  const bankNames = useStore((state) => state.bankNames);
+  const setBankNames = useStore((state) => state.setBankNames);
+  const canRenameBanks = useStore((state) => Boolean(state.deviceInfo?.scanner_id));
+
+  const handleRenameBank = async (bank: number, name: string) => {
+    const next = Array.from({ length: bankCount }, (_, i) => bankNames[i] ?? '');
+    next[bank - 1] = name;
+    try {
+      const result = await api.setBankNames(next);
+      setBankNames(result.names);
+    } catch (error) {
+      console.error('Failed to save bank name', error);
+      toast.error(`Couldn't save the name for bank ${bank}`);
+    }
+  };
   // Memoized on the capability object, which useScannerCapabilities already
   // keeps referentially stable — so this does not churn on every device_info
   // broadcast.
@@ -1344,21 +1469,15 @@ export function ChannelsTab() {
           Bank Select
         </h3>
         {bankTabs.map((bank) => (
-          <button
+          <BankNavItem
             key={bank}
-            onClick={() => setActiveBank(bank)}
-            className={cn(
-              'flex items-center justify-between gap-2 px-3 py-2 text-xs font-medium rounded transition-all',
-              activeBank === bank
-                ? 'bg-brand-primary/20 text-brand-primary shadow-brand-inset'
-                : 'text-white/60 hover:bg-white/5 hover:text-white',
-            )}
-          >
-            <span>Bank {bank}</span>
-            {activeBank === bank && (
-              <div className="w-1.5 h-1.5 shrink-0 rounded-full bg-brand-primary shadow-glow" />
-            )}
-          </button>
+            bank={bank}
+            name={bankNames[bank - 1] ?? ''}
+            active={activeBank === bank}
+            canRename={canRenameBanks}
+            onSelect={() => setActiveBank(bank)}
+            onRename={(name) => handleRenameBank(bank, name)}
+          />
         ))}
       </div>
 
@@ -1371,7 +1490,7 @@ export function ChannelsTab() {
               <span className="w-6 h-6 rounded bg-white/5 flex items-center justify-center text-xs font-mono text-white/50">
                 {activeBank}
               </span>
-              Bank Channels
+              {bankNames[activeBank - 1] || 'Bank Channels'}
             </h2>
             <div className="h-4 w-px bg-white/10 shrink-0" />
             <div className="relative max-w-[var(--layout-search-max-width)] flex-1">

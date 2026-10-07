@@ -8,6 +8,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Name your banks.** Select a bank in the Channels tab and click the pencil
+  to give it a name, such as Ham, Air or Work. The name shows in the Channels
+  list, under the bank buttons on the Scan view, and in the Device tab's bank
+  filter. The scanner itself has nowhere to store bank names, so Bearpaw keeps
+  them, separately for each scanner you connect.
+
 - **Set volume and squelch right on the scanner display.** Both are now small
   sliders along the top of the Scan view's display, so you can adjust squelch
   without going to the Device tab, and neither needs a click to open first.

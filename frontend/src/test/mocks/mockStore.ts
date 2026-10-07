@@ -31,8 +31,10 @@ export const createMockStore = (overrides: Partial<AppStore> = {}) => {
       percent: 0,
       syncedAt: null,
     },
+    bankNames: overrides.bankNames ?? [],
 
     updateLiveState: vi.fn(),
+    setBankNames: vi.fn(),
     setImportProgress: vi.fn(),
     setDeviceInfo: vi.fn(),
     setChannels: vi.fn(),

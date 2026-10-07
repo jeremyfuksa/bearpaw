@@ -353,6 +353,7 @@ export interface ScannerDisplayProps {
   onLockout: (type: LockoutKind) => void;
   banks: boolean[];
   banksKnown?: boolean;
+  bankNames?: string[];
   onBankToggle: (index: number) => void;
   className?: string;
 }
@@ -381,6 +382,7 @@ export function ScannerDisplay({
   onLockout,
   banks,
   banksKnown = true,
+  bankNames,
   onBankToggle,
   className,
 }: ScannerDisplayProps) {
@@ -449,7 +451,12 @@ export function ScannerDisplay({
         </div>
 
         {/* Bottom — bank row */}
-        <BankControls activeBanks={banks} banksKnown={banksKnown} onToggleBank={onBankToggle} />
+        <BankControls
+          activeBanks={banks}
+          banksKnown={banksKnown}
+          bankNames={bankNames}
+          onToggleBank={onBankToggle}
+        />
       </div>
     </div>
   );
@@ -465,6 +472,14 @@ interface BankControlsProps {
    * the radio's state.
    */
   banksKnown?: boolean;
+  /**
+   * Bearpaw's own bank names (#677), `''` for unnamed. Shown as a strip of
+   * small labels under the buttons, which only fit one character each; the
+   * full name is in the tooltip and the accessible name. No strip at all
+   * while every bank is unnamed, so the row is unchanged for anyone who
+   * never names one.
+   */
+  bankNames?: string[];
   onToggleBank: (index: number) => void;
 }
 
@@ -490,39 +505,57 @@ interface BankControlsProps {
  * disabled rather than removed so the row does not reflow the moment the
  * read arrives.
  */
-export function BankControls({ activeBanks, banksKnown = true, onToggleBank }: BankControlsProps) {
+export function BankControls({
+  activeBanks,
+  banksKnown = true,
+  bankNames = [],
+  onToggleBank,
+}: BankControlsProps) {
   const banks = Array.from({ length: 10 }, (_, i) => i + 1);
+  const hasNames = bankNames.some(Boolean);
 
   return (
-    <div className="flex w-full items-center justify-between gap-[clamp(2px,1.2cqmin,18px)]">
+    <div className="flex w-full items-start justify-between gap-[clamp(2px,1.2cqmin,18px)]">
       {banks.map((bank, index) => {
         const isActive = activeBanks[index];
         const label = bank === 10 ? '0' : bank.toString();
+        const name = bankNames[index] ?? '';
+        const named = name ? `Bank ${label}: ${name}` : `Bank ${label}`;
         return (
-          <button
-            key={bank}
-            type="button"
-            onClick={() => onToggleBank(index)}
-            disabled={!banksKnown}
-            // No `aria-pressed` while unknown: reporting either value would
-            // state a fact we do not have. The label carries the uncertainty.
-            aria-pressed={banksKnown ? isActive : undefined}
-            aria-label={
-              banksKnown
-                ? `Bank ${label} ${isActive ? '(enabled)' : '(disabled)'}`
-                : `Bank ${label} (reading from scanner)`
-            }
-            className={cn(
-              'inline-flex h-[clamp(18px,9cqmin,120px)] flex-1 items-center justify-center rounded-scanner-xs font-mono font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors active:translate-y-[1px]',
-              !banksKnown
-                ? 'cursor-default border border-dashed border-[rgba(28,31,38,0.5)] text-[rgba(28,31,38,0.45)]'
-                : isActive
-                  ? 'bg-[rgba(28,31,38,0.7)] text-brand-primary hover:bg-[rgba(28,31,38,0.85)]'
-                  : 'border border-[rgba(28,31,38,0.8)] text-[rgba(28,31,38,0.9)] hover:bg-[rgba(28,31,38,0.1)]',
+          <div key={bank} className="flex min-w-0 flex-1 flex-col gap-[clamp(1px,0.6cqmin,8px)]">
+            <button
+              type="button"
+              title={name || undefined}
+              onClick={() => onToggleBank(index)}
+              disabled={!banksKnown}
+              // No `aria-pressed` while unknown: reporting either value would
+              // state a fact we do not have. The label carries the uncertainty.
+              aria-pressed={banksKnown ? isActive : undefined}
+              aria-label={
+                banksKnown
+                  ? `${named} ${isActive ? '(enabled)' : '(disabled)'}`
+                  : `${named} (reading from scanner)`
+              }
+              className={cn(
+                'inline-flex h-[clamp(18px,9cqmin,120px)] w-full items-center justify-center rounded-scanner-xs font-mono font-medium text-[clamp(11px,6cqmin,80px)] leading-none transition-colors active:translate-y-[1px]',
+                !banksKnown
+                  ? 'cursor-default border border-dashed border-[rgba(28,31,38,0.5)] text-[rgba(28,31,38,0.45)]'
+                  : isActive
+                    ? 'bg-[rgba(28,31,38,0.7)] text-brand-primary hover:bg-[rgba(28,31,38,0.85)]'
+                    : 'border border-[rgba(28,31,38,0.8)] text-[rgba(28,31,38,0.9)] hover:bg-[rgba(28,31,38,0.1)]',
+              )}
+            >
+              {label}
+            </button>
+            {hasNames && (
+              <span
+                aria-hidden
+                className="truncate text-center font-mono text-[clamp(8px,3.2cqmin,40px)] leading-none text-[rgba(28,31,38,0.75)]"
+              >
+                {name}
+              </span>
             )}
-          >
-            {label}
-          </button>
+          </div>
         );
       })}
     </div>
