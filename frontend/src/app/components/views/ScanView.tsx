@@ -198,6 +198,7 @@ export function ScanView({
   const fullActivityLog = useStore((state) => state.fullActivityLog);
   const banks = useStore((state) => state.banks);
   const banksKnown = useStore((state) => state.banksKnown);
+  const bankNames = useStore((state) => state.bankNames);
 
   // Roll up consecutive same-channel hits into one row (e.g. "WOF Rides (6)"),
   // then show the five most recent groups. Sourced from `fullActivityLog`
@@ -252,6 +253,7 @@ export function ScanView({
             onLockout={onLockout}
             banks={banks}
             banksKnown={banksKnown}
+            bankNames={bankNames}
             onBankToggle={onBankToggle}
           />
         </div>

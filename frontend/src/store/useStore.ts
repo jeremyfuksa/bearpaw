@@ -96,6 +96,11 @@ export interface AppStore {
    * treat the placeholder as truth.
    */
   banksKnown: boolean;
+  /**
+   * One name per bank for the connected scanner, `''` for unnamed. Bearpaw's
+   * own: the radio has no bank names (#677).
+   */
+  bankNames: string[];
   sync: SyncState;
   importProgress: ImportProgressState;
   fullActivityLog: ActivityLogEntry[];
@@ -109,6 +114,7 @@ export interface AppStore {
   setDeviceInfo: (info: DeviceInfo | null) => void;
   setChannels: (channels: ChannelData[] | ((prev: ChannelData[]) => ChannelData[])) => void;
   setBanks: (banks: boolean[]) => void;
+  setBankNames: (names: string[]) => void;
   updateSync: (patch: Partial<SyncState>) => void;
   setImportProgress: (patch: Partial<ImportProgressState>) => void;
   updatePreferences: (prefs: Partial<Preferences>) => void;
@@ -213,6 +219,7 @@ export const useStore = create<AppStore>((set) => ({
   channels: [],
   banks: defaultBanks,
   banksKnown: false,
+  bankNames: [],
   sync: defaultSync,
   importProgress: defaultImportProgress,
   fullActivityLog: [],
@@ -259,6 +266,7 @@ export const useStore = create<AppStore>((set) => ({
     banks.length === 10
       ? set({ banks, banksKnown: true })
       : set({ banks: defaultBanks, banksKnown: false }),
+  setBankNames: (bankNames) => set({ bankNames }),
   updateSync: (patch) => set((prev) => ({ sync: { ...prev.sync, ...patch } })),
   setImportProgress: (patch) =>
     set((prev) => ({ importProgress: { ...prev.importProgress, ...patch } })),

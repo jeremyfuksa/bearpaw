@@ -141,6 +141,18 @@ export class ScannerAPIClient {
     });
   }
 
+  /** One name per bank, `''` for unnamed. Stored by Bearpaw, not the radio (#677). */
+  async getBankNames(): Promise<{ names: string[] }> {
+    return this.request<{ names: string[] }>('/banks/names');
+  }
+
+  async setBankNames(names: string[]): Promise<{ names: string[] }> {
+    return this.request<{ names: string[] }>('/banks/names', {
+      method: 'PUT',
+      body: JSON.stringify({ names }),
+    });
+  }
+
   async getChannels(bank?: number): Promise<ChannelData[]> {
     const query = bank ? `?bank=${bank}` : '';
     return this.request<ChannelData[]>(`/memory/channels${query}`);

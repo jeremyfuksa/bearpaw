@@ -86,6 +86,8 @@ const CALLS: Array<[string, (c: ScannerAPIClient) => Promise<unknown>]> = [
   ['getDeviceInfo', (c) => c.getDeviceInfo()],
   ['getBanks', (c) => c.getBanks()],
   ['setBanks', (c) => c.setBanks([true, ...Array(9).fill(false)])],
+  ['getBankNames', (c) => c.getBankNames()],
+  ['setBankNames', (c) => c.setBankNames(Array(10).fill(''))],
   ['getChannels', (c) => c.getChannels()],
   ['getChannel', (c) => c.getChannel(1)],
   ['setChannelPriority', (c) => c.setChannelPriority(1, true)],

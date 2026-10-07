@@ -224,6 +224,8 @@ export interface DeviceInfo {
    * scanner connects.
    */
   capabilities?: ScannerCapabilities | null;
+  /** The scanner profile id, resolved at connect. Bank names are keyed by it. */
+  scanner_id?: string | null;
 }
 
 export type WSMessage =
