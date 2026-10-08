@@ -63,15 +63,21 @@ function formatActiveDuration(totalSeconds?: number | null) {
  * to check and passed while the bug was live).
  */
 export function formatSyncedAt(syncedAt?: number | null, nowSeconds?: number): string | null {
-  if (syncedAt == null || syncedAt <= 0) return null;
+  const age = formatAge(syncedAt, nowSeconds);
+  return age && `Synced ${age}`;
+}
+
+/** "3d ago" / "just now" for an epoch-seconds time, or null when there is none. */
+export function formatAge(at?: number | null, nowSeconds?: number): string | null {
+  if (at == null || at <= 0) return null;
   const now = nowSeconds ?? Date.now() / 1000;
-  const elapsed = now - syncedAt;
+  const elapsed = now - at;
   // A clock skew or a future timestamp reads as current rather than as a
   // negative age; the cache is not stale in any direction the user cares about.
-  if (elapsed < 60) return 'Synced just now';
-  if (elapsed < 3600) return `Synced ${Math.floor(elapsed / 60)}m ago`;
-  if (elapsed < 86400) return `Synced ${Math.floor(elapsed / 3600)}h ago`;
-  return `Synced ${Math.floor(elapsed / 86400)}d ago`;
+  if (elapsed < 60) return 'just now';
+  if (elapsed < 3600) return `${Math.floor(elapsed / 60)}m ago`;
+  if (elapsed < 86400) return `${Math.floor(elapsed / 3600)}h ago`;
+  return `${Math.floor(elapsed / 86400)}d ago`;
 }
 
 function getStatusDisplay(

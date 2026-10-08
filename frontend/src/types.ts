@@ -226,6 +226,30 @@ export interface DeviceInfo {
   capabilities?: ScannerCapabilities | null;
   /** The scanner profile id, resolved at connect. Bank names are keyed by it. */
   scanner_id?: string | null;
+  /** The name the user gave this profile (#417). Absent when unnamed: show `model`. */
+  display_name?: string | null;
+}
+
+/**
+ * A scanner profile Bearpaw has stored (#417). These are profiles it KNOWS,
+ * not devices that are plugged in: only one scanner is connected at a time.
+ */
+export interface ScannerProfile {
+  scanner_id: string;
+  model: string;
+  display_name: string | null;
+  /** Epoch seconds the radio last connected. */
+  last_seen: number;
+  /** Epoch seconds its memory was last read; null if never cached. */
+  synced_at: number | null;
+  /** Programmed channels in the cache. */
+  channels: number;
+  bank_names: number;
+  /** Another profile has the same model, so activity history is shared. */
+  history_shared: boolean;
+  /** Its memory is the one in use. Stays true after the scanner is unplugged. */
+  loaded: boolean;
+  connected: boolean;
 }
 
 export type WSMessage =

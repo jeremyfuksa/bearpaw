@@ -12,6 +12,10 @@ interface ScanAnnouncerProps {
   alphaTag?: string | null;
   connectionStatus: ConnectionStatus;
   isSyncing: boolean;
+  /** The connected scanner's name, or its model when unnamed (#417). Spoken
+   * only as part of the reconnect announcement, so a hot-swap says WHICH
+   * radio came back; it never triggers an announcement of its own. */
+  scannerName?: string | null;
 }
 
 /**
@@ -36,6 +40,7 @@ export function ScanAnnouncer({
   alphaTag,
   connectionStatus,
   isSyncing,
+  scannerName,
 }: ScanAnnouncerProps) {
   const [message, setMessage] = useState('');
   const prevSquelchRef = useRef(false);
@@ -64,7 +69,7 @@ export function ScanAnnouncer({
       if (connectionStatus === 'disconnected') {
         setMessage('Disconnected');
       } else if (prevConnRef.current === 'disconnected' && connectionStatus === 'connected') {
-        setMessage('Reconnected');
+        setMessage(scannerName ? `Reconnected — ${scannerName}` : 'Reconnected');
       }
       prevConnRef.current = connectionStatus;
     }
@@ -86,7 +91,7 @@ export function ScanAnnouncer({
     }
 
     prevSquelchRef.current = squelchOpen;
-  }, [squelchOpen, mode, frequency, alphaTag, connectionStatus, isSyncing]);
+  }, [squelchOpen, mode, frequency, alphaTag, connectionStatus, isSyncing, scannerName]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
