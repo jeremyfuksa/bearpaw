@@ -135,6 +135,86 @@ pub(crate) fn resolve_scanner(path: &str, model: &str, usb_serial: Option<&str>)
     Some(id)
 }
 
+/// The label a user gave this profile, if any. `None` also when the database
+/// cannot be read: the UI then falls back to the model, which is what an
+/// unnamed profile shows anyway.
+pub(crate) fn display_name(path: &str, scanner_id: &str) -> Option<String> {
+    open_sqlite(path)?
+        .query_row(
+            "SELECT display_name FROM scanners WHERE scanner_id = ?1",
+            rusqlite::params![scanner_id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten()
+}
+
+/// One stored profile, with what Bearpaw holds for it (#417).
+pub(crate) struct ProfileRow {
+    pub scanner_id: String,
+    pub model: String,
+    pub display_name: Option<String>,
+    pub last_seen: f64,
+    /// When the radio's memory was last read, from the channel cache.
+    pub synced_at: Option<f64>,
+    /// Programmed channels in the cache -- slots with a frequency, not the
+    /// cleared rows a full image also carries.
+    pub channels: i64,
+    pub bank_names: i64,
+    /// Another profile has the same model. Activity history is keyed by model
+    /// (`scan_hits.scanner_id` is written from `DeviceInfo.model`), so where
+    /// this is true one profile's history cannot be told from the other's.
+    pub history_shared: bool,
+}
+
+/// Every stored profile, most recently seen first. Empty if the database
+/// cannot be read.
+pub(crate) fn list_profiles(path: &str) -> Vec<ProfileRow> {
+    let Some(conn) = open_sqlite(path) else {
+        return Vec::new();
+    };
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT s.scanner_id, s.model, s.display_name, s.last_seen,
+                (SELECT MAX(synced_at) FROM channel_memory c WHERE c.scanner_id = s.scanner_id),
+                (SELECT COUNT(*) FROM channel_memory c
+                  WHERE c.scanner_id = s.scanner_id AND c.frequency > 0),
+                (SELECT COUNT(*) FROM bank_names b WHERE b.scanner_id = s.scanner_id),
+                EXISTS (SELECT 1 FROM scanners o
+                         WHERE UPPER(o.model) = UPPER(s.model) AND o.scanner_id <> s.scanner_id)
+           FROM scanners s
+          ORDER BY s.last_seen DESC",
+    ) else {
+        return Vec::new();
+    };
+    let rows = stmt.query_map([], |row| {
+        Ok(ProfileRow {
+            scanner_id: row.get(0)?,
+            model: row.get(1)?,
+            display_name: row.get(2)?,
+            last_seen: row.get(3)?,
+            synced_at: row.get(4)?,
+            channels: row.get(5)?,
+            bank_names: row.get(6)?,
+            history_shared: row.get(7)?,
+        })
+    });
+    rows.into_iter().flatten().flatten().collect()
+}
+
+/// Set or clear a profile's label. `Ok(false)` when no such profile exists.
+pub(crate) fn set_display_name(
+    path: &str,
+    scanner_id: &str,
+    name: Option<&str>,
+) -> Result<bool, rusqlite::Error> {
+    let conn = open_sqlite(path).ok_or(rusqlite::Error::InvalidQuery)?;
+    let changed = conn.execute(
+        "UPDATE scanners SET display_name = ?1 WHERE scanner_id = ?2",
+        rusqlite::params![name, scanner_id],
+    )?;
+    Ok(changed > 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,5 +405,96 @@ mod tests {
     fn an_unopenable_database_returns_none() {
         let path = "/definitely/not/a/writable/directory/scanner.db";
         assert!(resolve_scanner(path, "BC125AT", Some("0001")).is_none());
+    }
+
+    fn seed_channel(path: &str, scanner_id: &str, index: i64, frequency: f64, synced_at: f64) {
+        crate::api::open_sqlite(path)
+            .unwrap()
+            .execute(
+                "INSERT INTO channel_memory
+                     (scanner_id, channel_index, frequency, delay, lockout, priority, synced_at)
+                 VALUES (?1, ?2, ?3, 2, 0, 0, ?4)",
+                rusqlite::params![scanner_id, index, frequency, synced_at],
+            )
+            .unwrap();
+    }
+
+    /// #417: the list reports each profile's OWN cache, counting programmed
+    /// channels only, and the newest sync time. Two profiles with different
+    /// numbers, so a query that ignored `scanner_id` reports the wrong ones.
+    #[test]
+    fn the_profile_list_reports_each_profiles_own_cache() {
+        let state = default_state();
+        let path = &state.preferences_db_path;
+        let a = resolve_scanner(path, "BC125AT", Some("0001")).unwrap();
+        let b = resolve_scanner(path, "BC75XLT", Some("020D43D8")).unwrap();
+        seed_channel(path, &a, 1, 146.52, 100.0);
+        seed_channel(path, &a, 2, 0.0, 200.0); // a cleared slot: cached, not programmed
+        seed_channel(path, &b, 1, 162.55, 50.0);
+        crate::api::open_sqlite(path)
+            .unwrap()
+            .execute(
+                "INSERT INTO bank_names (scanner_id, bank, name) VALUES (?1, 1, 'Ham')",
+                rusqlite::params![a],
+            )
+            .unwrap();
+
+        let rows = list_profiles(path);
+        let row = |id: &str| rows.iter().find(|r| r.scanner_id == id).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            row(&a).channels,
+            1,
+            "cleared slots are not programmed channels"
+        );
+        assert_eq!(row(&a).synced_at, Some(200.0));
+        assert_eq!(row(&a).bank_names, 1);
+        assert_eq!(row(&b).channels, 1);
+        assert_eq!(row(&b).synced_at, Some(50.0));
+        assert_eq!(row(&b).bank_names, 0);
+    }
+
+    /// #417: `history_shared` is true only where another profile has the same
+    /// model, case-folded like `match_index`. Forget decides whether to delete
+    /// activity history on this, because history is keyed by model.
+    #[test]
+    fn history_is_shared_only_between_profiles_of_one_model() {
+        let state = default_state();
+        let path = &state.preferences_db_path;
+        let solo = resolve_scanner(path, "BC125AT", Some("0001")).unwrap();
+        let x = resolve_scanner(path, "BC75XLT", Some("AAAA")).unwrap();
+        let y = resolve_scanner(path, "bc75xlt", Some("BBBB")).unwrap();
+
+        let rows = list_profiles(path);
+        let shared = |id: &str| {
+            rows.iter()
+                .find(|r| r.scanner_id == id)
+                .unwrap()
+                .history_shared
+        };
+        assert!(!shared(&solo));
+        assert!(shared(&x));
+        assert!(shared(&y), "the model comparison is case-insensitive");
+    }
+
+    #[test]
+    fn a_display_name_round_trips_and_clears() {
+        let state = default_state();
+        let path = &state.preferences_db_path;
+        let id = resolve_scanner(path, "BC75XLT", Some("020D43D8")).unwrap();
+        assert_eq!(display_name(path, &id), None);
+
+        assert!(set_display_name(path, &id, Some("Truck")).unwrap());
+        assert_eq!(display_name(path, &id).as_deref(), Some("Truck"));
+        resolve_scanner(path, "BC75XLT", Some("020D43D8")).unwrap();
+        assert_eq!(
+            display_name(path, &id).as_deref(),
+            Some("Truck"),
+            "a reconnect keeps the name"
+        );
+
+        assert!(set_display_name(path, &id, None).unwrap());
+        assert_eq!(display_name(path, &id), None);
+        assert!(!set_display_name(path, "no-such-id", Some("x")).unwrap());
     }
 }

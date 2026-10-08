@@ -22,7 +22,7 @@ pub use poll::spawn_poll_loop;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Router,
 };
 use serde::Serialize;
@@ -236,6 +236,11 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/banks/names",
             get(handlers::banks::get_bank_names).put(handlers::banks::put_bank_names),
+        )
+        .route("/api/v1/scanners", get(handlers::scanners::get_scanners))
+        .route(
+            "/api/v1/scanners/{id}",
+            patch(handlers::scanners::patch_scanner),
         )
         .route("/api/v1/commands/hold", post(handlers::commands::post_hold))
         .route("/api/v1/commands/scan", post(handlers::commands::post_scan))
@@ -6228,6 +6233,8 @@ mod tests {
         ("PUT", "/api/v1/preferences"),
         ("GET", "/api/v1/banks/names"),
         ("PUT", "/api/v1/banks/names"),
+        ("GET", "/api/v1/scanners"),
+        ("PATCH", "/api/v1/scanners/1"),
     ];
 
     #[tokio::test]
