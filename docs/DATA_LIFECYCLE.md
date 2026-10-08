@@ -84,6 +84,15 @@ to convention:
 1. Once at backend startup
 2. Daily while backend is running
 - Manual cleanup endpoint remains available.
+- **Forgetting a scanner** (`DELETE /api/v1/scanners/{id}`, #417) is the only
+  explicit per-scanner delete. In one `scanner.db` transaction it removes the
+  profile's `channel_memory`, `bank_names` and `scanners` rows. It then deletes
+  that model's `scan_hits` from `analytics.db` (and the in-memory copy), **but
+  only when no other profile has the same model**. Hits are keyed by model, so
+  where two profiles share one, neither profile's history can be told apart and
+  all of it is kept. Unattributed (pre-#440) hits are never touched. The loaded
+  profile is refused (409 `scanner_loaded`), because the periodic cache flush
+  would write its channels straight back.
 
 ## SQLite Runtime Settings
 

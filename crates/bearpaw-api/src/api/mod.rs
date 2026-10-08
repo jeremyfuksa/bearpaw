@@ -240,7 +240,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/scanners", get(handlers::scanners::get_scanners))
         .route(
             "/api/v1/scanners/{id}",
-            patch(handlers::scanners::patch_scanner),
+            patch(handlers::scanners::patch_scanner).delete(handlers::scanners::delete_scanner),
         )
         .route("/api/v1/commands/hold", post(handlers::commands::post_hold))
         .route("/api/v1/commands/scan", post(handlers::commands::post_scan))
@@ -1323,6 +1323,22 @@ pub(crate) fn cleanup_analytics_db(path: &str, retention_days: u32) -> usize {
         }
     }
     0
+}
+
+/// Delete every hit recorded under `model` (#417 Forget). Hits are keyed by
+/// model, not profile -- `scanner_id` on a hit is `DeviceInfo.model` -- so the
+/// caller must only use this when no other profile shares the model. NULL
+/// (pre-#440) hits are never matched. Case-folded, like `match_index`.
+pub(crate) fn delete_analytics_hits_for_model(path: &str, model: &str) -> usize {
+    open_sqlite(path)
+        .and_then(|conn| {
+            conn.execute(
+                "DELETE FROM scan_hits WHERE UPPER(scanner_id) = UPPER(?1)",
+                rusqlite::params![model],
+            )
+            .ok()
+        })
+        .unwrap_or(0)
 }
 
 /// Per-call unique database path, for tests only.
@@ -6235,6 +6251,7 @@ mod tests {
         ("PUT", "/api/v1/banks/names"),
         ("GET", "/api/v1/scanners"),
         ("PATCH", "/api/v1/scanners/1"),
+        ("DELETE", "/api/v1/scanners/1"),
     ];
 
     #[tokio::test]
