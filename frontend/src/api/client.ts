@@ -12,6 +12,7 @@ import type {
   LiveState,
   LockoutsResponse,
   PrioritySettings,
+  ScannerProfile,
   ServiceSearchSettings,
 } from '../types';
 
@@ -151,6 +152,22 @@ export class ScannerAPIClient {
       method: 'PUT',
       body: JSON.stringify({ names }),
     });
+  }
+
+  /** Every stored scanner profile, most recently seen first (#417). */
+  async getScanners(): Promise<ScannerProfile[]> {
+    return this.request<ScannerProfile[]>('/scanners');
+  }
+
+  /** Name a profile; blank or null clears it. */
+  async renameScanner(
+    scannerId: string,
+    displayName: string | null,
+  ): Promise<{ display_name: string | null }> {
+    return this.request<{ display_name: string | null }>(
+      `/scanners/${encodeURIComponent(scannerId)}`,
+      { method: 'PATCH', body: JSON.stringify({ display_name: displayName }) },
+    );
   }
 
   async getChannels(bank?: number): Promise<ChannelData[]> {

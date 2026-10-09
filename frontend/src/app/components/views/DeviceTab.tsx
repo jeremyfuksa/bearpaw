@@ -26,6 +26,7 @@ import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { SearchRangeEditSheet } from './SearchRangeEditSheet';
+import { KnownScanners } from './KnownScanners';
 
 type DeviceCategory =
   | 'Locked Channels'
@@ -1488,6 +1489,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
             {/* Device Info */}
             <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-3">
               <h3 className="font-bold text-white text-base mb-4">Device Information</h3>
+              <KnownScanners />
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex justify-between">
                   <span className="text-white/50">Model</span>

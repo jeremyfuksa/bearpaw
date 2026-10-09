@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { APIError } from '../../api/client';
+import type { ScannerProfile } from '../../types';
 import { mockApiResponses } from '../fixtures/apiResponses';
 
 type MockResponse<T> = {
@@ -44,6 +45,8 @@ export const createMockApiClient = () => {
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return mockApiResponses.status;
     }),
+    getScanners: vi.fn(async (): Promise<ScannerProfile[]> => []),
+    renameScanner: vi.fn(async (_id: string, name: string | null) => ({ display_name: name })),
     getDeviceInfo: vi.fn(async () => {
       const response = responses.get('/device/info');
       if (response?.error) {

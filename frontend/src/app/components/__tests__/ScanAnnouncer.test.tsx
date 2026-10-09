@@ -62,6 +62,18 @@ describe('ScanAnnouncer', () => {
     expect(region()).toHaveTextContent('Reconnected');
   });
 
+  // #417: a hot-swap is a reconnect, so the reconnect says WHICH scanner came
+  // back. The name alone must never announce -- a rename while connected is
+  // not a transition.
+  it('names the scanner on reconnect, and only then', () => {
+    const { rerender } = render(<ScanAnnouncer {...base} connectionStatus="disconnected" />);
+    rerender(<ScanAnnouncer {...base} connectionStatus="connected" scannerName="Truck" />);
+    expect(region()).toHaveTextContent('Reconnected — Truck');
+
+    rerender(<ScanAnnouncer {...base} connectionStatus="connected" scannerName="Base" />);
+    expect(region()).toHaveTextContent('Reconnected — Truck');
+  });
+
   it('suppresses hit/scan announcements while syncing', () => {
     const { rerender } = render(<ScanAnnouncer {...base} isSyncing={true} />);
     rerender(<ScanAnnouncer {...base} isSyncing={true} squelchOpen={true} frequency={146.85} />);

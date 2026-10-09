@@ -1259,6 +1259,7 @@ export default function App() {
           alphaTag={liveState?.alpha_tag}
           connectionStatus={connectionStatus}
           isSyncing={isMemorySyncing}
+          scannerName={deviceInfo?.display_name || deviceInfo?.model}
         />
 
         <ActivityExportSheet
