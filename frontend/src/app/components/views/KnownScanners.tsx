@@ -27,14 +27,17 @@ export function forgetMessage(profile: ScannerProfile): string {
   const parts = [
     profile.channels > 0 && plural(profile.channels, 'cached channel'),
     profile.bank_names > 0 && plural(profile.bank_names, 'bank name'),
-  ].filter(Boolean);
-  const stored = parts.length
-    ? `Bearpaw deletes the ${parts.join(' and ')} it stored for this scanner.`
-    : 'Bearpaw has no channels or bank names stored for this scanner.';
-  const history = profile.history_shared
-    ? `Activity history stays, because it is shared with your other ${profile.model}.`
-    : 'Its activity history is deleted.';
-  return `Forget ${label(profile)}? ${stored} ${history} The scanner's own memory is not changed.`;
+    !profile.history_shared && 'activity history',
+  ].filter((part): part is string => Boolean(part));
+  const list =
+    parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
+  const sentences = [`Forget ${label(profile)}?`];
+  if (list) sentences.push(`This deletes its ${list} from Bearpaw.`);
+  if (profile.history_shared) {
+    sentences.push(`Activity history stays, because your other ${profile.model} shares it.`);
+  }
+  sentences.push("The scanner itself isn't changed.");
+  return sentences.join(' ');
 }
 
 /**
@@ -46,8 +49,10 @@ export function forgetMessage(profile: ScannerProfile): string {
  *
  * The list is KNOWN profiles, not available devices: only one scanner is
  * connected at a time, and hot-swap picks the profile on plug-in. So rows are
- * not clickable. An unplugged one says how to use it instead of offering a
- * control that cannot work.
+ * not clickable.
+ *
+ * The single line shows no status or sync age: the Status row just below and
+ * the status bar already say both.
  */
 export function KnownScanners() {
   const scannerId = useStore((state) => state.deviceInfo?.scanner_id);
@@ -148,7 +153,7 @@ export function KnownScanners() {
       <ul className="space-y-2 text-sm">
         {profiles.map((profile) => (
           <li key={profile.scanner_id} aria-current={profile.connected ? 'true' : undefined}>
-            <ProfileLine profile={profile} onRename={rename} onForget={forget} />
+            <ProfileLine profile={profile} onRename={rename} onForget={forget} withStatus />
           </li>
         ))}
       </ul>
@@ -160,9 +165,11 @@ interface ProfileLineProps {
   profile: ScannerProfile;
   onRename: (profile: ScannerProfile, name: string) => Promise<void>;
   onForget: (profile: ScannerProfile) => Promise<void>;
+  /** Connection and sync age. Off on the single line, where the rows below say both. */
+  withStatus?: boolean;
 }
 
-function ProfileLine({ profile, onRename, onForget }: ProfileLineProps) {
+function ProfileLine({ profile, onRename, onForget, withStatus = false }: ProfileLineProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const renameButton = useRef<HTMLButtonElement>(null);
@@ -190,7 +197,7 @@ function ProfileLine({ profile, onRename, onForget }: ProfileLineProps) {
   const synced = formatSyncedAt(profile.synced_at);
   const status = profile.connected
     ? 'Connected'
-    : `Not connected · last seen ${formatAge(profile.last_seen) ?? 'never'}`;
+    : `Last seen ${formatAge(profile.last_seen) ?? 'never'}`;
 
   if (editing) {
     return (
@@ -236,8 +243,14 @@ function ProfileLine({ profile, onRename, onForget }: ProfileLineProps) {
       )}
       <span className="font-semibold text-white">{label(profile)}</span>
       {profile.display_name && <span className="text-white/60">{profile.model}</span>}
-      <span className={profile.connected ? 'text-brand-primary' : 'text-white/60'}>{status}</span>
-      {synced && <span className="text-white/60">{synced}</span>}
+      {withStatus && (
+        <>
+          <span className={profile.connected ? 'text-brand-primary' : 'text-white/60'}>
+            {status}
+          </span>
+          {synced && <span className="text-white/60">{synced}</span>}
+        </>
+      )}
       <button
         ref={renameButton}
         type="button"
@@ -262,9 +275,6 @@ function ProfileLine({ profile, onRename, onForget }: ProfileLineProps) {
         >
           Forget
         </button>
-      )}
-      {!profile.connected && (
-        <p className="basis-full text-xs text-white/60">Plug it in to use it.</p>
       )}
     </div>
   );

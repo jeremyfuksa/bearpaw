@@ -56,11 +56,12 @@ describe('KnownScanners', () => {
     expect(screen.queryByText(/BC125AT/)).not.toBeInTheDocument();
   });
 
+  /** Status and sync age repeat the Status row and status bar, so the line drops them. */
   it('shows one profile as a single line, not a list', async () => {
     setup([profile()]);
     expect(await screen.findByText('BC125AT')).toBeInTheDocument();
-    expect(screen.getByText('Connected')).toBeInTheDocument();
-    expect(screen.getByText('Synced 3d ago')).toBeInTheDocument();
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    expect(screen.queryByText('Synced 3d ago')).not.toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.queryByText('Known scanners')).not.toBeInTheDocument();
   });
@@ -83,17 +84,10 @@ describe('KnownScanners', () => {
     expect(items[0]).toHaveAttribute('aria-current', 'true');
     expect(items[0]).toHaveTextContent('Base');
     expect(items[1]).not.toHaveAttribute('aria-current');
-    expect(items[1]).toHaveTextContent('Not connected · last seen 2h ago');
-  });
-
-  it('explains an unplugged profile instead of offering to switch to it', async () => {
-    setup([
-      profile(),
-      profile({ scanner_id: 'b', model: 'BC75XLT', loaded: false, connected: false }),
-    ]);
-    const items = await screen.findAllByRole('listitem');
-    expect(items[1]).toHaveTextContent('Plug it in to use it.');
-    expect(items[0]).not.toHaveTextContent('Plug it in');
+    expect(items[0]).toHaveTextContent('Connected');
+    expect(items[0]).toHaveTextContent('Synced 3d ago');
+    expect(items[1]).toHaveTextContent('Last seen 2h ago');
+    expect(items[1]).not.toHaveTextContent('Not connected');
   });
 
   it('renames with the keyboard and returns focus to Rename', async () => {
@@ -159,29 +153,29 @@ describe('KnownScanners', () => {
   it('states exactly what is deleted, and never says settings', () => {
     const message = forgetMessage(truck());
     expect(message).toBe(
-      'Forget Truck? Bearpaw deletes the 120 cached channels and 3 bank names it stored ' +
-        'for this scanner. Its activity history is deleted. ' +
-        "The scanner's own memory is not changed.",
+      'Forget Truck? This deletes its 120 cached channels, 3 bank names and activity ' +
+        "history from Bearpaw. The scanner itself isn't changed.",
     );
     expect(message).not.toMatch(/setting/i);
   });
 
   it('counts in the singular and leaves out what is not stored', () => {
     expect(forgetMessage(truck({ channels: 1, bank_names: 1 }))).toContain(
-      'deletes the 1 cached channel and 1 bank name it stored',
+      'its 1 cached channel, 1 bank name and activity history',
     );
     expect(forgetMessage(truck({ channels: 251, bank_names: 0 }))).toContain(
-      'deletes the 251 cached channels it stored',
+      'its 251 cached channels and activity history',
     );
-    expect(forgetMessage(truck({ channels: 0, bank_names: 0 }))).toContain(
-      'Bearpaw has no channels or bank names stored for this scanner.',
+    expect(forgetMessage(truck({ channels: 0, bank_names: 0, history_shared: true }))).toBe(
+      'Forget Truck? Activity history stays, because your other BC75XLT shares it. ' +
+        "The scanner itself isn't changed.",
     );
   });
 
   it('says history is kept when another profile shares the model', () => {
-    expect(forgetMessage(truck({ history_shared: true }))).toContain(
-      'Activity history stays, because it is shared with your other BC75XLT.',
-    );
+    const message = forgetMessage(truck({ history_shared: true }));
+    expect(message).toContain('its 120 cached channels and 3 bank names from Bearpaw.');
+    expect(message).toContain('Activity history stays, because your other BC75XLT shares it.');
   });
 
   it('forgets after confirming, removes the row and keeps focus in the block', async () => {
