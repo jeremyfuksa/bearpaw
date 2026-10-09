@@ -56,12 +56,12 @@ describe('KnownScanners', () => {
     expect(screen.queryByText(/BC125AT/)).not.toBeInTheDocument();
   });
 
-  /** Status and sync age repeat the Status row and status bar, so the line drops them. */
+  /** Status repeats the Status row below, so the line drops it. */
   it('shows one profile as a single line, not a list', async () => {
     setup([profile()]);
     expect(await screen.findByText('BC125AT')).toBeInTheDocument();
     expect(screen.queryByText('Connected')).not.toBeInTheDocument();
-    expect(screen.queryByText('Synced 3d ago')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Synced/)).not.toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.queryByText('Known scanners')).not.toBeInTheDocument();
   });
@@ -84,10 +84,20 @@ describe('KnownScanners', () => {
     expect(items[0]).toHaveAttribute('aria-current', 'true');
     expect(items[0]).toHaveTextContent('Base');
     expect(items[1]).not.toHaveAttribute('aria-current');
-    expect(items[0]).toHaveTextContent('Connected');
-    expect(items[0]).toHaveTextContent('Synced 3d ago');
-    expect(items[1]).toHaveTextContent('Last seen 2h ago');
-    expect(items[1]).not.toHaveTextContent('Not connected');
+    // Model first, then name, then status. No sync age: it repeats last seen.
+    expect(items[0]).toHaveTextContent(/^BC125ATBaseConnected/);
+    expect(items[1]).toHaveTextContent(/^BC75XLTTruckLast seen 2h ago/);
+    expect(items[0]).not.toHaveTextContent(/Synced/);
+  });
+
+  it('leaves the name cell empty on an unnamed row rather than repeating the model', async () => {
+    setup([
+      profile(),
+      profile({ scanner_id: 'b', model: 'BC75XLT', loaded: false, connected: false }),
+    ]);
+    const items = await screen.findAllByRole('listitem');
+    expect(items[1]).toHaveTextContent(/^BC75XLTLast seen/);
+    expect(screen.getAllByText('BC75XLT')).toHaveLength(1);
   });
 
   it('renames with the keyboard and returns focus to Rename', async () => {

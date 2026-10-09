@@ -11,7 +11,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **See which scanner Bearpaw is using, and name it.** The Device tab now
   names the connected scanner at the top of Device Information. If you've
   used more than one, it lists every scanner Bearpaw remembers, with when each
-  was last connected and last synced. Click Rename to tell them apart, for
+  was last connected. Click Rename to tell them apart, for
   example "Base" and "Truck". When a scanner reconnects, screen readers now
   say which one.
 

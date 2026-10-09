@@ -6,7 +6,7 @@ import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import { confirmDialog } from '../../../tauri-shell';
 import type { ScannerProfile } from '../../../types';
-import { formatAge, formatSyncedAt } from '../ScannerUI';
+import { formatAge } from '../ScannerUI';
 
 const DISPLAY_NAME_MAX_CHARS = 64;
 
@@ -52,8 +52,7 @@ export function forgetMessage(profile: ScannerProfile): string {
  * connected at a time, and hot-swap picks the profile on plug-in. So rows are
  * not clickable.
  *
- * The single line shows no status or sync age: the Status row just below and
- * the status bar already say both.
+ * The single line shows no status: the Status row just below says it.
  */
 export function KnownScanners() {
   const scannerId = useStore((state) => state.deviceInfo?.scanner_id);
@@ -151,10 +150,11 @@ export function KnownScanners() {
       >
         Known scanners
       </h4>
-      {/* One grid shared by every row (via subgrid), so name, status, sync age
-          and the buttons line up in columns. The sync column takes the slack,
-          pushing Forget and Rename to the right edge. */}
-      <ul className="grid grid-cols-[auto_auto_auto_1fr_auto_auto] gap-x-3 gap-y-2 text-sm">
+      {/* One grid shared by every row (via subgrid): model, name, status,
+          Forget, Rename. Model comes first because every scanner has one, so
+          an unnamed row has no blank leading cell. The status column takes the
+          slack, pushing the buttons to the right edge. */}
+      <ul className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-x-4 gap-y-2 text-sm">
         {profiles.map((profile) => (
           <li
             key={profile.scanner_id}
@@ -174,9 +174,9 @@ interface ProfileLineProps {
   onRename: (profile: ScannerProfile, name: string) => Promise<void>;
   onForget: (profile: ScannerProfile) => Promise<void>;
   /**
-   * A row of the multi-profile list: adds connection and sync age (the single
-   * line omits them, since the rows below say both) and lays the line out on
-   * the list's column grid, with an empty cell wherever a row lacks a piece.
+   * A row of the multi-profile list: adds the connection status (the single
+   * line omits it, since the Status row below says it) and lays the line out
+   * on the list's column grid, with an empty cell wherever a row lacks a piece.
    */
   inList?: boolean;
 }
@@ -206,25 +206,38 @@ function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLin
     close();
   };
 
-  const synced = formatSyncedAt(profile.synced_at);
-  const status = profile.connected
-    ? 'Connected'
-    : `Last seen ${formatAge(profile.last_seen) ?? 'never'}`;
-
   // In the list every cell is rendered, empty where this row has nothing, so
   // the next cell stays in its column.
   const empty = inList ? <span aria-hidden /> : null;
 
-  const nameCell = (
-    <span className="flex min-w-0 items-baseline gap-x-2">
-      <span className="max-w-[16rem] truncate font-semibold text-white">{label(profile)}</span>
-      {profile.display_name && <span className="text-white/60">{profile.model}</span>}
+  const modelCell = <span className="text-white/70">{profile.model}</span>;
+  const nameCell = profile.display_name ? (
+    <span className="max-w-[16rem] truncate font-semibold text-white">{profile.display_name}</span>
+  ) : (
+    empty
+  );
+  // The dot belongs to "Connected", so they share a cell. No sync age: a
+  // connect re-reads memory by default, so it repeats "last seen" on every
+  // unplugged row, and the status bar shows it for the connected scanner.
+  // An unplugged row keeps an empty dot-sized slot so both status texts start
+  // at the same x.
+  const statusCell = (
+    <span
+      className={cn(
+        'flex items-center gap-1.5',
+        profile.connected ? 'text-brand-primary' : 'text-white/60',
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          'h-2 w-2 shrink-0 rounded-full',
+          profile.connected && 'bg-brand-primary shadow-glow',
+        )}
+      />
+      {profile.connected ? 'Connected' : `Last seen ${formatAge(profile.last_seen) ?? 'never'}`}
     </span>
   );
-  const statusCell = (
-    <span className={profile.connected ? 'text-brand-primary' : 'text-white/60'}>{status}</span>
-  );
-  const syncedCell = synced ? <span className="text-white/60">{synced}</span> : empty;
 
   if (editing) {
     if (!inList) {
@@ -236,6 +249,7 @@ function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLin
           }}
           className="flex items-center gap-2"
         >
+          {modelCell}
           <NameInput profile={profile} draft={draft} onChange={setDraft} onCancel={close} />
           <button type="button" onClick={close} className="text-white/60 hover:text-white">
             Cancel
@@ -246,10 +260,10 @@ function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLin
         </form>
       );
     }
-    // In the list the field stays on the column grid: input across the name to
-    // sync columns, Cancel under Forget, Save under Rename. Invisible copies of
-    // this row's cells keep sizing their columns, so the other rows do not move
-    // while it is edited.
+    // In the list the field stays on the column grid: the model stays put, the
+    // input covers the name and status columns, Cancel sits under Forget and
+    // Save under Rename. Invisible copies of the covered cells keep sizing
+    // their columns, so the other rows do not move while this one is edited.
     return (
       <form
         onSubmit={(e) => {
@@ -258,33 +272,30 @@ function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLin
         }}
         className="col-span-full grid grid-cols-subgrid items-center"
       >
-        <span aria-hidden className="col-start-1 row-start-1" />
+        <span className="col-start-1 row-start-1">{modelCell}</span>
         <span aria-hidden className="invisible col-start-2 row-start-1 h-0">
           {nameCell}
         </span>
         <span aria-hidden className="invisible col-start-3 row-start-1 h-0">
           {statusCell}
         </span>
-        <span aria-hidden className="invisible col-start-4 row-start-1 h-0">
-          {syncedCell}
-        </span>
         <NameInput
           profile={profile}
           draft={draft}
           onChange={setDraft}
           onCancel={close}
-          className="col-span-3 col-start-2 row-start-1"
+          className="col-span-2 col-start-2 row-start-1"
         />
         <button
           type="button"
           onClick={close}
-          className="col-start-5 row-start-1 justify-self-start text-white/60 hover:text-white"
+          className="col-start-4 row-start-1 justify-self-start text-white/60 hover:text-white"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="col-start-6 row-start-1 justify-self-start text-brand-primary hover:underline"
+          className="col-start-5 row-start-1 justify-self-start text-brand-primary hover:underline"
         >
           Save
         </button>
@@ -297,24 +308,12 @@ function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLin
       className={
         inList
           ? 'col-span-full grid grid-cols-subgrid items-baseline'
-          : 'flex flex-wrap items-baseline gap-x-2 gap-y-1'
+          : 'flex flex-wrap items-baseline gap-x-3 gap-y-1'
       }
     >
-      {profile.connected ? (
-        <span
-          aria-hidden
-          className="inline-block h-2 w-2 shrink-0 self-center rounded-full bg-brand-primary shadow-glow"
-        />
-      ) : (
-        empty
-      )}
+      {modelCell}
       {nameCell}
-      {inList && (
-        <>
-          {statusCell}
-          {syncedCell}
-        </>
-      )}
+      {inList && statusCell}
       {/* Forget comes BEFORE Rename so Rename, on every row, sits at the same
           right edge. Hidden, not disabled, on the LOADED profile -- connected
           or merely unplugged. Its channels are still in use and the cache
