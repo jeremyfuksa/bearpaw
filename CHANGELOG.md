@@ -33,6 +33,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The data-upgrade notice now says where the backup is.** When a new
+  version upgrades your saved data, the one-time notice names the folder
+  holding the backup of your previous data, instead of "next to it".
+
 - **Squelch set fully open no longer fills the activity log with noise.** At
   squelch 0 the scanner's squelch never closes, so Bearpaw recorded the whole
   time as one long hit, often on channel 1, where the scanner waits after a

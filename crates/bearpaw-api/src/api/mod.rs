@@ -28,7 +28,7 @@ use axum::{
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -757,7 +757,16 @@ pub fn default_state() -> AppState {
     // install, and only on the launch that did the upgrading: the next start
     // finds the schema current and reports nothing. That makes it
     // self-clearing with no "dismissed" flag to store.
-    let upgraded = matches!(preferences_result, Ok(true)) || matches!(analytics_result, Ok(true));
+    let upgraded_paths: Vec<&str> = [
+        (&preferences_result, preferences_db_path.as_str()),
+        (&analytics_result, analytics_db_path.as_str()),
+    ]
+    .into_iter()
+    .filter(|(result, _)| matches!(result, Ok(true)))
+    .map(|(_, path)| path)
+    .collect();
+    let upgraded = !upgraded_paths.is_empty();
+    let data_notice_message = upgrade_notice(&upgraded_paths);
     let migration_error = preferences_result.err().or(analytics_result.err());
     if let Some(err) = &migration_error {
         tracing::error!("database migration failed: {}", err);
@@ -790,12 +799,7 @@ pub fn default_state() -> AppState {
                 .map(|_| "migration_failed".to_string()),
             data_diagnostic_message: migration_error.as_ref().map(|e| e.to_string()),
             data_notice_code: upgraded.then(|| "database_upgraded".to_string()),
-            data_notice_message: upgraded.then(|| {
-                "Your saved channels, settings and activity history were upgraded to \
-                 this version's format. A backup of the previous data was saved next to \
-                 it. Older versions of Bearpaw can no longer open this data."
-                    .to_string()
-            }),
+            data_notice_message,
             ..Default::default()
         })),
         shadow: Arc::new(std::sync::RwLock::new(ShadowState::default())),
@@ -1601,6 +1605,36 @@ fn check_not_from_the_future(
         });
     }
     Ok(())
+}
+
+/// The one-time notice for a launch that upgraded `upgraded` databases, or
+/// `None` when nothing was upgraded.
+///
+/// Names the FOLDER the backup is in (#743). "Saved next to it" pointed at a
+/// database file the user has never seen, and forward-only migrations make
+/// that backup the only way back. A failed backup aborts the migration, so an
+/// upgraded database always has its backup beside it. The two databases share
+/// a folder unless an env override splits them, so folders are deduplicated.
+fn upgrade_notice(upgraded: &[&str]) -> Option<String> {
+    let mut folders: Vec<String> = Vec::new();
+    for path in upgraded {
+        let folder = Path::new(path)
+            .parent()
+            .map(|dir| dir.display().to_string())
+            .unwrap_or_default();
+        if !folders.contains(&folder) {
+            folders.push(folder);
+        }
+    }
+    if folders.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Your saved channels, settings and activity history were upgraded to this \
+         version's format. A backup of the previous data was saved in {}. Older \
+         versions of Bearpaw can no longer open this data.",
+        folders.join(" and ")
+    ))
 }
 
 /// Most recently modified `*.bak` sitting beside `path`, if any.
@@ -4033,6 +4067,61 @@ mod tests {
             "still gives a next step: {msg}"
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// #743: the upgrade notice names the folder the backup is ACTUALLY in.
+    /// Drives a real upgrade rather than trusting that the backup lands beside
+    /// the database: a notice naming a folder with no `.bak` in it is the
+    /// "told where to look and it isn't there" bug in a new place.
+    #[test]
+    fn the_upgrade_notice_names_the_folder_holding_the_backup() {
+        let path = temp_db_file("notice-names-folder");
+        {
+            // A real v1 database: a v0 file counts as a fresh install and
+            // reports no upgrade.
+            let conn = rusqlite::Connection::open(&path).expect("create db");
+            conn.execute_batch(
+                "CREATE TABLE preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL);",
+            )
+            .expect("v1 schema");
+            conn.pragma_update(None, "user_version", 1)
+                .expect("mark as v1");
+        }
+        let path_str = path.to_str().unwrap();
+        assert!(
+            init_preferences_db(path_str).expect("migrates"),
+            "an earlier database must report that it was upgraded"
+        );
+        let backup = newest_backup_for(path_str).expect("the upgrade wrote a backup");
+        let folder = Path::new(&backup).parent().unwrap().display().to_string();
+
+        let msg = upgrade_notice(&[path_str]).expect("an upgrade produces a notice");
+        assert!(
+            msg.contains(&format!("saved in {folder}.")),
+            "must name {folder}: {msg}"
+        );
+        assert!(!msg.contains("next to it"), "the old vague wording: {msg}");
+        let _ = std::fs::remove_file(&backup);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// No upgrade, no notice -- it is self-clearing, so a launch that
+    /// upgraded nothing must not repeat it.
+    #[test]
+    fn no_upgrade_produces_no_notice() {
+        assert_eq!(upgrade_notice(&[]), None);
+    }
+
+    /// Both databases normally share one folder: name it once. If an env
+    /// override splits them, name both, because each has its own backup.
+    #[test]
+    fn the_upgrade_notice_names_each_folder_once() {
+        let same = upgrade_notice(&["/data/scanner.db", "/data/analytics.db"]).unwrap();
+        assert!(same.contains("saved in /data. "), "{same}");
+        assert!(!same.contains(" and /data"), "named twice: {same}");
+
+        let split = upgrade_notice(&["/a/scanner.db", "/b/analytics.db"]).unwrap();
+        assert!(split.contains("saved in /a and /b. "), "{split}");
     }
 
     /// The paired half: a database at or below the supported version still
