@@ -12,6 +12,7 @@ import type {
   LiveState,
   LockoutsResponse,
   PrioritySettings,
+  ForgetScannerResult,
   ScannerProfile,
   ServiceSearchSettings,
 } from '../types';
@@ -168,6 +169,13 @@ export class ScannerAPIClient {
       `/scanners/${encodeURIComponent(scannerId)}`,
       { method: 'PATCH', body: JSON.stringify({ display_name: displayName }) },
     );
+  }
+
+  /** Forget a profile and what Bearpaw stored for it. 409 for the loaded one. */
+  async forgetScanner(scannerId: string): Promise<ForgetScannerResult> {
+    return this.request<ForgetScannerResult>(`/scanners/${encodeURIComponent(scannerId)}`, {
+      method: 'DELETE',
+    });
   }
 
   async getChannels(bank?: number): Promise<ChannelData[]> {

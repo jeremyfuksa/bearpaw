@@ -15,6 +15,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   example "Base" and "Truck". When a scanner reconnects, screen readers now
   say which one.
 
+- **Forget a scanner you no longer use.** Click Forget next to it on the
+  Device tab. Bearpaw tells you exactly what it will delete (its cached
+  channels, bank names, and activity history) before it deletes anything.
+  The scanner's own memory is never touched. You can't forget the scanner
+  you're currently using.
+
 - **Name your banks.** Select a bank in the Channels tab and click the pencil
   to give it a name, such as Ham, Air or Work. The name shows in the Channels
   list, under the bank buttons on the Scan view, and in the Device tab's bank

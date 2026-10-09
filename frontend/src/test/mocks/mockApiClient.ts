@@ -47,6 +47,12 @@ export const createMockApiClient = () => {
     }),
     getScanners: vi.fn(async (): Promise<ScannerProfile[]> => []),
     renameScanner: vi.fn(async (_id: string, name: string | null) => ({ display_name: name })),
+    forgetScanner: vi.fn(async () => ({
+      channels: 0,
+      bank_names: 0,
+      hits: 0,
+      history_kept: false,
+    })),
     getDeviceInfo: vi.fn(async () => {
       const response = responses.get('/device/info');
       if (response?.error) {

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { APIError } from '../../../api/client';
 import { getAPI } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
+import { confirmDialog } from '../../../tauri-shell';
 import type { ScannerProfile } from '../../../types';
 import { formatAge, formatSyncedAt } from '../ScannerUI';
 
@@ -9,6 +11,30 @@ const DISPLAY_NAME_MAX_CHARS = 64;
 
 function label(profile: ScannerProfile): string {
   return profile.display_name || profile.model;
+}
+
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * Says exactly what Forget deletes (#417). Never "settings": scanner settings
+ * are read live from the radio and never stored (#415), so there are none to
+ * forget. Activity history is keyed by model, so it is only deleted when no
+ * other profile shares the model.
+ */
+export function forgetMessage(profile: ScannerProfile): string {
+  const parts = [
+    profile.channels > 0 && plural(profile.channels, 'cached channel'),
+    profile.bank_names > 0 && plural(profile.bank_names, 'bank name'),
+  ].filter(Boolean);
+  const stored = parts.length
+    ? `Bearpaw deletes the ${parts.join(' and ')} it stored for this scanner.`
+    : 'Bearpaw has no channels or bank names stored for this scanner.';
+  const history = profile.history_shared
+    ? `Activity history stays, because it is shared with your other ${profile.model}.`
+    : 'Its activity history is deleted.';
+  return `Forget ${label(profile)}? ${stored} ${history} The scanner's own memory is not changed.`;
 }
 
 /**
@@ -28,6 +54,17 @@ export function KnownScanners() {
   const connectionStatus = useStore((state) => state.deviceInfo?.connection_status);
   const displayName = useStore((state) => state.deviceInfo?.display_name);
   const [profiles, setProfiles] = useState<ScannerProfile[]>([]);
+  const container = useRef<HTMLDivElement>(null);
+  const refocus = useRef(false);
+
+  // A forgotten row takes its focused Forget button with it. Put focus back on
+  // the block so a keyboard user is not dropped at the top of the page.
+  useEffect(() => {
+    if (refocus.current) {
+      refocus.current = false;
+      container.current?.focus();
+    }
+  }, [profiles]);
 
   // Refetch whenever the connected scanner, its state, or its name changes. A
   // rename of the loaded profile arrives as a `device_info` broadcast, so this
@@ -62,20 +99,45 @@ export function KnownScanners() {
     }
   };
 
+  const forget = async (profile: ScannerProfile) => {
+    if (!(await confirmDialog(forgetMessage(profile), `Forget ${label(profile)}`))) return;
+    try {
+      await getAPI().forgetScanner(profile.scanner_id);
+      refocus.current = true;
+      setProfiles((list) => list.filter((p) => p.scanner_id !== profile.scanner_id));
+      toast.success(`Forgot ${label(profile)}`);
+    } catch (error) {
+      console.error('Failed to forget scanner', error);
+      // 409: it became the loaded profile after this list was read (it was
+      // plugged in while the dialog was open).
+      toast.error(
+        error instanceof APIError && error.status === 409
+          ? `Couldn't forget ${label(profile)}: it's the scanner in use`
+          : `Couldn't forget ${label(profile)}`,
+      );
+    }
+  };
+
   if (profiles.length === 0) return null;
 
   if (profiles.length === 1) {
     return (
-      <div className="mb-4 border-b border-white/10 pb-4 text-sm">
-        <ProfileLine profile={profiles[0]} onRename={rename} />
+      <div
+        ref={container}
+        tabIndex={-1}
+        className="mb-4 border-b border-white/10 pb-4 text-sm outline-none"
+      >
+        <ProfileLine profile={profiles[0]} onRename={rename} onForget={forget} />
       </div>
     );
   }
 
   return (
     <section
+      ref={container}
+      tabIndex={-1}
       aria-labelledby="known-scanners-heading"
-      className="mb-4 border-b border-white/10 pb-4"
+      className="mb-4 border-b border-white/10 pb-4 outline-none"
     >
       <h4
         id="known-scanners-heading"
@@ -86,7 +148,7 @@ export function KnownScanners() {
       <ul className="space-y-2 text-sm">
         {profiles.map((profile) => (
           <li key={profile.scanner_id} aria-current={profile.connected ? 'true' : undefined}>
-            <ProfileLine profile={profile} onRename={rename} />
+            <ProfileLine profile={profile} onRename={rename} onForget={forget} inList />
           </li>
         ))}
       </ul>
@@ -97,9 +159,12 @@ export function KnownScanners() {
 interface ProfileLineProps {
   profile: ScannerProfile;
   onRename: (profile: ScannerProfile, name: string) => Promise<void>;
+  onForget: (profile: ScannerProfile) => Promise<void>;
+  /** In the multi-profile list, where the loaded row explains its missing Forget. */
+  inList?: boolean;
 }
 
-function ProfileLine({ profile, onRename }: ProfileLineProps) {
+function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLineProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const renameButton = useRef<HTMLButtonElement>(null);
@@ -187,8 +252,24 @@ function ProfileLine({ profile, onRename }: ProfileLineProps) {
       >
         Rename
       </button>
+      {/* Hidden, not disabled, on the LOADED profile -- connected or merely
+          unplugged. Its channels are still in use and the cache flush would
+          write them straight back, so the API refuses it (409). */}
+      {!profile.loaded && (
+        <button
+          type="button"
+          onClick={() => void onForget(profile)}
+          aria-label={`Forget ${label(profile)}`}
+          className="text-red-400/80 hover:text-red-400"
+        >
+          Forget
+        </button>
+      )}
       {!profile.connected && (
         <p className="basis-full text-xs text-white/60">Plug it in to use it.</p>
+      )}
+      {inList && profile.loaded && (
+        <p className="basis-full text-xs text-white/60">In use, so it can&apos;t be forgotten.</p>
       )}
     </div>
   );
