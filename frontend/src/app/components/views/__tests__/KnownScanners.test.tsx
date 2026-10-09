@@ -4,9 +4,13 @@ import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import { getAPI } from '../../../../api/useApi';
 import { useStore } from '../../../../store/useStore';
 import type { ScannerProfile } from '../../../../types';
-import { KnownScanners } from '../KnownScanners';
+import { APIError } from '../../../../api/client';
+import { confirmDialog } from '../../../../tauri-shell';
+import { toast } from 'sonner';
+import { KnownScanners, forgetMessage } from '../KnownScanners';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock('../../../../tauri-shell', () => ({ confirmDialog: vi.fn() }));
 vi.mock('../../../../api/useApi', () => ({
   getAPI: vi.fn(() => createMockApiClient()),
 }));
@@ -40,6 +44,7 @@ describe('KnownScanners', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(confirmDialog).mockResolvedValue(true);
     useStore.setState({
       deviceInfo: { connection_status: 'connected', model: 'BC125AT', scanner_id: 'a' },
     });
@@ -51,11 +56,12 @@ describe('KnownScanners', () => {
     expect(screen.queryByText(/BC125AT/)).not.toBeInTheDocument();
   });
 
+  /** Status repeats the Status row below, so the line drops it. */
   it('shows one profile as a single line, not a list', async () => {
     setup([profile()]);
     expect(await screen.findByText('BC125AT')).toBeInTheDocument();
-    expect(screen.getByText('Connected')).toBeInTheDocument();
-    expect(screen.getByText('Synced 3d ago')).toBeInTheDocument();
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Synced/)).not.toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.queryByText('Known scanners')).not.toBeInTheDocument();
   });
@@ -78,17 +84,20 @@ describe('KnownScanners', () => {
     expect(items[0]).toHaveAttribute('aria-current', 'true');
     expect(items[0]).toHaveTextContent('Base');
     expect(items[1]).not.toHaveAttribute('aria-current');
-    expect(items[1]).toHaveTextContent('Not connected · last seen 2h ago');
+    // Model first, then name, then status. No sync age: it repeats last seen.
+    expect(items[0]).toHaveTextContent(/^BC125ATBaseConnected/);
+    expect(items[1]).toHaveTextContent(/^BC75XLTTruckLast seen 2h ago/);
+    expect(items[0]).not.toHaveTextContent(/Synced/);
   });
 
-  it('explains an unplugged profile instead of offering to switch to it', async () => {
+  it('leaves the name cell empty on an unnamed row rather than repeating the model', async () => {
     setup([
       profile(),
       profile({ scanner_id: 'b', model: 'BC75XLT', loaded: false, connected: false }),
     ]);
     const items = await screen.findAllByRole('listitem');
-    expect(items[1]).toHaveTextContent('Plug it in to use it.');
-    expect(items[0]).not.toHaveTextContent('Plug it in');
+    expect(items[1]).toHaveTextContent(/^BC75XLTLast seen/);
+    expect(screen.getAllByText('BC75XLT')).toHaveLength(1);
   });
 
   it('renames with the keyboard and returns focus to Rename', async () => {
@@ -122,5 +131,96 @@ describe('KnownScanners', () => {
 
     expect(api.renameScanner).toHaveBeenCalledWith('a', null);
     expect(await screen.findByRole('button', { name: 'Rename BC125AT' })).toBeInTheDocument();
+  });
+
+  // ---- Forget (#417) ----
+
+  const truck = (overrides: Partial<ScannerProfile> = {}) =>
+    profile({
+      scanner_id: 'b',
+      model: 'BC75XLT',
+      display_name: 'Truck',
+      loaded: false,
+      connected: false,
+      channels: 120,
+      bank_names: 3,
+      ...overrides,
+    });
+
+  /**
+   * The gate is `loaded`, not `connected`: an unplugged scanner's memory stays
+   * in use and the cache flush would write it straight back, so the API
+   * refuses it. A build gating on `connected` offers Forget on the second row.
+   */
+  it('hides Forget on the loaded profile, connected or unplugged', async () => {
+    setup([profile({ display_name: 'Base', connected: false }), truck()]);
+    await screen.findAllByRole('listitem');
+
+    expect(screen.queryByRole('button', { name: 'Forget Base' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Forget Truck' })).toBeInTheDocument();
+  });
+
+  it('states exactly what is deleted, and never says settings', () => {
+    const message = forgetMessage(truck());
+    expect(message).toBe(
+      'This deletes its 120 cached channels, 3 bank names and activity ' +
+        "history from Bearpaw. The scanner itself isn't changed.",
+    );
+    expect(message).not.toMatch(/setting/i);
+  });
+
+  it('counts in the singular and leaves out what is not stored', () => {
+    expect(forgetMessage(truck({ channels: 1, bank_names: 1 }))).toContain(
+      'its 1 cached channel, 1 bank name and activity history',
+    );
+    expect(forgetMessage(truck({ channels: 251, bank_names: 0 }))).toContain(
+      'its 251 cached channels and activity history',
+    );
+    expect(forgetMessage(truck({ channels: 0, bank_names: 0, history_shared: true }))).toBe(
+      'Activity history stays, because your other BC75XLT shares it. ' +
+        "The scanner itself isn't changed.",
+    );
+  });
+
+  it('says history is kept when another profile shares the model', () => {
+    const message = forgetMessage(truck({ history_shared: true }));
+    expect(message).toContain('its 120 cached channels and 3 bank names from Bearpaw.');
+    expect(message).toContain('Activity history stays, because your other BC75XLT shares it.');
+  });
+
+  it('forgets after confirming, removes the row and keeps focus in the block', async () => {
+    const user = userEvent.setup();
+    setup([profile(), truck(), truck({ scanner_id: 'c', display_name: 'Shack' })]);
+    await user.click(await screen.findByRole('button', { name: 'Forget Truck' }));
+
+    expect(confirmDialog).toHaveBeenCalledWith(forgetMessage(truck()), 'Forget Truck');
+    expect(api.forgetScanner).toHaveBeenCalledWith('b');
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2));
+    expect(screen.queryByText('Truck')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Known scanners' })).toHaveFocus();
+    expect(toast.success).toHaveBeenCalledWith('Forgot Truck');
+  });
+
+  it('deletes nothing when the confirmation is declined', async () => {
+    const user = userEvent.setup();
+    vi.mocked(confirmDialog).mockResolvedValue(false);
+    setup([profile(), truck()]);
+    await user.click(await screen.findByRole('button', { name: 'Forget Truck' }));
+
+    expect(confirmDialog).toHaveBeenCalled();
+    expect(api.forgetScanner).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('keeps the row and explains a 409 from a scanner plugged in meanwhile', async () => {
+    const user = userEvent.setup();
+    setup([profile(), truck()]);
+    api.forgetScanner.mockRejectedValue(new APIError('conflict', 409, 'scanner_loaded'));
+    await user.click(await screen.findByRole('button', { name: 'Forget Truck' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't forget Truck: it's the scanner in use"),
+    );
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
 });

@@ -11,9 +11,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **See which scanner Bearpaw is using, and name it.** The Device tab now
   names the connected scanner at the top of Device Information. If you've
   used more than one, it lists every scanner Bearpaw remembers, with when each
-  was last connected and last synced. Click Rename to tell them apart, for
+  was last connected. Click Rename to tell them apart, for
   example "Base" and "Truck". When a scanner reconnects, screen readers now
   say which one.
+
+- **Forget a scanner you no longer use.** Click Forget next to it on the
+  Device tab. Bearpaw tells you exactly what it will delete (its cached
+  channels, bank names, and activity history) before it deletes anything.
+  The scanner's own memory is never touched. You can't forget the scanner
+  you're currently using.
 
 - **Name your banks.** Select a bank in the Channels tab and click the pencil
   to give it a name, such as Ham, Air or Work. The name shows in the Channels

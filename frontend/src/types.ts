@@ -252,6 +252,14 @@ export interface ScannerProfile {
   connected: boolean;
 }
 
+/** What Forget deleted. `history_kept`: another profile shares the model. */
+export interface ForgetScannerResult {
+  channels: number;
+  bank_names: number;
+  hits: number;
+  history_kept: boolean;
+}
+
 export type WSMessage =
   StateUpdateMessage | EventMessage | ProgressMessage | ErrorMessage | BanksUpdateMessage;
 
