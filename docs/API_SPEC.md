@@ -140,6 +140,8 @@ Scanner hardware and connection information.
 | `model` | string or null | Scanner model name |
 | `firmware` | string or null | Firmware version |
 | `serial_number` | string or null | Hardware serial number |
+| `scanner_id` | string, omitted until identified | The stored profile this scanner resolved to (#414). Survives an unplug, so the cache flush finds its profile |
+| `display_name` | string, omitted when unnamed | The name the user gave this profile (#417); show `model` when absent |
 | `connection_status` | string | "connected", "disconnected", "connecting" |
 | `port` | string or null | Serial or USB port path |
 | `diagnostic_code` | string or null | Machine-readable disconnect reason, when disconnected |
@@ -928,6 +930,8 @@ request/response shapes.
 | --- | --- | --- |
 | GET, POST | `/api/v1/banks` | Read / set the 10-char bank-enable mask (`'1'` = disabled). |
 | GET, PUT | `/api/v1/banks/names` | Read / replace the connected scanner's bank names, `{"names": [...]}` with one string per bank (`""` = no name, at most 16 characters, trimmed). Stored by Bearpaw per scanner profile; the radio has no bank names (#677). PUT is `409 no_scanner` before a profile is resolved. |
+| GET | `/api/v1/scanners` | Every stored scanner profile, most recently seen first: `scanner_id`, `model`, `display_name` (null when unnamed), `last_seen`, `synced_at` (newest cached-channel read, null if none), `channels` (programmed channels cached), `bank_names`, `history_shared` (another profile has the same model, so activity history, which is keyed by model, is shared), `loaded` (its memory is in use, which stays true after an unplug), `connected`. These are profiles Bearpaw knows, not devices that are plugged in (#417). |
+| PATCH | `/api/v1/scanners/{id}` | Rename a profile: `{"display_name": string or null}`, trimmed, blank clears it, at most 64 characters. Returns the stored name. `400 display_name_invalid`, `404 scanner_not_found`. Renaming the loaded profile updates `DeviceInfo.display_name` and broadcasts `device_info`. |
 | GET, POST | `/api/v1/volume` | Read / set scanner volume (0–15). |
 | GET, POST | `/api/v1/squelch` | Read / set squelch level. |
 | GET | `/api/v1/config` (alias `/api/v1/settings/all`) | Full settings snapshot read from the scanner. |

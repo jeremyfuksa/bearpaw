@@ -6,5 +6,6 @@ pub(crate) mod import_ss;
 pub mod lockouts;
 pub mod memory;
 pub mod preferences;
+pub(crate) mod scanners;
 pub mod settings;
 pub mod status;

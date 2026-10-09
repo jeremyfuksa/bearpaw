@@ -271,6 +271,14 @@
     {
       "method": "PUT",
       "path": "/api/v1/banks/names"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/scanners"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/scanners/1"
     }
   ]
 }

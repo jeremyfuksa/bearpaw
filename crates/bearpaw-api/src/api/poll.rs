@@ -1024,7 +1024,7 @@ fn mark_disconnected(state: &AppState, reason: &str) {
 
 /// Push the current DeviceInfo over the WebSocket. The frontend listens
 /// for `{type: "device_info", data: ...}` and updates its store.
-fn broadcast_device_info(state: &AppState) {
+pub(crate) fn broadcast_device_info(state: &AppState) {
     let info = match state.device.read() {
         Ok(d) => d.clone(),
         Err(_) => return,
@@ -1178,6 +1178,9 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             &model,
             usb_serial.as_deref(),
         );
+        let display_name = resolved
+            .as_deref()
+            .and_then(|id| super::scanner_registry::display_name(&state.preferences_db_path, id));
         if let Ok(mut d) = state.device.write() {
             // REGRESSION GUARD (`the_serial_number_does_not_latch_across_a_swap`):
             // both fields are assigned UNCONDITIONALLY, and they move together.
@@ -1201,6 +1204,7 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
             // succeeds against a device `UsbTransport` has already claimed.
             d.scanner_id = resolved.clone();
             d.serial_number = usb_serial.clone();
+            d.display_name = display_name;
         }
 
         // REGRESSION GUARD (`a_different_radio_does_not_inherit_the_last_ones_channels`):
@@ -1967,6 +1971,31 @@ mod tests {
     /// can later move it onto a DIFFERENT scanner. That is the #571 loss by a
     /// new route.
     ///
+    /// #417: connecting puts the profile's stored name on DeviceInfo, and a
+    /// swap to an unnamed profile clears it -- a name that outlived its radio
+    /// would label the wrong scanner in the reconnect announcement.
+    #[test]
+    fn connecting_carries_the_profiles_name_and_a_swap_replaces_it() {
+        let state = crate::api::default_state();
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        let id = state.device.read().unwrap().scanner_id.clone().unwrap();
+        crate::api::scanner_registry::set_display_name(
+            &state.preferences_db_path,
+            &id,
+            Some("Truck"),
+        )
+        .unwrap();
+
+        update_device_info_from_mdl(&state, "MDL,BC75XLT", "/dev/cu.test");
+        assert_eq!(
+            state.device.read().unwrap().display_name.as_deref(),
+            Some("Truck")
+        );
+
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.test");
+        assert_eq!(state.device.read().unwrap().display_name, None);
+    }
+
     /// This test drives exactly that sequence, so the tidy-up is caught rather
     /// than reasoned about.
     #[test]

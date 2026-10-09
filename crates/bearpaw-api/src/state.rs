@@ -114,6 +114,11 @@ pub struct DeviceInfo {
     /// placeholder key, which is exactly the pre-#414 behaviour.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scanner_id: Option<String>,
+    /// The label the user gave this profile (#417), read with `scanner_id` at
+    /// connect and kept beside it so the two cannot disagree. `None` when the
+    /// profile is unnamed; the UI shows the model instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     /// A problem with the CONNECTION, cleared the moment one succeeds.
     ///
     /// Correct for `usb_detected_no_serial_endpoint`, `unsupported_model` and
