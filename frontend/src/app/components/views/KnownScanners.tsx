@@ -32,7 +32,8 @@ export function forgetMessage(profile: ScannerProfile): string {
   ].filter((part): part is string => Boolean(part));
   const list =
     parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0];
-  const sentences = [`Forget ${label(profile)}?`];
+  // No "Forget X?" opener: the dialog title already says it.
+  const sentences: string[] = [];
   if (list) sentences.push(`This deletes its ${list} from Bearpaw.`);
   if (profile.history_shared) {
     sentences.push(`Activity history stays, because your other ${profile.model} shares it.`);

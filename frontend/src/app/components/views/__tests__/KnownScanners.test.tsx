@@ -163,7 +163,7 @@ describe('KnownScanners', () => {
   it('states exactly what is deleted, and never says settings', () => {
     const message = forgetMessage(truck());
     expect(message).toBe(
-      'Forget Truck? This deletes its 120 cached channels, 3 bank names and activity ' +
+      'This deletes its 120 cached channels, 3 bank names and activity ' +
         "history from Bearpaw. The scanner itself isn't changed.",
     );
     expect(message).not.toMatch(/setting/i);
@@ -177,7 +177,7 @@ describe('KnownScanners', () => {
       'its 251 cached channels and activity history',
     );
     expect(forgetMessage(truck({ channels: 0, bank_names: 0, history_shared: true }))).toBe(
-      'Forget Truck? Activity history stays, because your other BC75XLT shares it. ' +
+      'Activity history stays, because your other BC75XLT shares it. ' +
         "The scanner itself isn't changed.",
     );
   });
