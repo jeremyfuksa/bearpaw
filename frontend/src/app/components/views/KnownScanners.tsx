@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { APIError } from '../../../api/client';
 import { getAPI } from '../../../api/useApi';
+import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import { confirmDialog } from '../../../tauri-shell';
 import type { ScannerProfile } from '../../../types';
@@ -150,10 +151,17 @@ export function KnownScanners() {
       >
         Known scanners
       </h4>
-      <ul className="space-y-2 text-sm">
+      {/* One grid shared by every row (via subgrid), so name, status, sync age
+          and the buttons line up in columns. The sync column takes the slack,
+          pushing Forget and Rename to the right edge. */}
+      <ul className="grid grid-cols-[auto_auto_auto_1fr_auto_auto] gap-x-3 gap-y-2 text-sm">
         {profiles.map((profile) => (
-          <li key={profile.scanner_id} aria-current={profile.connected ? 'true' : undefined}>
-            <ProfileLine profile={profile} onRename={rename} onForget={forget} withStatus />
+          <li
+            key={profile.scanner_id}
+            aria-current={profile.connected ? 'true' : undefined}
+            className="col-span-full grid grid-cols-subgrid"
+          >
+            <ProfileLine profile={profile} onRename={rename} onForget={forget} inList />
           </li>
         ))}
       </ul>
@@ -165,11 +173,15 @@ interface ProfileLineProps {
   profile: ScannerProfile;
   onRename: (profile: ScannerProfile, name: string) => Promise<void>;
   onForget: (profile: ScannerProfile) => Promise<void>;
-  /** Connection and sync age. Off on the single line, where the rows below say both. */
-  withStatus?: boolean;
+  /**
+   * A row of the multi-profile list: adds connection and sync age (the single
+   * line omits them, since the rows below say both) and lays the line out on
+   * the list's column grid, with an empty cell wherever a row lacks a piece.
+   */
+  inList?: boolean;
 }
 
-function ProfileLine({ profile, onRename, onForget, withStatus = false }: ProfileLineProps) {
+function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLineProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const renameButton = useRef<HTMLButtonElement>(null);
@@ -199,57 +211,125 @@ function ProfileLine({ profile, onRename, onForget, withStatus = false }: Profil
     ? 'Connected'
     : `Last seen ${formatAge(profile.last_seen) ?? 'never'}`;
 
+  // In the list every cell is rendered, empty where this row has nothing, so
+  // the next cell stays in its column.
+  const empty = inList ? <span aria-hidden /> : null;
+
+  const nameCell = (
+    <span className="flex min-w-0 items-baseline gap-x-2">
+      <span className="max-w-[16rem] truncate font-semibold text-white">{label(profile)}</span>
+      {profile.display_name && <span className="text-white/60">{profile.model}</span>}
+    </span>
+  );
+  const statusCell = (
+    <span className={profile.connected ? 'text-brand-primary' : 'text-white/60'}>{status}</span>
+  );
+  const syncedCell = synced ? <span className="text-white/60">{synced}</span> : empty;
+
   if (editing) {
+    if (!inList) {
+      return (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+          className="flex items-center gap-2"
+        >
+          <NameInput profile={profile} draft={draft} onChange={setDraft} onCancel={close} />
+          <button type="button" onClick={close} className="text-white/60 hover:text-white">
+            Cancel
+          </button>
+          <button type="submit" className="text-brand-primary hover:underline">
+            Save
+          </button>
+        </form>
+      );
+    }
+    // In the list the field stays on the column grid: input across the name to
+    // sync columns, Cancel under Forget, Save under Rename. Invisible copies of
+    // this row's cells keep sizing their columns, so the other rows do not move
+    // while it is edited.
     return (
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
-        className="flex items-center gap-2"
+        className="col-span-full grid grid-cols-subgrid items-center"
       >
-        <input
-          autoFocus
-          value={draft}
-          maxLength={DISPLAY_NAME_MAX_CHARS}
-          aria-label={`Name for this ${profile.model}`}
-          placeholder={profile.model}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              close();
-            }
-          }}
-          className="scanner-input min-w-0 flex-1 rounded px-2 py-1 text-sm"
+        <span aria-hidden className="col-start-1 row-start-1" />
+        <span aria-hidden className="invisible col-start-2 row-start-1 h-0">
+          {nameCell}
+        </span>
+        <span aria-hidden className="invisible col-start-3 row-start-1 h-0">
+          {statusCell}
+        </span>
+        <span aria-hidden className="invisible col-start-4 row-start-1 h-0">
+          {syncedCell}
+        </span>
+        <NameInput
+          profile={profile}
+          draft={draft}
+          onChange={setDraft}
+          onCancel={close}
+          className="col-span-3 col-start-2 row-start-1"
         />
-        <button type="submit" className="text-brand-primary hover:underline">
-          Save
-        </button>
-        <button type="button" onClick={close} className="text-white/60 hover:text-white">
+        <button
+          type="button"
+          onClick={close}
+          className="col-start-5 row-start-1 justify-self-start text-white/60 hover:text-white"
+        >
           Cancel
+        </button>
+        <button
+          type="submit"
+          className="col-start-6 row-start-1 justify-self-start text-brand-primary hover:underline"
+        >
+          Save
         </button>
       </form>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      {profile.connected && (
+    <div
+      className={
+        inList
+          ? 'col-span-full grid grid-cols-subgrid items-baseline'
+          : 'flex flex-wrap items-baseline gap-x-2 gap-y-1'
+      }
+    >
+      {profile.connected ? (
         <span
           aria-hidden
           className="inline-block h-2 w-2 shrink-0 self-center rounded-full bg-brand-primary shadow-glow"
         />
+      ) : (
+        empty
       )}
-      <span className="font-semibold text-white">{label(profile)}</span>
-      {profile.display_name && <span className="text-white/60">{profile.model}</span>}
-      {withStatus && (
+      {nameCell}
+      {inList && (
         <>
-          <span className={profile.connected ? 'text-brand-primary' : 'text-white/60'}>
-            {status}
-          </span>
-          {synced && <span className="text-white/60">{synced}</span>}
+          {statusCell}
+          {syncedCell}
         </>
+      )}
+      {/* Forget comes BEFORE Rename so Rename, on every row, sits at the same
+          right edge. Hidden, not disabled, on the LOADED profile -- connected
+          or merely unplugged. Its channels are still in use and the cache
+          flush would write them straight back, so the API refuses it (409). */}
+      {!profile.loaded ? (
+        <button
+          type="button"
+          onClick={() => void onForget(profile)}
+          aria-label={`Forget ${label(profile)}`}
+          className={cn('text-red-400/80 hover:text-red-400', !inList && 'ml-auto')}
+        >
+          Forget
+        </button>
+      ) : (
+        empty
       )}
       <button
         ref={renameButton}
@@ -259,23 +339,41 @@ function ProfileLine({ profile, onRename, onForget, withStatus = false }: Profil
           setEditing(true);
         }}
         aria-label={`Rename ${label(profile)}`}
-        className="ml-auto text-brand-primary/80 hover:text-brand-primary"
+        className={cn(
+          'text-brand-primary/80 hover:text-brand-primary',
+          !inList && profile.loaded && 'ml-auto',
+        )}
       >
         Rename
       </button>
-      {/* Hidden, not disabled, on the LOADED profile -- connected or merely
-          unplugged. Its channels are still in use and the cache flush would
-          write them straight back, so the API refuses it (409). */}
-      {!profile.loaded && (
-        <button
-          type="button"
-          onClick={() => void onForget(profile)}
-          aria-label={`Forget ${label(profile)}`}
-          className="text-red-400/80 hover:text-red-400"
-        >
-          Forget
-        </button>
-      )}
     </div>
+  );
+}
+
+interface NameInputProps {
+  profile: ScannerProfile;
+  draft: string;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  className?: string;
+}
+
+function NameInput({ profile, draft, onChange, onCancel, className }: NameInputProps) {
+  return (
+    <input
+      autoFocus
+      value={draft}
+      maxLength={DISPLAY_NAME_MAX_CHARS}
+      aria-label={`Name for this ${profile.model}`}
+      placeholder={profile.model}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+      className={cn('scanner-input min-w-0 flex-1 rounded px-2 py-1 text-sm', className)}
+    />
   );
 }
