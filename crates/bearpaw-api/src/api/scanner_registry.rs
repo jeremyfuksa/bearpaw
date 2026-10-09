@@ -215,6 +215,69 @@ pub(crate) fn set_display_name(
     Ok(changed > 0)
 }
 
+/// What `forget_profile` removed.
+pub(crate) struct Forgotten {
+    pub model: String,
+    /// Cache rows deleted, cleared slots included -- the whole stored image.
+    pub channels: usize,
+    pub bank_names: usize,
+    /// Another profile still has this model, so its activity history (keyed by
+    /// model) is not this profile's alone to delete.
+    pub history_shared: bool,
+}
+
+/// Delete a profile and everything keyed by its `scanner_id`, in one
+/// transaction. `Ok(None)` when no such profile exists.
+///
+/// Activity history is NOT touched here: it lives in the analytics database,
+/// keyed by model, and whether to delete it depends on `history_shared`. The
+/// caller decides, after this has committed.
+///
+/// The caller must also refuse the LOADED profile before calling this -- the
+/// periodic cache flush would write its channels straight back.
+pub(crate) fn forget_profile(
+    path: &str,
+    scanner_id: &str,
+) -> Result<Option<Forgotten>, rusqlite::Error> {
+    let mut conn = open_sqlite(path).ok_or(rusqlite::Error::InvalidQuery)?;
+    let tx = conn.transaction()?;
+    let model: Option<String> = tx
+        .query_row(
+            "SELECT model FROM scanners WHERE scanner_id = ?1",
+            rusqlite::params![scanner_id],
+            |row| row.get(0),
+        )
+        .ok();
+    let Some(model) = model else {
+        return Ok(None);
+    };
+    let history_shared: bool = tx.query_row(
+        "SELECT EXISTS (SELECT 1 FROM scanners
+                         WHERE UPPER(model) = UPPER(?1) AND scanner_id <> ?2)",
+        rusqlite::params![model, scanner_id],
+        |row| row.get(0),
+    )?;
+    let channels = tx.execute(
+        "DELETE FROM channel_memory WHERE scanner_id = ?1",
+        rusqlite::params![scanner_id],
+    )?;
+    let bank_names = tx.execute(
+        "DELETE FROM bank_names WHERE scanner_id = ?1",
+        rusqlite::params![scanner_id],
+    )?;
+    tx.execute(
+        "DELETE FROM scanners WHERE scanner_id = ?1",
+        rusqlite::params![scanner_id],
+    )?;
+    tx.commit()?;
+    Ok(Some(Forgotten {
+        model,
+        channels,
+        bank_names,
+        history_shared,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
