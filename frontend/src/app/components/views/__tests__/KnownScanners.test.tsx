@@ -148,21 +148,12 @@ describe('KnownScanners', () => {
    * in use and the cache flush would write it straight back, so the API
    * refuses it. A build gating on `connected` offers Forget on the second row.
    */
-  it('hides Forget on the loaded profile, connected or unplugged, and says why', async () => {
+  it('hides Forget on the loaded profile, connected or unplugged', async () => {
     setup([profile({ display_name: 'Base', connected: false }), truck()]);
-    const items = await screen.findAllByRole('listitem');
+    await screen.findAllByRole('listitem');
 
     expect(screen.queryByRole('button', { name: 'Forget Base' })).not.toBeInTheDocument();
-    expect(items[0]).toHaveTextContent("In use, so it can't be forgotten.");
     expect(screen.getByRole('button', { name: 'Forget Truck' })).toBeInTheDocument();
-    expect(items[1]).not.toHaveTextContent("can't be forgotten");
-  });
-
-  it('keeps a lone loaded profile to one line, with no Forget and no explanation', async () => {
-    setup([profile()]);
-    await screen.findByText('BC125AT');
-    expect(screen.queryByRole('button', { name: /Forget/ })).not.toBeInTheDocument();
-    expect(screen.queryByText(/can't be forgotten/)).not.toBeInTheDocument();
   });
 
   it('states exactly what is deleted, and never says settings', () => {

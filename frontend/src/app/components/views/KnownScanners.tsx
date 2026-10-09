@@ -148,7 +148,7 @@ export function KnownScanners() {
       <ul className="space-y-2 text-sm">
         {profiles.map((profile) => (
           <li key={profile.scanner_id} aria-current={profile.connected ? 'true' : undefined}>
-            <ProfileLine profile={profile} onRename={rename} onForget={forget} inList />
+            <ProfileLine profile={profile} onRename={rename} onForget={forget} />
           </li>
         ))}
       </ul>
@@ -160,11 +160,9 @@ interface ProfileLineProps {
   profile: ScannerProfile;
   onRename: (profile: ScannerProfile, name: string) => Promise<void>;
   onForget: (profile: ScannerProfile) => Promise<void>;
-  /** In the multi-profile list, where the loaded row explains its missing Forget. */
-  inList?: boolean;
 }
 
-function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLineProps) {
+function ProfileLine({ profile, onRename, onForget }: ProfileLineProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const renameButton = useRef<HTMLButtonElement>(null);
@@ -267,9 +265,6 @@ function ProfileLine({ profile, onRename, onForget, inList = false }: ProfileLin
       )}
       {!profile.connected && (
         <p className="basis-full text-xs text-white/60">Plug it in to use it.</p>
-      )}
-      {inList && profile.loaded && (
-        <p className="basis-full text-xs text-white/60">In use, so it can&apos;t be forgotten.</p>
       )}
     </div>
   );
