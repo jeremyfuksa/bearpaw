@@ -32,7 +32,7 @@
     "@tauri-apps/plugin-shell": "^2.4.0",
     "clsx": "2.1.1",
     "lucide-react": "1.49.0",
-    "motion": "13.4.6",
+    "motion": "14.0.0",
     "react": "19.3.0",
     "react-dnd": "16.0.1",
     "react-dnd-touch-backend": "^16.0.1",
