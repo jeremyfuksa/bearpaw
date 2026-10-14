@@ -36,6 +36,9 @@ export interface UseChannelGridArgs {
   onPasteTruncated: (dropped: number) => void;
   /** How a row is named to assistive tech, e.g. "channel 401". */
   rowName: (r: number) => string;
+  /** Move `count` rows starting at `from` so they start at `to` (one step).
+   * Returns false when the move is refused, e.g. while filtered. */
+  onMoveRows: (from: number, to: number, count: number) => boolean;
 }
 
 /** The desktop shell's Scanner menu accelerators (main.rs: Hold, Scan, Sync
@@ -63,6 +66,7 @@ export function useChannelGrid({
   onPasteBlocked,
   onPasteTruncated,
   rowName,
+  onMoveRows,
 }: UseChannelGridArgs) {
   const [anchor, setAnchor] = useState({ r: 0, c: 0 });
   const [active, setActive] = useState({ r: 0, c: 0 });
@@ -161,6 +165,15 @@ export function useChannelGrid({
     const jump = e.metaKey || e.ctrlKey;
     if (jump && MENU_ACCELERATORS.has(e.key.toLowerCase())) {
       e.preventDefault();
+      return;
+    }
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const dir = e.key === 'ArrowUp' ? -1 : 1;
+      if (r0 + dir < 0 || r1 + dir > lastRow) return;
+      if (!onMoveRows(r0, r0 + dir, r1 - r0 + 1)) return;
+      setAnchor({ r: a.r + dir, c: a.c });
+      setActive({ r: f.r + dir, c: f.c });
       return;
     }
     const ext = e.shiftKey;

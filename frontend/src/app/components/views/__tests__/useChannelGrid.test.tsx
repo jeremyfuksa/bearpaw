@@ -16,6 +16,7 @@ function Harness(props: {
   pasteBlocked?: boolean;
   onPasteBlocked?: () => void;
   onPasteTruncated?: (dropped: number) => void;
+  onMoveRows?: (from: number, to: number, count: number) => boolean;
 }) {
   const g = useChannelGrid({
     fields: FIELDS,
@@ -27,6 +28,7 @@ function Harness(props: {
     onPasteBlocked: props.onPasteBlocked ?? vi.fn(),
     onPasteTruncated: props.onPasteTruncated ?? vi.fn(),
     rowName: (r) => `row ${r + 1}`,
+    onMoveRows: props.onMoveRows ?? vi.fn(() => true),
   });
   return (
     <>
@@ -122,6 +124,27 @@ describe('useChannelGrid', () => {
     expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-0-1');
     fireEvent.keyDown(sink(), { key: 'ArrowRight', metaKey: true });
     expect(fireEvent.keyDown(sink(), { key: 'Tab' })).toBe(true); // not prevented: focus leaves
+  });
+
+  it('Alt+ArrowDown moves the selected rows and the selection follows', () => {
+    const onMoveRows = vi.fn(() => true);
+    render(<Harness onMoveRows={onMoveRows} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+    expect(onMoveRows).toHaveBeenCalledWith(0, 1, 1);
+    expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-1-0');
+  });
+
+  it('Alt+ArrowUp at the top does nothing', () => {
+    const onMoveRows = vi.fn(() => true);
+    render(<Harness onMoveRows={onMoveRows} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowUp', altKey: true });
+    expect(onMoveRows).not.toHaveBeenCalled();
+  });
+
+  it('a refused move leaves the selection where it was', () => {
+    render(<Harness onMoveRows={() => false} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+    expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-0-0');
   });
 
   it('Shift+arrow extends the selection', () => {

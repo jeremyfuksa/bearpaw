@@ -15,6 +15,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   columns match by name. The edit dialog is gone. Cells with a value the
   scanner can't take turn red, and Upload waits until they're fixed.
 
+- **Select whole rows by their channel number.** Click a channel number to
+  select its row, and Shift-click to select several. Then press Delete or
+  Clear Selected, or Alt+↑/↓ to move them. The checkboxes are gone.
+
 - **A one-time thank-you after your first upload.** The first time you upload
   channel edits and every one lands, the Channels tab shows a small card with a
   link to support Bearpaw. Close it and it never comes back. It never appears
