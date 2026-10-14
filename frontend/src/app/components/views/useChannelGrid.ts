@@ -322,6 +322,9 @@ export function useChannelGrid({
   });
 
   const selectRow = (r: number, extend: boolean) => {
+    // Same guard as a cell mousedown: an open edit is kept, not stranded on
+    // the new active cell.
+    if (editing !== null) commit(null);
     setActive({ r, c: lastCol });
     setAnchor((prev) => ({ r: extend ? prev.r : r, c: 0 }));
     focusSink();

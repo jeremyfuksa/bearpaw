@@ -695,6 +695,36 @@ describe('ChannelsTab', () => {
       expect(order()).toEqual(['Alpha', 'Bravo', 'Charlie']);
     });
 
+    it('the channel-number button says whether its row is selected', async () => {
+      setMockStore(createMockStore({ channels: two() }));
+      render(<ChannelsTab />);
+      const ch1 = screen.getByRole('button', { name: 'Select channel 1' });
+      expect(ch1).toHaveAttribute('aria-pressed', 'false');
+      await userEvent.setup().click(ch1);
+      expect(ch1).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    // Parity with the grip (#236): a keyboard move is announced, and a refused
+    // one says why instead of doing nothing.
+    it('announces an Alt+arrow move and explains a refused one', async () => {
+      setMockStore(createMockStore({ channels: two() }));
+      render(<ChannelsTab />);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Select channel 1' }));
+      await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
+      expect(
+        screen
+          .getAllByRole('status')
+          .some((el) => /Moved to position 2 of 2/.test(el.textContent ?? '')),
+      ).toBe(true);
+      await user.type(screen.getByRole('searchbox'), 'Channel');
+      screen.getByRole('textbox', { name: /^Channels grid/ }).focus();
+      await user.keyboard('{Alt>}{ArrowUp}{/Alt}'); // the moved row is now last
+      expect(toast.info).toHaveBeenCalledWith(
+        expect.stringMatching(/Clear the search to move rows/),
+      );
+    });
+
     it('has no checkboxes', () => {
       setMockStore(createMockStore({ channels: two() }));
       render(<ChannelsTab />);

@@ -33,6 +33,9 @@ function Harness(props: {
   return (
     <>
       <textarea {...g.sinkProps} />
+      <button onMouseDown={(e) => e.preventDefault()} onClick={() => g.selectRow(2, false)}>
+        select row 3
+      </button>
       <div role="grid" aria-label="Channels">
         {DATA.map((row, r) => (
           <div role="row" key={r}>
@@ -132,6 +135,20 @@ describe('useChannelGrid', () => {
     fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
     expect(onMoveRows).toHaveBeenCalledWith(0, 1, 1);
     expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-1-0');
+  });
+
+  // Review (PR C) #1: selecting a row during an edit left the editor open on
+  // the new active cell (Priority) and silently dropped the typed text.
+  it('selecting a row while editing commits the edit and closes the editor', () => {
+    const onApply = vi.fn();
+    render(<Harness onApply={onApply} />);
+    fireEvent.keyDown(sink(), { key: 'Enter' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Frequency, row 1' }), {
+      target: { value: '146.52' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'select row 3' }));
+    expect(onApply).toHaveBeenCalledWith([{ r: 0, field: 'frequency', text: '146.52' }]);
+    expect(screen.queryByRole('textbox', { name: /^(Frequency|Priority), row/ })).toBeNull();
   });
 
   it('Alt+ArrowUp at the top does nothing', () => {

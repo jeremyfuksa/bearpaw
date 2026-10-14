@@ -94,6 +94,7 @@ interface ChannelRowProps {
   displayLockout: boolean;
   displayPriority: boolean;
   onSelectRow: (extend: boolean) => void;
+  isRowSelected: boolean;
   gridFields: GridField[];
   cell: (c: number) => CellProps;
   isActive: (c: number) => boolean;
@@ -124,6 +125,7 @@ function ChannelRow({
   displayLockout,
   displayPriority,
   onSelectRow,
+  isRowSelected,
   gridFields,
   cell,
   isActive,
@@ -269,6 +271,7 @@ function ChannelRow({
         <button
           type="button"
           aria-label={`Select channel ${displayIndex}`}
+          aria-pressed={isRowSelected}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => onSelectRow(e.shiftKey)}
           className="w-full text-left hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
@@ -1160,7 +1163,12 @@ export function ChannelsTab() {
       ),
     onMoveRows: (from, to, count) => {
       // Filter-unsafe for the same reason as the grip (#236 row in CLAUDE.md).
-      if (searchTerm.trim().length > 0) return false;
+      if (searchTerm.trim().length > 0) {
+        toast.info('Clear the search to move rows. A filtered list skips channels.');
+        return false;
+      }
+      // Announced like a grip move, so a screen-reader user hears it land.
+      setReorderAnnouncement(`Moved to position ${to + 1} of ${orderedFilteredChannels.length}.`);
       // moveRow moves one row. Shifting a block by one is moving the row it displaces.
       if (to > from) moveRow(from + count, from);
       else moveRow(from - 1, from + count - 1);
@@ -1199,6 +1207,7 @@ export function ChannelsTab() {
   }, [capabilities, channels, gridFields, memoryDrafts]);
   const invalidCount = invalidByIndex.size;
 
+  const selectedRowSet = new Set(grid.selectedRows());
   const selectedIndexes = grid.selectedRows().map((r) => orderedFilteredChannels[r].index);
 
   const handleClearSelected = useCallback(async () => {
@@ -1918,6 +1927,7 @@ export function ChannelsTab() {
                       isPending={isPending}
                       isClearPending={isClearPending}
                       onSelectRow={(extend) => grid.selectRow(rowIndex, extend)}
+                      isRowSelected={selectedRowSet.has(rowIndex)}
                       gridFields={gridFields}
                       cell={(c) => grid.cellProps(rowIndex, c)}
                       isActive={(c) => grid.active.r === rowIndex && grid.active.c === c}
