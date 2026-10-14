@@ -1176,6 +1176,7 @@ export function ChannelsTab() {
     }
     return out;
   }, [capabilities, channels, gridFields, memoryDrafts]);
+  const invalidCount = invalidByIndex.size;
 
   const handleToggleSelectAll = useCallback(() => {
     const visibleIds = orderedFilteredChannels.map((channel) => channel.index);
@@ -1206,7 +1207,7 @@ export function ChannelsTab() {
   }, [capabilities.cleared_delay, selectedChannelIds, setMemoryDraft]);
 
   const handleUploadDrafts = useCallback(async () => {
-    if (draftChanges.length === 0 || isUploading) return;
+    if (draftChanges.length === 0 || isUploading || invalidCount > 0) return;
     setIsUploading(true);
     const failed: Array<{ index: number; detail?: string }> = [];
     const warnings: Array<{ index: number; detail: string }> = [];
@@ -1419,6 +1420,7 @@ export function ChannelsTab() {
     capabilities.cleared_delay,
     channelsPerBank,
     draftChanges,
+    invalidCount,
     isUploading,
     setChannels,
     setMemoryDraft,
@@ -1728,9 +1730,11 @@ export function ChannelsTab() {
 
         <div className="flex items-center justify-between bg-black/10 p-3 rounded-lg border border-white/5 shrink-0">
           <div role="status" aria-live="polite" className="text-xs text-white/60">
-            {draftChanges.length > 0
-              ? `Edits are saved as drafts. ${draftChanges.length} pending.`
-              : 'Edits are saved as drafts. No pending changes.'}
+            {invalidCount > 0
+              ? `${invalidCount} ${invalidCount === 1 ? 'channel has an invalid value' : 'channels have invalid values'}. Fix the red cells to upload.`
+              : draftChanges.length > 0
+                ? `Edits are saved as drafts. ${draftChanges.length} pending.`
+                : 'Edits are saved as drafts. No pending changes.'}
           </div>
           <div className="flex gap-2">
             <button
@@ -1742,7 +1746,7 @@ export function ChannelsTab() {
             </button>
             <button
               onClick={handleUploadDrafts}
-              disabled={draftChanges.length === 0 || isUploading}
+              disabled={draftChanges.length === 0 || isUploading || invalidCount > 0}
               className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isUploading ? 'Uploading...' : 'Upload Changes'}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 import {
@@ -671,6 +671,36 @@ describe('ChannelsTab', () => {
       rowCheckboxes.forEach((checkbox) => {
         expect(checkbox).not.toBeChecked();
       });
+    });
+  });
+
+  describe('invalid drafts block upload (#659)', () => {
+    it('disables Upload and says how many channels need fixing', () => {
+      setMockStore(
+        createMockStore({
+          channels: mockChannels,
+          memoryDrafts: { 1: { ...buildDraft(mockChannels[0], 2), modulation: 'XX' } },
+        }),
+      );
+      render(<ChannelsTab />);
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+      expect(screen.getByText(/1 channel has an invalid value/)).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('gridcell').some((c) => c.getAttribute('aria-invalid') === 'true'),
+      ).toBe(true);
+    });
+
+    it('refuses to paste while a search filter is active', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      await userEvent.type(screen.getByRole('searchbox'), '151');
+      fireEvent.paste(screen.getByRole('textbox', { name: 'Channels grid' }), {
+        clipboardData: { getData: () => '146.52', setData: vi.fn() },
+      });
+      expect(store.setMemoryDraft).not.toHaveBeenCalled();
+      expect(toast.info).toHaveBeenCalledWith(expect.stringMatching(/Clear the search to paste/));
     });
   });
 
