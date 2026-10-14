@@ -5,7 +5,7 @@
 [![Latest release](https://img.shields.io/github/v/release/jeremyfuksa/bearpaw?include_prereleases&sort=semver&label=release&color=e6a817)](https://github.com/jeremyfuksa/bearpaw/releases)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-2b2f38)](#download-and-install)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)](https://tauri.app)
-[![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-ffdd00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/jeremyfuksa)
+[![Support Bearpaw](https://img.shields.io/badge/support-bearpaw-ffdd00)](https://buymeacoffee.com/jeremyfuksa)
 
 **A desktop control interface for supported Uniden analog handheld scanners.**
 
@@ -149,5 +149,6 @@ React/TypeScript frontend. Release notes live in [`CHANGELOG.md`](CHANGELOG.md).
 ---
 
 _Bearpaw is released under the [MIT License](LICENSE). Made by
-[Jeremy Fuksa](https://github.com/jeremyfuksa). If it's useful to you, you can
-[buy the developer a coffee](https://buymeacoffee.com/jeremyfuksa)._
+[Jeremy Fuksa](https://github.com/jeremyfuksa).
+[Support](https://buymeacoffee.com/jeremyfuksa) keeps Bearpaw going and buys the
+scanners it learns to work with next._

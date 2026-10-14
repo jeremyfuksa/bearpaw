@@ -691,7 +691,7 @@ describe('DeviceTab', () => {
       renderDeviceTab();
       await selectCategory(/Preferences/i);
       expect(screen.getByRole('button', { name: /Github/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Buy me a coffee/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Support Bearpaw/i })).toBeInTheDocument();
     });
 
     it('applies a preference only after the backend confirms persistence', async () => {
