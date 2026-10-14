@@ -26,6 +26,14 @@ let assetPlatformByUrl = {};
 // behind what looks like a GitHub outage, so the download event names which.
 let releasesButtonSource = "releases-fallback";
 
+// The support ask appears only once a download has started: that is the
+// moment the visitor has decided Bearpaw is worth having, and before it the
+// line would be asking for money for something they have not tried.
+function showDownloadSupport() {
+  const el = document.getElementById("download-support");
+  if (el) el.hidden = false;
+}
+
 function initAnalytics() {
   const hero = document.getElementById("hero-download");
   if (hero) {
@@ -44,7 +52,12 @@ function initAnalytics() {
     const href = link.href;
 
     if (href.startsWith("https://buymeacoffee.com/")) {
-      track("coffee_click");
+      // `source` is already a registered event-scoped dimension, so this
+      // separates the post-download ask from the footer link with no Admin
+      // change. The event keeps its old name so its history stays comparable.
+      track("coffee_click", {
+        source: link.closest("#download-support") ? "download-support" : "footer",
+      });
       return;
     }
 
@@ -55,8 +68,10 @@ function initAnalytics() {
         file: platform.file,
         source: link.closest("#asset-list") ? "asset-list" : "primary-button",
       });
+      showDownloadSupport();
     } else if (href === `https://github.com/${REPO}/releases`) {
       track("download", { platform: "unknown", source: releasesButtonSource });
+      showDownloadSupport();
     }
   });
 }

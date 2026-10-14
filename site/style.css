@@ -473,6 +473,12 @@ code {
   white-space: nowrap;
 }
 
+.download-support {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  margin-bottom: 1.75rem;
+}
+
 .install-notes {
   color: var(--text-muted);
   font-size: 0.9375rem;
