@@ -20,6 +20,7 @@ const HEADER_NAMES: Record<string, GridField> = {
   mode: 'modulation',
   tone: 'tone_squelch',
   ctcss: 'tone_squelch',
+  'ctcss/dcs': 'tone_squelch',
   delay: 'delay',
   dly: 'delay',
   lockout: 'lockout',
@@ -28,6 +29,11 @@ const HEADER_NAMES: Record<string, GridField> = {
   priority: 'priority',
   prio: 'priority',
 };
+
+/** Header names the grid has no field for. Recognised so a header row from
+ * Bearpaw's own CSV export (Index ... Bank) is still detected as a header;
+ * their columns are dropped. */
+const IGNORED_HEADERS = new Set(['index', 'channel', 'ch', 'bank']);
 
 const TRUTHY = /^(y|yes|on|true|1|l|lo|locked)$/i;
 
@@ -49,8 +55,12 @@ export function mapPasteColumns(
   startCol: number,
 ): { fields: (GridField | null)[]; rows: string[][] } {
   const first = block[0] ?? [];
-  const named = first.map((cell) => HEADER_NAMES[cell.trim().toLowerCase()] ?? null);
-  const isHeader = block.length > 1 && first.length > 0 && named.every((f) => f !== null);
+  const keys = first.map((cell) => cell.trim().toLowerCase());
+  const named = keys.map((k) => HEADER_NAMES[k] ?? null);
+  const isHeader =
+    block.length > 1 &&
+    first.length > 0 &&
+    keys.every((k, i) => named[i] !== null || IGNORED_HEADERS.has(k));
   if (isHeader) {
     const fields = named.map((f) => (f && f !== 'priority' && visible.includes(f) ? f : null));
     return { fields, rows: block.slice(1) };

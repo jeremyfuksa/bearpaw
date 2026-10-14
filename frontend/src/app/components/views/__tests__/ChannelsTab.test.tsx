@@ -236,7 +236,7 @@ describe('ChannelsTab', () => {
   });
 
   describe('Grid editing (#659)', () => {
-    const sink = () => screen.getByRole('textbox', { name: 'Channels grid' });
+    const sink = () => screen.getByRole('textbox', { name: /^Channels grid/ });
 
     it('exposes the channels as a grid of gridcells', () => {
       render(<ChannelsTab />);
@@ -251,6 +251,8 @@ describe('ChannelsTab', () => {
     it("the grid's focus sink is a textarea", () => {
       render(<ChannelsTab />);
       expect(sink().tagName).toBe('TEXTAREA');
+      // A grid owns only rows; the sink sits beside it, not inside it.
+      expect(screen.getByRole('grid', { name: /bank channels/i })).not.toContainElement(sink());
     });
 
     // REGRESSION GUARD (a11y C1, re-pointed for #659): the primary edit action
@@ -263,7 +265,7 @@ describe('ChannelsTab', () => {
       render(<ChannelsTab />);
       sink().focus();
       await userEvent.keyboard('{Enter}');
-      const editor = screen.getByRole('textbox', { name: /Frequency, row 1/ });
+      const editor = screen.getByRole('textbox', { name: /^Frequency, channel 1$/ });
       await userEvent.clear(editor);
       await userEvent.type(editor, '162.55{Enter}');
       expect(store.setMemoryDraft).toHaveBeenCalledWith(
@@ -690,13 +692,33 @@ describe('ChannelsTab', () => {
       ).toBe(true);
     });
 
+    it('flags a tag the scanner would reject and holds Upload', () => {
+      setMockStore(
+        createMockStore({
+          channels: mockChannels,
+          memoryDrafts: { 1: { ...buildDraft(mockChannels[0], 2), alpha_tag: 'KC_Metro' } },
+        }),
+      );
+      render(<ChannelsTab />);
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+      expect(screen.getByText(/1 channel has an invalid value/)).toBeInTheDocument();
+    });
+
+    it('says how many pasted rows did not fit in the bank', () => {
+      render(<ChannelsTab />);
+      fireEvent.paste(screen.getByRole('textbox', { name: /^Channels grid/ }), {
+        clipboardData: { getData: () => '146.52\n146.55\n146.58', setData: vi.fn() },
+      });
+      expect(toast.info).toHaveBeenCalledWith(expect.stringMatching(/2 rows .*past the end/));
+    });
+
     it('refuses to paste while a search filter is active', async () => {
       const store = createMockStore({ channels: mockChannels });
       store.setMemoryDraft = vi.fn();
       setMockStore(store);
       render(<ChannelsTab />);
       await userEvent.type(screen.getByRole('searchbox'), '151');
-      fireEvent.paste(screen.getByRole('textbox', { name: 'Channels grid' }), {
+      fireEvent.paste(screen.getByRole('textbox', { name: /^Channels grid/ }), {
         clipboardData: { getData: () => '146.52', setData: vi.fn() },
       });
       expect(store.setMemoryDraft).not.toHaveBeenCalled();

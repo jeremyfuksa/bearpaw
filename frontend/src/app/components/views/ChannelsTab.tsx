@@ -138,6 +138,7 @@ function ChannelRow({
   onReleaseGrab,
 }: ChannelRowProps) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const gripRef = useRef<HTMLButtonElement | null>(null);
 
   const [{ isDragging }, drag] = useDrag({
     type: DND_ITEM_TYPE,
@@ -159,14 +160,21 @@ function ChannelRow({
   });
 
   // react-dnd's connector API: `drag`/`drop` are connector functions that
-  // attach the DND behavior to the row element, and composing them onto the
-  // ref during render is how the library (v16) is meant to be wired.
+  // attach the DND behavior to an element, and composing them onto the ref
+  // during render is how the library (v16) is meant to be wired.
+  //
+  // The GRIP is the drag source, the row only a drop target (#659). With the
+  // whole row as the source, pressing a cell, pausing past delayMouseStart and
+  // dragging to select a range reordered the bank under the cursor: the
+  // TouchBackend listens natively, so the cell's preventDefault cannot stop it.
   // react-hooks/refs is suppressed rather than worked around — the connectors
   // have no post-commit call site, and restructuring this into callback refs
   // would rewrite the drag path that the #236 keyboard-reorder guard below
   // depends on for no behavioral gain.
   // eslint-disable-next-line react-hooks/refs
-  drag(drop(ref));
+  drag(gripRef);
+  // eslint-disable-next-line react-hooks/refs
+  drop(ref);
 
   const shows = (key: ChannelColumnKey) => columns.some((c) => c.key === key);
 
@@ -240,6 +248,7 @@ function ChannelRow({
             Pointer DnD is untouched: the row is still the drag source.
             Guarded by ChannelsTab.test.tsx :: Keyboard reordering (#236). */}
         <button
+          ref={gripRef}
           type="button"
           disabled={disableDrag}
           aria-label={`Reorder channel ${displayIndex}, position ${rowIndex + 1} of ${rowCount}`}
@@ -1155,6 +1164,14 @@ export function ChannelsTab() {
       toast.info(
         'Clear the search to paste. Pasting fills the rows below, and a filtered list skips channels.',
       ),
+    onPasteTruncated: (dropped) =>
+      toast.info(
+        `${dropped} ${dropped === 1 ? 'row' : 'rows'} did not fit: the paste ran past the end of the bank.`,
+      ),
+    rowName: (r) => {
+      const channel = orderedFilteredChannels[r];
+      return `channel ${reorderTargets[channel.index] ?? channel.index}`;
+    },
   });
 
   // Draft values the connected scanner would reject. Shown red in the grid,
@@ -1166,7 +1183,13 @@ export function ChannelsTab() {
       const draft = memoryDrafts[channel.index];
       if (!draft || Number.parseFloat(draft.frequency) === 0) continue;
       const errs: Partial<Record<GridField, string>> = {};
-      for (const field of ['frequency', 'modulation', 'tone_squelch', 'delay'] as const) {
+      for (const field of [
+        'frequency',
+        'alpha_tag',
+        'modulation',
+        'tone_squelch',
+        'delay',
+      ] as const) {
         // Hidden columns are reserved on this model and never sent; don't flag them.
         if (!gridFields.includes(field)) continue;
         const err = validateField(field, draft[field], capabilities);
@@ -1793,7 +1816,8 @@ export function ChannelsTab() {
           {reorderAnnouncement}
         </div>
 
-        {/* Table */}
+        {/* Table. The grid's focus sink sits beside it: a grid owns only rows. */}
+        <textarea {...grid.sinkProps} />
         <DndProvider
           backend={TouchBackend}
           options={{ enableMouseEvents: true, delayMouseStart: 100 }}
@@ -1805,7 +1829,6 @@ export function ChannelsTab() {
             className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
             ref={containerRef}
           >
-            <textarea {...grid.sinkProps} />
             {/* Header */}
             <div
               role="row"

@@ -70,6 +70,40 @@ describe('mapPasteColumns', () => {
     expect(fields).toEqual(['frequency', null, null]);
   });
 
+  // Review #4: Bearpaw's own CSV export header must be recognised, not
+  // poured into the grid as data. Columns the grid has no field for are
+  // ignored by name.
+  it("recognises Bearpaw's own export header and ignores Index and Bank", () => {
+    const header = [
+      'Index',
+      'Frequency',
+      'Modulation',
+      'Alpha Tag',
+      'Delay',
+      'Lockout',
+      'Priority',
+      'CTCSS/DCS',
+      'Bank',
+    ];
+    const { fields, rows } = mapPasteColumns(
+      [header, ['401', '154.43', 'FM', 'Fire', '2', 'Off', 'Off', '', '9']],
+      ALL,
+      0,
+    );
+    expect(fields).toEqual([
+      null,
+      'frequency',
+      'modulation',
+      'alpha_tag',
+      'delay',
+      'lockout',
+      null,
+      'tone_squelch',
+      null,
+    ]);
+    expect(rows).toHaveLength(1);
+  });
+
   it('never maps a pasted column onto priority', () => {
     expect(mapPasteColumns([['x'], ['y']], ALL, 6).fields).toEqual([null]);
     expect(mapPasteColumns([['Priority'], ['1']], ALL, 0).fields).toEqual([null]);

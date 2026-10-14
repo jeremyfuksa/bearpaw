@@ -15,6 +15,7 @@ function Harness(props: {
   onTogglePriority?: (r: number) => void;
   pasteBlocked?: boolean;
   onPasteBlocked?: () => void;
+  onPasteTruncated?: (dropped: number) => void;
 }) {
   const g = useChannelGrid({
     fields: FIELDS,
@@ -24,31 +25,87 @@ function Harness(props: {
     onTogglePriority: props.onTogglePriority ?? vi.fn(),
     pasteBlocked: props.pasteBlocked ?? false,
     onPasteBlocked: props.onPasteBlocked ?? vi.fn(),
+    onPasteTruncated: props.onPasteTruncated ?? vi.fn(),
+    rowName: (r) => `row ${r + 1}`,
   });
   return (
-    <div role="grid" aria-label="Channels">
+    <>
       <textarea {...g.sinkProps} />
-      {DATA.map((row, r) => (
-        <div role="row" key={r}>
-          {row.map((text, c) => (
-            <div key={c} {...g.cellProps(r, c)}>
-              {g.editing !== null && g.active.r === r && g.active.c === c ? (
-                <input {...g.editorProps(r, c)} />
-              ) : (
-                text
-              )}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
+      <div role="grid" aria-label="Channels">
+        {DATA.map((row, r) => (
+          <div role="row" key={r}>
+            {row.map((text, c) => (
+              <div key={c} {...g.cellProps(r, c)}>
+                {g.editing !== null && g.active.r === r && g.active.c === c ? (
+                  <input {...g.editorProps(r, c)} />
+                ) : (
+                  text
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
-const sink = () => screen.getByRole('textbox', { name: 'Channels grid' });
+const sink = () => screen.getByRole('textbox', { name: /^Channels grid/ });
 const clip = (text = '') => ({ clipboardData: { getData: () => text, setData: vi.fn() } });
 
 describe('useChannelGrid', () => {
+  // Review #1: the desktop shell's Scanner menu binds Cmd+S (Scan), Cmd+H
+  // (Hold) and Cmd+Y (Sync Memory) natively. The sink is skipped by the
+  // global shortcut hook, so nothing would preventDefault them and the menu
+  // would act from inside the grid. Clipboard keys must still pass through.
+  it('swallows the Scanner-menu accelerators but not the clipboard keys', () => {
+    render(<Harness />);
+    for (const key of ['s', 'h', 'y']) {
+      expect(fireEvent.keyDown(sink(), { key, metaKey: true })).toBe(false);
+    }
+    for (const key of ['c', 'v', 'x', 'a', 'z']) {
+      expect(fireEvent.keyDown(sink(), { key, metaKey: true })).toBe(true);
+    }
+  });
+
+  // Review #5: focus sits on an offscreen textarea, so the browser never
+  // scrolls the active cell into view on its own.
+  it('scrolls the active cell into view as it moves', () => {
+    const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+    render(<Harness />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', metaKey: true });
+    expect(scroll.mock.contexts.at(-1)).toHaveProperty('id', 'channel-cell-2-0');
+    scroll.mockRestore();
+  });
+
+  // Review #6: the editor renders inside the cell, whose mousedown commits.
+  it('clicking inside the open editor keeps it open', () => {
+    const onApply = vi.fn();
+    render(<Harness onApply={onApply} />);
+    fireEvent.keyDown(sink(), { key: 'Enter' });
+    const editor = screen.getByRole('textbox', { name: 'Frequency, row 1' });
+    fireEvent.mouseDown(editor);
+    expect(screen.getByRole('textbox', { name: 'Frequency, row 1' })).toBeInTheDocument();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  // Review #7: aria-activedescendant on a textarea is not announced, so the
+  // sink's own name has to say where the user is.
+  it("the sink's name says which cell is active", () => {
+    render(<Harness />);
+    expect(sink()).toHaveAccessibleName('Channels grid, Frequency, row 1, 154.4300');
+    fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+    expect(sink()).toHaveAccessibleName('Channels grid, Tag, row 1, Fire');
+  });
+
+  it('reports how many pasted rows ran past the last row', () => {
+    const onPasteTruncated = vi.fn();
+    render(<Harness onPasteTruncated={onPasteTruncated} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', metaKey: true });
+    fireEvent.paste(sink(), clip('1\n2\n3'));
+    expect(onPasteTruncated).toHaveBeenCalledWith(2);
+  });
+
   it('arrow keys move the active cell; aria-activedescendant follows', () => {
     render(<Harness />);
     fireEvent.keyDown(sink(), { key: 'ArrowDown' });

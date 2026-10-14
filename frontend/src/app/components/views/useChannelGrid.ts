@@ -32,7 +32,16 @@ export interface UseChannelGridArgs {
   onTogglePriority: (r: number) => void;
   pasteBlocked: boolean;
   onPasteBlocked: () => void;
+  /** Called with how many pasted rows ran past the last row and were dropped. */
+  onPasteTruncated: (dropped: number) => void;
+  /** How a row is named to assistive tech, e.g. "channel 401". */
+  rowName: (r: number) => string;
 }
+
+/** The desktop shell's Scanner menu accelerators (main.rs: Hold, Scan, Sync
+ * Memory). The sink is an editable target, so useKeyboardShortcuts leaves it
+ * alone and nothing else would stop the native menu acting from the grid. */
+const MENU_ACCELERATORS = new Set(['s', 'h', 'y']);
 
 const LABELS: Record<GridField, string> = {
   frequency: 'Frequency',
@@ -52,6 +61,8 @@ export function useChannelGrid({
   onTogglePriority,
   pasteBlocked,
   onPasteBlocked,
+  onPasteTruncated,
+  rowName,
 }: UseChannelGridArgs) {
   const [anchor, setAnchor] = useState({ r: 0, c: 0 });
   const [active, setActive] = useState({ r: 0, c: 0 });
@@ -138,9 +149,20 @@ export function useChannelGrid({
     if (document.activeElement === sink) sink.select();
   }, [selectionTsv, editing, sinkId]);
 
+  // Focus sits on an offscreen textarea, so the browser never scrolls the
+  // active cell into view on its own.
+  const activeCellId = rowCount > 0 ? cellId(f.r, f.c) : null;
+  useEffect(() => {
+    if (activeCellId) document.getElementById(activeCellId)?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeCellId]);
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (editing !== null || rowCount === 0) return;
     const jump = e.metaKey || e.ctrlKey;
+    if (jump && MENU_ACCELERATORS.has(e.key.toLowerCase())) {
+      e.preventDefault();
+      return;
+    }
     const ext = e.shiftKey;
     switch (e.key) {
       case 'ArrowUp':
@@ -222,6 +244,8 @@ export function useChannelGrid({
       }
     } else {
       const { fields: target, rows } = mapPasteColumns(block, fields, c0);
+      const dropped = Math.max(0, r0 + rows.length - 1 - lastRow);
+      if (dropped > 0) onPasteTruncated(dropped);
       rows.forEach((row, dr) => {
         const r = r0 + dr;
         if (r > lastRow) return;
@@ -256,8 +280,10 @@ export function useChannelGrid({
 
   const editorProps = (r: number, c: number) => ({
     autoFocus: true,
-    'aria-label': `${LABELS[fields[c]]}, row ${r + 1}`,
+    'aria-label': `${LABELS[fields[c]]}, ${rowName(r)}`,
     value: editing ?? '',
+    // The editor renders inside the cell, whose mousedown commits the edit.
+    onMouseDown: (e: React.MouseEvent<HTMLInputElement>) => e.stopPropagation(),
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setEditing(e.target.value),
     onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
       // commit/cancel move focus to the sink and have already handled the
@@ -295,7 +321,12 @@ export function useChannelGrid({
 
   const sinkProps = {
     id: sinkId,
-    'aria-label': 'Channels grid',
+    // aria-activedescendant is not announced from a textarea, so the name
+    // itself says where the user is.
+    'aria-label':
+      rowCount > 0
+        ? `Channels grid, ${LABELS[fields[f.c]]}, ${rowName(f.r)}, ${cellText(f.r, fields[f.c]) || 'blank'}`
+        : 'Channels grid',
     'aria-activedescendant': rowCount > 0 ? cellId(f.r, f.c) : undefined,
     onKeyDown,
     onCopy,
