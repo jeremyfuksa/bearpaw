@@ -8,7 +8,6 @@ import {
   Signal,
   Settings,
   FileText,
-  Coffee,
   Heart,
   Code,
   RefreshCw,
@@ -1941,19 +1940,20 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 <div className="relative p-4 space-y-3 border border-orange-500/20 rounded-lg">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-brand-primary/20 rounded-full">
-                      <Coffee aria-hidden className="h-3.5 w-3.5 text-brand-primary" />
+                      <Radio aria-hidden className="h-3.5 w-3.5 text-brand-primary" />
                     </div>
-                    <h3 className="text-sm font-bold text-white">Support Dev</h3>
+                    <h3 className="text-sm font-bold text-white">Control your scanner anywhere.</h3>
                   </div>
                   <p className="text-sm text-white/60 leading-relaxed">
-                    Enjoying the app? A little support helps keep updates coming!
+                    Your support keeps me building Bearpaw and buys the scanners it learns to work
+                    with next.
                   </p>
                   <button
                     onClick={() => openExternalUrl('https://buymeacoffee.com/jeremyfuksa')}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-sm font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
                   >
                     <Heart aria-hidden className="w-5 h-5 fill-white/20" />
-                    Buy me a coffee
+                    Support Bearpaw
                   </button>
                 </div>
               </div>
