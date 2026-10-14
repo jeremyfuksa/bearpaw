@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type React from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import { Search, Lock, GripVertical, ChevronDown, RefreshCw, Pencil } from 'lucide-react';
@@ -22,18 +23,63 @@ import { useStore } from '../../../store/useStore';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import { confirmDialog, saveExport, pickAndReadFile, openExternalUrl } from '../../../tauri-shell';
 import type { ChannelData, ChannelDraft } from '../../../types';
-import { ChannelEditSheet } from './ChannelEditSheet';
+import { useChannelGrid, type GridEdit } from './useChannelGrid';
+import { applyCellEdits, cellText, type GridField } from './channelGridEdits';
+import { validateField } from './channelValidation';
 import { formatSyncedAt } from '../ScannerUI';
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
 
 const DND_ITEM_TYPE = 'channel-row';
 
+type CellProps = ReturnType<ReturnType<typeof useChannelGrid>['cellProps']>;
+
+/** One editable cell of the channel grid (#659). Keeps the column's own
+ * markup as children and swaps in the editor while the cell is being edited. */
+function GridCell({
+  c,
+  cell,
+  isActive,
+  isSelectedCell,
+  editor,
+  invalidText,
+  title,
+  className,
+  children,
+}: {
+  c: number;
+  cell: (c: number) => CellProps;
+  isActive: (c: number) => boolean;
+  isSelectedCell: (c: number) => boolean;
+  editor: (c: number) => React.ReactNode | null;
+  invalidText?: string;
+  title?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ed = editor(c);
+  return (
+    <div
+      {...cell(c)}
+      aria-invalid={invalidText ? true : undefined}
+      title={invalidText ?? title}
+      className={cn(
+        'relative select-none',
+        className,
+        isSelectedCell(c) && 'bg-brand-primary/15',
+        isActive(c) && 'outline outline-1 outline-brand-primary',
+        invalidText && 'text-red-400',
+      )}
+    >
+      {ed ?? children}
+    </div>
+  );
+}
+
 interface ChannelRowProps {
   displayIndex: number;
   rowIndex: number;
   rowCount: number;
-  isEditing: boolean;
   isPending: boolean;
   isClearPending: boolean;
   isSelected: boolean;
@@ -49,7 +95,12 @@ interface ChannelRowProps {
   displayLockout: boolean;
   displayPriority: boolean;
   onSelect: () => void;
-  onClick: () => void;
+  gridFields: GridField[];
+  cell: (c: number) => CellProps;
+  isActive: (c: number) => boolean;
+  isSelectedCell: (c: number) => boolean;
+  editor: (c: number) => React.ReactNode | null;
+  invalid: Partial<Record<GridField, string>>;
   onMove: (fromIndex: number, toIndex: number) => void;
   onToggleGrab: () => void;
   onKeyboardMove: (direction: -1 | 1) => void;
@@ -60,7 +111,6 @@ function ChannelRow({
   displayIndex,
   rowIndex,
   rowCount,
-  isEditing,
   isPending,
   isClearPending,
   isSelected,
@@ -76,7 +126,12 @@ function ChannelRow({
   displayLockout,
   displayPriority,
   onSelect,
-  onClick,
+  gridFields,
+  cell,
+  isActive,
+  isSelectedCell,
+  editor,
+  invalid,
   onMove,
   onToggleGrab,
   onKeyboardMove,
@@ -124,13 +179,14 @@ function ChannelRow({
   // ("unnamed"), which is worse than useless in a 300-row list. Fall back to
   // the frequency, which is the only thing that distinguishes the rows.
   const rowLabel = shows('alpha')
-    ? `Edit channel ${displayIndex}, ${displayAlpha === '—' ? 'unnamed' : displayAlpha}, ${displayFrequency} MHz`
-    : `Edit channel ${displayIndex}, ${displayFrequency} MHz`;
+    ? `Channel ${displayIndex}, ${displayAlpha === '—' ? 'unnamed' : displayAlpha}, ${displayFrequency} MHz`
+    : `Channel ${displayIndex}, ${displayFrequency} MHz`;
 
   return (
     <div
       ref={ref}
       role="row"
+      aria-label={rowLabel}
       // Tailwind arbitrary values are static strings, so a per-scanner column
       // set has to come through an inline style. Header and row share
       // `channelGridTemplate(columns)` — these are grid children, not table
@@ -138,20 +194,6 @@ function ChannelRow({
       style={{ gridTemplateColumns: channelGridTemplate(columns) }}
       aria-rowindex={rowIndex + 2}
       aria-selected={isSelected}
-      tabIndex={0}
-      aria-label={rowLabel}
-      onClick={onClick}
-      // REGRESSION GUARD (a11y C1): Enter/Space on the row opens the edit sheet
-      // (the row's primary action). The target===currentTarget guard means a
-      // Space press on the inner checkbox still toggles the checkbox rather than
-      // opening the sheet. Guarded by ChannelsTab.test.tsx.
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onClick();
-        }
-      }}
       data-grabbed={isGrabbed || undefined}
       // #272: a staged clear is destructive but was styled identically to an
       // ordinary edit (both merely `isPending`), so clearing rows was the least
@@ -165,7 +207,7 @@ function ChannelRow({
       data-cleared={isClearPending || undefined}
       className={cn(
         'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
-        isEditing ? 'bg-brand-primary/20 border-brand-primary/30' : 'hover:bg-white/5',
+        'hover:bg-white/5',
         isPending && !isClearPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
         isClearPending &&
           'channel-row--cleared bg-amber-500/10 border-l-2 border-amber-400/60 text-white/45',
@@ -194,7 +236,7 @@ function ChannelRow({
             Level A) — reverting it to a plain <GripVertical> removes the
             capability with no visible change. It deliberately lives on its own
             focusable control rather than overloading the row's Enter/Space,
-            which the a11y C1 guard above already claims (opens the sheet).
+            which edits the active cell (#659).
             Pointer DnD is untouched: the row is still the drag source.
             Guarded by ChannelsTab.test.tsx :: Keyboard reordering (#236). */}
         <button
@@ -233,40 +275,92 @@ function ChannelRow({
         {displayIndex}
       </div>
 
-      <div
-        role="cell"
+      <GridCell
+        c={gridFields.indexOf('frequency')}
+        cell={cell}
+        isActive={isActive}
+        isSelectedCell={isSelectedCell}
+        editor={editor}
+        invalidText={invalid.frequency}
         className="font-mono font-bold text-brand-primary group-hover:text-brand-light tracking-wide text-center"
       >
         {displayFrequency}
-      </div>
+      </GridCell>
       {shows('alpha') && (
-        <div role="cell" className="font-medium text-white/80 truncate pl-1">
+        <GridCell
+          c={gridFields.indexOf('alpha_tag')}
+          cell={cell}
+          isActive={isActive}
+          isSelectedCell={isSelectedCell}
+          editor={editor}
+          invalidText={invalid.alpha_tag}
+          className="font-medium text-white/80 truncate pl-1"
+        >
           {displayAlpha}
-        </div>
+        </GridCell>
       )}
       {shows('modulation') && (
-        <div role="cell" className="flex justify-center">
+        <GridCell
+          c={gridFields.indexOf('modulation')}
+          cell={cell}
+          isActive={isActive}
+          isSelectedCell={isSelectedCell}
+          editor={editor}
+          invalidText={invalid.modulation}
+          className="flex justify-center"
+        >
           <span className="text-white/60 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
             {displayModulation}
           </span>
-        </div>
+        </GridCell>
       )}
       {shows('tone') && (
-        <div role="cell" className="text-white/60 text-xs text-center">
+        <GridCell
+          c={gridFields.indexOf('tone_squelch')}
+          cell={cell}
+          isActive={isActive}
+          isSelectedCell={isSelectedCell}
+          editor={editor}
+          invalidText={invalid.tone_squelch}
+          className="text-white/60 text-xs text-center"
+        >
           {displayTone}
-        </div>
+        </GridCell>
       )}
-      <div role="cell" className="text-white/60 text-xs text-center">
+      <GridCell
+        c={gridFields.indexOf('delay')}
+        cell={cell}
+        isActive={isActive}
+        isSelectedCell={isSelectedCell}
+        editor={editor}
+        invalidText={invalid.delay}
+        className="text-white/60 text-xs text-center"
+      >
         {delayIsBoolean ? (displayDelay ? 'ON' : 'OFF') : `${displayDelay}s`}
-      </div>
-      <div role="cell" className="flex justify-center">
+      </GridCell>
+      <GridCell
+        c={gridFields.indexOf('lockout')}
+        cell={cell}
+        isActive={isActive}
+        isSelectedCell={isSelectedCell}
+        editor={editor}
+        className="flex justify-center"
+      >
         {displayLockout ? (
           <Lock size={20} aria-label="Locked out" className="text-red-400" />
         ) : (
           <div className="w-1 h-1 rounded-full bg-white/5" aria-hidden />
         )}
-      </div>
-      <div role="cell" className="flex justify-center">
+      </GridCell>
+      <GridCell
+        c={gridFields.indexOf('priority')}
+        cell={cell}
+        isActive={isActive}
+        isSelectedCell={isSelectedCell}
+        editor={editor}
+        title="Applies immediately"
+        className="flex justify-center"
+      >
         {displayPriority ? (
           <div
             aria-label="Priority channel"
@@ -276,7 +370,7 @@ function ChannelRow({
         ) : (
           <div className="w-1 h-1 rounded-full bg-white/5" aria-hidden />
         )}
-      </div>
+      </GridCell>
     </div>
   );
 }
@@ -319,6 +413,18 @@ export type ChannelColumn = {
   /** Header text, or null for the checkbox and grip columns. */
   label: string | null;
   width: string;
+};
+
+/** Which ChannelDraft field each editable table column shows (#659). The
+ * select, grip and index columns are not grid columns. */
+const GRID_FIELD: Partial<Record<ChannelColumnKey, GridField>> = {
+  frequency: 'frequency',
+  alpha: 'alpha_tag',
+  modulation: 'modulation',
+  tone: 'tone_squelch',
+  delay: 'delay',
+  lockout: 'lockout',
+  priority: 'priority',
 };
 
 const ALL_CHANNEL_COLUMNS: ChannelColumn[] = [
@@ -705,7 +811,6 @@ export function ChannelsTab() {
   const columns = useMemo(() => visibleChannelColumns(capabilities), [capabilities]);
   const [activeBank, setActiveBank] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
-  const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [showSupportCard, setShowSupportCard] = useState(false);
   const [isExportingSs, setIsExportingSs] = useState(false);
@@ -845,10 +950,6 @@ export function ChannelsTab() {
     [bankBase, moveRow],
   );
 
-  const editingChannel =
-    editingChannelIndex !== null ? channels.find((ch) => ch.index === editingChannelIndex) : null;
-  const editingDraft = editingChannelIndex !== null ? memoryDrafts[editingChannelIndex] : undefined;
-
   const draftChanges = useMemo(() => {
     return channels.reduce(
       (acc, channel) => {
@@ -968,38 +1069,6 @@ export function ChannelsTab() {
     [draftChanges],
   );
 
-  const handleOpenEditSheet = useCallback(
-    (channelIndex: number) => {
-      const channel = channels.find((ch) => ch.index === channelIndex);
-      if (!channel) return;
-
-      // Don't seed a store draft here. The sheet keeps its own local working
-      // copy (#146) and falls back to buildDraft when no store draft exists,
-      // so opening never needs to write one. Seeding an identical-copy draft
-      // lit the row's isPending (`Boolean(draft)`) "modified" style on open,
-      // and Cancel — which only clears editingChannelIndex — never removed it,
-      // leaving a cancelled row styled modified. The store draft is written
-      // only on an explicit Save (handleSaveDraft).
-      setEditingChannelIndex(channelIndex);
-    },
-    [channels],
-  );
-
-  const handleCloseEditSheet = useCallback(() => {
-    setEditingChannelIndex(null);
-  }, []);
-
-  // The edit sheet keeps its own local working copy (#146) — the store draft
-  // is only written here, on an explicit Save. Cancel discards by simply
-  // never calling this.
-  const handleSaveDraft = useCallback(
-    async (channelIndex: number, draft: ChannelDraft) => {
-      setMemoryDraft(channelIndex, draft);
-      toast.success(`Draft saved for CH ${channelIndex}`);
-    },
-    [setMemoryDraft],
-  );
-
   // Priority is an immediate action (Task 6), not a batched draft field: the
   // scanner only allows one priority channel per bank, so toggling it fires
   // the priority endpoint right away rather than waiting for Upload Changes.
@@ -1037,6 +1106,76 @@ export function ChannelsTab() {
     },
     [bankCount, channels, channelsPerBank, setChannels],
   );
+
+  const gridFields = useMemo(
+    () => columns.map((c) => GRID_FIELD[c.key]).filter((f): f is GridField => f !== undefined),
+    [columns],
+  );
+
+  const draftFor = useCallback(
+    (channel: ChannelData) =>
+      memoryDrafts[channel.index] ?? buildDraft(channel, capabilities.cleared_delay),
+    [memoryDrafts, capabilities.cleared_delay],
+  );
+
+  const applyGridEdits = useCallback(
+    (edits: GridEdit[]) => {
+      const byIndex = new Map(orderedFilteredChannels.map((c) => [c.index, c]));
+      const next = applyCellEdits(
+        (index) => {
+          const channel = byIndex.get(index);
+          return channel ? draftFor(channel) : buildEmptyDraft(capabilities.cleared_delay);
+        },
+        edits.map((e) => ({
+          index: orderedFilteredChannels[e.r].index,
+          field: e.field,
+          text: e.text,
+        })),
+        capabilities,
+      );
+      for (const [index, draft] of next) setMemoryDraft(index, draft);
+    },
+    [capabilities, draftFor, orderedFilteredChannels, setMemoryDraft],
+  );
+
+  const grid = useChannelGrid({
+    fields: gridFields,
+    rowCount: orderedFilteredChannels.length,
+    cellText: (r, field) => {
+      const channel = orderedFilteredChannels[r];
+      return cellText(field, draftFor(channel), channel.priority);
+    },
+    onApply: applyGridEdits,
+    onTogglePriority: (r) => {
+      const channel = orderedFilteredChannels[r];
+      void handlePriorityChange(channel.index, !channel.priority);
+    },
+    pasteBlocked: searchTerm.trim().length > 0,
+    onPasteBlocked: () =>
+      toast.info(
+        'Clear the search to paste. Pasting fills the rows below, and a filtered list skips channels.',
+      ),
+  });
+
+  // Draft values the connected scanner would reject. Shown red in the grid,
+  // and they hold Upload until fixed: one bad CIN field aborts the whole
+  // write (CLAUDE.md pitfall 8).
+  const invalidByIndex = useMemo(() => {
+    const out = new Map<number, Partial<Record<GridField, string>>>();
+    for (const channel of channels) {
+      const draft = memoryDrafts[channel.index];
+      if (!draft || Number.parseFloat(draft.frequency) === 0) continue;
+      const errs: Partial<Record<GridField, string>> = {};
+      for (const field of ['frequency', 'modulation', 'tone_squelch', 'delay'] as const) {
+        // Hidden columns are reserved on this model and never sent; don't flag them.
+        if (!gridFields.includes(field)) continue;
+        const err = validateField(field, draft[field], capabilities);
+        if (err) errs[field] = err;
+      }
+      if (Object.keys(errs).length) out.set(channel.index, errs);
+    }
+    return out;
+  }, [capabilities, channels, gridFields, memoryDrafts]);
 
   const handleToggleSelectAll = useCallback(() => {
     const visibleIds = orderedFilteredChannels.map((channel) => channel.index);
@@ -1656,11 +1795,13 @@ export function ChannelsTab() {
           options={{ enableMouseEvents: true, delayMouseStart: 100 }}
         >
           <div
-            role="table"
+            role="grid"
             aria-label="Bank channels"
+            aria-multiselectable
             className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
             ref={containerRef}
           >
+            <textarea {...grid.sinkProps} />
             {/* Header */}
             <div
               role="row"
@@ -1702,14 +1843,7 @@ export function ChannelsTab() {
             </div>
 
             {/* Rows */}
-            <div
-              role="rowgroup"
-              aria-hidden={editingChannelIndex !== null}
-              className={cn(
-                'overflow-y-auto flex-1 p-0',
-                editingChannelIndex !== null && 'opacity-50 pointer-events-none',
-              )}
-            >
+            <div role="rowgroup" className="overflow-y-auto flex-1 p-0">
               {orderedFilteredChannels.length === 0 ? (
                 <div
                   role="status"
@@ -1720,7 +1854,6 @@ export function ChannelsTab() {
                 </div>
               ) : (
                 orderedFilteredChannels.map((channel, rowIndex) => {
-                  const isEditing = editingChannelIndex === channel.index;
                   const draft = memoryDrafts[channel.index];
                   const displayIndex = reorderTargets[channel.index] ?? channel.index;
                   const draftFrequency = draft
@@ -1784,12 +1917,25 @@ export function ChannelsTab() {
                     <ChannelRow
                       key={channel.index}
                       displayIndex={displayIndex}
-                      isEditing={isEditing}
                       isPending={isPending}
                       isClearPending={isClearPending}
                       isSelected={selectedChannelIds.includes(channel.index)}
                       onSelect={() => handleToggleSelect(channel.index)}
-                      onClick={() => handleOpenEditSheet(channel.index)}
+                      gridFields={gridFields}
+                      cell={(c) => grid.cellProps(rowIndex, c)}
+                      isActive={(c) => grid.active.r === rowIndex && grid.active.c === c}
+                      isSelectedCell={(c) => grid.isSelected(rowIndex, c)}
+                      editor={(c) =>
+                        grid.editing !== null &&
+                        grid.active.r === rowIndex &&
+                        grid.active.c === c ? (
+                          <input
+                            {...grid.editorProps(rowIndex, c)}
+                            className="absolute inset-0 bg-black px-2 font-mono text-xs text-white outline-none"
+                          />
+                        ) : null
+                      }
+                      invalid={invalidByIndex.get(channel.index) ?? {}}
                       onMove={moveRow}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {
@@ -1833,19 +1979,6 @@ export function ChannelsTab() {
             </div>
           </div>
         </DndProvider>
-
-        {editingChannel && editingChannelIndex !== null && (
-          <ChannelEditSheet
-            channel={editingChannel}
-            draft={editingDraft ?? buildDraft(editingChannel, capabilities.cleared_delay)}
-            isOpen={editingChannelIndex !== null}
-            onClose={handleCloseEditSheet}
-            onSave={(draft) => handleSaveDraft(editingChannelIndex, draft)}
-            priorityChecked={editingChannel.priority}
-            onPriorityChange={(next) => handlePriorityChange(editingChannelIndex, next)}
-            emptyDraft={buildEmptyDraft(capabilities.cleared_delay)}
-          />
-        )}
       </div>
     </motion.div>
   );

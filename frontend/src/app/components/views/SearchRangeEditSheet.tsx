@@ -23,8 +23,8 @@ interface SearchRangeEditSheetProps {
  *
  * Coverage comes from `ScannerCapabilities`, not a constant: the families do
  * not tune the same spectrum, and the BC125AT bands would accept frequencies a
- * BC75XLT cannot reach. Same rule `ChannelEditSheet` applies to a channel
- * frequency, for the same reason (#402).
+ * BC75XLT cannot reach. Same rule `validateField` (channelValidation.ts)
+ * applies to a channel frequency, for the same reason (#402).
  */
 export function validateLimit(value: string, caps: ScannerCapabilities): string | null {
   const trimmed = value.trim();
@@ -69,7 +69,7 @@ export function SearchRangeEditSheet({
   // re-renders while the sheet is open -- that is the point of batching, a
   // cancelled edit must not reach the radio -- so it cannot be derived. The
   // write is edge-gated on `isOpen`/`index`, so it runs once per open rather
-  // than per render. Same shape and same suppressions as ChannelEditSheet.
+  // than per render.
   useEffect(() => {
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -162,7 +162,7 @@ export function SearchRangeEditSheet({
         if (!open) onClose();
       }}
     >
-      {/* Same neutralizing utilities as ChannelEditSheet so the scanner-modal
+      {/* Neutralizing utilities so the scanner-modal
           sizing wins over DialogContent's own grid/padding. Radix supplies
           role="dialog", the focus trap, and Escape-to-close. */}
       <DialogContent className="scanner-modal w-[var(--layout-modal-channel-width)] max-w-none translate-x-[-50%] translate-y-[-50%] gap-0 rounded-t-xl border-white/10 p-0">

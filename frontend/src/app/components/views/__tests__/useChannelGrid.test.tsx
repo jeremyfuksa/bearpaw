@@ -58,6 +58,15 @@ describe('useChannelGrid', () => {
     expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-2-1');
   });
 
+  it('Tab moves across cells and leaves the grid at either edge', () => {
+    render(<Harness />);
+    expect(fireEvent.keyDown(sink(), { key: 'Tab', shiftKey: true })).toBe(true); // not prevented
+    expect(fireEvent.keyDown(sink(), { key: 'Tab' })).toBe(false); // handled in the grid
+    expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-0-1');
+    fireEvent.keyDown(sink(), { key: 'ArrowRight', metaKey: true });
+    expect(fireEvent.keyDown(sink(), { key: 'Tab' })).toBe(true); // not prevented: focus leaves
+  });
+
   it('Shift+arrow extends the selection', () => {
     render(<Harness />);
     fireEvent.keyDown(sink(), { key: 'ArrowDown', shiftKey: true });
