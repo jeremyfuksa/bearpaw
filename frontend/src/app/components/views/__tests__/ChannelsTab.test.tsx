@@ -16,7 +16,12 @@ import { createTestChannel, createTestChannelDraft } from '../../../../test/fixt
 import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import { createMockStore } from '../../../../test/mocks/mockStore';
 import { useStore } from '../../../../store/useStore';
-import { saveExport, pickAndReadFile, confirmDialog } from '../../../../tauri-shell';
+import {
+  saveExport,
+  pickAndReadFile,
+  confirmDialog,
+  openExternalUrl,
+} from '../../../../tauri-shell';
 import type { ChannelData } from '../../../../types';
 
 vi.mock('sonner', () => ({
@@ -32,6 +37,7 @@ vi.mock('../../../../tauri-shell', () => ({
   saveExport: vi.fn().mockResolvedValue('browser'),
   confirmDialog: vi.fn().mockResolvedValue(true),
   pickAndReadFile: vi.fn(),
+  openExternalUrl: vi.fn(),
 }));
 
 // getAPI is a real singleton in production (see api/useApi.ts) — components
@@ -1235,6 +1241,81 @@ describe('ChannelsTab', () => {
       await userEvent.type(searchInput, 'Alpha');
 
       expect(screen.getByRole('button', { name: /reorder channel 1/i })).toBeDisabled();
+    });
+  });
+
+  describe('support card after the first clean upload', () => {
+    // Bearpaw asks for support exactly once, after the user's first successful
+    // editing session. Not at sync: that happens to everyone seconds after
+    // launch. The flag lives in backend preferences and is read fresh, so a
+    // default that has not loaded yet can never re-show it.
+    const uploadOneEdit = async (alreadyShown: boolean, fail = false) => {
+      const target = createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Old' });
+      const written = createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'New' });
+      setMockStore(
+        createMockStore({
+          channels: [target],
+          memoryDrafts: {
+            1: createTestChannelDraft({ ...buildDraft(target), alpha_tag: 'New' }),
+          },
+        }),
+      );
+      mockApiClient.startProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.getChannel = vi.fn().mockResolvedValue(fail ? target : written);
+      mockApiClient.updateChannel = fail
+        ? vi
+            .fn()
+            .mockRejectedValue({ payload: { detail: 'format_error' }, message: 'format_error' })
+        : vi.fn().mockResolvedValue(written);
+      mockApiClient.getChannels = vi.fn().mockResolvedValue([fail ? target : written]);
+      mockApiClient.getPreference = vi
+        .fn()
+        .mockResolvedValue({ key: 'support_prompt_shown', value: alreadyShown });
+      mockApiClient.setPreference = vi.fn().mockResolvedValue({});
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Upload Changes/i }));
+      await waitFor(() => expect(mockApiClient.endProgramMode).toHaveBeenCalled());
+    };
+
+    it('shows once after a clean upload and records that it was shown', async () => {
+      await uploadOneEdit(false);
+
+      expect(await screen.findByRole('region', { name: /Support Bearpaw/i })).toBeInTheDocument();
+      expect(mockApiClient.setPreference).toHaveBeenCalledWith('support_prompt_shown', true);
+    });
+
+    it('stays hidden when it has been shown before', async () => {
+      // Paired with the test above: a build that shows the card after every
+      // upload passes that one.
+      await uploadOneEdit(true);
+
+      await waitFor(() => expect(mockApiClient.getPreference).toHaveBeenCalled());
+      expect(screen.queryByRole('region', { name: /Support Bearpaw/i })).not.toBeInTheDocument();
+      expect(mockApiClient.setPreference).not.toHaveBeenCalled();
+    });
+
+    it('never asks after a failed upload', async () => {
+      await uploadOneEdit(false, true);
+
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Failed to upload/i));
+      expect(mockApiClient.getPreference).not.toHaveBeenCalled();
+      expect(screen.queryByRole('region', { name: /Support Bearpaw/i })).not.toBeInTheDocument();
+    });
+
+    it('opens the support page from the button', async () => {
+      await uploadOneEdit(false);
+
+      await userEvent.click(await screen.findByRole('button', { name: /Support Bearpaw/i }));
+      expect(openExternalUrl).toHaveBeenCalledWith('https://buymeacoffee.com/jeremyfuksa');
+    });
+
+    it('goes away on No thanks', async () => {
+      await uploadOneEdit(false);
+
+      await userEvent.click(await screen.findByRole('button', { name: /No thanks/i }));
+      expect(screen.queryByRole('region', { name: /Support Bearpaw/i })).not.toBeInTheDocument();
     });
   });
 

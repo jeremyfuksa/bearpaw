@@ -20,7 +20,7 @@ import { cn } from '../../../lib/utils';
 import { getAPI, API_BASE } from '../../../api/useApi';
 import { useStore } from '../../../store/useStore';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
-import { confirmDialog, saveExport, pickAndReadFile } from '../../../tauri-shell';
+import { confirmDialog, saveExport, pickAndReadFile, openExternalUrl } from '../../../tauri-shell';
 import type { ChannelData, ChannelDraft } from '../../../types';
 import { ChannelEditSheet } from './ChannelEditSheet';
 import { formatSyncedAt } from '../ScannerUI';
@@ -707,6 +707,7 @@ export function ChannelsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingChannelIndex, setEditingChannelIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [showSupportCard, setShowSupportCard] = useState(false);
   const [isExportingSs, setIsExportingSs] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([]);
@@ -1249,6 +1250,20 @@ export function ChannelsTab() {
 
     if (failed.length === 0 && warnings.length === 0) {
       toast.success(`Uploaded ${draftChanges.length} channel edits${reconciledNote}`);
+      // Ask for support once, after the first clean editing session -- not at
+      // sync, which every user hits seconds after launch. The flag is read
+      // from the backend rather than the store, so preferences that have not
+      // loaded yet cannot re-show it, and it is recorded BEFORE the card shows
+      // so a failed save means no card rather than a card that comes back.
+      try {
+        const { value } = await api.getPreference('support_prompt_shown');
+        if (value !== true) {
+          await api.setPreference('support_prompt_shown', true);
+          setShowSupportCard(true);
+        }
+      } catch (error) {
+        console.warn('Support prompt check failed', error);
+      }
     } else if (failed.length === 0 && warnings.length > 0) {
       toast.error(`Uploaded with ${warnings.length} warnings (lockout not applied)`);
     } else if (failed.length > 0) {
@@ -1595,6 +1610,38 @@ export function ChannelsTab() {
             </button>
           </div>
         </div>
+
+        {showSupportCard && (
+          <section
+            aria-label="Support Bearpaw"
+            className="flex items-center justify-between gap-4 p-3 rounded-lg border border-orange-500/20 bg-gradient-to-br from-orange-500/20 to-orange-900/10 shrink-0"
+          >
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-white">Control your scanner anywhere.</p>
+              <p className="text-sm text-white/60">
+                Your support keeps me building Bearpaw and buys the scanners it learns to work with
+                next.
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => setShowSupportCard(false)}
+                className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider"
+              >
+                No thanks
+              </button>
+              <button
+                onClick={() => {
+                  openExternalUrl('https://buymeacoffee.com/jeremyfuksa');
+                  setShowSupportCard(false);
+                }}
+                className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider"
+              >
+                Support Bearpaw
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Keyboard-reorder announcements (#236). Separate from the drafts
             status region above so a grab/move/drop doesn't clobber the pending
