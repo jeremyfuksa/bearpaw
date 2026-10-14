@@ -8,6 +8,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Edit channels like a spreadsheet.** The Channels table now edits in
+  place: click a cell and type, or select a range and press Delete. Copy and
+  paste work with Excel, Numbers, and Google Sheets, so a list of frequencies
+  can go into a bank in one paste. A header row is optional. With one,
+  columns match by name. The edit dialog is gone. Cells with a value the
+  scanner can't take turn red, and Upload waits until they're fixed.
+
 - **A one-time thank-you after your first upload.** The first time you upload
   channel edits and every one lands, the Channels tab shows a small card with a
   link to support Bearpaw. Close it and it never comes back. It never appears
