@@ -867,6 +867,9 @@ pub(crate) fn default_preferences() -> Map<String, Value> {
         "analytics_scope".to_string(),
         Value::String("scanner".to_string()),
     );
+    // Set true the first time the Channels tab shows its one-time support
+    // card, after the user's first clean upload. Never shown again after.
+    m.insert("support_prompt_shown".to_string(), Value::Bool(false));
     m.insert("start_dashboard_mode".to_string(), Value::Bool(true));
     m.insert("recording_buffer_size".to_string(), Value::from(30));
     m.insert("data_retention_days".to_string(), Value::from(30));

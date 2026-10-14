@@ -8,6 +8,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A one-time thank-you after your first upload.** The first time you upload
+  channel edits and every one lands, the Channels tab shows a small card with a
+  link to support Bearpaw. Close it and it never comes back. It never appears
+  after a failed upload.
+
 - **See which scanner Bearpaw is using, and name it.** The Device tab now
   names the connected scanner at the top of Device Information. If you've
   used more than one, it lists every scanner Bearpaw remembers, with when each
