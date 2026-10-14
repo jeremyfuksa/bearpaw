@@ -346,6 +346,24 @@ code {
   font-style: normal;
 }
 
+/* Supporting quotes under the featured one: smaller, and left-aligned so a
+   longer quote reads as a paragraph rather than a centered block. */
+.quote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.quote-small {
+  padding: 1.5rem;
+  text-align: left;
+}
+
+.quote-small blockquote p {
+  font-size: 1rem;
+}
+
 /* ---- features ---- */
 
 .features {
@@ -617,6 +635,10 @@ code {
 
   .quote {
     padding: 1.25rem 1.25rem;
+  }
+
+  .quote-grid {
+    grid-template-columns: 1fr;
   }
 
   .features {
