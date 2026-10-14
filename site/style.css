@@ -491,10 +491,45 @@ code {
   white-space: nowrap;
 }
 
+/* A cool steel panel, the complement of the brand orange, so the orange
+   button is the only warm thing in it and the eye lands there. An orange
+   panel would swallow its own button and read as one more download option
+   under the orange Download button. */
 .download-support {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.75rem;
+  border: 1px solid rgba(128, 152, 176, 0.35);
+  border-left: 3px solid var(--steel-border);
+  border-radius: 7px;
+  background: linear-gradient(
+    135deg,
+    rgba(96, 122, 151, 0.28),
+    rgba(96, 122, 151, 0.08)
+  );
   color: var(--text-muted);
   font-size: 0.9375rem;
-  margin-bottom: 1.75rem;
+}
+
+/* `display: flex` above outranks the browser's own [hidden] rule, which
+   would show the banner before any download. Restore it explicitly. */
+.download-support[hidden] {
+  display: none;
+}
+
+.download-support-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+
+.download-support .btn {
+  flex-shrink: 0;
 }
 
 .install-notes {
@@ -645,6 +680,11 @@ code {
 
   .quote-grid {
     grid-template-columns: 1fr;
+  }
+
+  .download-support {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .features {
