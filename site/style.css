@@ -491,8 +491,10 @@ code {
   white-space: nowrap;
 }
 
-/* Same orange tint as the in-app support card, so the ask looks like one
-   thing wherever it appears. */
+/* A cool steel panel, the complement of the brand orange, so the orange
+   button is the only warm thing in it and the eye lands there. An orange
+   panel would swallow its own button and read as one more download option
+   under the orange Download button. */
 .download-support {
   display: flex;
   align-items: center;
@@ -500,13 +502,13 @@ code {
   gap: 1.5rem;
   padding: 1.25rem 1.5rem;
   margin-bottom: 1.75rem;
-  border: 1px solid rgba(239, 153, 31, 0.35);
-  border-left: 3px solid var(--brand);
+  border: 1px solid rgba(128, 152, 176, 0.35);
+  border-left: 3px solid var(--steel-border);
   border-radius: 7px;
   background: linear-gradient(
     135deg,
-    rgba(239, 153, 31, 0.18),
-    rgba(239, 153, 31, 0.04)
+    rgba(96, 122, 151, 0.28),
+    rgba(96, 122, 151, 0.08)
   );
   color: var(--text-muted);
   font-size: 0.9375rem;
