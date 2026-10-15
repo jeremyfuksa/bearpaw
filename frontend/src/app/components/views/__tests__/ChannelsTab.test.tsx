@@ -749,6 +749,38 @@ describe('ChannelsTab', () => {
       expect(order()).toEqual(['Alpha', 'Bravo', 'Charlie']);
     });
 
+    // #775: a block move is applied as moving the ONE row it displaces, so a
+    // build that marked whatever moveRow moved would flag Charlie as moved and
+    // the selected block as shifted, exactly backwards.
+    it('a block move marks the selected rows moved and the displaced row shifted', async () => {
+      setMockStore(
+        createMockStore({
+          channels: [
+            createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Alpha' }),
+            createTestChannel({ index: 2, frequency: 152.25, bank: 1, alpha_tag: 'Bravo' }),
+            createTestChannel({ index: 3, frequency: 153.25, bank: 1, alpha_tag: 'Charlie' }),
+          ],
+        }),
+      );
+      render(<ChannelsTab />);
+      const isShifted = (tag: string) =>
+        screen
+          .getAllByRole('row')
+          .find((row) => row.textContent?.includes(tag))
+          ?.hasAttribute('data-shifted');
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Select channel 1' }));
+      await user.keyboard('{Shift>}');
+      await user.click(screen.getByRole('button', { name: 'Select channel 2' }));
+      await user.keyboard('{/Shift}');
+      await user.keyboard('{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}');
+      expect([isShifted('Alpha'), isShifted('Bravo'), isShifted('Charlie')]).toEqual([
+        false,
+        false,
+        true,
+      ]);
+    });
+
     it('the channel-number button says whether its row is selected', async () => {
       setMockStore(createMockStore({ channels: two() }));
       render(<ChannelsTab />);
@@ -1004,7 +1036,7 @@ describe('ChannelsTab', () => {
       // ("unnamed") is the stable handle rather than any cell's text.
       const row = screen.getByRole('row', { name: /^Channel 1, unnamed/i });
       expect(row).toHaveClass('bg-amber-500/10');
-      expect(row).toHaveClass('border-amber-400/60');
+      expect(row).toHaveClass('border-l-amber-400/60');
       // The flash hook, and the class the reduced-motion rule disables.
       expect(row).toHaveClass('channel-row--cleared');
       expect(row).toHaveAttribute('data-cleared');
@@ -1398,6 +1430,34 @@ describe('ChannelsTab', () => {
       expect(
         screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
       ).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    // #775: one move rewrites every row between the old and new slot, so all
+    // of them are pending. Only the row the user moved may look moved.
+    it('marks the moved row apart from the rows it shifted', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+      const isShifted = (tag: string) =>
+        screen
+          .getAllByRole('row')
+          .find((row) => row.textContent?.includes(tag))
+          ?.hasAttribute('data-shifted');
+
+      expect([isShifted('Alpha'), isShifted('Bravo'), isShifted('Charlie')]).toEqual([
+        false,
+        false,
+        false,
+      ]);
+
+      screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }).focus();
+      await userEvent.keyboard('{Enter}{ArrowDown}{ArrowDown}');
+
+      expect(tagOrder()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+      expect([isShifted('Alpha'), isShifted('Bravo'), isShifted('Charlie')]).toEqual([
+        false,
+        true,
+        true,
+      ]);
     });
 
     it('announces grab and move to screen readers', async () => {

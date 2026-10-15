@@ -133,6 +133,15 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   partial list, so restoring that file later dropped lockouts from the radio.
   Each read now gets the whole list.
 
+### Changed
+
+- **You can see which channel you moved.** Moving a channel pushes every
+  channel between its old and new slot along by one, and all of them get
+  rewritten on upload. They used to look identical. Now the channel you moved
+  is highlighted, and the ones it pushed aside get only a faint bar. A row
+  you're holding, by dragging or with the keyboard, now looks lifted off the
+  list.
+
 ## [1.1.2] — 2026-09-22
 
 Fixes for scanning after a channel lockout, a blank window on older Macs, and
