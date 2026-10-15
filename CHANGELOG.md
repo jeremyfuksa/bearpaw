@@ -162,6 +162,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Priority dialogs say what will happen.** Moving and clearing a bank's
+  priority channel used to ask in near-identical dialogs with a plain Yes
+  button. The button now says Move priority or Clear priority, and the
+  message says where priority ends up, or that the bank will have none. On
+  scanners where Bearpaw has to erase a channel and write it back to remove
+  its priority flag, both dialogs now say which channel that is.
+
 - **You can see which channel you moved.** Moving a channel pushes every
   channel between its old and new slot along by one, and all of them get
   rewritten on upload. They used to look identical. Now the channel you moved
