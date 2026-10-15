@@ -39,6 +39,12 @@ export interface UseChannelGridArgs {
   /** Move `count` rows starting at `from` so they start at `to` (one step).
    * Returns false when the move is refused, e.g. while filtered. */
   onMoveRows: (from: number, to: number, count: number) => boolean;
+  /** True on a model whose delay is a boolean (BC75XLT): the delay cell is
+   * then a toggle, like lockout, not a text field. */
+  booleanDelay: boolean;
+  /** The values a closed-set column offers (Mode; Delay on a BC125AT), or
+   * null for a column that is typed or toggled. */
+  listOptions: (field: GridField) => readonly string[] | null;
 }
 
 /** The desktop shell's Scanner menu accelerators (main.rs: Hold, Scan, Sync
@@ -67,10 +73,16 @@ export function useChannelGrid({
   onPasteTruncated,
   rowName,
   onMoveRows,
+  booleanDelay,
+  listOptions,
 }: UseChannelGridArgs) {
   const [anchor, setAnchor] = useState({ r: 0, c: 0 });
   const [active, setActive] = useState({ r: 0, c: 0 });
   const [editing, setEditing] = useState<string | null>(null);
+  // The open list of a list cell, with the highlighted option.
+  const [menuState, setMenuState] = useState<{ r: number; c: number; highlight: number } | null>(
+    null,
+  );
   const [dragging, setDragging] = useState(false);
   // No refs: every handler below is handed to render, and react-hooks/refs
   // reports any render-time path to a ref. The sink is found by id instead.
@@ -137,10 +149,68 @@ export function useChannelGrid({
     focusSink();
   };
 
+  const isToggle = (field: GridField) => field === 'lockout' || (field === 'delay' && booleanDelay);
+
+  /** Flip a toggle column for every selected row, all to the same value:
+   * the opposite of the selection's TOP row, so the result is predictable
+   * whichever end the selection was extended from. */
+  const toggleRange = (field: DraftField) => {
+    const on =
+      field === 'lockout' ? cellText(r0, 'lockout') === '' : cellText(r0, 'delay') !== 'ON';
+    const text = field === 'lockout' ? (on ? 'y' : 'n') : on ? 'on' : 'off';
+    const edits: GridEdit[] = [];
+    for (let r = r0; r <= r1; r++) edits.push({ r, field, text });
+    onApply(edits);
+  };
+
   const startEdit = (initial: string) => {
-    if (fields[f.c] === 'priority' || fields[f.c] === 'lockout') return;
+    if (fields[f.c] === 'priority' || isToggle(fields[f.c])) return;
     setAnchor(f);
     setEditing(initial);
+  };
+
+  const openMenu = (r: number, c: number) => {
+    const options = listOptions(fields[c]);
+    if (!options) return;
+    if (editing !== null) commit(null);
+    moveTo(r, c);
+    setMenuState({ r, c, highlight: Math.max(0, options.indexOf(cellText(r, fields[c]))) });
+    focusSink();
+  };
+
+  const pickOption = (i: number) => {
+    if (!menuState) return;
+    const field = fields[menuState.c];
+    const options = listOptions(field);
+    if (options && field !== 'priority') onApply([{ r: menuState.r, field, text: options[i] }]);
+    setMenuState(null);
+    focusSink();
+  };
+
+  /** A single click on a toggle cell's checkbox: flip that cell only. */
+  const toggleAt = (r: number, c: number) => {
+    const field = fields[c];
+    if (field === 'priority') return onTogglePriority(r);
+    if (!isToggle(field)) return;
+    const text =
+      field === 'lockout'
+        ? cellText(r, 'lockout') === ''
+          ? 'y'
+          : 'n'
+        : cellText(r, 'delay') === 'ON'
+          ? 'off'
+          : 'on';
+    onApply([{ r, field: field as DraftField, text }]);
+  };
+
+  /** Enter, F2 or double-click: edit a text cell, open a list cell's list,
+   * flip a toggle cell. */
+  const activate = () => {
+    const field = fields[f.c];
+    if (field === 'priority') return;
+    if (isToggle(field)) return toggleRange(field);
+    if (listOptions(field)) return openMenu(f.r, f.c);
+    startEdit(cellText(f.r, field));
   };
 
   // Keep the sink's text = the selection, selected, so native Copy has
@@ -162,12 +232,36 @@ export function useChannelGrid({
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (editing !== null || rowCount === 0) return;
+    if (menuState) {
+      const count = listOptions(fields[menuState.c])?.length ?? 0;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        const highlight = Math.max(0, Math.min(count - 1, menuState.highlight + step));
+        return setMenuState({ ...menuState, highlight });
+      }
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab') {
+        e.preventDefault();
+        return pickOption(menuState.highlight);
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        return setMenuState(null);
+      }
+      setMenuState(null); // any other key closes the list and acts normally
+    }
     const jump = e.metaKey || e.ctrlKey;
     if (jump && MENU_ACCELERATORS.has(e.key.toLowerCase())) {
       e.preventDefault();
       return;
     }
-    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    // Plain Alt+Down opens a list cell's list (the spreadsheet convention).
+    if (e.altKey && !e.shiftKey && e.key === 'ArrowDown') {
+      e.preventDefault();
+      return openMenu(f.r, f.c);
+    }
+    // Alt+Shift+Up/Down moves rows.
+    if (e.altKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
       const dir = e.key === 'ArrowUp' ? -1 : 1;
       if (r0 + dir < 0 || r1 + dir > lastRow) return;
@@ -198,7 +292,7 @@ export function useChannelGrid({
       case 'Enter':
       case 'F2':
         e.preventDefault();
-        return startEdit(cellText(f.r, fields[f.c]));
+        return activate();
       case 'Delete':
       case 'Backspace':
         e.preventDefault();
@@ -211,12 +305,9 @@ export function useChannelGrid({
           e.preventDefault();
           return onTogglePriority(f.r);
         }
-        if (field === 'lockout') {
+        if (isToggle(field)) {
           e.preventDefault();
-          const on = cellText(f.r, 'lockout') === '';
-          const edits: GridEdit[] = [];
-          for (let r = r0; r <= r1; r++) edits.push({ r, field: 'lockout', text: on ? 'y' : 'n' });
-          return onApply(edits);
+          return toggleRange(field as DraftField);
         }
         break;
       }
@@ -277,18 +368,24 @@ export function useChannelGrid({
     'aria-selected': isSelected(r, c),
     onMouseDown: (e: React.MouseEvent) => {
       e.preventDefault();
+      setMenuState(null);
       if (editing !== null) commit(null);
       setDragging(true);
       moveTo(r, c, e.shiftKey);
       focusSink();
     },
-    onMouseEnter: () => {
-      if (dragging) moveTo(r, c, true);
+    onMouseEnter: (e: React.MouseEvent) => {
+      if (!dragging) return;
+      // No button held means the mouseup was lost (released outside the
+      // window): the drag is over, not continuing.
+      if ((e.buttons & 1) === 0) return setDragging(false);
+      moveTo(r, c, true);
     },
     onMouseUp: () => {
       setDragging(false);
     },
-    onDoubleClick: () => startEdit(cellText(r, fields[c])),
+    // mousedown already made (r, c) the active cell.
+    onDoubleClick: () => activate(),
   });
 
   const editorProps = (r: number, c: number) => ({
@@ -335,13 +432,29 @@ export function useChannelGrid({
     return Array.from({ length: r1 - r0 + 1 }, (_, i) => r0 + i);
   };
 
+  const menuOptions = menuState ? (listOptions(fields[menuState.c]) ?? []) : [];
+  const menu = menuState ? { ...menuState, options: menuOptions } : null;
+
+  /** Props for option i of the open list. Options keep focus on the sink and
+   * do not reach the cell's mousedown (which would close the list). */
+  const optionProps = (i: number) => ({
+    role: 'option' as const,
+    'aria-selected': menuState?.highlight === i,
+    onMouseDown: (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    onClick: () => pickOption(i),
+  });
+
   const sinkProps = {
     id: sinkId,
     // aria-activedescendant is not announced from a textarea, so the name
     // itself says where the user is.
     'aria-label':
       rowCount > 0
-        ? `Channels grid, ${LABELS[fields[f.c]]}, ${rowName(f.r)}, ${cellText(f.r, fields[f.c]) || 'blank'}`
+        ? `Channels grid, ${LABELS[fields[f.c]]}, ${rowName(f.r)}, ${cellText(f.r, fields[f.c]) || 'blank'}` +
+          (menu ? `, list open, ${menu.options[menu.highlight]}` : '')
         : 'Channels grid',
     'aria-activedescendant': rowCount > 0 ? cellId(f.r, f.c) : undefined,
     onKeyDown,
@@ -349,6 +462,8 @@ export function useChannelGrid({
     onCut,
     onPaste,
     onFocus: (e: React.FocusEvent<HTMLTextAreaElement>) => e.currentTarget.select(),
+    // Focus leaving the grid closes an open list.
+    onBlur: () => setMenuState(null),
     className: 'sr-only',
   };
 
@@ -361,5 +476,10 @@ export function useChannelGrid({
     cellProps,
     editorProps,
     selectRow,
+    menu,
+    openMenu,
+    pickOption,
+    optionProps,
+    toggleAt,
   };
 }

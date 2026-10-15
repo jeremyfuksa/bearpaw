@@ -17,7 +17,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Select whole rows by their channel number.** Click a channel number to
   select its row, and Shift-click to select several. Then press Delete or
-  Clear Selected, or Alt+↑/↓ to move them. The checkboxes are gone.
+  Clear Selected, or Option+Shift+↑/↓ to move them. The checkboxes are gone.
 
 - **A one-time thank-you after your first upload.** The first time you upload
   channel edits and every one lands, the Channels tab shows a small card with a

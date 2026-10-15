@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { Search, Lock, GripVertical, ChevronDown, RefreshCw, Pencil } from 'lucide-react';
+import { Search, Lock, GripVertical, ChevronDown, RefreshCw, Pencil, Check } from 'lucide-react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 // TouchBackend, not HTML5Backend: the app ships in Tauri's WKWebView, where
 // react-dnd's HTML5 backend never fires dragover/drop — rows show the (+)
@@ -25,7 +25,7 @@ import { confirmDialog, saveExport, pickAndReadFile, openExternalUrl } from '../
 import type { ChannelData, ChannelDraft } from '../../../types';
 import { useChannelGrid, type GridEdit } from './useChannelGrid';
 import { applyCellEdits, cellText, type GridField } from './channelGridEdits';
-import { validateField } from './channelValidation';
+import { validateField, MODULATIONS } from './channelValidation';
 import { formatSyncedAt } from '../ScannerUI';
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
@@ -46,6 +46,7 @@ function GridCell({
   title,
   className,
   children,
+  after,
 }: {
   c: number;
   cell: (c: number) => CellProps;
@@ -56,6 +57,8 @@ function GridCell({
   title?: string;
   className?: string;
   children: React.ReactNode;
+  /** Rendered after the content, e.g. the cell's open list. */
+  after?: React.ReactNode;
 }) {
   const ed = editor(c);
   return (
@@ -72,7 +75,60 @@ function GridCell({
       )}
     >
       {ed ?? children}
+      {after}
     </div>
+  );
+}
+
+/** The chevron that marks a list cell (#659). Clicking it opens the list;
+ * from the keyboard it is Enter or Alt+Down, so it is not a tab stop. */
+function ListChevron({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-hidden
+      onClick={onOpen}
+      className="ml-1 rounded text-white/40 hover:text-white"
+    >
+      <ChevronDown size={12} />
+    </button>
+  );
+}
+
+/** The checkbox face of an on/off cell. One click toggles it; from the
+ * keyboard it is Space or Enter on the active cell. */
+function CellToggle({
+  shape,
+  checked,
+  onToggle,
+  children,
+}: {
+  shape: 'box' | 'round';
+  checked: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      // A click toggles and does nothing else: it must not also select the
+      // cell (the cell's mousedown would), or a cancelled priority confirm
+      // leaves an orange selection on PRIO that reads as a half-set priority.
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onClick={onToggle}
+      className={cn(
+        'flex h-5 w-5 items-center justify-center border',
+        shape === 'box' ? 'rounded' : 'rounded-full',
+        checked ? 'border-transparent' : 'border-white/30 hover:border-white/60',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -101,6 +157,9 @@ interface ChannelRowProps {
   isSelectedCell: (c: number) => boolean;
   editor: (c: number) => React.ReactNode | null;
   invalid: Partial<Record<GridField, string>>;
+  onToggleCell: (c: number) => void;
+  onOpenList: (c: number) => void;
+  openList: (c: number) => React.ReactNode | null;
   onMove: (fromIndex: number, toIndex: number) => void;
   onToggleGrab: () => void;
   onKeyboardMove: (direction: -1 | 1) => void;
@@ -132,6 +191,9 @@ function ChannelRow({
   isSelectedCell,
   editor,
   invalid,
+  onToggleCell,
+  onOpenList,
+  openList,
   onMove,
   onToggleGrab,
   onKeyboardMove,
@@ -312,11 +374,13 @@ function ChannelRow({
           isSelectedCell={isSelectedCell}
           editor={editor}
           invalidText={invalid.modulation}
-          className="flex justify-center"
+          className="flex items-center justify-center"
+          after={openList(gridFields.indexOf('modulation'))}
         >
           <span className="text-white/60 text-xs font-medium bg-white/5 rounded px-1.5 py-0.5 w-fit uppercase border border-white/5">
             {displayModulation}
           </span>
+          <ListChevron onOpen={() => onOpenList(gridFields.indexOf('modulation'))} />
         </GridCell>
       )}
       {shows('tone') && (
@@ -339,9 +403,25 @@ function ChannelRow({
         isSelectedCell={isSelectedCell}
         editor={editor}
         invalidText={invalid.delay}
-        className="text-white/60 text-xs text-center"
+        className="flex items-center justify-center text-white/60 text-xs"
+        after={delayIsBoolean ? null : openList(gridFields.indexOf('delay'))}
       >
-        {delayIsBoolean ? (displayDelay ? 'ON' : 'OFF') : `${displayDelay}s`}
+        {delayIsBoolean ? (
+          <CellToggle
+            shape="box"
+            checked={Boolean(displayDelay)}
+            onToggle={() => onToggleCell(gridFields.indexOf('delay'))}
+          >
+            {displayDelay ? (
+              <Check size={14} aria-label="Delay on" className="text-brand-primary" />
+            ) : null}
+          </CellToggle>
+        ) : (
+          <>
+            {`${displayDelay}s`}
+            <ListChevron onOpen={() => onOpenList(gridFields.indexOf('delay'))} />
+          </>
+        )}
       </GridCell>
       <GridCell
         c={gridFields.indexOf('lockout')}
@@ -351,11 +431,15 @@ function ChannelRow({
         editor={editor}
         className="flex justify-center"
       >
-        {displayLockout ? (
-          <Lock size={20} aria-label="Locked out" className="text-red-400" />
-        ) : (
-          <div className="w-1 h-1 rounded-full bg-white/5" aria-hidden />
-        )}
+        <CellToggle
+          shape="box"
+          checked={displayLockout}
+          onToggle={() => onToggleCell(gridFields.indexOf('lockout'))}
+        >
+          {displayLockout ? (
+            <Lock size={16} aria-label="Locked out" className="text-red-400" />
+          ) : null}
+        </CellToggle>
       </GridCell>
       <GridCell
         c={gridFields.indexOf('priority')}
@@ -366,15 +450,20 @@ function ChannelRow({
         title="Applies immediately"
         className="flex justify-center"
       >
-        {displayPriority ? (
-          <div
-            aria-label="Priority channel"
-            role="img"
-            className="h-1.5 w-1.5 rounded-full bg-orange-500 bg-brand-primary shadow-glow"
-          />
-        ) : (
-          <div className="w-1 h-1 rounded-full bg-white/5" aria-hidden />
-        )}
+        {/* Round, like a radio button: a bank has at most one. */}
+        <CellToggle
+          shape="round"
+          checked={displayPriority}
+          onToggle={() => onToggleCell(gridFields.indexOf('priority'))}
+        >
+          {displayPriority ? (
+            <div
+              aria-label="Priority channel"
+              role="img"
+              className="h-2.5 w-2.5 rounded-full bg-orange-500 bg-brand-primary shadow-glow"
+            />
+          ) : null}
+        </CellToggle>
       </GridCell>
     </div>
   );
@@ -1140,12 +1229,18 @@ export function ChannelsTab() {
     [capabilities, draftFor, orderedFilteredChannels, setMemoryDraft],
   );
 
+  // Same test ChannelRow uses to render the delay as ON/OFF.
+  const booleanDelay =
+    capabilities.valid_delays.length === 2 &&
+    capabilities.valid_delays[0] === 0 &&
+    capabilities.valid_delays[1] === 1;
+
   const grid = useChannelGrid({
     fields: gridFields,
     rowCount: orderedFilteredChannels.length,
     cellText: (r, field) => {
       const channel = orderedFilteredChannels[r];
-      return cellText(field, draftFor(channel), channel.priority);
+      return cellText(field, draftFor(channel), channel.priority, booleanDelay);
     },
     onApply: applyGridEdits,
     onTogglePriority: (r) => {
@@ -1174,6 +1269,13 @@ export function ChannelsTab() {
       else moveRow(from - 1, from + count - 1);
       return true;
     },
+    booleanDelay,
+    listOptions: (field) =>
+      field === 'modulation'
+        ? MODULATIONS
+        : field === 'delay' && !booleanDelay
+          ? capabilities.valid_delays.map(String)
+          : null,
     rowName: (r) => {
       const channel = orderedFilteredChannels[r];
       return `channel ${reorderTargets[channel.index] ?? channel.index}`;
@@ -1943,6 +2045,32 @@ export function ChannelsTab() {
                         ) : null
                       }
                       invalid={invalidByIndex.get(channel.index) ?? {}}
+                      onToggleCell={(c) => grid.toggleAt(rowIndex, c)}
+                      onOpenList={(c) => grid.openMenu(rowIndex, c)}
+                      openList={(c) =>
+                        grid.menu && grid.menu.r === rowIndex && grid.menu.c === c ? (
+                          <ul
+                            role="listbox"
+                            aria-label={gridFields[c] === 'delay' ? 'Delay' : 'Mode'}
+                            className="absolute left-0 top-full z-20 mt-1 min-w-full rounded border border-white/10 bg-scanner-bg-dark py-1 text-xs shadow-lg"
+                          >
+                            {grid.menu.options.map((option, i) => (
+                              <li
+                                key={option}
+                                {...grid.optionProps(i)}
+                                className={cn(
+                                  'cursor-pointer px-3 py-1 text-left',
+                                  i === grid.menu!.highlight
+                                    ? 'bg-brand-primary/30 text-white'
+                                    : 'text-white/70 hover:bg-white/10',
+                                )}
+                              >
+                                {gridFields[c] === 'delay' ? `${option}s` : option}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null
+                      }
                       onMove={moveRow}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {

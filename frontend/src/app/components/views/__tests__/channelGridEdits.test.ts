@@ -224,6 +224,12 @@ describe('cellText / clearText', () => {
     expect(cellText('priority', programmed(), true)).toBe('P');
   });
 
+  it('shows a boolean delay as ON/OFF, the way the cell displays it', () => {
+    expect(cellText('delay', { ...programmed(), delay: '1' }, false, true)).toBe('ON');
+    expect(cellText('delay', { ...programmed(), delay: '0' }, false, true)).toBe('OFF');
+    expect(cellText('delay', { ...programmed(), delay: '2' }, false)).toBe('2');
+  });
+
   it('Delete leaves delay alone and resets the rest', () => {
     expect(clearText('delay')).toBeNull();
     expect(clearText('modulation')).toBe('AUTO');

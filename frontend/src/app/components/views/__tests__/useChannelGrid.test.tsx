@@ -17,11 +17,23 @@ function Harness(props: {
   onPasteBlocked?: () => void;
   onPasteTruncated?: (dropped: number) => void;
   onMoveRows?: (from: number, to: number, count: number) => boolean;
+  fields?: GridField[];
+  data?: string[][];
+  booleanDelay?: boolean;
 }) {
+  const fields = props.fields ?? FIELDS;
+  const data = props.data ?? DATA;
   const g = useChannelGrid({
-    fields: FIELDS,
-    rowCount: DATA.length,
-    cellText: (r, f) => DATA[r][FIELDS.indexOf(f)],
+    fields,
+    rowCount: data.length,
+    cellText: (r, f) => data[r][fields.indexOf(f)],
+    booleanDelay: props.booleanDelay ?? false,
+    listOptions: (f) =>
+      f === 'modulation'
+        ? ['AUTO', 'FM', 'AM', 'NFM']
+        : f === 'delay' && !props.booleanDelay
+          ? ['0', '2']
+          : null,
     onApply: props.onApply ?? vi.fn(),
     onTogglePriority: props.onTogglePriority ?? vi.fn(),
     pasteBlocked: props.pasteBlocked ?? false,
@@ -37,14 +49,36 @@ function Harness(props: {
         select row 3
       </button>
       <div role="grid" aria-label="Channels">
-        {DATA.map((row, r) => (
+        {data.map((row, r) => (
           <div role="row" key={r}>
             {row.map((text, c) => (
               <div key={c} {...g.cellProps(r, c)}>
                 {g.editing !== null && g.active.r === r && g.active.c === c ? (
                   <input {...g.editorProps(r, c)} />
                 ) : (
-                  text
+                  <>
+                    {text}
+                    <button aria-label={`toggle ${r}-${c}`} onClick={() => g.toggleAt(r, c)} />
+                    <button aria-label={`open ${r}-${c}`} onClick={() => g.openMenu(r, c)} />
+                  </>
+                )}
+                {g.menu && g.menu.r === r && g.menu.c === c && (
+                  <ul role="listbox">
+                    {g.menu.options.map((o, i) => (
+                      <li
+                        key={o}
+                        role="option"
+                        aria-selected={i === g.menu!.highlight}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={() => g.pickOption(i)}
+                      >
+                        {o}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             ))}
@@ -59,6 +93,152 @@ const sink = () => screen.getByRole('textbox', { name: /^Channels grid/ });
 const clip = (text = '') => ({ clipboardData: { getData: () => text, setData: vi.fn() } });
 
 describe('useChannelGrid', () => {
+  // Closed sets (Mode; Delay on a BC125AT) are picked from a list, the
+  // spreadsheet convention, instead of typed into a text editor.
+  describe('list cells', () => {
+    const toMode = () => {
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+    };
+
+    it('Enter opens the list at the current value; arrows and Enter pick', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      toMode();
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(screen.getByRole('option', { name: 'FM' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.queryByRole('textbox', { name: /^Mode/ })).toBeNull();
+      fireEvent.keyDown(sink(), { key: 'ArrowDown' });
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(onApply).toHaveBeenCalledWith([{ r: 0, field: 'modulation', text: 'AM' }]);
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('Alt+ArrowDown opens it; Escape closes without changing anything', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      toMode();
+      fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      fireEvent.keyDown(sink(), { key: 'Escape' });
+      expect(screen.queryByRole('listbox')).toBeNull();
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('Alt+ArrowDown on a text cell opens nothing', () => {
+      render(<Harness />);
+      fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('clicking the chevron opens it and clicking an option picks it', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      fireEvent.click(screen.getByRole('button', { name: 'open 1-2' }));
+      fireEvent.click(screen.getByRole('option', { name: 'AUTO' }));
+      expect(onApply).toHaveBeenCalledWith([{ r: 1, field: 'modulation', text: 'AUTO' }]);
+    });
+
+    it('typing still edits it as text, for fast entry and paste-like input', () => {
+      render(<Harness />);
+      toMode();
+      fireEvent.keyDown(sink(), { key: 'n' });
+      expect(screen.getByRole('textbox', { name: 'Mode, row 1' })).toHaveValue('n');
+    });
+
+    it('the delay is a list on a BC125AT', () => {
+      const fields: GridField[] = ['frequency', 'delay'];
+      render(
+        <Harness
+          fields={fields}
+          data={[
+            ['154.4300', '2'],
+            ['155.1150', '0'],
+          ]}
+        />,
+      );
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(screen.getByRole('option', { name: '2' })).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  // On/off cells toggle with a single click on their checkbox.
+  describe('toggle cells', () => {
+    it('a click toggles that row only', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      fireEvent.click(screen.getByRole('button', { name: 'toggle 1-3' }));
+      expect(onApply).toHaveBeenCalledWith([{ r: 1, field: 'lockout', text: 'n' }]);
+    });
+
+    it('a click on priority fires the immediate action', () => {
+      const onTogglePriority = vi.fn();
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} onTogglePriority={onTogglePriority} />);
+      fireEvent.click(screen.getByRole('button', { name: 'toggle 2-4' }));
+      expect(onTogglePriority).toHaveBeenCalledWith(2);
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('a click on a text cell does nothing', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      fireEvent.click(screen.getByRole('button', { name: 'toggle 0-0' }));
+      expect(onApply).not.toHaveBeenCalled();
+    });
+  });
+
+  // A BC75XLT's delay is a boolean the cell shows as ON/OFF. Editing it as
+  // text put the raw 0/1 in the editor, so typing over it produced "0on" and
+  // turned the row red. It is a toggle, like lockout (hardware report,
+  // 2026-10-14).
+  describe('boolean delay (BC75XLT)', () => {
+    const BC75_FIELDS: GridField[] = ['frequency', 'delay', 'lockout', 'priority'];
+    const BC75_DATA = [
+      ['162.5500', 'OFF', '', ''],
+      ['155.3400', 'ON', '', ''],
+    ];
+    const bc75 = (onApply: (e: GridEdit[]) => void) =>
+      render(<Harness onApply={onApply} fields={BC75_FIELDS} data={BC75_DATA} booleanDelay />);
+
+    it('Space, Enter and double-click toggle it without opening an editor', () => {
+      const onApply = vi.fn();
+      bc75(onApply);
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: ' ' });
+      expect(onApply).toHaveBeenLastCalledWith([{ r: 0, field: 'delay', text: 'on' }]);
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(onApply).toHaveBeenCalledTimes(2);
+      const row2Delay = screen.getAllByRole('gridcell')[5];
+      fireEvent.mouseDown(row2Delay); // a real double-click starts with one
+      fireEvent.doubleClick(row2Delay);
+      expect(onApply).toHaveBeenLastCalledWith([{ r: 1, field: 'delay', text: 'off' }]);
+      expect(screen.queryByRole('textbox', { name: /^Delay/ })).toBeNull();
+    });
+
+    it('typing on it does not open a text editor', () => {
+      const onApply = vi.fn();
+      bc75(onApply);
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'o' });
+      expect(screen.queryByRole('textbox', { name: /^Delay/ })).toBeNull();
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('toggles every selected row to the same value', () => {
+      const onApply = vi.fn();
+      bc75(onApply);
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'ArrowDown', shiftKey: true });
+      fireEvent.keyDown(sink(), { key: ' ' });
+      expect(onApply).toHaveBeenCalledWith([
+        { r: 0, field: 'delay', text: 'on' },
+        { r: 1, field: 'delay', text: 'on' },
+      ]);
+    });
+  });
+
   // Review #1: the desktop shell's Scanner menu binds Cmd+S (Scan), Cmd+H
   // (Hold) and Cmd+Y (Sync Memory) natively. The sink is skipped by the
   // global shortcut hook, so nothing would preventDefault them and the menu
@@ -129,10 +309,10 @@ describe('useChannelGrid', () => {
     expect(fireEvent.keyDown(sink(), { key: 'Tab' })).toBe(true); // not prevented: focus leaves
   });
 
-  it('Alt+ArrowDown moves the selected rows and the selection follows', () => {
+  it('Alt+Shift+ArrowDown moves the selected rows and the selection follows', () => {
     const onMoveRows = vi.fn(() => true);
     render(<Harness onMoveRows={onMoveRows} />);
-    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true, shiftKey: true });
     expect(onMoveRows).toHaveBeenCalledWith(0, 1, 1);
     expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-1-0');
   });
@@ -151,17 +331,48 @@ describe('useChannelGrid', () => {
     expect(screen.queryByRole('textbox', { name: /^(Frequency|Priority), row/ })).toBeNull();
   });
 
-  it('Alt+ArrowUp at the top does nothing', () => {
+  it('Alt+Shift+ArrowUp at the top does nothing', () => {
     const onMoveRows = vi.fn(() => true);
     render(<Harness onMoveRows={onMoveRows} />);
-    fireEvent.keyDown(sink(), { key: 'ArrowUp', altKey: true });
+    fireEvent.keyDown(sink(), { key: 'ArrowUp', altKey: true, shiftKey: true });
+    expect(onMoveRows).not.toHaveBeenCalled();
+  });
+
+  // Plain Alt+Down belongs to list cells (opens the list, Excel convention).
+  it('plain Alt+ArrowDown does not move rows', () => {
+    const onMoveRows = vi.fn(() => true);
+    render(<Harness onMoveRows={onMoveRows} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
     expect(onMoveRows).not.toHaveBeenCalled();
   });
 
   it('a refused move leaves the selection where it was', () => {
     render(<Harness onMoveRows={() => false} />);
-    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true, shiftKey: true });
     expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-0-0');
+  });
+
+  // Hardware report 2026-10-14: releasing the mouse anywhere but a cell (the
+  // gap between cells, a channel number, outside the grid) left the grid
+  // "dragging", so the selection kept growing as the pointer moved.
+  it('a drag ends wherever the mouse is released', () => {
+    render(<Harness />);
+    const cells = screen.getAllByRole('gridcell');
+    fireEvent.mouseDown(cells[0], { buttons: 1 });
+    fireEvent.mouseEnter(cells[5], { buttons: 1 });
+    expect(cells[5]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.mouseUp(document.body);
+    fireEvent.mouseEnter(cells[10], { buttons: 0 });
+    expect(cells[10]).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('hovering with no button held never extends the selection', () => {
+    render(<Harness />);
+    const cells = screen.getAllByRole('gridcell');
+    fireEvent.mouseDown(cells[0], { buttons: 1 });
+    // The mouseup was lost entirely (e.g. released outside the window).
+    fireEvent.mouseEnter(cells[10], { buttons: 0 });
+    expect(cells[10]).toHaveAttribute('aria-selected', 'false');
   });
 
   it('Shift+arrow extends the selection', () => {

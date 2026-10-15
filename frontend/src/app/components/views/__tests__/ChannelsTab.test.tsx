@@ -312,6 +312,60 @@ describe('ChannelsTab', () => {
       expect(store.setMemoryDraft).not.toHaveBeenCalled();
     });
 
+    it('one click on the lockout checkbox stages the toggle', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const lockout = within(row).getAllByRole('gridcell')[5];
+      await userEvent.click(within(lockout).getByRole('button'));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ lockout: !mockChannels[0].lockout }),
+      );
+    });
+
+    // Clicking a checkbox must not also select its cell: after a cancelled
+    // priority confirm, the orange selection on PRIO read as a half-applied
+    // priority (hardware report, 2026-10-14).
+    it('clicking a checkbox leaves the selection where it was', async () => {
+      vi.mocked(confirmDialog).mockResolvedValue(false);
+      setMockStore(
+        createMockStore({
+          channels: [
+            createTestChannel({ index: 1, bank: 1, alpha_tag: 'Channel 1', priority: true }),
+          ],
+        }),
+      );
+      render(<ChannelsTab />);
+      const sink = screen.getByRole('textbox', { name: /^Channels grid/ });
+      const before = sink.getAttribute('aria-activedescendant');
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const cells = within(row).getAllByRole('gridcell');
+      const prio = cells[cells.length - 1];
+      await userEvent.click(within(prio).getByRole('button'));
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      expect(sink).toHaveAttribute('aria-activedescendant', before ?? '');
+      expect(prio).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('Mode is picked from its list', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const mode = within(row).getAllByRole('gridcell')[2];
+      await userEvent.click(within(mode).getByRole('button', { hidden: true }));
+      await userEvent.click(screen.getByRole('option', { name: 'NFM' }));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ modulation: 'NFM' }),
+      );
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
     it('does not open an edit dialog', async () => {
       render(<ChannelsTab />);
       await userEvent.dblClick(screen.getAllByRole('gridcell')[0]);
@@ -668,7 +722,7 @@ describe('ChannelsTab', () => {
       expect(store.setMemoryDraft).toHaveBeenCalledWith(2, buildEmptyDraft(2));
     });
 
-    it('Alt+arrows move a selected block of rows through the bank', async () => {
+    it('Alt+Shift+arrows move a selected block of rows through the bank', async () => {
       setMockStore(
         createMockStore({
           channels: [
@@ -689,9 +743,9 @@ describe('ChannelsTab', () => {
       await user.keyboard('{Shift>}');
       await user.click(screen.getByRole('button', { name: 'Select channel 2' }));
       await user.keyboard('{/Shift}');
-      await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
+      await user.keyboard('{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}');
       expect(order()).toEqual(['Charlie', 'Alpha', 'Bravo']);
-      await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+      await user.keyboard('{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}');
       expect(order()).toEqual(['Alpha', 'Bravo', 'Charlie']);
     });
 
@@ -706,12 +760,12 @@ describe('ChannelsTab', () => {
 
     // Parity with the grip (#236): a keyboard move is announced, and a refused
     // one says why instead of doing nothing.
-    it('announces an Alt+arrow move and explains a refused one', async () => {
+    it('announces an Alt+Shift+arrow move and explains a refused one', async () => {
       setMockStore(createMockStore({ channels: two() }));
       render(<ChannelsTab />);
       const user = userEvent.setup();
       await user.click(screen.getByRole('button', { name: 'Select channel 1' }));
-      await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
+      await user.keyboard('{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}');
       expect(
         screen
           .getAllByRole('status')
@@ -719,7 +773,7 @@ describe('ChannelsTab', () => {
       ).toBe(true);
       await user.type(screen.getByRole('searchbox'), 'Channel');
       screen.getByRole('textbox', { name: /^Channels grid/ }).focus();
-      await user.keyboard('{Alt>}{ArrowUp}{/Alt}'); // the moved row is now last
+      await user.keyboard('{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}'); // the moved row is now last
       expect(toast.info).toHaveBeenCalledWith(
         expect.stringMatching(/Clear the search to move rows/),
       );
