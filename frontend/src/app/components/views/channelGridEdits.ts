@@ -74,8 +74,16 @@ export function mapPasteColumns(
 }
 
 /** The text a cell shows and copies. */
-export function cellText(field: GridField, draft: ChannelDraft, priority: boolean): string {
+export function cellText(
+  field: GridField,
+  draft: ChannelDraft,
+  priority: boolean,
+  booleanDelay = false,
+): string {
   if (field === 'priority') return priority ? 'P' : '';
+  // A BC75XLT's delay is 0/1 on the wire and ON/OFF on screen; copy what the
+  // user sees. coerce() maps ON/OFF back on paste.
+  if (field === 'delay' && booleanDelay) return draft.delay === '1' ? 'ON' : 'OFF';
   if (field === 'lockout') return draft.lockout ? 'Yes' : '';
   if (field === 'frequency') return Number.parseFloat(draft.frequency) === 0 ? '' : draft.frequency;
   return String(draft[field] ?? '');

@@ -1147,12 +1147,18 @@ export function ChannelsTab() {
     [capabilities, draftFor, orderedFilteredChannels, setMemoryDraft],
   );
 
+  // Same test ChannelRow uses to render the delay as ON/OFF.
+  const booleanDelay =
+    capabilities.valid_delays.length === 2 &&
+    capabilities.valid_delays[0] === 0 &&
+    capabilities.valid_delays[1] === 1;
+
   const grid = useChannelGrid({
     fields: gridFields,
     rowCount: orderedFilteredChannels.length,
     cellText: (r, field) => {
       const channel = orderedFilteredChannels[r];
-      return cellText(field, draftFor(channel), channel.priority);
+      return cellText(field, draftFor(channel), channel.priority, booleanDelay);
     },
     onApply: applyGridEdits,
     onTogglePriority: (r) => {
@@ -1168,6 +1174,7 @@ export function ChannelsTab() {
       toast.info(
         `${dropped} ${dropped === 1 ? 'row' : 'rows'} did not fit: the paste ran past the end of the bank.`,
       ),
+    booleanDelay,
     rowName: (r) => {
       const channel = orderedFilteredChannels[r];
       return `channel ${reorderTargets[channel.index] ?? channel.index}`;

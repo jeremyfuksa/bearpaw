@@ -36,6 +36,9 @@ export interface UseChannelGridArgs {
   onPasteTruncated: (dropped: number) => void;
   /** How a row is named to assistive tech, e.g. "channel 401". */
   rowName: (r: number) => string;
+  /** True on a model whose delay is a boolean (BC75XLT): the delay cell is
+   * then a toggle, like lockout, not a text field. */
+  booleanDelay: boolean;
 }
 
 /** The desktop shell's Scanner menu accelerators (main.rs: Hold, Scan, Sync
@@ -63,6 +66,7 @@ export function useChannelGrid({
   onPasteBlocked,
   onPasteTruncated,
   rowName,
+  booleanDelay,
 }: UseChannelGridArgs) {
   const [anchor, setAnchor] = useState({ r: 0, c: 0 });
   const [active, setActive] = useState({ r: 0, c: 0 });
@@ -133,10 +137,32 @@ export function useChannelGrid({
     focusSink();
   };
 
+  const isToggle = (field: GridField) => field === 'lockout' || (field === 'delay' && booleanDelay);
+
+  /** Flip a toggle column for every selected row, all to the same value:
+   * the opposite of the selection's TOP row, so the result is predictable
+   * whichever end the selection was extended from. */
+  const toggleRange = (field: DraftField) => {
+    const on =
+      field === 'lockout' ? cellText(r0, 'lockout') === '' : cellText(r0, 'delay') !== 'ON';
+    const text = field === 'lockout' ? (on ? 'y' : 'n') : on ? 'on' : 'off';
+    const edits: GridEdit[] = [];
+    for (let r = r0; r <= r1; r++) edits.push({ r, field, text });
+    onApply(edits);
+  };
+
   const startEdit = (initial: string) => {
-    if (fields[f.c] === 'priority' || fields[f.c] === 'lockout') return;
+    if (fields[f.c] === 'priority' || isToggle(fields[f.c])) return;
     setAnchor(f);
     setEditing(initial);
+  };
+
+  /** Enter, F2 or double-click: edit a text cell, flip a toggle cell. */
+  const activate = () => {
+    const field = fields[f.c];
+    if (field === 'priority') return;
+    if (isToggle(field)) return toggleRange(field);
+    startEdit(cellText(f.r, field));
   };
 
   // Keep the sink's text = the selection, selected, so native Copy has
@@ -185,7 +211,7 @@ export function useChannelGrid({
       case 'Enter':
       case 'F2':
         e.preventDefault();
-        return startEdit(cellText(f.r, fields[f.c]));
+        return activate();
       case 'Delete':
       case 'Backspace':
         e.preventDefault();
@@ -198,12 +224,9 @@ export function useChannelGrid({
           e.preventDefault();
           return onTogglePriority(f.r);
         }
-        if (field === 'lockout') {
+        if (isToggle(field)) {
           e.preventDefault();
-          const on = cellText(f.r, 'lockout') === '';
-          const edits: GridEdit[] = [];
-          for (let r = r0; r <= r1; r++) edits.push({ r, field: 'lockout', text: on ? 'y' : 'n' });
-          return onApply(edits);
+          return toggleRange(field as DraftField);
         }
         break;
       }
@@ -275,7 +298,8 @@ export function useChannelGrid({
     onMouseUp: () => {
       setDragging(false);
     },
-    onDoubleClick: () => startEdit(cellText(r, fields[c])),
+    // mousedown already made (r, c) the active cell.
+    onDoubleClick: () => activate(),
   });
 
   const editorProps = (r: number, c: number) => ({

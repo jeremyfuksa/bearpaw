@@ -16,11 +16,17 @@ function Harness(props: {
   pasteBlocked?: boolean;
   onPasteBlocked?: () => void;
   onPasteTruncated?: (dropped: number) => void;
+  fields?: GridField[];
+  data?: string[][];
+  booleanDelay?: boolean;
 }) {
+  const fields = props.fields ?? FIELDS;
+  const data = props.data ?? DATA;
   const g = useChannelGrid({
-    fields: FIELDS,
-    rowCount: DATA.length,
-    cellText: (r, f) => DATA[r][FIELDS.indexOf(f)],
+    fields,
+    rowCount: data.length,
+    cellText: (r, f) => data[r][fields.indexOf(f)],
+    booleanDelay: props.booleanDelay ?? false,
     onApply: props.onApply ?? vi.fn(),
     onTogglePriority: props.onTogglePriority ?? vi.fn(),
     pasteBlocked: props.pasteBlocked ?? false,
@@ -32,7 +38,7 @@ function Harness(props: {
     <>
       <textarea {...g.sinkProps} />
       <div role="grid" aria-label="Channels">
-        {DATA.map((row, r) => (
+        {data.map((row, r) => (
           <div role="row" key={r}>
             {row.map((text, c) => (
               <div key={c} {...g.cellProps(r, c)}>
@@ -54,6 +60,56 @@ const sink = () => screen.getByRole('textbox', { name: /^Channels grid/ });
 const clip = (text = '') => ({ clipboardData: { getData: () => text, setData: vi.fn() } });
 
 describe('useChannelGrid', () => {
+  // A BC75XLT's delay is a boolean the cell shows as ON/OFF. Editing it as
+  // text put the raw 0/1 in the editor, so typing over it produced "0on" and
+  // turned the row red. It is a toggle, like lockout (hardware report,
+  // 2026-10-14).
+  describe('boolean delay (BC75XLT)', () => {
+    const BC75_FIELDS: GridField[] = ['frequency', 'delay', 'lockout', 'priority'];
+    const BC75_DATA = [
+      ['162.5500', 'OFF', '', ''],
+      ['155.3400', 'ON', '', ''],
+    ];
+    const bc75 = (onApply: (e: GridEdit[]) => void) =>
+      render(<Harness onApply={onApply} fields={BC75_FIELDS} data={BC75_DATA} booleanDelay />);
+
+    it('Space, Enter and double-click toggle it without opening an editor', () => {
+      const onApply = vi.fn();
+      bc75(onApply);
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: ' ' });
+      expect(onApply).toHaveBeenLastCalledWith([{ r: 0, field: 'delay', text: 'on' }]);
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(onApply).toHaveBeenCalledTimes(2);
+      const row2Delay = screen.getAllByRole('gridcell')[5];
+      fireEvent.mouseDown(row2Delay); // a real double-click starts with one
+      fireEvent.doubleClick(row2Delay);
+      expect(onApply).toHaveBeenLastCalledWith([{ r: 1, field: 'delay', text: 'off' }]);
+      expect(screen.queryByRole('textbox', { name: /^Delay/ })).toBeNull();
+    });
+
+    it('typing on it does not open a text editor', () => {
+      const onApply = vi.fn();
+      bc75(onApply);
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'o' });
+      expect(screen.queryByRole('textbox', { name: /^Delay/ })).toBeNull();
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('toggles every selected row to the same value', () => {
+      const onApply = vi.fn();
+      bc75(onApply);
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'ArrowDown', shiftKey: true });
+      fireEvent.keyDown(sink(), { key: ' ' });
+      expect(onApply).toHaveBeenCalledWith([
+        { r: 0, field: 'delay', text: 'on' },
+        { r: 1, field: 'delay', text: 'on' },
+      ]);
+    });
+  });
+
   // Review #1: the desktop shell's Scanner menu binds Cmd+S (Scan), Cmd+H
   // (Hold) and Cmd+Y (Sync Memory) natively. The sink is skipped by the
   // global shortcut hook, so nothing would preventDefault them and the menu
