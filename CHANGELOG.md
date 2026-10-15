@@ -72,6 +72,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   replaced with the scanner's old values. That channel now stays pending, so
   you can fix it and upload again.
 
+- **An upload that can't start no longer throws away your edits.** If Upload
+  Changes failed before writing anything, for example because a memory sync
+  was running, every staged edit and reorder was discarded, and a success
+  message appeared on top of the error. Your changes now stay pending so you
+  can upload again.
+
 - **The data-upgrade notice now says where the backup is.** When a new
   version upgrades your saved data, the one-time notice names the folder
   holding the backup of your previous data, instead of "next to it".
