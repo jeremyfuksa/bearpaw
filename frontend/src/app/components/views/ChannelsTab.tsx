@@ -304,6 +304,11 @@ function ChannelRow({
           aria-describedby="channel-reorder-hint"
           onClick={(event) => {
             event.stopPropagation();
+            // Grab is the KEYBOARD reorder path. The grip is also the pointer
+            // drag source, and a mouse press-and-release fires click too, which
+            // left every dragged row stuck grabbed. A keyboard-activated click
+            // (Enter/Space) has detail 0; a pointer click counts presses.
+            if (event.detail !== 0) return;
             onToggleGrab();
           }}
           onKeyDown={(event) => {

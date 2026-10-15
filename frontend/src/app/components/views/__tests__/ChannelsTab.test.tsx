@@ -1377,6 +1377,29 @@ describe('ChannelsTab', () => {
       ).toHaveAttribute('aria-pressed', 'false');
     });
 
+    // The grip is also the POINTER drag source (#659), and a press-and-release
+    // on it fires `click`. Grabbing on that click left every mouse-dragged row
+    // stuck in keyboard-grab mode, ringed, with the arrow keys still moving it.
+    it('does not grab on a mouse click, only from the keyboard', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
+      );
+      expect(
+        screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
+      ).toHaveAttribute('aria-pressed', 'false');
+
+      await userEvent.keyboard('{ArrowDown}');
+      expect(tagOrder()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+
+      await userEvent.keyboard(' ');
+      expect(
+        screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
+      ).toHaveAttribute('aria-pressed', 'true');
+    });
+
     it('announces grab and move to screen readers', async () => {
       setupBank();
       render(<ChannelsTab />);
