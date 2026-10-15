@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { toast } from 'sonner';
-import { motion } from 'motion/react';
+import { motion, Reorder, useDragControls } from 'motion/react';
 import { Search, Lock, GripVertical, ChevronDown, RefreshCw, Pencil, Check } from 'lucide-react';
-import { DndProvider, useDrag, useDrop } from 'react-dnd';
-// TouchBackend, not HTML5Backend: the app ships in Tauri's WKWebView, where
-// react-dnd's HTML5 backend never fires dragover/drop — rows show the (+)
-// cursor but won't reorder (#195). TouchBackend drives DnD from pointer
-// events; enableMouseEvents makes it respond to a desktop mouse, and
-// delayMouseStart lets a plain click still open the edit sheet.
-import { TouchBackend } from 'react-dnd-touch-backend';
 
 import {
   DropdownMenu,
@@ -29,8 +22,6 @@ import { validateField, MODULATIONS } from './channelValidation';
 import { formatSyncedAt } from '../ScannerUI';
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
-
-const DND_ITEM_TYPE = 'channel-row';
 
 type CellProps = ReturnType<ReturnType<typeof useChannelGrid>['cellProps']>;
 
@@ -132,7 +123,11 @@ function CellToggle({
   );
 }
 
+/** A held row's provisional reorder (#778); see `sessionRef`. */
+type MoveSession = { bank: number; start: number[]; order: number[]; moved: Set<number> };
+
 interface ChannelRowProps {
+  channelIndex: number;
   displayIndex: number;
   rowIndex: number;
   rowCount: number;
@@ -161,14 +156,15 @@ interface ChannelRowProps {
   onToggleCell: (c: number) => void;
   onOpenList: (c: number) => void;
   openList: (c: number) => React.ReactNode | null;
-  onMove: (fromIndex: number, toIndex: number) => void;
-  onPickUp: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   onToggleGrab: () => void;
   onKeyboardMove: (direction: -1 | 1) => void;
   onReleaseGrab: () => void;
 }
 
 function ChannelRow({
+  channelIndex,
   displayIndex,
   rowIndex,
   rowCount,
@@ -197,56 +193,18 @@ function ChannelRow({
   onToggleCell,
   onOpenList,
   openList,
-  onMove,
-  onPickUp,
+  onDragStart,
+  onDragEnd,
   onToggleGrab,
   onKeyboardMove,
   onReleaseGrab,
 }: ChannelRowProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const gripRef = useRef<HTMLButtonElement | null>(null);
-
-  const [{ isDragging }, drag] = useDrag({
-    type: DND_ITEM_TYPE,
-    // A function, so it runs once when the drag BEGINS (#775). Hover moves
-    // arrive faster than re-renders, so mapping a hover's position back to a
-    // channel reads a stale order and marks whichever channel used to be there.
-    item: () => {
-      onPickUp();
-      return { rowIndex };
-    },
-    canDrag: !disableDrag,
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  const [, drop] = useDrop({
-    accept: DND_ITEM_TYPE,
-    hover: (item: { rowIndex: number }) => {
-      if (!ref.current) return;
-      if (item.rowIndex === rowIndex) return;
-      onMove(item.rowIndex, rowIndex);
-      item.rowIndex = rowIndex;
-    },
-  });
-
-  // react-dnd's connector API: `drag`/`drop` are connector functions that
-  // attach the DND behavior to an element, and composing them onto the ref
-  // during render is how the library (v16) is meant to be wired.
-  //
-  // The GRIP is the drag source, the row only a drop target (#659). With the
-  // whole row as the source, pressing a cell, pausing past delayMouseStart and
-  // dragging to select a range reordered the bank under the cursor: the
-  // TouchBackend listens natively, so the cell's preventDefault cannot stop it.
-  // react-hooks/refs is suppressed rather than worked around — the connectors
-  // have no post-commit call site, and restructuring this into callback refs
-  // would rewrite the drag path that the #236 keyboard-reorder guard below
-  // depends on for no behavioral gain.
-  // eslint-disable-next-line react-hooks/refs
-  drag(gripRef);
-  // eslint-disable-next-line react-hooks/refs
-  drop(ref);
+  // Pointer reorder (#778): motion's Reorder, driven by pointer events, which
+  // WKWebView delivers (react-dnd's HTML5 backend never got dragover/drop
+  // there, #195). Only the GRIP starts a drag (#659): with the whole row as
+  // the handle, dragging across cells to select a range moved the row instead.
+  const dragControls = useDragControls();
+  const [isDragging, setIsDragging] = useState(false);
 
   const shows = (key: ChannelColumnKey) => columns.some((c) => c.key === key);
 
@@ -263,8 +221,19 @@ function ChannelRow({
     : `Channel ${displayIndex}, ${displayFrequency} MHz`;
 
   return (
-    <div
-      ref={ref}
+    <Reorder.Item
+      as="div"
+      value={channelIndex}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragStart={() => {
+        setIsDragging(true);
+        onDragStart();
+      }}
+      onDragEnd={() => {
+        setIsDragging(false);
+        onDragEnd();
+      }}
       role="row"
       aria-label={rowLabel}
       // Tailwind arbitrary values are static strings, so a per-scanner column
@@ -309,18 +278,22 @@ function ChannelRow({
       <div role="cell" className="flex items-center justify-center text-white/40">
         {/* REGRESSION GUARD (#236): the grip is a real button, not a decorative
             icon, so a keyboard-only user can enter "grabbed" mode and nudge the
-            row with the arrow keys. react-dnd's TouchBackend has no keyboard
+            row with the arrow keys. A pointer drag has no keyboard
             interaction, so this is the ONLY keyboard reorder path (WCAG 2.1.1,
             Level A) — reverting it to a plain <GripVertical> removes the
             capability with no visible change. It deliberately lives on its own
             focusable control rather than overloading the row's Enter/Space,
             which edits the active cell (#659).
-            Pointer DnD is untouched: the row is still the drag source.
+            The grip is also the pointer handle (onPointerDown below).
             Guarded by ChannelsTab.test.tsx :: Keyboard reordering (#236). */}
         <button
-          ref={gripRef}
           type="button"
           disabled={disableDrag}
+          // touch-action: none, or a touch drag scrolls the list instead.
+          style={{ touchAction: 'none' }}
+          onPointerDown={(event) => {
+            if (!disableDrag) dragControls.start(event);
+          }}
           aria-label={`Reorder channel ${displayIndex}, position ${rowIndex + 1} of ${rowCount}`}
           aria-pressed={isGrabbed}
           aria-describedby="channel-reorder-hint"
@@ -492,7 +465,7 @@ function ChannelRow({
           ) : null}
         </CellToggle>
       </GridCell>
-    </div>
+    </Reorder.Item>
   );
 }
 
@@ -1004,6 +977,17 @@ export function ChannelsTab() {
   }, [activeBank, bankChannels]);
 
   const currentBankOrder = bankOrders[activeBank] ?? bankChannels;
+  // REGRESSION GUARD (#778): see CLAUDE.md third-rail table, "A held row is
+  // provisional until it is put down".
+  // Holding a row, by pointer drag or keyboard grab, reorders a PROVISIONAL
+  // order (#778): rows slide aside while it is held, but bankOrders, and with
+  // it every pending/shifted mark, changes once, when it is put down. The ref
+  // is the source of truth because a drop handler must read the order as of
+  // the last move, not as of its own render; the state mirrors it for render.
+  const sessionRef = useRef<MoveSession | null>(null);
+  const [sessionOrder, setSessionOrder] = useState<number[] | null>(null);
+  const [orderEpoch, setOrderEpoch] = useState(0);
+  const displayOrder = sessionOrder ?? currentBankOrder;
   // Bank width is model-dependent — 30 on a BC75XLT, where bank 2 starts at
   // channel 31, not 51. Last hardcoded 50 in this file after #401.
   const bankBase = (activeBank - 1) * channelsPerBank;
@@ -1011,10 +995,10 @@ export function ChannelsTab() {
   const orderedFilteredChannels = useMemo(() => {
     if (filteredChannels.length === 0) return [];
     const channelMap = new Map(filteredChannels.map((channel) => [channel.index, channel]));
-    return currentBankOrder
+    return displayOrder
       .map((channelIndex) => channelMap.get(channelIndex))
       .filter((channel): channel is ChannelData => Boolean(channel));
-  }, [currentBankOrder, filteredChannels]);
+  }, [displayOrder, filteredChannels]);
 
   const reorderTargets = useMemo(() => {
     return currentBankOrder.reduce(
@@ -1038,13 +1022,51 @@ export function ChannelsTab() {
     [activeBank, bankChannels],
   );
 
+  // Joins a session already open, so a drag started during a keyboard grab
+  // carries the grab's moves with it rather than discarding them.
+  const beginSession = useCallback(
+    (channelIndex: number) => {
+      if (!sessionRef.current) {
+        sessionRef.current = {
+          bank: activeBank,
+          start: currentBankOrder,
+          order: [...currentBankOrder],
+          moved: new Set(),
+        };
+      }
+      sessionRef.current.moved.add(channelIndex);
+      setSessionOrder(sessionRef.current.order);
+    },
+    [activeBank, currentBankOrder],
+  );
+
+  const setSessionOrderTo = useCallback((order: number[]) => {
+    if (!sessionRef.current) return;
+    sessionRef.current.order = order;
+    setSessionOrder(order);
+  }, []);
+
+  const commitSession = useCallback(() => {
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    setSessionOrder(null);
+    if (!session || session.order.every((v, i) => v === session.start[i])) return;
+    setBankOrders((prev) => ({ ...prev, [session.bank]: session.order }));
+    markMoved([...session.moved]);
+  }, [markMoved]);
+
   // Keyboard reorder (#236). `grabbedChannelIndex` holds the channel index —
   // not the row position — so the grab survives the reorder that arrow keys
   // cause: the row moves out from under its old position on every nudge.
   const [grabbedChannelIndex, setGrabbedChannelIndex] = useState<number | null>(null);
   const [reorderAnnouncement, setReorderAnnouncement] = useState('');
 
-  const releaseGrab = useCallback(() => setGrabbedChannelIndex(null), []);
+  // Every way a hold ends puts the row down: Enter/Space/Escape on the grip, a
+  // pointer drop, switching banks, or typing a search term.
+  const releaseGrab = useCallback(() => {
+    setGrabbedChannelIndex(null);
+    commitSession();
+  }, [commitSession]);
 
   // Drop the grab whenever the grabbed row can no longer be seen or moved:
   // switching banks unmounts it, and typing a search term disables reorder
@@ -1068,13 +1090,16 @@ export function ChannelsTab() {
         );
         return;
       }
-      markMoved([channel.index]);
-      moveRow(rowIndex, toIndex);
+      const order = [...(sessionRef.current?.order ?? currentBankOrder)];
+      const from = order.indexOf(channel.index);
+      order.splice(from, 1);
+      order.splice(from + direction, 0, channel.index);
+      setSessionOrderTo(order);
       setReorderAnnouncement(
         `Moved to position ${toIndex + 1} of ${rows.length}. Press Escape or Enter to drop.`,
       );
     },
-    [bankBase, markMoved, moveRow],
+    [bankBase, currentBankOrder, setSessionOrderTo],
   );
 
   const draftChanges = useMemo(() => {
@@ -1385,6 +1410,13 @@ export function ChannelsTab() {
     // which side wins a conflict, and an invisible reconciliation trades a bug
     // you can describe for one you cannot.
     const reconciledChannels: number[] = [];
+    // Writes that landed, applied only once the batch is done (#778). Applying
+    // each as it landed put a slot's NEW contents on the row the staged reorder
+    // still showed elsewhere, so mid-upload the grid showed duplicates and
+    // missing channels. The refetch below supersedes both; they are kept only
+    // for the case where that refetch fails.
+    const landedChannels: ChannelData[] = [];
+    const landedDrafts: ChannelData[] = [];
 
     try {
       await api.startProgramMode();
@@ -1450,10 +1482,8 @@ export function ChannelsTab() {
           }
 
           const updated = await api.updateChannel(targetIndex, payload);
-          setChannels((prev) =>
-            prev.map((entry) => (entry.index === updated.index ? updated : entry)),
-          );
-          setMemoryDraft(updated.index, buildDraft(updated, capabilities.cleared_delay));
+          landedChannels.push(updated);
+          landedDrafts.push(updated);
         } catch (error) {
           const apiError = error as { message?: string; payload?: { detail?: string } };
           const detail = apiError?.payload?.detail ?? apiError?.message;
@@ -1495,14 +1525,12 @@ export function ChannelsTab() {
                 matchesPrimaryFields,
               });
               const lockoutApplied = refreshed.lockout === change.payload.lockout;
-              setChannels((prev) =>
-                prev.map((entry) => (entry.index === refreshed.index ? refreshed : entry)),
-              );
+              landedChannels.push(refreshed);
               if (matchesPrimaryFields) {
                 // The write landed; only now does the scanner's copy become
                 // the draft. A mismatch falls through to a failure and keeps
                 // the user's draft (#771).
-                setMemoryDraft(refreshed.index, buildDraft(refreshed, capabilities.cleared_delay));
+                landedDrafts.push(refreshed);
                 if (change.lockoutChanged && !lockoutApplied) {
                   warnings.push({
                     index: change.channelIndex,
@@ -1577,8 +1605,17 @@ export function ChannelsTab() {
       }
       setBankOrders({});
       setMovedChannelIds(new Set());
+      // Remount the rows rather than let them animate. The grid already shows
+      // the uploaded order; only the keys move, and sliding every row to where
+      // it already appears to be is noise.
+      setOrderEpoch((n) => n + 1);
     } catch (error) {
       console.warn('Failed to refresh channels after upload', error);
+      const byIndex = new Map(landedChannels.map((c) => [c.index, c]));
+      setChannels((prev) => prev.map((c) => byIndex.get(c.index) ?? c));
+      for (const landed of landedDrafts) {
+        setMemoryDraft(landed.index, buildDraft(landed, capabilities.cleared_delay));
+      }
     }
 
     const reconciledNote =
@@ -1637,6 +1674,10 @@ export function ChannelsTab() {
     clearMemoryDrafts();
     setBankOrders({});
     setMovedChannelIds(new Set());
+    // A row still held is discarded with the rest, not put down afterwards.
+    sessionRef.current = null;
+    setSessionOrder(null);
+    setGrabbedChannelIndex(null);
     toast.success('Drafts discarded');
   }, [draftChanges, isUploading, clearMemoryDrafts, setBankOrders]);
 
@@ -1828,7 +1869,10 @@ export function ChannelsTab() {
             name={bankNames[bank - 1] ?? ''}
             active={activeBank === bank}
             canRename={canRenameBanks}
-            onSelect={() => setActiveBank(bank)}
+            onSelect={() => {
+              releaseGrab();
+              setActiveBank(bank);
+            }}
             onRename={(name) => handleRenameBank(bank, name)}
           />
         ))}
@@ -1861,7 +1905,10 @@ export function ChannelsTab() {
                 }
                 className="scanner-input w-full border-white/5 py-1.5 pl-8 pr-4 text-xs placeholder:text-white/20 focus:border-brand-primary/50"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  releaseGrab();
+                  setSearchTerm(e.target.value);
+                }}
               />
             </div>
             {syncedLabel && (
@@ -1943,7 +1990,14 @@ export function ChannelsTab() {
             </button>
             <button
               onClick={handleUploadDrafts}
-              disabled={draftChanges.length === 0 || isUploading || invalidCount > 0}
+              // A held row's order is provisional and not in draftChanges yet;
+              // uploading under it would write the order from before the hold.
+              disabled={
+                draftChanges.length === 0 ||
+                isUploading ||
+                invalidCount > 0 ||
+                sessionOrder !== null
+              }
               className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isUploading ? 'Uploading...' : 'Upload Changes'}
@@ -1992,55 +2046,61 @@ export function ChannelsTab() {
 
         {/* Table. The grid's focus sink sits beside it: a grid owns only rows. */}
         <textarea {...grid.sinkProps} />
-        <DndProvider
-          backend={TouchBackend}
-          options={{ enableMouseEvents: true, delayMouseStart: 100 }}
+        <div
+          role="grid"
+          aria-label="Bank channels"
+          aria-multiselectable
+          className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
+          ref={containerRef}
         >
+          {/* Header */}
           <div
-            role="grid"
-            aria-label="Bank channels"
-            aria-multiselectable
-            className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
-            ref={containerRef}
+            role="row"
+            className="grid gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
+            style={{ gridTemplateColumns: channelGridTemplate(columns) }}
           >
-            {/* Header */}
-            <div
-              role="row"
-              className="grid gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
-              style={{ gridTemplateColumns: channelGridTemplate(columns) }}
-            >
-              <div role="columnheader" aria-label="Reorder">
-                <span id="channel-reorder-hint" className="sr-only">
-                  Press Enter or Space to grab this channel, then use the up and down arrow keys to
-                  move it and Escape to drop it.
-                </span>
-              </div>
-              {columns
-                .filter((col) => col.label !== null)
-                .map((col) => col.label as string)
-                .map((h) => (
-                  <div
-                    key={h}
-                    role="columnheader"
-                    className="text-xs font-bold text-white/60 uppercase tracking-wider select-none text-center first:text-left"
-                  >
-                    {h}
-                  </div>
-                ))}
+            <div role="columnheader" aria-label="Reorder">
+              <span id="channel-reorder-hint" className="sr-only">
+                Press Enter or Space to grab this channel, then use the up and down arrow keys to
+                move it and Escape to drop it.
+              </span>
             </div>
-
-            {/* Rows */}
-            <div role="rowgroup" className="overflow-y-auto flex-1 p-0">
-              {orderedFilteredChannels.length === 0 ? (
+            {columns
+              .filter((col) => col.label !== null)
+              .map((col) => col.label as string)
+              .map((h) => (
                 <div
-                  role="status"
-                  aria-live="polite"
-                  className="flex h-[var(--layout-empty-state-height)] items-center justify-center text-xs text-white/50"
+                  key={h}
+                  role="columnheader"
+                  className="text-xs font-bold text-white/60 uppercase tracking-wider select-none text-center first:text-left"
                 >
-                  No channels match your filters
+                  {h}
                 </div>
-              ) : (
-                orderedFilteredChannels.map((channel, rowIndex) => {
+              ))}
+          </div>
+
+          {/* Rows. layoutScroll so rows measure correctly once scrolled; the
+                Reorder.Group sits INSIDE the scroller because its auto-scroll
+                searches from the group's parent for an overflow ancestor. */}
+          <motion.div role="rowgroup" layoutScroll className="overflow-y-auto flex-1 p-0">
+            {orderedFilteredChannels.length === 0 ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex h-[var(--layout-empty-state-height)] items-center justify-center text-xs text-white/50"
+              >
+                No channels match your filters
+              </div>
+            ) : (
+              <Reorder.Group
+                key={orderEpoch}
+                as="div"
+                role="presentation"
+                axis="y"
+                values={orderedFilteredChannels.map((c) => c.index)}
+                onReorder={setSessionOrderTo}
+              >
+                {orderedFilteredChannels.map((channel, rowIndex) => {
                   const draft = memoryDrafts[channel.index];
                   const displayIndex = reorderTargets[channel.index] ?? channel.index;
                   const draftFrequency = draft
@@ -2150,18 +2210,20 @@ export function ChannelsTab() {
                           </ul>
                         ) : null
                       }
-                      onMove={moveRow}
-                      onPickUp={() => markMoved([channel.index])}
+                      channelIndex={channel.index}
+                      onDragStart={() => beginSession(channel.index)}
+                      onDragEnd={releaseGrab}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {
                         if (activeGrabIndex === channel.index) {
-                          setGrabbedChannelIndex(null);
+                          releaseGrab();
                           setReorderAnnouncement(
                             `Dropped channel at position ${rowIndex + 1} of ${orderedFilteredChannels.length}.`,
                           );
                           return;
                         }
                         setGrabbedChannelIndex(channel.index);
+                        beginSession(channel.index);
                         setReorderAnnouncement(
                           `Grabbed channel at position ${rowIndex + 1} of ${orderedFilteredChannels.length}. Use the up and down arrow keys to move it, then Escape or Enter to drop.`,
                         );
@@ -2189,11 +2251,11 @@ export function ChannelsTab() {
                       displayPriority={displayPriority}
                     />
                   );
-                })
-              )}
-            </div>
-          </div>
-        </DndProvider>
+                })}
+              </Reorder.Group>
+            )}
+          </motion.div>
+        </div>
       </div>
     </motion.div>
   );
