@@ -979,6 +979,7 @@ export function ChannelsTab() {
   // changes once, on drop. Refs mirror the state because the drop handler
   // must read the order as of the last reorder, not as of its own render.
   const [dragOrder, setDragOrder] = useState<number[] | null>(null);
+  const [orderEpoch, setOrderEpoch] = useState(0);
   const dragOrderRef = useRef<number[] | null>(null);
   const dragStartOrderRef = useRef<number[] | null>(null);
   const updateDragOrder = useCallback((order: number[] | null) => {
@@ -1385,6 +1386,13 @@ export function ChannelsTab() {
     // which side wins a conflict, and an invisible reconciliation trades a bug
     // you can describe for one you cannot.
     const reconciledChannels: number[] = [];
+    // Writes that landed, applied only once the batch is done (#778). Applying
+    // each as it landed put a slot's NEW contents on the row the staged reorder
+    // still showed elsewhere, so mid-upload the grid showed duplicates and
+    // missing channels. The refetch below supersedes both; they are kept only
+    // for the case where that refetch fails.
+    const landedChannels: ChannelData[] = [];
+    const landedDrafts: ChannelData[] = [];
 
     try {
       await api.startProgramMode();
@@ -1450,10 +1458,8 @@ export function ChannelsTab() {
           }
 
           const updated = await api.updateChannel(targetIndex, payload);
-          setChannels((prev) =>
-            prev.map((entry) => (entry.index === updated.index ? updated : entry)),
-          );
-          setMemoryDraft(updated.index, buildDraft(updated, capabilities.cleared_delay));
+          landedChannels.push(updated);
+          landedDrafts.push(updated);
         } catch (error) {
           const apiError = error as { message?: string; payload?: { detail?: string } };
           const detail = apiError?.payload?.detail ?? apiError?.message;
@@ -1495,14 +1501,12 @@ export function ChannelsTab() {
                 matchesPrimaryFields,
               });
               const lockoutApplied = refreshed.lockout === change.payload.lockout;
-              setChannels((prev) =>
-                prev.map((entry) => (entry.index === refreshed.index ? refreshed : entry)),
-              );
+              landedChannels.push(refreshed);
               if (matchesPrimaryFields) {
                 // The write landed; only now does the scanner's copy become
                 // the draft. A mismatch falls through to a failure and keeps
                 // the user's draft (#771).
-                setMemoryDraft(refreshed.index, buildDraft(refreshed, capabilities.cleared_delay));
+                landedDrafts.push(refreshed);
                 if (change.lockoutChanged && !lockoutApplied) {
                   warnings.push({
                     index: change.channelIndex,
@@ -1577,8 +1581,17 @@ export function ChannelsTab() {
       }
       setBankOrders({});
       setMovedChannelIds(new Set());
+      // Remount the rows rather than let them animate. The grid already shows
+      // the uploaded order; only the keys move, and sliding every row to where
+      // it already appears to be is noise.
+      setOrderEpoch((n) => n + 1);
     } catch (error) {
       console.warn('Failed to refresh channels after upload', error);
+      const byIndex = new Map(landedChannels.map((c) => [c.index, c]));
+      setChannels((prev) => prev.map((c) => byIndex.get(c.index) ?? c));
+      for (const landed of landedDrafts) {
+        setMemoryDraft(landed.index, buildDraft(landed, capabilities.cleared_delay));
+      }
     }
 
     const reconciledNote =
@@ -2039,6 +2052,7 @@ export function ChannelsTab() {
               </div>
             ) : (
               <Reorder.Group
+                key={orderEpoch}
                 as="div"
                 role="presentation"
                 axis="y"
