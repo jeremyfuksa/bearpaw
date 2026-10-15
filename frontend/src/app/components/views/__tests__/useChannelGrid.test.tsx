@@ -304,6 +304,29 @@ describe('useChannelGrid', () => {
     expect(fireEvent.keyDown(sink(), { key: 'Tab' })).toBe(true); // not prevented: focus leaves
   });
 
+  // Hardware report 2026-10-14: releasing the mouse anywhere but a cell (the
+  // gap between cells, a channel number, outside the grid) left the grid
+  // "dragging", so the selection kept growing as the pointer moved.
+  it('a drag ends wherever the mouse is released', () => {
+    render(<Harness />);
+    const cells = screen.getAllByRole('gridcell');
+    fireEvent.mouseDown(cells[0], { buttons: 1 });
+    fireEvent.mouseEnter(cells[5], { buttons: 1 });
+    expect(cells[5]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.mouseUp(document.body);
+    fireEvent.mouseEnter(cells[10], { buttons: 0 });
+    expect(cells[10]).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('hovering with no button held never extends the selection', () => {
+    render(<Harness />);
+    const cells = screen.getAllByRole('gridcell');
+    fireEvent.mouseDown(cells[0], { buttons: 1 });
+    // The mouseup was lost entirely (e.g. released outside the window).
+    fireEvent.mouseEnter(cells[10], { buttons: 0 });
+    expect(cells[10]).toHaveAttribute('aria-selected', 'false');
+  });
+
   it('Shift+arrow extends the selection', () => {
     render(<Harness />);
     fireEvent.keyDown(sink(), { key: 'ArrowDown', shiftKey: true });

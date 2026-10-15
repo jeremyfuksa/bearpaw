@@ -360,8 +360,12 @@ export function useChannelGrid({
       moveTo(r, c, e.shiftKey);
       focusSink();
     },
-    onMouseEnter: () => {
-      if (dragging) moveTo(r, c, true);
+    onMouseEnter: (e: React.MouseEvent) => {
+      if (!dragging) return;
+      // No button held means the mouseup was lost (released outside the
+      // window): the drag is over, not continuing.
+      if ((e.buttons & 1) === 0) return setDragging(false);
+      moveTo(r, c, true);
     },
     onMouseUp: () => {
       setDragging(false);
