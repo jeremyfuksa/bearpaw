@@ -2717,6 +2717,15 @@ async fn clear_channel_priority_locked(
         return Ok(current);
     }
 
+    // A BC75XLT has no `DCH` and silently ignores an in-place 1->0 write, so
+    // there is no way to clear priority there (#787). The swap never reaches
+    // this on that model; only a standalone clear does. Refuse before the wire.
+    if !state.capabilities().has_priority_clear {
+        return Err(ApiError::BadRequest(
+            "priority_clear_unsupported".to_string(),
+        ));
+    }
+
     // 3. Build the rewrite payload (same fields, priority off) BEFORE deleting,
     //    so a payload-build error can't strand us post-DCH.
     let mut rewritten = current.clone();
@@ -5971,6 +5980,47 @@ mod tests {
             shadow_priority(&state, 5),
             Some(false),
             "a clear that finds nothing to clear must still correct the cache"
+        );
+    }
+
+    /// A BC75XLT has no `DCH`, and its firmware silently ignores an in-place
+    /// priority 1->0 `CIN` write (`docs/wire_captures/2026-08-28/findings.md`
+    /// §7), so a clear cannot work there by any known means. It is refused
+    /// before the wire with a named error, not sent to fail as an opaque `ERR`
+    /// (#787).
+    #[tokio::test]
+    async fn a_priority_clear_is_refused_where_the_radio_cannot_clear() {
+        use crate::protocol::capabilities::BC75XLT;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        let scanner = FakeScanner::attach(&state, |command: &str| {
+            if command == "PRG" {
+                return Ok("PRG,OK\r".to_string());
+            }
+            if command == "EPG" {
+                return Ok("EPG,OK\r".to_string());
+            }
+            if let Some(rest) = command.strip_prefix("CIN,") {
+                let index: u16 = rest.split(',').next().unwrap_or("").parse().unwrap_or(0);
+                return Ok(format!("CIN,{index},,01451300,,,0,0,1\r"));
+            }
+            Ok("ERR\r".to_string())
+        });
+
+        let result = clear_channel_priority(&state, 5).await;
+        assert!(
+            matches!(&result, Err(ApiError::BadRequest(code)) if code == "priority_clear_unsupported"),
+            "expected priority_clear_unsupported, got {result:?}"
+        );
+        let sent = scanner.transcript_with_closed_bracket();
+        assert!(
+            !sent.iter().any(|c| c.starts_with("DCH")),
+            "a BC75XLT has no DCH: {sent:?}"
+        );
+        assert!(
+            !sent.iter().any(|c| c.starts_with("CIN,5,")),
+            "nothing may be written for a clear that cannot work: {sent:?}"
         );
     }
 

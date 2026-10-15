@@ -62,6 +62,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A BC75XLT no longer offers a priority clear it can't do.** Clicking the
+  priority channel used to ask to clear it, then fail every time: this scanner
+  has no way to clear priority remotely. Bearpaw now says so and tells you to
+  pick another channel in the bank, which moves priority there.
+
 - **The Scan display says when the scanner is disconnected.** With no
   scanner attached it used to read "Scanning..." and show a USB icon. It now
   reads "Disconnected", and the USB icon only appears while a scanner is
