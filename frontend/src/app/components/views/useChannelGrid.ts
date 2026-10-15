@@ -36,6 +36,9 @@ export interface UseChannelGridArgs {
   onPasteTruncated: (dropped: number) => void;
   /** How a row is named to assistive tech, e.g. "channel 401". */
   rowName: (r: number) => string;
+  /** Move `count` rows starting at `from` so they start at `to` (one step).
+   * Returns false when the move is refused, e.g. while filtered. */
+  onMoveRows: (from: number, to: number, count: number) => boolean;
   /** True on a model whose delay is a boolean (BC75XLT): the delay cell is
    * then a toggle, like lockout, not a text field. */
   booleanDelay: boolean;
@@ -69,6 +72,7 @@ export function useChannelGrid({
   onPasteBlocked,
   onPasteTruncated,
   rowName,
+  onMoveRows,
   booleanDelay,
   listOptions,
 }: UseChannelGridArgs) {
@@ -251,10 +255,28 @@ export function useChannelGrid({
       e.preventDefault();
       return;
     }
+    // Cmd/Ctrl+A selects every channel in the bank. (Inside an open cell the
+    // editor gets the key first, so there it still selects the cell's text.)
+    if (jump && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      setAnchor({ r: 0, c: 0 });
+      setActive({ r: lastRow, c: lastCol });
+      return;
+    }
     // Plain Alt+Down opens a list cell's list (the spreadsheet convention).
     if (e.altKey && !e.shiftKey && e.key === 'ArrowDown') {
       e.preventDefault();
       return openMenu(f.r, f.c);
+    }
+    // Alt+Shift+Up/Down moves rows.
+    if (e.altKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      const dir = e.key === 'ArrowUp' ? -1 : 1;
+      if (r0 + dir < 0 || r1 + dir > lastRow) return;
+      if (!onMoveRows(r0, r0 + dir, r1 - r0 + 1)) return;
+      setAnchor({ r: a.r + dir, c: a.c });
+      setActive({ r: f.r + dir, c: f.c });
+      return;
     }
     const ext = e.shiftKey;
     switch (e.key) {
@@ -405,6 +427,9 @@ export function useChannelGrid({
   });
 
   const selectRow = (r: number, extend: boolean) => {
+    // Same guard as a cell mousedown: an open edit is kept, not stranded on
+    // the new active cell.
+    if (editing !== null) commit(null);
     setActive({ r, c: lastCol });
     setAnchor((prev) => ({ r: extend ? prev.r : r, c: 0 }));
     focusSink();

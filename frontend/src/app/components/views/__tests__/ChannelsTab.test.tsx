@@ -688,45 +688,113 @@ describe('ChannelsTab', () => {
     });
   });
 
-  describe('Selection', () => {
-    it('should select all visible rows', async () => {
-      const selectionChannels = [
-        createTestChannel({ index: 1, alpha_tag: 'Channel 1', bank: 1 }),
-        createTestChannel({ index: 2, alpha_tag: 'Channel 2', bank: 1 }),
-      ];
-      setMockStore(createMockStore({ channels: selectionChannels }));
+  describe('Row selection (#659)', () => {
+    const two = () => [
+      createTestChannel({ index: 1, alpha_tag: 'Channel 1', bank: 1 }),
+      createTestChannel({ index: 2, alpha_tag: 'Channel 2', bank: 1 }),
+    ];
+    // One user instance, so the held Shift reaches the second click.
+    const selectBoth = async () => {
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Select channel 1' }));
+      await user.keyboard('{Shift>}');
+      await user.click(screen.getByRole('button', { name: 'Select channel 2' }));
+      await user.keyboard('{/Shift}');
+    };
 
+    it('clicking the CH number selects the whole row; Shift-click extends', async () => {
+      setMockStore(createMockStore({ channels: two() }));
       render(<ChannelsTab />);
-      const [headerCheckbox, ...rowCheckboxes] = screen.getAllByRole('checkbox');
-      await userEvent.click(headerCheckbox);
-
-      rowCheckboxes.forEach((checkbox) => {
-        expect(checkbox).toBeChecked();
-      });
+      await selectBoth();
+      expect(
+        screen.getAllByRole('gridcell').every((c) => c.getAttribute('aria-selected') === 'true'),
+      ).toBe(true);
     });
 
-    it('should clear selected channels', async () => {
-      const selectionChannels = [
-        createTestChannel({ index: 1, alpha_tag: 'Channel 1', bank: 1 }),
-        createTestChannel({ index: 2, alpha_tag: 'Channel 2', bank: 1 }),
-      ];
-      const store = createMockStore({ channels: selectionChannels });
+    it('Clear Selected clears the selected rows with the model shape', async () => {
+      const store = createMockStore({ channels: two() });
       store.setMemoryDraft = vi.fn();
       setMockStore(store);
-      vi.spyOn(window, 'confirm').mockReturnValue(true);
-
       render(<ChannelsTab />);
-      const [headerCheckbox, ...rowCheckboxes] = screen.getAllByRole('checkbox');
-      await userEvent.click(headerCheckbox);
+      await selectBoth();
       await userEvent.click(screen.getByRole('button', { name: /Clear Selected/i }));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(1, buildEmptyDraft(2));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(2, buildEmptyDraft(2));
+    });
 
-      expect(store.setMemoryDraft).toHaveBeenCalledTimes(2);
-      selectionChannels.forEach((channel) => {
-        expect(store.setMemoryDraft).toHaveBeenCalledWith(channel.index, expect.any(Object));
-      });
-      rowCheckboxes.forEach((checkbox) => {
-        expect(checkbox).not.toBeChecked();
-      });
+    it('Alt+Shift+arrows move a selected block of rows through the bank', async () => {
+      setMockStore(
+        createMockStore({
+          channels: [
+            createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Alpha' }),
+            createTestChannel({ index: 2, frequency: 152.25, bank: 1, alpha_tag: 'Bravo' }),
+            createTestChannel({ index: 3, frequency: 153.25, bank: 1, alpha_tag: 'Charlie' }),
+          ],
+        }),
+      );
+      render(<ChannelsTab />);
+      const order = () =>
+        screen
+          .getAllByRole('row')
+          .slice(1)
+          .map((row) => (/Alpha|Bravo|Charlie/.exec(row.textContent ?? '') ?? [''])[0]);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Select channel 1' }));
+      await user.keyboard('{Shift>}');
+      await user.click(screen.getByRole('button', { name: 'Select channel 2' }));
+      await user.keyboard('{/Shift}');
+      await user.keyboard('{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}');
+      expect(order()).toEqual(['Charlie', 'Alpha', 'Bravo']);
+      await user.keyboard('{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}');
+      expect(order()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+    });
+
+    it('the channel-number button says whether its row is selected', async () => {
+      setMockStore(createMockStore({ channels: two() }));
+      render(<ChannelsTab />);
+      const ch1 = screen.getByRole('button', { name: 'Select channel 1' });
+      expect(ch1).toHaveAttribute('aria-pressed', 'false');
+      await userEvent.setup().click(ch1);
+      expect(ch1).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    // Parity with the grip (#236): a keyboard move is announced, and a refused
+    // one says why instead of doing nothing.
+    it('announces an Alt+Shift+arrow move and explains a refused one', async () => {
+      setMockStore(createMockStore({ channels: two() }));
+      render(<ChannelsTab />);
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Select channel 1' }));
+      await user.keyboard('{Alt>}{Shift>}{ArrowDown}{/Shift}{/Alt}');
+      expect(
+        screen
+          .getAllByRole('status')
+          .some((el) => /Moved to position 2 of 2/.test(el.textContent ?? '')),
+      ).toBe(true);
+      await user.type(screen.getByRole('searchbox'), 'Channel');
+      screen.getByRole('textbox', { name: /^Channels grid/ }).focus();
+      await user.keyboard('{Alt>}{Shift>}{ArrowUp}{/Shift}{/Alt}'); // the moved row is now last
+      expect(toast.info).toHaveBeenCalledWith(
+        expect.stringMatching(/Clear the search to move rows/),
+      );
+    });
+
+    it('Cmd+A then Clear Selected clears every channel in the bank', async () => {
+      const store = createMockStore({ channels: two() });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      screen.getByRole('textbox', { name: /^Channels grid/ }).focus();
+      await userEvent.keyboard('{Meta>}a{/Meta}');
+      await userEvent.click(screen.getByRole('button', { name: /Clear Selected/i }));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(1, buildEmptyDraft(2));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(2, buildEmptyDraft(2));
+    });
+
+    it('has no checkboxes', () => {
+      setMockStore(createMockStore({ channels: two() }));
+      render(<ChannelsTab />);
+      expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     });
   });
 
@@ -1201,7 +1269,7 @@ describe('ChannelsTab', () => {
     it('exposes the channel list as a grid with column headers', () => {
       render(<ChannelsTab />);
       expect(screen.getByRole('grid', { name: /bank channels/i })).toBeInTheDocument();
-      expect(screen.getAllByRole('columnheader')).toHaveLength(10);
+      expect(screen.getAllByRole('columnheader')).toHaveLength(9);
     });
   });
 
@@ -1243,11 +1311,11 @@ describe('ChannelsTab', () => {
       render(<ChannelsTab />);
 
       // #659: rows are no longer tab stops. Inside the grid Tab moves between
-      // cells (spreadsheet convention) and leaves at the last column, which
-      // useChannelGrid.test.tsx pins; start from the next stop after it.
-      screen.getByRole('checkbox', { name: /select all visible channels/i }).focus();
-      await userEvent.tab(); // → channel 1's select checkbox
-      await userEvent.tab(); // → channel 1's reorder grip
+      // cells (spreadsheet convention) and leaves at the last column; the next
+      // stop is channel 1's grip.
+      screen.getByRole('textbox', { name: /^Channels grid/ }).focus();
+      await userEvent.keyboard('{Meta>}{ArrowRight}{/Meta}');
+      await userEvent.tab(); // last column → leaves the grid → channel 1's reorder grip
 
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
@@ -1920,7 +1988,6 @@ describe('capability-driven columns (#404)', () => {
   it('shows every column on a BC125AT-family scanner', () => {
     const keys = visibleChannelColumns(BC125AT).map((c) => c.key);
     expect(keys).toEqual([
-      'select',
       'grip',
       'index',
       'frequency',
@@ -1938,7 +2005,7 @@ describe('capability-driven columns (#404)', () => {
   // something untrue about the hardware.
   it('drops tag, mode, and tone on a BC75XLT', () => {
     const keys = visibleChannelColumns(BC75XLT).map((c) => c.key);
-    expect(keys).toEqual(['select', 'grip', 'index', 'frequency', 'delay', 'lockout', 'priority']);
+    expect(keys).toEqual(['grip', 'index', 'frequency', 'delay', 'lockout', 'priority']);
     expect(keys).not.toContain('alpha');
     expect(keys).not.toContain('modulation');
     expect(keys).not.toContain('tone');
@@ -1954,10 +2021,10 @@ describe('capability-driven columns (#404)', () => {
       expect(tracks).toHaveLength(columns.length);
     }
     expect(channelGridTemplate(visibleChannelColumns(BC125AT))).toBe(
-      '36px 28px 44px 84px 1fr 60px 60px 50px 50px 50px',
+      '28px 44px 84px 1fr 60px 60px 50px 50px 50px',
     );
     expect(channelGridTemplate(visibleChannelColumns(BC75XLT))).toBe(
-      '36px 28px 44px 84px 50px 50px 50px',
+      '28px 44px 84px 50px 50px 50px',
     );
   });
 });

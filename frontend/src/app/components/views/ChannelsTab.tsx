@@ -138,7 +138,6 @@ interface ChannelRowProps {
   rowCount: number;
   isPending: boolean;
   isClearPending: boolean;
-  isSelected: boolean;
   isGrabbed: boolean;
   disableDrag: boolean;
   displayFrequency: string;
@@ -150,7 +149,8 @@ interface ChannelRowProps {
   displayDelay: number;
   displayLockout: boolean;
   displayPriority: boolean;
-  onSelect: () => void;
+  onSelectRow: (extend: boolean) => void;
+  isRowSelected: boolean;
   gridFields: GridField[];
   cell: (c: number) => CellProps;
   isActive: (c: number) => boolean;
@@ -172,7 +172,6 @@ function ChannelRow({
   rowCount,
   isPending,
   isClearPending,
-  isSelected,
   isGrabbed,
   disableDrag,
   displayFrequency,
@@ -184,7 +183,8 @@ function ChannelRow({
   displayDelay,
   displayLockout,
   displayPriority,
-  onSelect,
+  onSelectRow,
+  isRowSelected,
   gridFields,
   cell,
   isActive,
@@ -263,7 +263,6 @@ function ChannelRow({
       // cells, so a mismatch misaligns silently rather than failing.
       style={{ gridTemplateColumns: channelGridTemplate(columns) }}
       aria-rowindex={rowIndex + 2}
-      aria-selected={isSelected}
       data-grabbed={isGrabbed || undefined}
       // #272: a staged clear is destructive but was styled identically to an
       // ordinary edit (both merely `isPending`), so clearing rows was the least
@@ -285,19 +284,6 @@ function ChannelRow({
         isGrabbed && 'bg-brand-primary/25 ring-1 ring-inset ring-brand-primary/70',
       )}
     >
-      <div role="cell" className="flex items-center justify-center">
-        <input
-          type="checkbox"
-          aria-label={`Select channel ${displayIndex}`}
-          checked={isSelected}
-          onChange={(event) => {
-            event.stopPropagation();
-            onSelect();
-          }}
-          onClick={(event) => event.stopPropagation()}
-          className="form-checkbox h-5 w-5 text-brand-primary bg-black/40 border-white/20 rounded"
-        />
-      </div>
       <div role="cell" className="flex items-center justify-center text-white/40">
         {/* REGRESSION GUARD (#236): the grip is a real button, not a decorative
             icon, so a keyboard-only user can enter "grabbed" mode and nudge the
@@ -342,8 +328,18 @@ function ChannelRow({
           <GripVertical size={20} aria-hidden />
         </button>
       </div>
-      <div role="cell" className="font-mono text-white/60 text-xs pl-1">
-        {displayIndex}
+      <div role="rowheader" className="font-mono text-white/60 text-xs pl-1">
+        {/* #659: selecting a whole row replaces the checkbox column. */}
+        <button
+          type="button"
+          aria-label={`Select channel ${displayIndex}`}
+          aria-pressed={isRowSelected}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => onSelectRow(e.shiftKey)}
+          className="w-full text-left hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+        >
+          {displayIndex}
+        </button>
       </div>
 
       <GridCell
@@ -495,7 +491,6 @@ function ChannelRow({
  * Exported for tests (#404), for the same reason recorded on `buildDraft`.
  */
 export type ChannelColumnKey =
-  | 'select'
   | 'grip'
   | 'index'
   | 'frequency'
@@ -508,7 +503,7 @@ export type ChannelColumnKey =
 
 export type ChannelColumn = {
   key: ChannelColumnKey;
-  /** Header text, or null for the checkbox and grip columns. */
+  /** Header text, or null for the grip column. */
   label: string | null;
   width: string;
 };
@@ -526,7 +521,6 @@ const GRID_FIELD: Partial<Record<ChannelColumnKey, GridField>> = {
 };
 
 const ALL_CHANNEL_COLUMNS: ChannelColumn[] = [
-  { key: 'select', label: null, width: '36px' },
   { key: 'grip', label: null, width: '28px' },
   { key: 'index', label: 'CH', width: '44px' },
   { key: 'frequency', label: 'FREQ', width: '84px' },
@@ -913,7 +907,6 @@ export function ChannelsTab() {
   const [showSupportCard, setShowSupportCard] = useState(false);
   const [isExportingSs, setIsExportingSs] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [selectedChannelIds, setSelectedChannelIds] = useState<number[]>([]);
   const [bankOrders, setBankOrders] = useState<Record<number, number[]>>({});
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1263,6 +1256,19 @@ export function ChannelsTab() {
       toast.info(
         `${dropped} ${dropped === 1 ? 'row' : 'rows'} did not fit: the paste ran past the end of the bank.`,
       ),
+    onMoveRows: (from, to, count) => {
+      // Filter-unsafe for the same reason as the grip (#236 row in CLAUDE.md).
+      if (searchTerm.trim().length > 0) {
+        toast.info('Clear the search to move rows. A filtered list skips channels.');
+        return false;
+      }
+      // Announced like a grip move, so a screen-reader user hears it land.
+      setReorderAnnouncement(`Moved to position ${to + 1} of ${orderedFilteredChannels.length}.`);
+      // moveRow moves one row. Shifting a block by one is moving the row it displaces.
+      if (to > from) moveRow(from + count, from);
+      else moveRow(from - 1, from + count - 1);
+      return true;
+    },
     booleanDelay,
     listOptions: (field) =>
       field === 'modulation'
@@ -1303,33 +1309,21 @@ export function ChannelsTab() {
   }, [capabilities, channels, gridFields, memoryDrafts]);
   const invalidCount = invalidByIndex.size;
 
-  const handleToggleSelectAll = useCallback(() => {
-    const visibleIds = orderedFilteredChannels.map((channel) => channel.index);
-    const allSelected = visibleIds.every((id) => selectedChannelIds.includes(id));
-    setSelectedChannelIds(allSelected ? [] : visibleIds);
-  }, [orderedFilteredChannels, selectedChannelIds]);
-
-  const handleToggleSelect = useCallback((channelIndex: number) => {
-    setSelectedChannelIds((prev) =>
-      prev.includes(channelIndex)
-        ? prev.filter((id) => id !== channelIndex)
-        : [...prev, channelIndex],
-    );
-  }, []);
+  const selectedRowSet = new Set(grid.selectedRows());
+  const selectedIndexes = grid.selectedRows().map((r) => orderedFilteredChannels[r].index);
 
   const handleClearSelected = useCallback(async () => {
-    if (selectedChannelIds.length === 0) return;
+    if (selectedIndexes.length === 0) return;
     const confirmed = await confirmDialog(
-      `Clear ${selectedChannelIds.length} selected channels?`,
+      `Clear ${selectedIndexes.length} selected channels?`,
       'Clear channels',
     );
     if (!confirmed) return;
-    for (const channelIndex of selectedChannelIds) {
+    for (const channelIndex of selectedIndexes) {
       setMemoryDraft(channelIndex, buildEmptyDraft(capabilities.cleared_delay));
     }
-    toast.success(`Cleared ${selectedChannelIds.length} channels`);
-    setSelectedChannelIds([]);
-  }, [capabilities.cleared_delay, selectedChannelIds, setMemoryDraft]);
+    toast.success(`Cleared ${selectedIndexes.length} channels`);
+  }, [capabilities.cleared_delay, selectedIndexes, setMemoryDraft]);
 
   const handleUploadDrafts = useCallback(async () => {
     if (draftChanges.length === 0 || isUploading || invalidCount > 0) return;
@@ -1841,7 +1835,7 @@ export function ChannelsTab() {
           <div className="flex gap-2 shrink-0">
             <button
               onClick={handleClearSelected}
-              disabled={selectedChannelIds.length === 0}
+              disabled={selectedIndexes.length === 0}
               className="scanner-button-muted px-3 py-1.5 text-xs font-medium uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
               Clear Selected
@@ -1963,20 +1957,6 @@ export function ChannelsTab() {
               className="grid gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
               style={{ gridTemplateColumns: channelGridTemplate(columns) }}
             >
-              <div role="columnheader" className="flex items-center justify-center">
-                <input
-                  type="checkbox"
-                  aria-label="Select all visible channels"
-                  checked={
-                    orderedFilteredChannels.length > 0 &&
-                    orderedFilteredChannels.every((channel) =>
-                      selectedChannelIds.includes(channel.index),
-                    )
-                  }
-                  onChange={handleToggleSelectAll}
-                  className="form-checkbox h-5 w-5 text-brand-primary bg-black/40 border-white/20 rounded"
-                />
-              </div>
               <div role="columnheader" aria-label="Reorder">
                 <span id="channel-reorder-hint" className="sr-only">
                   Press Enter or Space to grab this channel, then use the up and down arrow keys to
@@ -2074,8 +2054,8 @@ export function ChannelsTab() {
                       displayIndex={displayIndex}
                       isPending={isPending}
                       isClearPending={isClearPending}
-                      isSelected={selectedChannelIds.includes(channel.index)}
-                      onSelect={() => handleToggleSelect(channel.index)}
+                      onSelectRow={(extend) => grid.selectRow(rowIndex, extend)}
+                      isRowSelected={selectedRowSet.has(rowIndex)}
                       gridFields={gridFields}
                       cell={(c) => grid.cellProps(rowIndex, c)}
                       isActive={(c) => grid.active.r === rowIndex && grid.active.c === c}

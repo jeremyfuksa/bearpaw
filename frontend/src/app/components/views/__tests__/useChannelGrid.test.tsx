@@ -16,6 +16,7 @@ function Harness(props: {
   pasteBlocked?: boolean;
   onPasteBlocked?: () => void;
   onPasteTruncated?: (dropped: number) => void;
+  onMoveRows?: (from: number, to: number, count: number) => boolean;
   fields?: GridField[];
   data?: string[][];
   booleanDelay?: boolean;
@@ -39,10 +40,14 @@ function Harness(props: {
     onPasteBlocked: props.onPasteBlocked ?? vi.fn(),
     onPasteTruncated: props.onPasteTruncated ?? vi.fn(),
     rowName: (r) => `row ${r + 1}`,
+    onMoveRows: props.onMoveRows ?? vi.fn(() => true),
   });
   return (
     <>
       <textarea {...g.sinkProps} />
+      <button onMouseDown={(e) => e.preventDefault()} onClick={() => g.selectRow(2, false)}>
+        select row 3
+      </button>
       <div role="grid" aria-label="Channels">
         {data.map((row, r) => (
           <div role="row" key={r}>
@@ -243,7 +248,7 @@ describe('useChannelGrid', () => {
     for (const key of ['s', 'h', 'y']) {
       expect(fireEvent.keyDown(sink(), { key, metaKey: true })).toBe(false);
     }
-    for (const key of ['c', 'v', 'x', 'a', 'z']) {
+    for (const key of ['c', 'v', 'x', 'z']) {
       expect(fireEvent.keyDown(sink(), { key, metaKey: true })).toBe(true);
     }
   });
@@ -304,6 +309,49 @@ describe('useChannelGrid', () => {
     expect(fireEvent.keyDown(sink(), { key: 'Tab' })).toBe(true); // not prevented: focus leaves
   });
 
+  it('Alt+Shift+ArrowDown moves the selected rows and the selection follows', () => {
+    const onMoveRows = vi.fn(() => true);
+    render(<Harness onMoveRows={onMoveRows} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true, shiftKey: true });
+    expect(onMoveRows).toHaveBeenCalledWith(0, 1, 1);
+    expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-1-0');
+  });
+
+  // Review (PR C) #1: selecting a row during an edit left the editor open on
+  // the new active cell (Priority) and silently dropped the typed text.
+  it('selecting a row while editing commits the edit and closes the editor', () => {
+    const onApply = vi.fn();
+    render(<Harness onApply={onApply} />);
+    fireEvent.keyDown(sink(), { key: 'Enter' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Frequency, row 1' }), {
+      target: { value: '146.52' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'select row 3' }));
+    expect(onApply).toHaveBeenCalledWith([{ r: 0, field: 'frequency', text: '146.52' }]);
+    expect(screen.queryByRole('textbox', { name: /^(Frequency|Priority), row/ })).toBeNull();
+  });
+
+  it('Alt+Shift+ArrowUp at the top does nothing', () => {
+    const onMoveRows = vi.fn(() => true);
+    render(<Harness onMoveRows={onMoveRows} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowUp', altKey: true, shiftKey: true });
+    expect(onMoveRows).not.toHaveBeenCalled();
+  });
+
+  // Plain Alt+Down belongs to list cells (opens the list, Excel convention).
+  it('plain Alt+ArrowDown does not move rows', () => {
+    const onMoveRows = vi.fn(() => true);
+    render(<Harness onMoveRows={onMoveRows} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+    expect(onMoveRows).not.toHaveBeenCalled();
+  });
+
+  it('a refused move leaves the selection where it was', () => {
+    render(<Harness onMoveRows={() => false} />);
+    fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true, shiftKey: true });
+    expect(sink()).toHaveAttribute('aria-activedescendant', 'channel-cell-0-0');
+  });
+
   // Hardware report 2026-10-14: releasing the mouse anywhere but a cell (the
   // gap between cells, a channel number, outside the grid) left the grid
   // "dragging", so the selection kept growing as the pointer moved.
@@ -325,6 +373,22 @@ describe('useChannelGrid', () => {
     // The mouseup was lost entirely (e.g. released outside the window).
     fireEvent.mouseEnter(cells[10], { buttons: 0 });
     expect(cells[10]).toHaveAttribute('aria-selected', 'false');
+  });
+
+  // Cmd/Ctrl+A in the grid selects every channel in the bank (the header
+  // select-all checkbox it replaces did the same). Inside an open cell the
+  // editor handles it, so it still selects that cell's text.
+  it('Cmd+A selects every row; Ctrl+A too', () => {
+    render(<Harness />);
+    expect(fireEvent.keyDown(sink(), { key: 'a', metaKey: true })).toBe(false);
+    expect(
+      screen.getAllByRole('gridcell').every((c) => c.getAttribute('aria-selected') === 'true'),
+    ).toBe(true);
+    fireEvent.keyDown(sink(), { key: 'Escape' });
+    fireEvent.keyDown(sink(), { key: 'A', ctrlKey: true, shiftKey: false });
+    expect(
+      screen.getAllByRole('gridcell').every((c) => c.getAttribute('aria-selected') === 'true'),
+    ).toBe(true);
   });
 
   it('Shift+arrow extends the selection', () => {
