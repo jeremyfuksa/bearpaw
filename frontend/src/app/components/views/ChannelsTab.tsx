@@ -113,6 +113,13 @@ function CellToggle({
     <button
       type="button"
       tabIndex={-1}
+      // A click toggles and does nothing else: it must not also select the
+      // cell (the cell's mousedown would), or a cancelled priority confirm
+      // leaves an orange selection on PRIO that reads as a half-set priority.
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       onClick={onToggle}
       className={cn(
         'flex h-5 w-5 items-center justify-center border',

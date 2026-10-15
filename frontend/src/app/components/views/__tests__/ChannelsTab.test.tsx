@@ -326,6 +326,30 @@ describe('ChannelsTab', () => {
       );
     });
 
+    // Clicking a checkbox must not also select its cell: after a cancelled
+    // priority confirm, the orange selection on PRIO read as a half-applied
+    // priority (hardware report, 2026-10-14).
+    it('clicking a checkbox leaves the selection where it was', async () => {
+      vi.mocked(confirmDialog).mockResolvedValue(false);
+      setMockStore(
+        createMockStore({
+          channels: [
+            createTestChannel({ index: 1, bank: 1, alpha_tag: 'Channel 1', priority: true }),
+          ],
+        }),
+      );
+      render(<ChannelsTab />);
+      const sink = screen.getByRole('textbox', { name: /^Channels grid/ });
+      const before = sink.getAttribute('aria-activedescendant');
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const cells = within(row).getAllByRole('gridcell');
+      const prio = cells[cells.length - 1];
+      await userEvent.click(within(prio).getByRole('button'));
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      expect(sink).toHaveAttribute('aria-activedescendant', before ?? '');
+      expect(prio).toHaveAttribute('aria-selected', 'false');
+    });
+
     it('Mode is picked from its list', async () => {
       const store = createMockStore({ channels: mockChannels });
       store.setMemoryDraft = vi.fn();
