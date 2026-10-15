@@ -62,6 +62,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The Scan display says when the scanner is disconnected.** With no
+  scanner attached it used to read "Scanning..." and show a USB icon. It now
+  reads "Disconnected", and the USB icon only appears while a scanner is
+  connected.
+
 - **Plugging in a scanner after Bearpaw starts now connects.** If no scanner
   was attached when you opened Bearpaw, plugging one in later did nothing
   until you relaunched. Bearpaw now keeps looking, and connects within a few

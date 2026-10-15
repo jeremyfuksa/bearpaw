@@ -93,8 +93,15 @@ describe('ScannerDisplay', () => {
     });
 
     it('renders with error state', () => {
-      render(<ScannerDisplay {...defaultProps} isError={true} errorType="usb" />);
+      render(<ScannerDisplay {...defaultProps} isError={true} />);
       expect(screen.getByText('151.250')).toBeInTheDocument();
+    });
+
+    it('shows the USB icon only while connected', () => {
+      const { rerender } = render(<ScannerDisplay {...defaultProps} />);
+      expect(screen.getByTestId('usb-indicator')).not.toBeEmptyDOMElement();
+      rerender(<ScannerDisplay {...defaultProps} isError={true} />);
+      expect(screen.getByTestId('usb-indicator')).toBeEmptyDOMElement();
     });
   });
 

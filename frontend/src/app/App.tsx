@@ -870,10 +870,10 @@ export default function App() {
         subText: syncProgressMessage || 'Loading channels from device...',
       };
     }
-    if (deviceInfo?.connection_status === 'disconnected' && deviceInfo?.diagnostic_message) {
+    if (connectionStatus === 'disconnected') {
       return {
-        mainText: 'Scanner Offline',
-        subText: deviceInfo.diagnostic_message,
+        mainText: 'Disconnected',
+        subText: deviceInfo?.diagnostic_message || 'No scanner connected',
       };
     }
     if (!hasFreshLiveFrame && deviceInfo?.connection_status !== 'disconnected') {
@@ -891,7 +891,14 @@ export default function App() {
     const main =
       liveState.alpha_tag || (liveState.frequency ? liveState.frequency.toFixed(3) : '—');
     return { mainText: main, subText: buildHitSubText(liveState) };
-  }, [deviceInfo, hasFreshLiveFrame, isInitialSyncing, liveState, syncProgressMessage]);
+  }, [
+    connectionStatus,
+    deviceInfo,
+    hasFreshLiveFrame,
+    isInitialSyncing,
+    liveState,
+    syncProgressMessage,
+  ]);
 
   // REGRESSION GUARD (#330, react-hooks/preserve-manual-memoization): the three
   // callbacks below keep narrow `liveState?.channel` / `liveState?.frequency`

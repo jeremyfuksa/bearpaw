@@ -9,8 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import usbSvgPaths from '../../imports/svg-4af8p5er03';
-import socketSvgPaths from '../../imports/svg-10gl6kikm0';
 import { FitText } from './FitText';
 
 // --- Status Bar ---
@@ -319,28 +317,6 @@ function DisplaySignalBars({ strength }: { strength: number }) {
   );
 }
 
-// --- Display: error icons ---
-
-function UsbErrorIcon() {
-  return (
-    <div className="relative shrink-0 size-4">
-      <svg className="block size-full" fill="none" viewBox="0 0 16 16">
-        <path d={usbSvgPaths.p26c64136} fill="rgba(28,31,38,0.9)" />
-      </svg>
-    </div>
-  );
-}
-
-function SocketErrorIcon() {
-  return (
-    <div className="relative shrink-0 size-4">
-      <svg className="block size-full" fill="none" viewBox="0 0 16 16">
-        <path d={socketSvgPaths.p530b80} fill="rgba(28,31,38,0.9)" />
-      </svg>
-    </div>
-  );
-}
-
 // --- Main Display ---
 
 export interface ScannerDisplayProps {
@@ -349,7 +325,6 @@ export interface ScannerDisplayProps {
   signalStrength: number;
   isScanning?: boolean;
   isError?: boolean;
-  errorType?: 'usb' | 'socket';
   volume: number;
   squelch: number;
   onSquelchChange: (squelch: number) => void;
@@ -378,7 +353,6 @@ export function ScannerDisplay({
   signalStrength,
   isScanning,
   isError,
-  errorType,
   volume,
   squelch,
   onSquelchChange,
@@ -407,18 +381,14 @@ export function ScannerDisplay({
       )}
     >
       <div className="relative flex h-full w-full flex-col gap-[clamp(4px,2.5cqmin,40px)] px-[clamp(8px,4cqmin,64px)] py-[clamp(6px,3.5cqmin,56px)]">
-        {/* Top row — USB / error indicator on the left, mini controls on the right */}
+        {/* Top row — USB indicator on the left (absent while disconnected; the
+            slot stays so the controls don't shift), mini controls on the right */}
         <div className="flex w-full items-center justify-between">
-          <div className="relative shrink-0 size-[clamp(12px,5cqmin,80px)] text-[rgba(28,31,38,0.9)]">
-            {isError ? (
-              errorType === 'socket' ? (
-                <SocketErrorIcon />
-              ) : (
-                <UsbErrorIcon />
-              )
-            ) : (
-              <Usb className="size-full -rotate-45" aria-label="Scanner connected" />
-            )}
+          <div
+            data-testid="usb-indicator"
+            className="relative shrink-0 size-[clamp(12px,5cqmin,80px)] text-[rgba(28,31,38,0.9)]"
+          >
+            {!isError && <Usb className="size-full -rotate-45" aria-label="Scanner connected" />}
           </div>
           <ScannerControls
             volume={volume}
