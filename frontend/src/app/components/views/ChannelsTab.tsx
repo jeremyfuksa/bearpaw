@@ -137,6 +137,7 @@ interface ChannelRowProps {
   rowIndex: number;
   rowCount: number;
   isPending: boolean;
+  isShifted: boolean;
   isClearPending: boolean;
   isGrabbed: boolean;
   disableDrag: boolean;
@@ -171,6 +172,7 @@ function ChannelRow({
   rowIndex,
   rowCount,
   isPending,
+  isShifted,
   isClearPending,
   isGrabbed,
   disableDrag,
@@ -274,14 +276,26 @@ function ChannelRow({
       // Both clear once the upload lands: see the isClearPending note at the
       // call site for why this tracks pending state, not "frequency is 0".
       data-cleared={isClearPending || undefined}
+      data-shifted={isShifted || undefined}
       className={cn(
         'group grid min-h-[var(--size-panel-stat-min-height)] cursor-pointer items-center gap-2 border-b border-white/5 px-4 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         'hover:bg-white/5',
-        isPending && !isClearPending && 'bg-brand-primary/10 border-l-2 border-brand-primary/60',
+        isPending &&
+          !isClearPending &&
+          !isShifted &&
+          'bg-brand-primary/10 border-l-2 border-l-brand-primary/60',
+        // #775: a row a move merely pushed along is rewritten too, but it is
+        // not the row the user moved. A bar without the fill says "changes"
+        // without competing with the row they did move.
+        isShifted && 'border-l-2 border-l-brand-primary/30',
         isClearPending &&
-          'channel-row--cleared bg-amber-500/10 border-l-2 border-amber-400/60 text-white/45',
-        isDragging && 'opacity-60',
-        isGrabbed && 'bg-brand-primary/25 ring-1 ring-inset ring-brand-primary/70',
+          'channel-row--cleared bg-amber-500/10 border-l-2 border-l-amber-400/60 text-white/45',
+        // Grabbed (keyboard) and dragging (pointer) are one state to the user:
+        // holding this row. It reads as lifted off the grid: an opaque surface
+        // lighter than the rows (raised, in a dark UI) and a drop shadow. No scale: the
+        // rowgroup scrolls, and a scaled row would raise a horizontal scrollbar.
+        (isGrabbed || isDragging) &&
+          'relative z-10 bg-[color-mix(in_srgb,var(--bg-scanner-dark),white_9%)] text-white shadow-[0_10px_24px_-6px_rgba(0,0,0,0.85),0_-2px_10px_-4px_rgba(0,0,0,0.6)] ring-1 ring-inset ring-brand-primary/60',
       )}
     >
       <div role="cell" className="flex items-center justify-center text-white/40">
@@ -913,6 +927,14 @@ export function ChannelsTab() {
   const [isExportingSs, setIsExportingSs] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [bankOrders, setBankOrders] = useState<Record<number, number[]>>({});
+  // Channels the user picked up and moved (#775). A move also shifts every row
+  // between its old and new slot, and those rows are rewritten too, so they are
+  // pending as well. Only this set tells the row you moved from the rows it
+  // pushed aside. Reset wherever bankOrders is.
+  const [movedChannelIds, setMovedChannelIds] = useState<ReadonlySet<number>>(new Set());
+  const markMoved = useCallback((ids: number[]) => {
+    setMovedChannelIds((prev) => new Set([...prev, ...ids]));
+  }, []);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -1008,6 +1030,14 @@ export function ChannelsTab() {
     [activeBank, bankChannels],
   );
 
+  const dragMoveRow = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      markMoved([currentBankOrder[fromIndex]]);
+      moveRow(fromIndex, toIndex);
+    },
+    [currentBankOrder, markMoved, moveRow],
+  );
+
   // Keyboard reorder (#236). `grabbedChannelIndex` holds the channel index —
   // not the row position — so the grab survives the reorder that arrow keys
   // cause: the row moves out from under its old position on every nudge.
@@ -1038,12 +1068,13 @@ export function ChannelsTab() {
         );
         return;
       }
+      markMoved([channel.index]);
       moveRow(rowIndex, toIndex);
       setReorderAnnouncement(
         `Moved to position ${toIndex + 1} of ${rows.length}. Press Escape or Enter to drop.`,
       );
     },
-    [bankBase, moveRow],
+    [bankBase, markMoved, moveRow],
   );
 
   const draftChanges = useMemo(() => {
@@ -1107,7 +1138,7 @@ export function ChannelsTab() {
 
         const lockoutChanged = normalized.lockout !== channel.lockout;
         const targetIndex = reorderTargets[channelIndex] ?? channelIndex;
-        const hasChanges =
+        const fieldsChanged =
           normalized.frequency !== channel.frequency ||
           normalized.alpha_tag !== (channel.alpha_tag ?? '') ||
           // `||` not `??`: a BC75XLT reserves the CIN modulation field, so the
@@ -1118,8 +1149,8 @@ export function ChannelsTab() {
           normalized.modulation !== (channel.modulation || 'AUTO') ||
           normalized.delay !== channel.delay ||
           normalized.tone_squelch !== (channel.tone_squelch ?? null) ||
-          lockoutChanged ||
-          targetIndex !== channelIndex;
+          lockoutChanged;
+        const hasChanges = fieldsChanged || targetIndex !== channelIndex;
 
         if (!hasChanges) return acc;
 
@@ -1138,6 +1169,7 @@ export function ChannelsTab() {
           },
           lockoutChanged,
           targetIndex,
+          reorderOnly: !fieldsChanged,
         });
 
         return acc;
@@ -1149,6 +1181,7 @@ export function ChannelsTab() {
         payload: Omit<ChannelData, 'index'>;
         lockoutChanged: boolean;
         targetIndex: number;
+        reorderOnly: boolean;
       }>,
     );
   }, [bankCount, channels, channelsPerBank, memoryDrafts, reorderTargets]);
@@ -1163,6 +1196,17 @@ export function ChannelsTab() {
   const pendingChannelIds = useMemo(
     () => new Set(draftChanges.map((c) => c.channelIndex)),
     [draftChanges],
+  );
+  // Pending only because a move pushed them along: styled quieter than the row
+  // that was moved or edited, so one move does not light the whole range alike.
+  const shiftedChannelIds = useMemo(
+    () =>
+      new Set(
+        draftChanges
+          .filter((c) => c.reorderOnly && !movedChannelIds.has(c.channelIndex))
+          .map((c) => c.channelIndex),
+      ),
+    [draftChanges, movedChannelIds],
   );
 
   // Priority is an immediate action (Task 6), not a batched draft field: the
@@ -1269,6 +1313,7 @@ export function ChannelsTab() {
       }
       // Announced like a grip move, so a screen-reader user hears it land.
       setReorderAnnouncement(`Moved to position ${to + 1} of ${orderedFilteredChannels.length}.`);
+      markMoved(currentBankOrder.slice(from, from + count));
       // moveRow moves one row. Shifting a block by one is moving the row it displaces.
       if (to > from) moveRow(from + count, from);
       else moveRow(from - 1, from + count - 1);
@@ -1531,6 +1576,7 @@ export function ChannelsTab() {
         }
       }
       setBankOrders({});
+      setMovedChannelIds(new Set());
     } catch (error) {
       console.warn('Failed to refresh channels after upload', error);
     }
@@ -1590,6 +1636,7 @@ export function ChannelsTab() {
     // is pointless state. Remove the drafts outright.
     clearMemoryDrafts();
     setBankOrders({});
+    setMovedChannelIds(new Set());
     toast.success('Drafts discarded');
   }, [draftChanges, isUploading, clearMemoryDrafts, setBankOrders]);
 
@@ -2058,6 +2105,7 @@ export function ChannelsTab() {
                       key={channel.index}
                       displayIndex={displayIndex}
                       isPending={isPending}
+                      isShifted={shiftedChannelIds.has(channel.index)}
                       isClearPending={isClearPending}
                       onSelectRow={(extend) => grid.selectRow(rowIndex, extend)}
                       isRowSelected={selectedRowSet.has(rowIndex)}
@@ -2102,7 +2150,7 @@ export function ChannelsTab() {
                           </ul>
                         ) : null
                       }
-                      onMove={moveRow}
+                      onMove={dragMoveRow}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {
                         if (activeGrabIndex === channel.index) {
