@@ -9,7 +9,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Swap scanners without restarting.** Unplug one scanner and plug in
-  another, and Bearpaw finds the new one within a few seconds, even when it
+  another, and Bearpaw finds the new one within about 15 seconds, even when it
   connects differently (a BC125AT and a BC75XLT do). It used to keep waiting
   for the first scanner until you relaunched. A scanner pinned in
   `config.yaml` is still the only one Bearpaw looks for.
