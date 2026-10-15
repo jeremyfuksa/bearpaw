@@ -1248,8 +1248,14 @@ export function ChannelsTab() {
             c.index !== channelIndex,
         );
         if (existing) {
+          // Where Bearpaw owns the clear, a move erases and rewrites the old
+          // holder just as a clear does, so both dialogs say so (#605).
+          const erased = capabilities.has_priority_clear
+            ? ` CH${existing.index} is erased and written back without the priority flag.`
+            : '';
           const ok = await confirmDialog(
-            `CH${existing.index} "${existing.alpha_tag || 'unnamed'}" is the priority channel for Bank ${bank}. Move priority to CH${channelIndex}?`,
+            `Bank ${bank}'s priority moves from CH${existing.index} "${existing.alpha_tag || 'unnamed'}" to CH${channelIndex}.${erased}`,
+            'Move priority',
             'Move priority',
           );
           if (!ok) return;
@@ -1264,7 +1270,8 @@ export function ChannelsTab() {
           return;
         }
         const ok = await confirmDialog(
-          `Clear priority on CH${channelIndex}? The channel is rewritten in place.`,
+          `Bank ${bank} will have no priority channel. CH${channelIndex} is erased and written back without the priority flag.`,
+          'Clear priority',
           'Clear priority',
         );
         if (!ok) return;

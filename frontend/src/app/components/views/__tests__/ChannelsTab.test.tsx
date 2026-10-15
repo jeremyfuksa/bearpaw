@@ -451,6 +451,82 @@ describe('ChannelsTab', () => {
       expect(merged.find((c: ChannelData) => c.index === 20)).toBe(priorityChannels[1]);
     });
 
+    // #605: the move and clear dialogs used to look alike, and both only said
+    // Yes. Each now names its outcome and its button. On a model where
+    // Bearpaw owns the clear, a MOVE erases and rewrites the old holder too,
+    // so both say so; the BC75XLT firmware moves the flag itself, so its move
+    // must not claim an erase that never happens.
+    describe('dialog wording (#605)', () => {
+      it('a move names both channels, the erase, and a Move button', async () => {
+        setMockStore(
+          createMockStore({
+            channels: [
+              createTestChannel({ index: 2, bank: 1, alpha_tag: 'CH2', priority: true }),
+              createTestChannel({ index: 9, bank: 1, alpha_tag: 'CH9', priority: false }),
+            ],
+          }),
+        );
+        mockApiClient.setChannelPriority = vi.fn().mockResolvedValue([]);
+
+        render(<ChannelsTab />);
+        await togglePriority(/CH9/i);
+
+        await waitFor(() =>
+          expect(confirmDialog).toHaveBeenCalledWith(
+            'Bank 1\'s priority moves from CH2 "CH2" to CH9. CH2 is erased and written back without the priority flag.',
+            'Move priority',
+            'Move priority',
+          ),
+        );
+      });
+
+      it('a clear says the bank is left without priority, the erase, and a Clear button', async () => {
+        setMockStore(
+          createMockStore({
+            channels: [createTestChannel({ index: 9, bank: 1, priority: true })],
+          }),
+        );
+        mockApiClient.setChannelPriority = vi.fn().mockResolvedValue([]);
+
+        render(<ChannelsTab />);
+        await togglePriority(/Test Channel/i);
+
+        await waitFor(() =>
+          expect(confirmDialog).toHaveBeenCalledWith(
+            'Bank 1 will have no priority channel. CH9 is erased and written back without the priority flag.',
+            'Clear priority',
+            'Clear priority',
+          ),
+        );
+      });
+
+      it('a move on a scanner whose firmware swaps priority claims no erase', async () => {
+        setMockStore(
+          createMockStore({
+            channels: [
+              createTestChannel({ index: 2, bank: 1, frequency: 146.52, priority: true }),
+              createTestChannel({ index: 9, bank: 1, frequency: 162.55, priority: false }),
+            ],
+            deviceInfo: {
+              ...createMockStore().deviceInfo,
+              capabilities: capabilityFixture.BC75XLT,
+            } as ReturnType<typeof createMockStore>['deviceInfo'],
+          }),
+        );
+        mockApiClient.setChannelPriority = vi.fn().mockResolvedValue([]);
+
+        render(<ChannelsTab />);
+        // No alpha-tag column on this model, so find the row by frequency.
+        await togglePriority(/162\.55/);
+
+        await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+        const [message, , okLabel] = vi.mocked(confirmDialog).mock.calls[0];
+        expect(message).toContain('moves from CH2');
+        expect(message).not.toContain('erased');
+        expect(okLabel).toBe('Move priority');
+      });
+    });
+
     // A BC75XLT cannot clear priority by any known means (#787): offering the
     // clear only led to a confirm and then a failure toast.
     it('does not offer a priority clear where the scanner cannot clear', async () => {

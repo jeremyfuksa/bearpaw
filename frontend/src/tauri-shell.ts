@@ -95,11 +95,17 @@ export function openExternalUrl(url: string): void {
  * webview's native `window.confirm` silently returns false (macOS
  * WKWebView never blocks on it), so we use the dialog plugin's `ask`.
  * In a plain browser (dev server, tests) `window.confirm` works, so we
- * fall back to it. Returns true when the user confirms.
+ * fall back to it. Returns true when the user confirms. `okLabel` names the
+ * confirm button under Tauri (the default is "Yes"); `window.confirm` has no
+ * way to label it.
  */
-export async function confirmDialog(message: string, title: string): Promise<boolean> {
+export async function confirmDialog(
+  message: string,
+  title: string,
+  okLabel?: string,
+): Promise<boolean> {
   if (isTauriRuntime()) {
-    return ask(message, { title, kind: 'warning' });
+    return ask(message, { title, kind: 'warning', okLabel });
   }
   return window.confirm(message);
 }
