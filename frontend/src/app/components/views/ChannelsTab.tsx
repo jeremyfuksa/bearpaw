@@ -1448,8 +1448,11 @@ export function ChannelsTab() {
               setChannels((prev) =>
                 prev.map((entry) => (entry.index === refreshed.index ? refreshed : entry)),
               );
-              setMemoryDraft(refreshed.index, buildDraft(refreshed, capabilities.cleared_delay));
               if (matchesPrimaryFields) {
+                // The write landed; only now does the scanner's copy become
+                // the draft. A mismatch falls through to a failure and keeps
+                // the user's draft (#771).
+                setMemoryDraft(refreshed.index, buildDraft(refreshed, capabilities.cleared_delay));
                 if (change.lockoutChanged && !lockoutApplied) {
                   warnings.push({
                     index: change.channelIndex,
@@ -1492,6 +1495,29 @@ export function ChannelsTab() {
       for (const change of draftChanges) {
         participating.add(change.channelIndex);
         participating.add(change.targetIndex ?? change.channelIndex);
+      }
+      // REGRESSION GUARD (#771): a channel whose write FAILED keeps its draft,
+      // so the user can fix it and upload again; rebuilding it here silently
+      // replaced their edits with what the scanner already had. Guarded by
+      // ChannelsTab.test.tsx :: a failed write keeps its staged edits (#771).
+      // Only an in-place edit is kept. A failed MOVE still rebuilds: the
+      // reorder state is reset below, and a kept draft from a half-applied
+      // permutation would rewrite whichever slot it no longer belongs to.
+      const failedIndexes = new Set(failed.map((f) => f.index));
+      const targetsOfOthers = new Set(
+        draftChanges
+          .filter((c) => (c.targetIndex ?? c.channelIndex) !== c.channelIndex)
+          .map((c) => c.targetIndex),
+      );
+      for (const change of draftChanges) {
+        const inPlace = (change.targetIndex ?? change.channelIndex) === change.channelIndex;
+        if (
+          failedIndexes.has(change.channelIndex) &&
+          inPlace &&
+          !targetsOfOthers.has(change.channelIndex)
+        ) {
+          participating.delete(change.channelIndex);
+        }
       }
       for (const idx of participating) {
         const refreshed = byIndex.get(idx);

@@ -56,6 +56,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Copy, paste, and select all work in text fields on the Mac.** Cmd+A,
+  Cmd+C, Cmd+V, Cmd+X, and Cmd+Z did nothing in any field, including channel
+  frequencies, tags, and search. The menu bar now has an Edit menu, which is
+  what makes them work.
+
+- **A failed channel write no longer throws away your edits.** When the
+  scanner rejected a channel during Upload Changes, its staged edits were
+  replaced with the scanner's old values. That channel now stays pending, so
+  you can fix it and upload again.
+
 - **The data-upgrade notice now says where the backup is.** When a new
   version upgrades your saved data, the one-time notice names the folder
   holding the backup of your previous data, instead of "next to it".
