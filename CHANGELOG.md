@@ -142,6 +142,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   you're holding, by dragging or with the keyboard, now looks lifted off the
   list.
 
+- **Pick up a channel and slide it where you want it.** Dragging a channel by
+  its grip lifts it off the list. It follows the pointer smoothly, the other
+  channels slide out of its way, and the list scrolls when you reach an edge.
+  Nothing is marked as changed until you put it down. Moving a channel with the
+  keyboard works the same way. The list also stays still while an upload runs,
+  instead of shuffling rows around until it finishes.
+
 ## [1.1.2] — 2026-09-22
 
 Fixes for scanning after a channel lockout, a blank window on older Macs, and

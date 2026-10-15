@@ -278,13 +278,13 @@ function ChannelRow({
       <div role="cell" className="flex items-center justify-center text-white/40">
         {/* REGRESSION GUARD (#236): the grip is a real button, not a decorative
             icon, so a keyboard-only user can enter "grabbed" mode and nudge the
-            row with the arrow keys. react-dnd's TouchBackend has no keyboard
+            row with the arrow keys. A pointer drag has no keyboard
             interaction, so this is the ONLY keyboard reorder path (WCAG 2.1.1,
             Level A) — reverting it to a plain <GripVertical> removes the
             capability with no visible change. It deliberately lives on its own
             focusable control rather than overloading the row's Enter/Space,
             which edits the active cell (#659).
-            Pointer DnD is untouched: the row is still the drag source.
+            The grip is also the pointer handle (onPointerDown below).
             Guarded by ChannelsTab.test.tsx :: Keyboard reordering (#236). */}
         <button
           type="button"
@@ -977,6 +977,8 @@ export function ChannelsTab() {
   }, [activeBank, bankChannels]);
 
   const currentBankOrder = bankOrders[activeBank] ?? bankChannels;
+  // REGRESSION GUARD (#778): see CLAUDE.md third-rail table, "A held row is
+  // provisional until it is put down".
   // Holding a row, by pointer drag or keyboard grab, reorders a PROVISIONAL
   // order (#778): rows slide aside while it is held, but bankOrders, and with
   // it every pending/shifted mark, changes once, when it is put down. The ref

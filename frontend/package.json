@@ -34,8 +34,6 @@
     "lucide-react": "1.55.0",
     "motion": "14.1.0",
     "react": "19.3.0",
-    "react-dnd": "16.0.1",
-    "react-dnd-touch-backend": "^16.0.1",
     "react-dom": "19.3.0",
     "recharts": "3.10.1",
     "sonner": "2.0.8",

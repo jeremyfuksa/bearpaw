@@ -1306,7 +1306,7 @@ describe('ChannelsTab', () => {
   });
 
   // REGRESSION GUARD (#236): reorder must be operable without a pointer.
-  // react-dnd's TouchBackend has no keyboard story at all, so the grab/move/
+  // A pointer drag has no keyboard story at all, so the grab/move/
   // drop path below is the ONLY way a keyboard-only user can reorder. If the
   // grip reverts to a decorative icon, or the arrow keys stop calling
   // onKeyboardMove, these tests fail. See CLAUDE.md third-rail table.
@@ -1621,6 +1621,49 @@ describe('ChannelsTab', () => {
       await userEvent.click(await screen.findByRole('button', { name: /No thanks/i }));
       expect(screen.queryByRole('region', { name: /Support Bearpaw/i })).not.toBeInTheDocument();
     });
+  });
+
+  // #778: applying each write to the store as it landed put a slot's NEW
+  // contents under a row the staged reorder still showed elsewhere, so the grid
+  // showed duplicate and missing channels mid-upload. Nothing reaches the store
+  // until the batch is done and the refetch has answered.
+  it('changes nothing on screen until every write has landed', async () => {
+    const one = createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'One' });
+    const two = createTestChannel({ index: 2, frequency: 152.25, bank: 1, alpha_tag: 'Two' });
+    const store = createMockStore({
+      channels: [one, two],
+      memoryDrafts: {
+        1: createTestChannelDraft({ ...buildDraft(one), alpha_tag: 'One edited' }),
+        2: createTestChannelDraft({ ...buildDraft(two), alpha_tag: 'Two edited' }),
+      },
+    });
+    store.setChannels = vi.fn();
+    store.setMemoryDraft = vi.fn();
+    setMockStore(store);
+    mockApiClient.startProgramMode = vi.fn().mockResolvedValue(undefined);
+    mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
+    mockApiClient.getChannel = vi.fn((index: number) => Promise.resolve(index === 1 ? one : two));
+    mockApiClient.updateChannel = vi.fn((index: number, payload: ChannelData) =>
+      Promise.resolve({ ...payload, index }),
+    );
+    let answerRefetch: (channels: ChannelData[]) => void = () => {};
+    mockApiClient.getChannels = vi.fn(
+      () => new Promise<ChannelData[]>((resolve) => (answerRefetch = resolve)),
+    );
+    render(<ChannelsTab />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Upload Changes' }));
+    await waitFor(() => expect(mockApiClient.getChannels).toHaveBeenCalled());
+
+    expect(mockApiClient.updateChannel).toHaveBeenCalledTimes(2);
+    expect(store.setChannels).not.toHaveBeenCalled();
+    expect(store.setMemoryDraft).not.toHaveBeenCalled();
+
+    answerRefetch([
+      { ...one, alpha_tag: 'One edited' },
+      { ...two, alpha_tag: 'Two edited' },
+    ]);
+    await waitFor(() => expect(store.setChannels).toHaveBeenCalledTimes(1));
   });
 
   // REGRESSION GUARD (#771): a channel whose write FAILED keeps its draft, so
