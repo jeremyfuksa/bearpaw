@@ -1,7 +1,7 @@
 //! Standalone binary: run Bearpaw API server (no Tauri).
 //! Usage: bearpaw --config config.yaml
 
-use bearpaw_api::{config, default_state, init_backend_logging, run_server};
+use bearpaw_api::{config, default_state, init_backend_logging, run_server, ScannerLink};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -24,7 +24,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // differ from `device.baud` -- the BC75XLT speaks 57600 where the BC125AT
     // family speaks 115200. Using the configured rate here would reopen at a
     // rate detection just proved wrong.
-    let serial = config::resolve_scanner_port(&cfg).map(|r| (r.port_name, r.baud, assert_dtr));
+    let serial = config::resolve_scanner_port(&cfg).map(|target| ScannerLink {
+        target,
+        assert_dtr,
+        resolve: Box::new(move || config::resolve_scanner_port(&cfg)),
+    });
 
     run_server(&bind, state, serial).await
 }

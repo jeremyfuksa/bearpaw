@@ -17,7 +17,7 @@ pub(crate) use program_mode::ProgramModeGuard;
 pub(crate) use ws::broadcast_banks_update;
 
 pub use control::ControlCommand;
-pub use poll::spawn_poll_loop;
+pub use poll::{spawn_poll_loop, PortResolver, ScannerLink};
 
 use axum::{
     http::StatusCode,
@@ -621,32 +621,28 @@ async fn shutdown_signal() {
 pub async fn run_server(
     bind: &str,
     state: AppState,
-    serial_port: Option<(String, u32, bool)>,
+    serial_port: Option<ScannerLink>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     run_server_with_shutdown(bind, state, serial_port, shutdown_signal()).await
 }
 
 /// Like `run_server` but accepts a shutdown future. When the future resolves,
 /// the server drains in-flight requests and exits cleanly.
-///
-/// `serial_port` is `(port_or_usb_target, baud, assert_dtr_on_open)`. The
-/// DTR flag is only honoured by the serial transport; the USB transport
-/// ignores it.
 pub async fn run_server_with_shutdown(
     bind: &str,
     mut state: AppState,
-    serial_port: Option<(String, u32, bool)>,
+    serial_port: Option<ScannerLink>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut poll_loop = None;
-    if let Some((port_name, baud, assert_dtr)) = serial_port {
+    if let Some(link) = serial_port {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
         state.command_tx = Arc::new(Mutex::new(Some(cmd_tx)));
         poll_loop = Some(spawn_poll_loop(
             state.clone(),
-            port_name,
-            baud,
-            assert_dtr,
+            link.target,
+            link.assert_dtr,
+            link.resolve,
             cmd_rx,
         ));
         if let Ok(mut d) = state.device.write() {

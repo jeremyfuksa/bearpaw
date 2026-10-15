@@ -11,6 +11,7 @@ use tracing::{debug, error, info, warn};
 use crate::api::AppState;
 use crate::api::ControlCommand;
 use crate::api::{is_hit, track_analytics_transition};
+use crate::config::ResolvedPort;
 use crate::protocol::{
     livestate_from_frames, parse_glg_response, parse_mdl_response, parse_pwr_response,
     parse_sts_frame, PwrFrame,
@@ -34,6 +35,19 @@ const RECONNECT_BACKOFF_INITIAL_MS: u64 = 500;
 /// a fixed cadence so a forgotten unplugged scanner doesn't tie up the
 /// USB subsystem.
 const RECONNECT_BACKOFF_MAX_MS: u64 = 5_000;
+/// How long the known port must stay unopenable before autodetect runs again
+/// (#416), and so also how often it reruns while nothing answers.
+///
+/// Re-resolving is what lets a different scanner take over without a relaunch:
+/// a BC125AT and a BC75XLT never share a port, a transport, or a baud rate, so
+/// reopening the old target can never find the new radio. It is held back
+/// rather than run on the first failed open because a resolve MDL-probes every
+/// USB serial node at two baud rates. A brief USB blip reopens well inside this
+/// window and never pays for one.
+#[cfg(not(test))]
+const RERESOLVE_AFTER: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const RERESOLVE_AFTER: Duration = Duration::from_millis(300);
 const STS_CMD: &str = "STS";
 const GLG_CMD: &str = "GLG";
 const PWR_CMD: &str = "PWR";
@@ -74,12 +88,24 @@ impl PollLoopHandle {
     }
 }
 
+/// Reruns autodetect when the connected scanner has gone away (#416). `None`
+/// means nothing was found; the loop keeps retrying the port it had.
+pub type PortResolver = Box<dyn FnMut() -> Option<ResolvedPort> + Send>;
+
+/// Where the poll loop starts, and how it finds a scanner again (#416).
+pub struct ScannerLink {
+    pub target: ResolvedPort,
+    /// Honoured by the serial transport only; USB ignores it.
+    pub assert_dtr: bool,
+    pub resolve: PortResolver,
+}
+
 /// Spawn a blocking thread: open serial, process command channel + STS poll, broadcast state.
 pub fn spawn_poll_loop(
     state: AppState,
-    port_name: String,
-    baud: u32,
+    target: ResolvedPort,
     assert_dtr: bool,
+    resolve: PortResolver,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
 ) -> PollLoopHandle {
     let stop = Arc::new(AtomicBool::new(false));
@@ -91,9 +117,9 @@ pub fn spawn_poll_loop(
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_poll_loop(
                 state.clone(),
-                &port_name,
-                baud,
+                target,
                 assert_dtr,
+                resolve,
                 cmd_rx,
                 &thread_stop,
             )
@@ -119,18 +145,67 @@ pub fn spawn_poll_loop(
     PollLoopHandle { stop, thread }
 }
 
+/// Why a transport's session loop returned.
+#[derive(Debug, PartialEq, Eq)]
+enum SessionsEnded {
+    /// Shutdown was requested (#688).
+    Stopped,
+    /// The port has not opened for `RERESOLVE_AFTER`; time to look elsewhere.
+    Absent,
+}
+
+/// Run sessions on `target` until it stays absent, then re-resolve and run on
+/// whatever autodetect finds -- possibly another transport entirely (#416).
+///
+/// REGRESSION GUARD (#598, `a_vanished_scanner_is_replaced_by_the_one_autodetect_finds`):
+/// this function owns `cmd_rx` for the life of the process, and the session
+/// loops only BORROW it. `state.command_tx` is created once; a queued `EPG` is
+/// exempt from expiry precisely because a reconnect cannot strand it. Moving
+/// the receiver into a per-transport loop and recreating the channel on a swap
+/// would strand that `EPG` and leave a scanner in program mode.
 fn run_poll_loop(
     state: AppState,
-    port_name: &str,
-    baud: u32,
+    mut target: ResolvedPort,
     assert_dtr: bool,
+    mut resolve: PortResolver,
     cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
     stop: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some((vid, pid)) = parse_usb_target(port_name) {
-        return run_poll_loop_usb(state, vid, pid, cmd_rx, stop);
+    loop {
+        let ended = match parse_usb_target(&target.port_name) {
+            Some((vid, pid)) => run_poll_loop_usb(&state, vid, pid, &cmd_rx, stop),
+            None => run_poll_loop_serial(
+                &state,
+                &target.port_name,
+                target.baud,
+                assert_dtr,
+                &cmd_rx,
+                stop,
+            ),
+        };
+        if ended == SessionsEnded::Stopped {
+            return Ok(());
+        }
+        if let Some(found) = resolve() {
+            if found != target {
+                info!(
+                    "Scanner on {} is gone; autodetect found {} @ {} baud, switching",
+                    target.port_name, found.port_name, found.baud
+                );
+                target = found;
+            }
+        }
     }
+}
 
+fn run_poll_loop_serial(
+    state: &AppState,
+    port_name: &str,
+    baud: u32,
+    assert_dtr: bool,
+    cmd_rx: &std::sync::mpsc::Receiver<ControlCommand>,
+    stop: &AtomicBool,
+) -> SessionsEnded {
     let transport = SerialTransport::new(port_name, baud).with_dtr_on_open(assert_dtr);
 
     // Loop-spanning state. Preserved across reconnects.
@@ -138,11 +213,12 @@ fn run_poll_loop(
     let mut tick: u32 = 0;
     let mut poll_state = PollState::new();
     let mut reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
+    let mut absent_since: Option<Instant> = None;
 
     loop {
         if stop.load(Ordering::Relaxed) {
             info!("Poll loop stopped for shutdown");
-            return Ok(());
+            return SessionsEnded::Stopped;
         }
         let mut port = match transport.open() {
             Ok(p) => p,
@@ -161,16 +237,20 @@ fn run_poll_loop(
                 // liveState `stale` flag the frontend keys its disconnect UI
                 // on. So the failure is MORE visible now, and it heals itself
                 // when the scanner appears.
-                mark_disconnected(&state, &format!("serial open failed: {}", e));
+                mark_disconnected(state, &format!("serial open failed: {}", e));
+                if absent_since.get_or_insert_with(Instant::now).elapsed() >= RERESOLVE_AFTER {
+                    return SessionsEnded::Absent;
+                }
                 sleep_unless_stopped(reconnect_backoff, stop);
                 reconnect_backoff = next_backoff(reconnect_backoff);
                 continue;
             }
         };
         reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
+        absent_since = None;
 
         info!("Serial opened: {} @ {} baud", port_name, baud);
-        mark_port_opened(&state, port_name);
+        mark_port_opened(state, port_name);
 
         // Device info: model from MDL (with retry because some scanners can return
         // stale command echoes immediately after connection).
@@ -180,7 +260,7 @@ fn run_poll_loop(
             match transport.send(port.as_mut(), MDL_CMD) {
                 Ok(mdl_resp) => {
                     if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
-                        update_device_info_from_mdl(&state, &mdl_resp, port_name);
+                        update_device_info_from_mdl(state, &mdl_resp, port_name);
                         mdl_set = true;
                         break;
                     }
@@ -214,7 +294,7 @@ fn run_poll_loop(
             // BROADCASTS, so a wedged link (the documented USB STALL case)
             // becomes a connect/disconnect storm at reconnect-backoff rate.
             if should_announce_connect(mdl_set, device_gone) {
-                mark_connected_without_model(&state, port_name);
+                mark_connected_without_model(state, port_name);
             }
         }
 
@@ -292,15 +372,15 @@ fn run_poll_loop(
                         max_channels,
                     } => {
                         if let Err(e) = super::memory_sync::run_serial(
-                            &state,
+                            state,
                             &transport,
                             port.as_mut(),
                             &task_id,
                             max_channels,
                         ) {
                             warn!("Memory sync failed: {}", e);
-                            super::memory_sync::finish(&state);
-                            send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
+                            super::memory_sync::finish(state);
+                            send_progress(state, &task_id, 0, &format!("Sync failed: {}", e));
                         }
                     }
                     ControlCommand::Raw {
@@ -438,7 +518,7 @@ fn run_poll_loop(
             }
 
             process_poll_tick(
-                &state,
+                state,
                 &mut poll_state,
                 commanded_mode,
                 sts_resp.as_deref(),
@@ -453,25 +533,25 @@ fn run_poll_loop(
         if !session_dead {
             // Stopped (#688), not disconnected: returning drops the port.
             info!("Poll loop stopped for shutdown");
-            return Ok(());
+            return SessionsEnded::Stopped;
         }
         warn!(
             "Serial session ended for {} — scanner disconnected. Will attempt to reconnect.",
             port_name
         );
-        mark_disconnected(&state, "scanner disconnected");
+        mark_disconnected(state, "scanner disconnected");
         sleep_unless_stopped(reconnect_backoff, stop);
         reconnect_backoff = next_backoff(reconnect_backoff);
     }
 }
 
 fn run_poll_loop_usb(
-    state: AppState,
+    state: &AppState,
     vid: u16,
     pid: u16,
-    cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
+    cmd_rx: &std::sync::mpsc::Receiver<ControlCommand>,
     stop: &AtomicBool,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> SessionsEnded {
     let transport = UsbTransport::new(vid, pid);
     let port_label = format!("usb:{:04x}:{:04x}", vid, pid);
 
@@ -486,6 +566,7 @@ fn run_poll_loop_usb(
     // One USB re-enumeration per wedge episode (#513). See
     // `is_wedged_after_open` for why it is bounded and what clears it.
     let mut wedge_reset_used = false;
+    let mut absent_since: Option<Instant> = None;
 
     // Outer reconnect loop. Loops forever, opening and re-opening the session
     // as the scanner appears and disappears -- including before it has ever
@@ -493,7 +574,7 @@ fn run_poll_loop_usb(
     loop {
         if stop.load(Ordering::Relaxed) {
             info!("Poll loop stopped for shutdown");
-            return Ok(());
+            return SessionsEnded::Stopped;
         }
         let mut session = match transport.open() {
             Ok(s) => s,
@@ -504,16 +585,20 @@ fn run_poll_loop_usb(
                 // `Poll loop exited: usb device not found` once and the thread
                 // ended, so plugging the scanner back in did nothing until the
                 // app was relaunched.
-                mark_disconnected(&state, &format!("USB open failed: {}", e));
+                mark_disconnected(state, &format!("USB open failed: {}", e));
+                if absent_since.get_or_insert_with(Instant::now).elapsed() >= RERESOLVE_AFTER {
+                    return SessionsEnded::Absent;
+                }
                 sleep_unless_stopped(reconnect_backoff, stop);
                 reconnect_backoff = next_backoff(reconnect_backoff);
                 continue;
             }
         };
         reconnect_backoff = Duration::from_millis(RECONNECT_BACKOFF_INITIAL_MS);
+        absent_since = None;
 
         info!("USB opened: {:04x}:{:04x}", vid, pid);
-        mark_port_opened(&state, &port_label);
+        mark_port_opened(state, &port_label);
 
         let mut mdl_set = false;
         let mut device_gone = false;
@@ -521,7 +606,7 @@ fn run_poll_loop_usb(
             match transport.send(&mut session, MDL_CMD) {
                 Ok(mdl_resp) => {
                     if crate::protocol::parse_mdl_response(&mdl_resp).is_some() {
-                        update_device_info_from_mdl(&state, &mdl_resp, &port_label);
+                        update_device_info_from_mdl(state, &mdl_resp, &port_label);
                         mdl_set = true;
                         break;
                     }
@@ -567,7 +652,7 @@ fn run_poll_loop_usb(
                 warn!("USB reset returned {} — reopening regardless", e);
             }
             drop(session);
-            mark_disconnected(&state, "USB endpoint wedged; re-enumerated, reopening");
+            mark_disconnected(state, "USB endpoint wedged; re-enumerated, reopening");
             sleep_unless_stopped(reconnect_backoff, stop);
             reconnect_backoff = next_backoff(reconnect_backoff);
             continue;
@@ -583,7 +668,7 @@ fn run_poll_loop_usb(
             // announced as connected. This transport is the one the USB STALL
             // wedge actually happens on.
             if should_announce_connect(mdl_set, device_gone) {
-                mark_connected_without_model(&state, &port_label);
+                mark_connected_without_model(state, &port_label);
             }
         }
 
@@ -662,15 +747,15 @@ fn run_poll_loop_usb(
                         max_channels,
                     } => {
                         if let Err(e) = super::memory_sync::run_usb(
-                            &state,
+                            state,
                             &transport,
                             &mut session,
                             &task_id,
                             max_channels,
                         ) {
                             warn!("Memory sync failed: {}", e);
-                            super::memory_sync::finish(&state);
-                            send_progress(&state, &task_id, 0, &format!("Sync failed: {}", e));
+                            super::memory_sync::finish(state);
+                            send_progress(state, &task_id, 0, &format!("Sync failed: {}", e));
                         }
                     }
                     ControlCommand::Raw {
@@ -804,7 +889,7 @@ fn run_poll_loop_usb(
             }
 
             if !process_poll_tick(
-                &state,
+                state,
                 &mut poll_state,
                 commanded_mode,
                 sts_resp.as_deref(),
@@ -822,7 +907,7 @@ fn run_poll_loop_usb(
             // Stopped (#688), not disconnected: returning drops the session,
             // which releases the claimed interface.
             info!("Poll loop stopped for shutdown");
-            return Ok(());
+            return SessionsEnded::Stopped;
         }
         // Session dropped here. Log once (not per failed poll) and let the
         // outer loop reopen with backoff.
@@ -830,7 +915,7 @@ fn run_poll_loop_usb(
             "USB session ended for {} — scanner disconnected. Will attempt to reconnect.",
             port_label
         );
-        mark_disconnected(&state, "scanner disconnected");
+        mark_disconnected(state, "scanner disconnected");
         sleep_unless_stopped(reconnect_backoff, stop);
         reconnect_backoff = next_backoff(reconnect_backoff);
     }
@@ -2848,6 +2933,100 @@ mod tests {
         }
     }
 
+    fn target(port_name: &str) -> ResolvedPort {
+        ResolvedPort {
+            port_name: port_name.to_string(),
+            baud: 115_200,
+        }
+    }
+
+    fn diagnostic(state: &AppState) -> String {
+        let device = state.device.read().expect("device lock");
+        device.diagnostic_message.clone().unwrap_or_default()
+    }
+
+    /// REGRESSION GUARD (#416): a scanner that goes away is replaced by the one
+    /// autodetect finds, even on another transport.
+    ///
+    /// The loop used to resolve one port at launch and reopen only that, so
+    /// swapping a BC125AT (`usb:1965:0017`, direct USB) for a BC75XLT (a
+    /// CP210x serial node at 57600) sat reporting `usb device not found` with
+    /// the new radio idle on the bus until Bearpaw was relaunched. This starts
+    /// on a serial port that never opens and hands autodetect a USB target;
+    /// the switch shows up as the open failure changing transport.
+    #[test]
+    fn a_vanished_scanner_is_replaced_by_the_one_autodetect_finds() {
+        let state = device_only_state();
+        let (_cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let loop_state = state.clone();
+        thread::spawn(move || {
+            run_poll_loop(
+                loop_state,
+                target("/dev/bearpaw-nonexistent-test-port"),
+                false,
+                // Not an assigned USB vendor id; see the #513 USB guard.
+                Box::new(|| Some(target("usb:ffff:ffff"))),
+                cmd_rx,
+                &AtomicBool::new(false),
+            )
+        });
+
+        assert!(
+            wait_until(OPEN_FAILURE_WAIT, || diagnostic(&state)
+                .starts_with("USB open failed")),
+            "the loop must move to the target autodetect found; it is still on \
+             the old port ({:?}), which is the #416 bug -- swapping scanners \
+             needs a relaunch",
+            diagnostic(&state)
+        );
+    }
+
+    /// REGRESSION GUARD (#416): autodetect reruns at a bounded rate while no
+    /// scanner answers.
+    ///
+    /// A resolve MDL-probes every USB serial node at two baud rates, so it is
+    /// held back until the port has been absent for `RERESOLVE_AFTER`. Without
+    /// that hold the session loop returns on its first failed open and never
+    /// sleeps, and the poll thread spins probing the bus as fast as it can.
+    /// An upper bound only: a slow host resolves less often, never more.
+    #[test]
+    fn autodetect_does_not_rerun_on_every_failed_open() {
+        let resolves = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = resolves.clone();
+        let (_cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let loop_stop = stop.clone();
+        let handle = thread::spawn(move || {
+            run_poll_loop(
+                device_only_state(),
+                target("/dev/bearpaw-nonexistent-test-port"),
+                false,
+                Box::new(move || {
+                    counter.fetch_add(1, Ordering::Relaxed);
+                    None
+                }),
+                cmd_rx,
+                &loop_stop,
+            )
+        });
+
+        let window = Duration::from_secs(2);
+        thread::sleep(window);
+        stop.store(true, Ordering::Relaxed);
+        let _ = handle.join();
+
+        // One resolve per absence episode: a failed open, a backoff, a second
+        // failed open past RERESOLVE_AFTER. That is at most one per
+        // RECONNECT_BACKOFF_INITIAL_MS.
+        let ceiling = (window.as_millis() / RECONNECT_BACKOFF_INITIAL_MS as u128) as usize + 1;
+        let seen = resolves.load(Ordering::Relaxed);
+        assert!(
+            (1..=ceiling).contains(&seen),
+            "expected autodetect to rerun between 1 and {ceiling} times in {window:?}; \
+             it ran {seen} times"
+        );
+    }
+
     /// True once a failed open has been reported through `mark_disconnected`.
     fn reported_disconnected(state: &AppState) -> bool {
         let device = state.device.read().expect("device lock");
@@ -2893,9 +3072,9 @@ mod tests {
         let handle = thread::spawn(move || {
             run_poll_loop(
                 loop_state,
-                "/dev/bearpaw-nonexistent-test-port",
-                115_200,
+                target("/dev/bearpaw-nonexistent-test-port"),
                 false,
+                Box::new(|| None),
                 cmd_rx,
                 &AtomicBool::new(false),
             )
@@ -2940,6 +3119,10 @@ mod tests {
     /// This is also the half that was environment-dependent under the old fixed
     /// sleep (#623): it is the one whose open cost is a libusb enumeration, so
     /// it is the one that outran a 900 ms sample on macOS.
+    ///
+    /// Since #416 the USB session loop itself DOES return, after
+    /// `RERESOLVE_AFTER` of absence, so autodetect can look elsewhere. What
+    /// must never end is the poll thread, so this drives `run_poll_loop`.
     #[test]
     fn a_failed_usb_open_retries_instead_of_ending_the_loop() {
         let state = device_only_state();
@@ -2949,7 +3132,14 @@ mod tests {
         // Not an assigned USB vendor id, so this cannot collide with hardware
         // attached to the machine running the suite.
         let handle = thread::spawn(move || {
-            run_poll_loop_usb(loop_state, 0xFFFF, 0xFFFF, cmd_rx, &AtomicBool::new(false))
+            run_poll_loop(
+                loop_state,
+                target("usb:ffff:ffff"),
+                false,
+                Box::new(|| None),
+                cmd_rx,
+                &AtomicBool::new(false),
+            )
         });
 
         assert!(
@@ -2982,9 +3172,9 @@ mod tests {
         let (_cmd_tx, cmd_rx) = std::sync::mpsc::channel();
         let handle = spawn_poll_loop(
             device_only_state(),
-            target.to_string(),
-            115_200,
+            self::target(target),
             false,
+            Box::new(|| None),
             cmd_rx,
         );
         // Let it reach the reconnect backoff first, so the stop has to be
