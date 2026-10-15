@@ -1417,6 +1417,7 @@ export function ChannelsTab() {
     // for the case where that refetch fails.
     const landedChannels: ChannelData[] = [];
     const landedDrafts: ChannelData[] = [];
+    let writeAttempted = false;
 
     try {
       await api.startProgramMode();
@@ -1435,6 +1436,7 @@ export function ChannelsTab() {
         }
       }
 
+      writeAttempted = true;
       for (const change of draftChanges) {
         try {
           let payload = change.payload;
@@ -1550,6 +1552,12 @@ export function ChannelsTab() {
     } catch (error) {
       console.error('Failed to upload channel edits', error);
       toast.error('Failed to upload channel edits');
+      // REGRESSION GUARD (#779): nothing reached the radio, so there is
+      // nothing to reconcile. Falling through rebuilt every staged draft from
+      // the scanner, reset the staged order, and toasted success over this
+      // error. Guarded by ChannelsTab.test.tsx :: an upload that writes nothing
+      // keeps every staged edit (#779).
+      if (!writeAttempted) return;
     } finally {
       try {
         await api.endProgramMode();
