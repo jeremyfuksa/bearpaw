@@ -320,6 +320,19 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
         .item(&PredefinedMenuItem::quit(app, None)?)
         .build()?;
 
+    // Edit: required, not decorative (#766). On macOS the webview carries out
+    // Cmd+A/C/V/X/Z through these menu items, so without them every text
+    // field in the app silently ignores those shortcuts.
+    let edit_submenu = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
     // View: navigate between the three top-level tabs. ⌘1/⌘2/⌘3 match
     // common Mac muscle memory (Safari, Finder, etc.).
     let view_submenu = SubmenuBuilder::new(app, "View")
@@ -383,6 +396,7 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
 
     MenuBuilder::new(app)
         .item(&app_submenu)
+        .item(&edit_submenu)
         .item(&view_submenu)
         .item(&scanner_submenu)
         .item(&help_submenu)
