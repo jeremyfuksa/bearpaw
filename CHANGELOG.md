@@ -62,6 +62,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The Scan display says when the scanner is disconnected.** With no
+  scanner attached it used to read "Scanning..." and show a USB icon. It now
+  reads "Disconnected", and the USB icon only appears while a scanner is
+  connected.
+
 - **Copy, paste, and select all work in text fields on the Mac.** Cmd+A,
   Cmd+C, Cmd+V, Cmd+X, and Cmd+Z did nothing in any field, including channel
   frequencies, tags, and search. The menu bar now has an Edit menu, which is

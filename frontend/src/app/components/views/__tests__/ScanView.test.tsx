@@ -438,6 +438,21 @@ describe('Recent Hits export control', () => {
     expect(accessibleName).toContain(visible);
   });
 
+  // The scanner's last mode survives a disconnect, so `mode: 'SCAN'` alone
+  // made the display claim it was scanning with no scanner attached.
+  it('shows the disconnected text, not "Scanning...", while disconnected', () => {
+    render(
+      <ScanView
+        {...baseProps}
+        connectionStatus="disconnected"
+        mainText="Disconnected"
+        subText="No scanner connected"
+      />,
+    );
+    expect(screen.getByText('Disconnected', { selector: 'p, span, div' })).toBeInTheDocument();
+    expect(screen.queryByText('Scanning...')).not.toBeInTheDocument();
+  });
+
   it('is disabled while there is nothing to export', () => {
     useStore.setState({ fullActivityLog: [] });
     render(<ScanView {...baseProps} />);

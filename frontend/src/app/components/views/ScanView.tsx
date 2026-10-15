@@ -215,11 +215,12 @@ export function ScanView({
     [fullActivityLog],
   );
 
-  const isScanningRightNow =
-    !isInitialSyncing && liveState?.mode === 'SCAN' && !liveState?.squelch_open;
-  const signalStrength = normalizeSignal(liveState?.rssi);
   const isError = connectionStatus === 'disconnected';
-  const errorType = isError ? 'usb' : undefined;
+  // The last mode survives a disconnect, so `mode === 'SCAN'` alone kept the
+  // display on "Scanning..." with no scanner attached.
+  const isScanningRightNow =
+    !isError && !isInitialSyncing && liveState?.mode === 'SCAN' && !liveState?.squelch_open;
+  const signalStrength = normalizeSignal(liveState?.rssi);
 
   return (
     <motion.div
@@ -243,7 +244,6 @@ export function ScanView({
             signalStrength={signalStrength}
             isScanning={isScanningRightNow}
             isError={isError}
-            errorType={errorType}
             volume={liveState?.volume ?? 0}
             squelch={squelch}
             onSquelchChange={onSquelchChange}
