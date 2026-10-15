@@ -630,36 +630,35 @@ pub async fn run_server(
 /// the server drains in-flight requests and exits cleanly.
 pub async fn run_server_with_shutdown(
     bind: &str,
-    mut state: AppState,
+    state: AppState,
     serial_port: Option<ScannerLink>,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut poll_loop = None;
     if let Some(link) = serial_port {
-        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
-        state.command_tx = Arc::new(Mutex::new(Some(cmd_tx)));
+        if let Ok(mut d) = state.device.write() {
+            if link.target.is_some() {
+                d.connection_status = "connecting".to_string();
+                d.diagnostic_code = None;
+                d.diagnostic_message = None;
+            } else {
+                warn!("No scanner found; autodetect keeps looking");
+                d.connection_status = "disconnected".to_string();
+                d.diagnostic_code = Some("scanner_not_found".to_string());
+                d.diagnostic_message = Some(
+                    "No scanner port resolved from config/auto-detect. Check USB/serial settings."
+                        .to_string(),
+                );
+            }
+        }
         poll_loop = Some(spawn_poll_loop(
             state.clone(),
             link.target,
             link.assert_dtr,
             link.resolve,
-            cmd_rx,
         ));
-        if let Ok(mut d) = state.device.write() {
-            d.connection_status = "connecting".to_string();
-            d.diagnostic_code = None;
-            d.diagnostic_message = None;
-        }
     } else {
-        warn!("No scanner port resolved; API starting without poll loop");
-        if let Ok(mut d) = state.device.write() {
-            d.connection_status = "disconnected".to_string();
-            d.diagnostic_code = Some("scanner_not_found".to_string());
-            d.diagnostic_message = Some(
-                "No scanner port resolved from config/auto-detect. Check USB/serial settings."
-                    .to_string(),
-            );
-        }
+        warn!("API starting without poll loop");
     }
 
     let cleanup_state = state.clone();

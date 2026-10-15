@@ -62,6 +62,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Plugging in a scanner after Bearpaw starts now connects.** If no scanner
+  was attached when you opened Bearpaw, plugging one in later did nothing
+  until you relaunched. Bearpaw now keeps looking, and connects within a few
+  seconds of the scanner appearing.
+
 - **Copy, paste, and select all work in text fields on the Mac.** Cmd+A,
   Cmd+C, Cmd+V, Cmd+X, and Cmd+Z did nothing in any field, including channel
   frequencies, tags, and search. The menu bar now has an Edit menu, which is

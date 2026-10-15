@@ -158,25 +158,11 @@ fn start_backend_runtime(
     let resolved = bearpaw_api::resolve_scanner_port(&cfg);
     let resolved_serial = resolved.as_ref().map(|r| r.port_name.clone());
     let assert_dtr = cfg.device.assert_dtr_on_open;
-    let serial_port = resolved.map(|target| bearpaw_api::ScannerLink {
-        target,
+    let serial_port = Some(bearpaw_api::ScannerLink {
+        target: resolved,
         assert_dtr,
         resolve: Box::new(move || bearpaw_api::resolve_scanner_port(&cfg)),
     });
-
-    // `last_error` drives the status-bar "(error)" badge in the UI, so it
-    // must only hold real failures. "No config file found" is benign —
-    // auto-detect handles it — and `config_path = None` is already exposed
-    // in BackendStatus for any caller that cares. Scanner-not-resolved
-    // *does* block the app's main job, so it still surfaces.
-    let startup_issue = if resolved_serial.is_none() {
-        Some(
-            "Scanner port not resolved from config/auto-detect; API running without poll loop"
-                .to_string(),
-        )
-    } else {
-        None
-    };
 
     if let Ok(mut slot) = state.bind.lock() {
         *slot = bind.clone();
@@ -184,8 +170,14 @@ fn start_backend_runtime(
     if let Ok(mut slot) = state.started_at_ms.lock() {
         *slot = Some(now_epoch_ms());
     }
+    // `last_error` drives the status-bar "(error)" badge in the UI, so it
+    // must only hold real failures. Neither a missing config file nor a
+    // missing scanner is one: auto-detect handles the first, and since #782
+    // the poll loop keeps looking for the second, which the backend reports
+    // as `device_info.diagnostic_code: scanner_not_found` until one appears.
+    // Set once here, it kept the badge lit after the scanner connected.
     if let Ok(mut slot) = state.last_error.lock() {
-        *slot = startup_issue;
+        *slot = None;
     }
     if let Ok(mut slot) = state.config_path.lock() {
         *slot = config_path;
