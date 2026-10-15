@@ -1319,6 +1319,66 @@ describe('ChannelsTab', () => {
     });
   });
 
+  // REGRESSION GUARD (#771): a channel whose write FAILED keeps its draft, so
+  // the user can fix it and upload again. The post-upload refresh rebuilt the
+  // draft of every channel that took part, failed ones included, silently
+  // replacing the user's edits with what the scanner already had.
+  describe('a failed write keeps its staged edits (#771)', () => {
+    const one = createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Old' });
+    const two = createTestChannel({ index: 2, frequency: 152.25, bank: 1, alpha_tag: 'Two' });
+    const editOne = createTestChannelDraft({ ...buildDraft(one), alpha_tag: 'New' });
+
+    const upload = async (fail: (index: number) => string | null, getChannel = one) => {
+      const store = createMockStore({
+        channels: [one, two],
+        memoryDrafts: {
+          1: editOne,
+          2: createTestChannelDraft({ ...buildDraft(two), alpha_tag: 'Two edited' }),
+        },
+      });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      mockApiClient.startProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
+      mockApiClient.getChannel = vi.fn((index: number) =>
+        Promise.resolve(index === 1 ? getChannel : two),
+      );
+      mockApiClient.updateChannel = vi.fn((index: number, payload: ChannelData) => {
+        const detail = fail(index);
+        return detail
+          ? Promise.reject({ payload: { detail }, message: detail })
+          : Promise.resolve({ ...payload, index });
+      });
+      // The scanner still holds the OLD value for the failed channel.
+      mockApiClient.getChannels = vi
+        .fn()
+        .mockResolvedValue([one, { ...two, alpha_tag: 'Two edited' }]);
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Upload Changes/i }));
+      await waitFor(() => expect(mockApiClient.getChannels).toHaveBeenCalled());
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      return store;
+    };
+
+    it('does not overwrite the draft of a channel the scanner rejected', async () => {
+      const store = await upload((i) => (i === 1 ? 'channel_write_rejected' : null));
+      expect(store.setMemoryDraft).not.toHaveBeenCalledWith(1, expect.anything());
+    });
+
+    it('still rebuilds the channels that were written (#146)', async () => {
+      const store = await upload((i) => (i === 1 ? 'channel_write_rejected' : null));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        2,
+        expect.objectContaining({ alpha_tag: 'Two edited' }),
+      );
+    });
+
+    it('keeps the draft when a not-persisted readback shows the write did not land', async () => {
+      const store = await upload((i) => (i === 1 ? 'channel_not_persisted' : null));
+      expect(store.setMemoryDraft).not.toHaveBeenCalledWith(1, expect.anything());
+    });
+  });
+
   describe('post-write verification failures are recovered, not reported (#556)', () => {
     // The upload's recovery branch checked `channel_write_mismatch` -- a string
     // that exists NOWHERE in the Rust crate. It was dead code, and not
