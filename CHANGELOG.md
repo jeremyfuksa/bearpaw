@@ -44,6 +44,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Copy, paste, and select all work in text fields on the Mac.** Cmd+A,
+  Cmd+C, Cmd+V, Cmd+X, and Cmd+Z did nothing in any field, including channel
+  frequencies, tags, and search. The menu bar now has an Edit menu, which is
+  what makes them work.
+
 - **A failed channel write no longer throws away your edits.** When the
   scanner rejected a channel during Upload Changes, its staged edits were
   replaced with the scanner's old values. That channel now stays pending, so
