@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { toast } from 'sonner';
-import { motion } from 'motion/react';
+import { motion, Reorder, useDragControls } from 'motion/react';
 import { Search, Lock, GripVertical, ChevronDown, RefreshCw, Pencil, Check } from 'lucide-react';
-import { DndProvider, useDrag, useDrop } from 'react-dnd';
-// TouchBackend, not HTML5Backend: the app ships in Tauri's WKWebView, where
-// react-dnd's HTML5 backend never fires dragover/drop — rows show the (+)
-// cursor but won't reorder (#195). TouchBackend drives DnD from pointer
-// events; enableMouseEvents makes it respond to a desktop mouse, and
-// delayMouseStart lets a plain click still open the edit sheet.
-import { TouchBackend } from 'react-dnd-touch-backend';
 
 import {
   DropdownMenu,
@@ -29,8 +22,6 @@ import { validateField, MODULATIONS } from './channelValidation';
 import { formatSyncedAt } from '../ScannerUI';
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
-
-const DND_ITEM_TYPE = 'channel-row';
 
 type CellProps = ReturnType<ReturnType<typeof useChannelGrid>['cellProps']>;
 
@@ -133,6 +124,7 @@ function CellToggle({
 }
 
 interface ChannelRowProps {
+  channelIndex: number;
   displayIndex: number;
   rowIndex: number;
   rowCount: number;
@@ -161,14 +153,15 @@ interface ChannelRowProps {
   onToggleCell: (c: number) => void;
   onOpenList: (c: number) => void;
   openList: (c: number) => React.ReactNode | null;
-  onMove: (fromIndex: number, toIndex: number) => void;
-  onPickUp: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   onToggleGrab: () => void;
   onKeyboardMove: (direction: -1 | 1) => void;
   onReleaseGrab: () => void;
 }
 
 function ChannelRow({
+  channelIndex,
   displayIndex,
   rowIndex,
   rowCount,
@@ -197,56 +190,18 @@ function ChannelRow({
   onToggleCell,
   onOpenList,
   openList,
-  onMove,
-  onPickUp,
+  onDragStart,
+  onDragEnd,
   onToggleGrab,
   onKeyboardMove,
   onReleaseGrab,
 }: ChannelRowProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const gripRef = useRef<HTMLButtonElement | null>(null);
-
-  const [{ isDragging }, drag] = useDrag({
-    type: DND_ITEM_TYPE,
-    // A function, so it runs once when the drag BEGINS (#775). Hover moves
-    // arrive faster than re-renders, so mapping a hover's position back to a
-    // channel reads a stale order and marks whichever channel used to be there.
-    item: () => {
-      onPickUp();
-      return { rowIndex };
-    },
-    canDrag: !disableDrag,
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  const [, drop] = useDrop({
-    accept: DND_ITEM_TYPE,
-    hover: (item: { rowIndex: number }) => {
-      if (!ref.current) return;
-      if (item.rowIndex === rowIndex) return;
-      onMove(item.rowIndex, rowIndex);
-      item.rowIndex = rowIndex;
-    },
-  });
-
-  // react-dnd's connector API: `drag`/`drop` are connector functions that
-  // attach the DND behavior to an element, and composing them onto the ref
-  // during render is how the library (v16) is meant to be wired.
-  //
-  // The GRIP is the drag source, the row only a drop target (#659). With the
-  // whole row as the source, pressing a cell, pausing past delayMouseStart and
-  // dragging to select a range reordered the bank under the cursor: the
-  // TouchBackend listens natively, so the cell's preventDefault cannot stop it.
-  // react-hooks/refs is suppressed rather than worked around — the connectors
-  // have no post-commit call site, and restructuring this into callback refs
-  // would rewrite the drag path that the #236 keyboard-reorder guard below
-  // depends on for no behavioral gain.
-  // eslint-disable-next-line react-hooks/refs
-  drag(gripRef);
-  // eslint-disable-next-line react-hooks/refs
-  drop(ref);
+  // Pointer reorder (#778): motion's Reorder, driven by pointer events, which
+  // WKWebView delivers (react-dnd's HTML5 backend never got dragover/drop
+  // there, #195). Only the GRIP starts a drag (#659): with the whole row as
+  // the handle, dragging across cells to select a range moved the row instead.
+  const dragControls = useDragControls();
+  const [isDragging, setIsDragging] = useState(false);
 
   const shows = (key: ChannelColumnKey) => columns.some((c) => c.key === key);
 
@@ -263,8 +218,19 @@ function ChannelRow({
     : `Channel ${displayIndex}, ${displayFrequency} MHz`;
 
   return (
-    <div
-      ref={ref}
+    <Reorder.Item
+      as="div"
+      value={channelIndex}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragStart={() => {
+        setIsDragging(true);
+        onDragStart();
+      }}
+      onDragEnd={() => {
+        setIsDragging(false);
+        onDragEnd();
+      }}
       role="row"
       aria-label={rowLabel}
       // Tailwind arbitrary values are static strings, so a per-scanner column
@@ -318,9 +284,13 @@ function ChannelRow({
             Pointer DnD is untouched: the row is still the drag source.
             Guarded by ChannelsTab.test.tsx :: Keyboard reordering (#236). */}
         <button
-          ref={gripRef}
           type="button"
           disabled={disableDrag}
+          // touch-action: none, or a touch drag scrolls the list instead.
+          style={{ touchAction: 'none' }}
+          onPointerDown={(event) => {
+            if (!disableDrag) dragControls.start(event);
+          }}
           aria-label={`Reorder channel ${displayIndex}, position ${rowIndex + 1} of ${rowCount}`}
           aria-pressed={isGrabbed}
           aria-describedby="channel-reorder-hint"
@@ -492,7 +462,7 @@ function ChannelRow({
           ) : null}
         </CellToggle>
       </GridCell>
-    </div>
+    </Reorder.Item>
   );
 }
 
@@ -1004,6 +974,18 @@ export function ChannelsTab() {
   }, [activeBank, bankChannels]);
 
   const currentBankOrder = bankOrders[activeBank] ?? bankChannels;
+  // A pointer drag reorders a PROVISIONAL order (#778): rows slide aside while
+  // the row is held, but bankOrders, and with it every pending/shifted mark,
+  // changes once, on drop. Refs mirror the state because the drop handler
+  // must read the order as of the last reorder, not as of its own render.
+  const [dragOrder, setDragOrder] = useState<number[] | null>(null);
+  const dragOrderRef = useRef<number[] | null>(null);
+  const dragStartOrderRef = useRef<number[] | null>(null);
+  const updateDragOrder = useCallback((order: number[] | null) => {
+    dragOrderRef.current = order;
+    setDragOrder(order);
+  }, []);
+  const displayOrder = dragOrder ?? currentBankOrder;
   // Bank width is model-dependent — 30 on a BC75XLT, where bank 2 starts at
   // channel 31, not 51. Last hardcoded 50 in this file after #401.
   const bankBase = (activeBank - 1) * channelsPerBank;
@@ -1011,10 +993,10 @@ export function ChannelsTab() {
   const orderedFilteredChannels = useMemo(() => {
     if (filteredChannels.length === 0) return [];
     const channelMap = new Map(filteredChannels.map((channel) => [channel.index, channel]));
-    return currentBankOrder
+    return displayOrder
       .map((channelIndex) => channelMap.get(channelIndex))
       .filter((channel): channel is ChannelData => Boolean(channel));
-  }, [currentBankOrder, filteredChannels]);
+  }, [displayOrder, filteredChannels]);
 
   const reorderTargets = useMemo(() => {
     return currentBankOrder.reduce(
@@ -1036,6 +1018,24 @@ export function ChannelsTab() {
       });
     },
     [activeBank, bankChannels],
+  );
+
+  const startDrag = useCallback(() => {
+    dragStartOrderRef.current = currentBankOrder;
+    updateDragOrder([...currentBankOrder]);
+  }, [currentBankOrder, updateDragOrder]);
+
+  const endDrag = useCallback(
+    (channelIndex: number) => {
+      const order = dragOrderRef.current;
+      const start = dragStartOrderRef.current;
+      updateDragOrder(null);
+      dragStartOrderRef.current = null;
+      if (!order || !start || order.every((v, i) => v === start[i])) return;
+      setBankOrders((prev) => ({ ...prev, [activeBank]: order }));
+      markMoved([channelIndex]);
+    },
+    [activeBank, markMoved, updateDragOrder],
   );
 
   // Keyboard reorder (#236). `grabbedChannelIndex` holds the channel index —
@@ -1992,55 +1992,62 @@ export function ChannelsTab() {
 
         {/* Table. The grid's focus sink sits beside it: a grid owns only rows. */}
         <textarea {...grid.sinkProps} />
-        <DndProvider
-          backend={TouchBackend}
-          options={{ enableMouseEvents: true, delayMouseStart: 100 }}
+        <div
+          role="grid"
+          aria-label="Bank channels"
+          aria-multiselectable
+          className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
+          ref={containerRef}
         >
+          {/* Header */}
           <div
-            role="grid"
-            aria-label="Bank channels"
-            aria-multiselectable
-            className="flex-1 bg-black/20 rounded-lg border border-white/5 overflow-hidden flex flex-col shadow-inner min-h-0"
-            ref={containerRef}
+            role="row"
+            className="grid gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
+            style={{ gridTemplateColumns: channelGridTemplate(columns) }}
           >
-            {/* Header */}
-            <div
-              role="row"
-              className="grid gap-2 px-4 py-2 bg-white/5 border-b border-white/5 shrink-0"
-              style={{ gridTemplateColumns: channelGridTemplate(columns) }}
-            >
-              <div role="columnheader" aria-label="Reorder">
-                <span id="channel-reorder-hint" className="sr-only">
-                  Press Enter or Space to grab this channel, then use the up and down arrow keys to
-                  move it and Escape to drop it.
-                </span>
-              </div>
-              {columns
-                .filter((col) => col.label !== null)
-                .map((col) => col.label as string)
-                .map((h) => (
-                  <div
-                    key={h}
-                    role="columnheader"
-                    className="text-xs font-bold text-white/60 uppercase tracking-wider select-none text-center first:text-left"
-                  >
-                    {h}
-                  </div>
-                ))}
+            <div role="columnheader" aria-label="Reorder">
+              <span id="channel-reorder-hint" className="sr-only">
+                Press Enter or Space to grab this channel, then use the up and down arrow keys to
+                move it and Escape to drop it.
+              </span>
             </div>
-
-            {/* Rows */}
-            <div role="rowgroup" className="overflow-y-auto flex-1 p-0">
-              {orderedFilteredChannels.length === 0 ? (
+            {columns
+              .filter((col) => col.label !== null)
+              .map((col) => col.label as string)
+              .map((h) => (
                 <div
-                  role="status"
-                  aria-live="polite"
-                  className="flex h-[var(--layout-empty-state-height)] items-center justify-center text-xs text-white/50"
+                  key={h}
+                  role="columnheader"
+                  className="text-xs font-bold text-white/60 uppercase tracking-wider select-none text-center first:text-left"
                 >
-                  No channels match your filters
+                  {h}
                 </div>
-              ) : (
-                orderedFilteredChannels.map((channel, rowIndex) => {
+              ))}
+          </div>
+
+          {/* Rows. layoutScroll so rows measure correctly once scrolled; the
+                Reorder.Group sits INSIDE the scroller because its auto-scroll
+                searches from the group's parent for an overflow ancestor. */}
+          <motion.div role="rowgroup" layoutScroll className="overflow-y-auto flex-1 p-0">
+            {orderedFilteredChannels.length === 0 ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex h-[var(--layout-empty-state-height)] items-center justify-center text-xs text-white/50"
+              >
+                No channels match your filters
+              </div>
+            ) : (
+              <Reorder.Group
+                as="div"
+                role="presentation"
+                axis="y"
+                values={orderedFilteredChannels.map((c) => c.index)}
+                onReorder={(order: number[]) => {
+                  if (dragOrderRef.current) updateDragOrder(order);
+                }}
+              >
+                {orderedFilteredChannels.map((channel, rowIndex) => {
                   const draft = memoryDrafts[channel.index];
                   const displayIndex = reorderTargets[channel.index] ?? channel.index;
                   const draftFrequency = draft
@@ -2150,8 +2157,9 @@ export function ChannelsTab() {
                           </ul>
                         ) : null
                       }
-                      onMove={moveRow}
-                      onPickUp={() => markMoved([channel.index])}
+                      channelIndex={channel.index}
+                      onDragStart={startDrag}
+                      onDragEnd={() => endDrag(channel.index)}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {
                         if (activeGrabIndex === channel.index) {
@@ -2189,11 +2197,11 @@ export function ChannelsTab() {
                       displayPriority={displayPriority}
                     />
                   );
-                })
-              )}
-            </div>
-          </div>
-        </DndProvider>
+                })}
+              </Reorder.Group>
+            )}
+          </motion.div>
+        </div>
       </div>
     </motion.div>
   );
