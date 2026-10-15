@@ -123,6 +123,9 @@ function CellToggle({
   );
 }
 
+/** A held row's provisional reorder (#778); see `sessionRef`. */
+type MoveSession = { bank: number; start: number[]; order: number[]; moved: Set<number> };
+
 interface ChannelRowProps {
   channelIndex: number;
   displayIndex: number;
@@ -974,19 +977,15 @@ export function ChannelsTab() {
   }, [activeBank, bankChannels]);
 
   const currentBankOrder = bankOrders[activeBank] ?? bankChannels;
-  // A pointer drag reorders a PROVISIONAL order (#778): rows slide aside while
-  // the row is held, but bankOrders, and with it every pending/shifted mark,
-  // changes once, on drop. Refs mirror the state because the drop handler
-  // must read the order as of the last reorder, not as of its own render.
-  const [dragOrder, setDragOrder] = useState<number[] | null>(null);
+  // Holding a row, by pointer drag or keyboard grab, reorders a PROVISIONAL
+  // order (#778): rows slide aside while it is held, but bankOrders, and with
+  // it every pending/shifted mark, changes once, when it is put down. The ref
+  // is the source of truth because a drop handler must read the order as of
+  // the last move, not as of its own render; the state mirrors it for render.
+  const sessionRef = useRef<MoveSession | null>(null);
+  const [sessionOrder, setSessionOrder] = useState<number[] | null>(null);
   const [orderEpoch, setOrderEpoch] = useState(0);
-  const dragOrderRef = useRef<number[] | null>(null);
-  const dragStartOrderRef = useRef<number[] | null>(null);
-  const updateDragOrder = useCallback((order: number[] | null) => {
-    dragOrderRef.current = order;
-    setDragOrder(order);
-  }, []);
-  const displayOrder = dragOrder ?? currentBankOrder;
+  const displayOrder = sessionOrder ?? currentBankOrder;
   // Bank width is model-dependent — 30 on a BC75XLT, where bank 2 starts at
   // channel 31, not 51. Last hardcoded 50 in this file after #401.
   const bankBase = (activeBank - 1) * channelsPerBank;
@@ -1021,23 +1020,38 @@ export function ChannelsTab() {
     [activeBank, bankChannels],
   );
 
-  const startDrag = useCallback(() => {
-    dragStartOrderRef.current = currentBankOrder;
-    updateDragOrder([...currentBankOrder]);
-  }, [currentBankOrder, updateDragOrder]);
-
-  const endDrag = useCallback(
+  // Joins a session already open, so a drag started during a keyboard grab
+  // carries the grab's moves with it rather than discarding them.
+  const beginSession = useCallback(
     (channelIndex: number) => {
-      const order = dragOrderRef.current;
-      const start = dragStartOrderRef.current;
-      updateDragOrder(null);
-      dragStartOrderRef.current = null;
-      if (!order || !start || order.every((v, i) => v === start[i])) return;
-      setBankOrders((prev) => ({ ...prev, [activeBank]: order }));
-      markMoved([channelIndex]);
+      if (!sessionRef.current) {
+        sessionRef.current = {
+          bank: activeBank,
+          start: currentBankOrder,
+          order: [...currentBankOrder],
+          moved: new Set(),
+        };
+      }
+      sessionRef.current.moved.add(channelIndex);
+      setSessionOrder(sessionRef.current.order);
     },
-    [activeBank, markMoved, updateDragOrder],
+    [activeBank, currentBankOrder],
   );
+
+  const setSessionOrderTo = useCallback((order: number[]) => {
+    if (!sessionRef.current) return;
+    sessionRef.current.order = order;
+    setSessionOrder(order);
+  }, []);
+
+  const commitSession = useCallback(() => {
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    setSessionOrder(null);
+    if (!session || session.order.every((v, i) => v === session.start[i])) return;
+    setBankOrders((prev) => ({ ...prev, [session.bank]: session.order }));
+    markMoved([...session.moved]);
+  }, [markMoved]);
 
   // Keyboard reorder (#236). `grabbedChannelIndex` holds the channel index —
   // not the row position — so the grab survives the reorder that arrow keys
@@ -1045,7 +1059,12 @@ export function ChannelsTab() {
   const [grabbedChannelIndex, setGrabbedChannelIndex] = useState<number | null>(null);
   const [reorderAnnouncement, setReorderAnnouncement] = useState('');
 
-  const releaseGrab = useCallback(() => setGrabbedChannelIndex(null), []);
+  // Every way a hold ends puts the row down: Enter/Space/Escape on the grip, a
+  // pointer drop, switching banks, or typing a search term.
+  const releaseGrab = useCallback(() => {
+    setGrabbedChannelIndex(null);
+    commitSession();
+  }, [commitSession]);
 
   // Drop the grab whenever the grabbed row can no longer be seen or moved:
   // switching banks unmounts it, and typing a search term disables reorder
@@ -1069,13 +1088,16 @@ export function ChannelsTab() {
         );
         return;
       }
-      markMoved([channel.index]);
-      moveRow(rowIndex, toIndex);
+      const order = [...(sessionRef.current?.order ?? currentBankOrder)];
+      const from = order.indexOf(channel.index);
+      order.splice(from, 1);
+      order.splice(from + direction, 0, channel.index);
+      setSessionOrderTo(order);
       setReorderAnnouncement(
         `Moved to position ${toIndex + 1} of ${rows.length}. Press Escape or Enter to drop.`,
       );
     },
-    [bankBase, markMoved, moveRow],
+    [bankBase, currentBankOrder, setSessionOrderTo],
   );
 
   const draftChanges = useMemo(() => {
@@ -1650,6 +1672,10 @@ export function ChannelsTab() {
     clearMemoryDrafts();
     setBankOrders({});
     setMovedChannelIds(new Set());
+    // A row still held is discarded with the rest, not put down afterwards.
+    sessionRef.current = null;
+    setSessionOrder(null);
+    setGrabbedChannelIndex(null);
     toast.success('Drafts discarded');
   }, [draftChanges, isUploading, clearMemoryDrafts, setBankOrders]);
 
@@ -1841,7 +1867,10 @@ export function ChannelsTab() {
             name={bankNames[bank - 1] ?? ''}
             active={activeBank === bank}
             canRename={canRenameBanks}
-            onSelect={() => setActiveBank(bank)}
+            onSelect={() => {
+              releaseGrab();
+              setActiveBank(bank);
+            }}
             onRename={(name) => handleRenameBank(bank, name)}
           />
         ))}
@@ -1874,7 +1903,10 @@ export function ChannelsTab() {
                 }
                 className="scanner-input w-full border-white/5 py-1.5 pl-8 pr-4 text-xs placeholder:text-white/20 focus:border-brand-primary/50"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  releaseGrab();
+                  setSearchTerm(e.target.value);
+                }}
               />
             </div>
             {syncedLabel && (
@@ -1956,7 +1988,14 @@ export function ChannelsTab() {
             </button>
             <button
               onClick={handleUploadDrafts}
-              disabled={draftChanges.length === 0 || isUploading || invalidCount > 0}
+              // A held row's order is provisional and not in draftChanges yet;
+              // uploading under it would write the order from before the hold.
+              disabled={
+                draftChanges.length === 0 ||
+                isUploading ||
+                invalidCount > 0 ||
+                sessionOrder !== null
+              }
               className="scanner-button-primary px-3 py-1.5 text-xs uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isUploading ? 'Uploading...' : 'Upload Changes'}
@@ -2057,9 +2096,7 @@ export function ChannelsTab() {
                 role="presentation"
                 axis="y"
                 values={orderedFilteredChannels.map((c) => c.index)}
-                onReorder={(order: number[]) => {
-                  if (dragOrderRef.current) updateDragOrder(order);
-                }}
+                onReorder={setSessionOrderTo}
               >
                 {orderedFilteredChannels.map((channel, rowIndex) => {
                   const draft = memoryDrafts[channel.index];
@@ -2172,18 +2209,19 @@ export function ChannelsTab() {
                         ) : null
                       }
                       channelIndex={channel.index}
-                      onDragStart={startDrag}
-                      onDragEnd={() => endDrag(channel.index)}
+                      onDragStart={() => beginSession(channel.index)}
+                      onDragEnd={releaseGrab}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {
                         if (activeGrabIndex === channel.index) {
-                          setGrabbedChannelIndex(null);
+                          releaseGrab();
                           setReorderAnnouncement(
                             `Dropped channel at position ${rowIndex + 1} of ${orderedFilteredChannels.length}.`,
                           );
                           return;
                         }
                         setGrabbedChannelIndex(channel.index);
+                        beginSession(channel.index);
                         setReorderAnnouncement(
                           `Grabbed channel at position ${rowIndex + 1} of ${orderedFilteredChannels.length}. Use the up and down arrow keys to move it, then Escape or Enter to drop.`,
                         );

@@ -1434,7 +1434,10 @@ describe('ChannelsTab', () => {
 
     // #775: one move rewrites every row between the old and new slot, so all
     // of them are pending. Only the row the user moved may look moved.
-    it('marks the moved row apart from the rows it shifted', async () => {
+    // #775 + #778: one move rewrites every row between the old and new slot,
+    // so all of them are pending, but only once the row is PUT DOWN. While it
+    // is held the order is provisional: nothing is marked and nothing counts.
+    it('marks nothing while a row is held, then the moved row apart from the shifted ones', async () => {
       setupBank();
       render(<ChannelsTab />);
       const isShifted = (tag: string) =>
@@ -1442,12 +1445,11 @@ describe('ChannelsTab', () => {
           .getAllByRole('row')
           .find((row) => row.textContent?.includes(tag))
           ?.hasAttribute('data-shifted');
-
-      expect([isShifted('Alpha'), isShifted('Bravo'), isShifted('Charlie')]).toEqual([
-        false,
-        false,
-        false,
-      ]);
+      const pendingText = () =>
+        screen
+          .getAllByRole('status')
+          .map((el) => el.textContent ?? '')
+          .find((t) => /pending/.test(t));
 
       screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }).focus();
       await userEvent.keyboard('{Enter}{ArrowDown}{ArrowDown}');
@@ -1455,9 +1457,38 @@ describe('ChannelsTab', () => {
       expect(tagOrder()).toEqual(['Bravo', 'Charlie', 'Alpha']);
       expect([isShifted('Alpha'), isShifted('Bravo'), isShifted('Charlie')]).toEqual([
         false,
+        false,
+        false,
+      ]);
+      expect(pendingText()).toMatch(/No pending changes/);
+      expect(screen.getByRole('button', { name: 'Upload Changes' })).toBeDisabled();
+
+      await userEvent.keyboard('{Escape}');
+
+      expect(tagOrder()).toEqual(['Bravo', 'Charlie', 'Alpha']);
+      expect([isShifted('Alpha'), isShifted('Bravo'), isShifted('Charlie')]).toEqual([
+        false,
         true,
         true,
       ]);
+      expect(pendingText()).toMatch(/3 pending/);
+    });
+
+    // Switching banks while a row is held must put it down, not strand a
+    // provisional order that belongs to the bank being left.
+    it('switching banks puts a held row down', async () => {
+      setupBank();
+      render(<ChannelsTab />);
+
+      screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }).focus();
+      await userEvent.keyboard('{Enter}{ArrowDown}');
+      await userEvent.click(screen.getByRole('button', { name: /Bank 2$/ }));
+      await userEvent.click(screen.getByRole('button', { name: /Bank 1$/ }));
+
+      expect(tagOrder()).toEqual(['Bravo', 'Alpha', 'Charlie']);
+      expect(
+        screen.getByRole('button', { name: /reorder channel 2, position 2 of 3/i }),
+      ).toHaveAttribute('aria-pressed', 'false');
     });
 
     it('announces grab and move to screen readers', async () => {
