@@ -24,8 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // differ from `device.baud` -- the BC75XLT speaks 57600 where the BC125AT
     // family speaks 115200. Using the configured rate here would reopen at a
     // rate detection just proved wrong.
-    let serial = config::resolve_scanner_port(&cfg).map(|target| ScannerLink {
-        target,
+    let serial = Some(ScannerLink {
+        target: config::resolve_scanner_port(&cfg),
         assert_dtr,
         resolve: Box::new(move || config::resolve_scanner_port(&cfg)),
     });

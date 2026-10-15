@@ -67,6 +67,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reads "Disconnected", and the USB icon only appears while a scanner is
   connected.
 
+- **Plugging in a scanner after Bearpaw starts now connects.** If no scanner
+  was attached when you opened Bearpaw, plugging one in later did nothing
+  until you relaunched. Bearpaw now keeps looking, and connects within a few
+  seconds of the scanner appearing.
+
 - **Copy, paste, and select all work in text fields on the Mac.** Cmd+A,
   Cmd+C, Cmd+V, Cmd+X, and Cmd+Z did nothing in any field, including channel
   frequencies, tags, and search. The menu bar now has an Edit menu, which is
@@ -76,6 +81,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scanner rejected a channel during Upload Changes, its staged edits were
   replaced with the scanner's old values. That channel now stays pending, so
   you can fix it and upload again.
+
+- **An upload that can't start no longer throws away your edits.** If Upload
+  Changes failed before writing anything, for example because a memory sync
+  was running, every staged edit and reorder was discarded, and a success
+  message appeared on top of the error. Your changes now stay pending so you
+  can upload again.
 
 - **The data-upgrade notice now says where the backup is.** When a new
   version upgrades your saved data, the one-time notice names the folder

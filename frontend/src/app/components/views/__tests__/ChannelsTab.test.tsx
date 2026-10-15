@@ -1726,6 +1726,35 @@ describe('ChannelsTab', () => {
     });
   });
 
+  // REGRESSION GUARD (#779): an upload that fails before any write (program
+  // mode refused: 403, 409 during a sync, a dropped link) keeps every staged
+  // edit and the staged order. It used to fall through to the post-upload
+  // rebuild, which replaced all of them with the scanner's values, and then
+  // reported success on top of the error.
+  it('an upload that writes nothing keeps every staged edit (#779)', async () => {
+    const one = createTestChannel({ index: 1, frequency: 151.25, bank: 1, alpha_tag: 'Old' });
+    const store = createMockStore({
+      channels: [one],
+      memoryDrafts: { 1: createTestChannelDraft({ ...buildDraft(one), alpha_tag: 'New' }) },
+    });
+    store.setMemoryDraft = vi.fn();
+    setMockStore(store);
+    mockApiClient.startProgramMode = vi.fn().mockRejectedValue(new Error('403'));
+    mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
+    mockApiClient.updateChannel = vi.fn();
+    mockApiClient.getChannels = vi.fn().mockResolvedValue([one]);
+    render(<ChannelsTab />);
+    await userEvent.click(screen.getByRole('button', { name: /Upload Changes/i }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() => expect(mockApiClient.endProgramMode).toHaveBeenCalled());
+
+    expect(mockApiClient.updateChannel).not.toHaveBeenCalled();
+    expect(mockApiClient.getChannels).not.toHaveBeenCalled();
+    expect(store.setMemoryDraft).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeEnabled();
+  });
+
   describe('post-write verification failures are recovered, not reported (#556)', () => {
     // The upload's recovery branch checked `channel_write_mismatch` -- a string
     // that exists NOWHERE in the Rust crate. It was dead code, and not

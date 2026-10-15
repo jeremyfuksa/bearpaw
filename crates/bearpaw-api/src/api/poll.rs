@@ -94,23 +94,50 @@ pub type PortResolver = Box<dyn FnMut() -> Option<ResolvedPort> + Send>;
 
 /// Where the poll loop starts, and how it finds a scanner again (#416).
 pub struct ScannerLink {
-    pub target: ResolvedPort,
+    /// `None` when autodetect found nothing at launch; the loop keeps looking
+    /// (#782).
+    pub target: Option<ResolvedPort>,
     /// Honoured by the serial transport only; USB ignores it.
     pub assert_dtr: bool,
     pub resolve: PortResolver,
 }
 
 /// Spawn a blocking thread: open serial, process command channel + STS poll, broadcast state.
+///
+/// REGRESSION GUARD (#782, `a_scanner_plugged_in_after_launch_is_found`): with
+/// no `target`, the thread reruns `resolve` every `RERESOLVE_AFTER` until a
+/// scanner appears. `state.command_tx` is published only once one has, because
+/// handlers read "no `command_tx`" as "no scanner" and answer 503 at once;
+/// publishing it early would turn that into a queue-and-time-out on every
+/// request made before the scanner is plugged in.
 pub fn spawn_poll_loop(
     state: AppState,
-    target: ResolvedPort,
+    target: Option<ResolvedPort>,
     assert_dtr: bool,
-    resolve: PortResolver,
-    cmd_rx: std::sync::mpsc::Receiver<ControlCommand>,
+    mut resolve: PortResolver,
 ) -> PollLoopHandle {
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+    let mut cmd_tx = Some(cmd_tx);
+    if target.is_some() {
+        *state.command_tx.lock().unwrap() = cmd_tx.take();
+    }
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = stop.clone();
     let thread = thread::spawn(move || {
+        let target = match target {
+            Some(target) => target,
+            None => loop {
+                if thread_stop.load(Ordering::Relaxed) {
+                    return;
+                }
+                if let Some(found) = resolve() {
+                    info!("Autodetect found {} @ {} baud", found.port_name, found.baud);
+                    *state.command_tx.lock().unwrap() = cmd_tx.take();
+                    break found;
+                }
+                sleep_unless_stopped(RERESOLVE_AFTER, &thread_stop);
+            },
+        };
         // catch_unwind (#143): a panic inside the poll loop (e.g. a poisoned
         // mutex unwrap) unwinds the thread WITHOUT hitting the Err branch —
         // the UI stayed "connected" forever while every command timed out.
@@ -3027,6 +3054,86 @@ mod tests {
         );
     }
 
+    /// REGRESSION GUARD (#782): a scanner plugged in after a launch that found
+    /// none is picked up without a relaunch.
+    ///
+    /// With nothing resolved at startup, no poll loop ran at all, so the #416
+    /// re-resolve -- which lives inside the loop -- never got a chance. Driven
+    /// through `spawn_poll_loop`, the entry point `run_server_with_shutdown`
+    /// uses, so a server that still skips the loop on `None` fails here too.
+    ///
+    /// `command_tx` is the second half: handlers answer `503
+    /// device_disconnected` at once while it is `None`, and queue then time out
+    /// after 3 s once it exists. It must appear only when a scanner does.
+    #[test]
+    fn a_scanner_plugged_in_after_launch_is_found() {
+        let state = device_only_state();
+        let arrived = Arc::new(AtomicBool::new(false));
+        let plugged = arrived.clone();
+        let handle = spawn_poll_loop(
+            state.clone(),
+            None,
+            false,
+            Box::new(move || {
+                plugged
+                    .load(Ordering::Relaxed)
+                    .then(|| target("usb:ffff:ffff"))
+            }),
+        );
+
+        thread::sleep(RERESOLVE_AFTER * 2);
+        assert!(
+            state.command_tx.lock().unwrap().is_none(),
+            "no scanner has been found, so handlers must still fail fast"
+        );
+
+        arrived.store(true, Ordering::Relaxed);
+        assert!(
+            wait_until(OPEN_FAILURE_WAIT, || diagnostic(&state)
+                .starts_with("USB open failed")),
+            "the loop must open the scanner autodetect found after launch; it \
+             never tried ({:?}), which is the #782 bug -- plugging in needs a \
+             relaunch",
+            diagnostic(&state)
+        );
+        assert!(
+            state.command_tx.lock().unwrap().is_some(),
+            "a found scanner must be reachable by handlers"
+        );
+        assert!(handle.stop_and_join(Duration::from_secs(3)));
+    }
+
+    /// REGRESSION GUARD (#782): with nothing attached, autodetect reruns at a
+    /// bounded rate for the whole session. Paired with
+    /// `autodetect_does_not_rerun_on_every_failed_open`, which covers the
+    /// other way into a resolve: a known port gone absent.
+    #[test]
+    fn autodetect_does_not_rerun_continuously_while_nothing_is_attached() {
+        let resolves = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = resolves.clone();
+        let handle = spawn_poll_loop(
+            device_only_state(),
+            None,
+            false,
+            Box::new(move || {
+                counter.fetch_add(1, Ordering::Relaxed);
+                None
+            }),
+        );
+
+        let window = Duration::from_secs(2);
+        thread::sleep(window);
+        assert!(handle.stop_and_join(Duration::from_secs(3)));
+
+        let ceiling = (window.as_millis() / RERESOLVE_AFTER.as_millis()) as usize + 1;
+        let seen = resolves.load(Ordering::Relaxed);
+        assert!(
+            (2..=ceiling).contains(&seen),
+            "expected autodetect to rerun between 2 and {ceiling} times in {window:?}; \
+             it ran {seen} times"
+        );
+    }
+
     /// True once a failed open has been reported through `mark_disconnected`.
     fn reported_disconnected(state: &AppState) -> bool {
         let device = state.device.read().expect("device lock");
@@ -3169,13 +3276,11 @@ mod tests {
     /// without hardware (`rusb` has no injectable backend); it needs a real
     /// scanner to verify.
     fn assert_stops(target: &str) {
-        let (_cmd_tx, cmd_rx) = std::sync::mpsc::channel();
         let handle = spawn_poll_loop(
             device_only_state(),
-            self::target(target),
+            Some(self::target(target)),
             false,
             Box::new(|| None),
-            cmd_rx,
         );
         // Let it reach the reconnect backoff first, so the stop has to be
         // observed by a running loop rather than before it began.
