@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 import {
@@ -235,43 +235,153 @@ describe('ChannelsTab', () => {
     });
   });
 
-  describe('Channel Editing', () => {
-    it('should open edit sheet when channel row is clicked', async () => {
+  describe('Grid editing (#659)', () => {
+    const sink = () => screen.getByRole('textbox', { name: /^Channels grid/ });
+
+    it('exposes the channels as a grid of gridcells', () => {
       render(<ChannelsTab />);
-      const channelRow = screen.getByText(/Channel 1/i).closest('div');
-      if (channelRow) {
-        await userEvent.click(channelRow);
-        expect(screen.getByText(/Edit Channel/i)).toBeInTheDocument();
-      }
+      expect(screen.getByRole('grid', { name: /bank channels/i })).toBeInTheDocument();
+      expect(screen.getAllByRole('gridcell').length).toBeGreaterThan(0);
     });
 
-    it('should set editing channel index', async () => {
+    // REGRESSION GUARD (focus sink, #659): WKWebView only delivers copy/paste
+    // to an EDITABLE focused element, and useKeyboardShortcuts skips editable
+    // targets so the global Cmd+C/Cmd+S stay out of the grid. A div here
+    // passes every jsdom test and breaks both in the real app.
+    it("the grid's focus sink is a textarea", () => {
       render(<ChannelsTab />);
-      const channelRow = screen.getByText(/Channel 1/i).closest('div');
-      if (channelRow) {
-        await userEvent.click(channelRow);
-        expect(await screen.findByText(/Edit Channel/i)).toBeInTheDocument();
-      }
+      expect(sink().tagName).toBe('TEXTAREA');
+      // A grid owns only rows; the sink sits beside it, not inside it.
+      expect(screen.getByRole('grid', { name: /bank channels/i })).not.toContainElement(sink());
     });
 
-    // REGRESSION GUARD: opening the edit sheet must NOT seed a store draft.
-    // The sheet keeps its own local working copy (#146), so a store draft
-    // should only be written on an explicit Save. Seeding on open lit the row
-    // with the "modified" (isPending) style and — because Cancel never removed
-    // the seed — left the row styled modified after cancelling an edit.
-    it('opening the edit sheet does not write a store draft', async () => {
+    // REGRESSION GUARD (a11y C1, re-pointed for #659): the primary edit action
+    // must be keyboard-operable. It was "Enter on the row opens the edit
+    // sheet"; it is now "Enter on the active cell edits it in place".
+    it('edits the active cell from the keyboard alone', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      sink().focus();
+      await userEvent.keyboard('{Enter}');
+      const editor = screen.getByRole('textbox', { name: /^Frequency, channel 1$/ });
+      await userEvent.clear(editor);
+      await userEvent.type(editor, '162.55{Enter}');
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ frequency: '162.5500' }),
+      );
+    });
+
+    it('Delete on a frequency stages a clear with the BC125AT shape', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      sink().focus();
+      await userEvent.keyboard('{Delete}');
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(1, buildEmptyDraft(2));
+    });
+
+    it('Delete on a frequency stages a clear with the BC75XLT shape', async () => {
+      const store = createMockStore({
+        channels: mockChannels,
+        deviceInfo: {
+          ...createMockStore().deviceInfo,
+          capabilities: capabilityFixture.BC75XLT,
+        } as ReturnType<typeof createMockStore>['deviceInfo'],
+      });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      sink().focus();
+      await userEvent.keyboard('{Delete}');
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(1, buildEmptyDraft(0));
+    });
+
+    // REGRESSION GUARD (re-pointed from "opening the edit sheet does not write
+    // a store draft"): moving around the grid must never write a draft. A
+    // no-op draft lights the row's "modified" style (#146).
+    it('selecting cells does not write a store draft', async () => {
       const store = createMockStore({ channels: mockChannels });
       setMockStore(store);
-
       render(<ChannelsTab />);
-      await userEvent.click(screen.getByText(/Channel 1/i));
-      expect(await screen.findByText(/Edit Channel/i)).toBeInTheDocument();
-
+      await userEvent.click(screen.getAllByRole('gridcell')[1]);
+      await userEvent.keyboard('{ArrowLeft}{ArrowRight}{Escape}');
       expect(store.setMemoryDraft).not.toHaveBeenCalled();
+    });
+
+    it('one click on the lockout checkbox stages the toggle', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const lockout = within(row).getAllByRole('gridcell')[5];
+      await userEvent.click(within(lockout).getByRole('button'));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ lockout: !mockChannels[0].lockout }),
+      );
+    });
+
+    // Clicking a checkbox must not also select its cell: after a cancelled
+    // priority confirm, the orange selection on PRIO read as a half-applied
+    // priority (hardware report, 2026-10-14).
+    it('clicking a checkbox leaves the selection where it was', async () => {
+      vi.mocked(confirmDialog).mockResolvedValue(false);
+      setMockStore(
+        createMockStore({
+          channels: [
+            createTestChannel({ index: 1, bank: 1, alpha_tag: 'Channel 1', priority: true }),
+          ],
+        }),
+      );
+      render(<ChannelsTab />);
+      const sink = screen.getByRole('textbox', { name: /^Channels grid/ });
+      const before = sink.getAttribute('aria-activedescendant');
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const cells = within(row).getAllByRole('gridcell');
+      const prio = cells[cells.length - 1];
+      await userEvent.click(within(prio).getByRole('button'));
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      expect(sink).toHaveAttribute('aria-activedescendant', before ?? '');
+      expect(prio).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('Mode is picked from its list', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const mode = within(row).getAllByRole('gridcell')[2];
+      await userEvent.click(within(mode).getByRole('button', { hidden: true }));
+      await userEvent.click(screen.getByRole('option', { name: 'NFM' }));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ modulation: 'NFM' }),
+      );
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('does not open an edit dialog', async () => {
+      render(<ChannelsTab />);
+      await userEvent.dblClick(screen.getAllByRole('gridcell')[0]);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
   });
 
   describe('Priority toggle (immediate action, Task 6)', () => {
+    // Priority is a grid cell (#659): click it to make it active, then Space.
+    const togglePriority = async (rowText: RegExp) => {
+      const row = screen.getByText(rowText).closest('[role="row"]') as HTMLElement;
+      const cells = within(row).getAllByRole('gridcell');
+      await userEvent.click(cells[cells.length - 1]);
+      await userEvent.keyboard(' ');
+    };
+
     it('toggling priority ON with an existing bank priority channel confirms and calls setChannelPriority', async () => {
       const priorityChannels = [
         createTestChannel({ index: 2, bank: 1, alpha_tag: 'CH2', priority: true }),
@@ -286,10 +396,7 @@ describe('ChannelsTab', () => {
       setMockStore(store);
 
       render(<ChannelsTab />);
-      await userEvent.click(screen.getByText(/CH9/i));
-      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
-
-      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+      await togglePriority(/CH9/i);
 
       await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
       await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, true));
@@ -313,10 +420,7 @@ describe('ChannelsTab', () => {
       setMockStore(createMockStore({ channels: priorityChannels }));
 
       render(<ChannelsTab />);
-      await userEvent.click(screen.getByText(/CH9/i));
-      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
-
-      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+      await togglePriority(/CH9/i);
 
       await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
       expect(mockApiClient.setChannelPriority).not.toHaveBeenCalled();
@@ -334,10 +438,7 @@ describe('ChannelsTab', () => {
       setMockStore(store);
 
       render(<ChannelsTab />);
-      await userEvent.click(screen.getByText(/Test Channel/i));
-      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
-
-      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+      await togglePriority(/Test Channel/i);
 
       await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
       await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, false));
@@ -357,10 +458,7 @@ describe('ChannelsTab', () => {
       setMockStore(store);
 
       render(<ChannelsTab />);
-      await userEvent.click(screen.getByText(/Test Channel/i));
-      expect(await screen.findByText(/Edit Channel 9/i)).toBeInTheDocument();
-
-      await userEvent.click(screen.getByRole('switch', { name: /priority/i }));
+      await togglePriority(/Test Channel/i);
 
       await waitFor(() => expect(mockApiClient.setChannelPriority).toHaveBeenCalledWith(9, true));
       await waitFor(() => expect(toast.error).toHaveBeenCalled());
@@ -632,6 +730,56 @@ describe('ChannelsTab', () => {
     });
   });
 
+  describe('invalid drafts block upload (#659)', () => {
+    it('disables Upload and says how many channels need fixing', () => {
+      setMockStore(
+        createMockStore({
+          channels: mockChannels,
+          memoryDrafts: { 1: { ...buildDraft(mockChannels[0], 2), modulation: 'XX' } },
+        }),
+      );
+      render(<ChannelsTab />);
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+      expect(screen.getByText(/1 channel has an invalid value/)).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('gridcell').some((c) => c.getAttribute('aria-invalid') === 'true'),
+      ).toBe(true);
+    });
+
+    it('flags a tag the scanner would reject and holds Upload', () => {
+      setMockStore(
+        createMockStore({
+          channels: mockChannels,
+          memoryDrafts: { 1: { ...buildDraft(mockChannels[0], 2), alpha_tag: 'KC_Metro' } },
+        }),
+      );
+      render(<ChannelsTab />);
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+      expect(screen.getByText(/1 channel has an invalid value/)).toBeInTheDocument();
+    });
+
+    it('says how many pasted rows did not fit in the bank', () => {
+      render(<ChannelsTab />);
+      fireEvent.paste(screen.getByRole('textbox', { name: /^Channels grid/ }), {
+        clipboardData: { getData: () => '146.52\n146.55\n146.58', setData: vi.fn() },
+      });
+      expect(toast.info).toHaveBeenCalledWith(expect.stringMatching(/2 rows .*past the end/));
+    });
+
+    it('refuses to paste while a search filter is active', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      await userEvent.type(screen.getByRole('searchbox'), '151');
+      fireEvent.paste(screen.getByRole('textbox', { name: /^Channels grid/ }), {
+        clipboardData: { getData: () => '146.52', setData: vi.fn() },
+      });
+      expect(store.setMemoryDraft).not.toHaveBeenCalled();
+      expect(toast.info).toHaveBeenCalledWith(expect.stringMatching(/Clear the search to paste/));
+    });
+  });
+
   describe('Pending Styling', () => {
     it('should highlight rows with draft changes', () => {
       const draftChannel = createTestChannel({ index: 1, alpha_tag: 'Channel 1' });
@@ -786,7 +934,7 @@ describe('ChannelsTab', () => {
       render(<ChannelsTab />);
       // A cleared row renders placeholders for every value, so its aria-label
       // ("unnamed") is the stable handle rather than any cell's text.
-      const row = screen.getByRole('row', { name: /Edit channel 1, unnamed/i });
+      const row = screen.getByRole('row', { name: /^Channel 1, unnamed/i });
       expect(row).toHaveClass('bg-amber-500/10');
       expect(row).toHaveClass('border-amber-400/60');
       // The flash hook, and the class the reduced-motion rule disables.
@@ -808,7 +956,7 @@ describe('ChannelsTab', () => {
       setMockStore(store);
 
       render(<ChannelsTab />);
-      const row = screen.getByRole('row', { name: /Edit channel 1, Draft Channel/i });
+      const row = screen.getByRole('row', { name: /^Channel 1, Draft Channel/i });
       expect(row).toHaveClass('bg-brand-primary/10');
       expect(row).not.toHaveClass('bg-amber-500/10');
       expect(row).not.toHaveClass('channel-row--cleared');
@@ -850,7 +998,7 @@ describe('ChannelsTab', () => {
       setMockStore(store);
 
       render(<ChannelsTab />);
-      const row = screen.getByRole('row', { name: /Edit channel 1, unnamed/i });
+      const row = screen.getByRole('row', { name: /^Channel 1, unnamed/i });
       expect(row).not.toHaveClass('bg-amber-500/10');
       expect(row).not.toHaveClass('channel-row--cleared');
       expect(row).not.toHaveAttribute('data-cleared');
@@ -929,7 +1077,7 @@ describe('ChannelsTab', () => {
       );
 
       render(<ChannelsTab />);
-      const row = screen.getByRole('row', { name: /Edit channel 1, unnamed/i });
+      const row = screen.getByRole('row', { name: /^Channel 1, unnamed/i });
       // Not amber, not brand-tinted — no pending styling of any kind.
       expect(row).not.toHaveClass('bg-amber-500/10');
       expect(row).not.toHaveClass('channel-row--cleared');
@@ -993,7 +1141,7 @@ describe('ChannelsTab', () => {
       );
 
       const { unmount } = render(<ChannelsTab />);
-      expect(screen.getByRole('row', { name: /Edit channel 1, unnamed/i })).toHaveClass(
+      expect(screen.getByRole('row', { name: /^Channel 1, unnamed/i })).toHaveClass(
         'bg-amber-500/10',
       );
       unmount();
@@ -1024,41 +1172,13 @@ describe('ChannelsTab', () => {
         }),
       );
       render(<ChannelsTab />);
-      expect(screen.getByRole('row', { name: /Edit channel 1, unnamed/i })).not.toHaveClass(
+      expect(screen.getByRole('row', { name: /^Channel 1, unnamed/i })).not.toHaveClass(
         'bg-amber-500/10',
       );
     });
   });
 
   describe('Accessibility', () => {
-    // a11y C1: the row's primary action (open edit sheet) is keyboard-operable.
-    it('opens the edit sheet when Enter is pressed on a row', async () => {
-      render(<ChannelsTab />);
-      const row = screen.getByRole('row', { name: /edit channel 1/i });
-      row.focus();
-      await userEvent.keyboard('{Enter}');
-      expect(screen.getByText(/Edit Channel/i)).toBeInTheDocument();
-    });
-
-    it('opens the edit sheet when Space is pressed on a row', async () => {
-      render(<ChannelsTab />);
-      const row = screen.getByRole('row', { name: /edit channel 1/i });
-      row.focus();
-      await userEvent.keyboard(' ');
-      expect(screen.getByText(/Edit Channel/i)).toBeInTheDocument();
-    });
-
-    // Guard: Space on the checkbox toggles it, and must NOT open the sheet
-    // (the target===currentTarget guard in the row's onKeyDown).
-    it('Space on the row checkbox does not open the edit sheet', async () => {
-      render(<ChannelsTab />);
-      const checkbox = screen.getByRole('checkbox', { name: /select channel 1/i });
-      checkbox.focus();
-      await userEvent.keyboard(' ');
-      expect(screen.queryByText(/Edit Channel/i)).not.toBeInTheDocument();
-    });
-
-    // a11y S1: the search input has an accessible name (type=search → searchbox).
     it('names the search input', () => {
       render(<ChannelsTab />);
       expect(screen.getByRole('searchbox', { name: /search channels/i })).toBeInTheDocument();
@@ -1077,10 +1197,10 @@ describe('ChannelsTab', () => {
       expect(emptyState).toBeDefined();
     });
 
-    // a11y C2: the list is a table with column headers.
-    it('exposes the channel list as a table with column headers', () => {
+    // a11y C2: the list is a grid with column headers (#659: was a table).
+    it('exposes the channel list as a grid with column headers', () => {
       render(<ChannelsTab />);
-      expect(screen.getByRole('table', { name: /bank channels/i })).toBeInTheDocument();
+      expect(screen.getByRole('grid', { name: /bank channels/i })).toBeInTheDocument();
       expect(screen.getAllByRole('columnheader')).toHaveLength(10);
     });
   });
@@ -1122,10 +1242,12 @@ describe('ChannelsTab', () => {
       setupBank();
       render(<ChannelsTab />);
 
-      const row = screen.getByRole('row', { name: /edit channel 1/i });
-      row.focus();
-      await userEvent.tab(); // row → select checkbox
-      await userEvent.tab(); // checkbox → reorder grip
+      // #659: rows are no longer tab stops. Inside the grid Tab moves between
+      // cells (spreadsheet convention) and leaves at the last column, which
+      // useChannelGrid.test.tsx pins; start from the next stop after it.
+      screen.getByRole('checkbox', { name: /select all visible channels/i }).focus();
+      await userEvent.tab(); // → channel 1's select checkbox
+      await userEvent.tab(); // → channel 1's reorder grip
 
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),

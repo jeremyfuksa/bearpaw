@@ -40,6 +40,14 @@ export function validateField(
   value: string | boolean,
   caps?: ScannerCapabilities,
 ): string | null {
+  if (field === 'alpha_tag' && typeof value === 'string' && value !== '') {
+    // Mirrors protocol::validate_channel_name, which the upload handler
+    // enforces (alpha_tag_invalid). Empty is allowed: it clears the tag.
+    if ([...value].length > 16) return 'Tag must be 16 characters or fewer';
+    if (!/^[A-Za-z0-9 !@#$%&*()\-/<>.?]*$/.test(value)) {
+      return 'Tag can only use letters, numbers, spaces and ! @ # $ % & * ( ) - / < > . ?';
+    }
+  }
   if (field === 'modulation' && typeof value === 'string') {
     if (!(MODULATIONS as readonly string[]).includes(value)) {
       return `Modulation must be one of ${MODULATIONS.join(', ')}`;
