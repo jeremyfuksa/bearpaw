@@ -162,6 +162,7 @@ interface ChannelRowProps {
   onOpenList: (c: number) => void;
   openList: (c: number) => React.ReactNode | null;
   onMove: (fromIndex: number, toIndex: number) => void;
+  onPickUp: () => void;
   onToggleGrab: () => void;
   onKeyboardMove: (direction: -1 | 1) => void;
   onReleaseGrab: () => void;
@@ -197,6 +198,7 @@ function ChannelRow({
   onOpenList,
   openList,
   onMove,
+  onPickUp,
   onToggleGrab,
   onKeyboardMove,
   onReleaseGrab,
@@ -206,7 +208,13 @@ function ChannelRow({
 
   const [{ isDragging }, drag] = useDrag({
     type: DND_ITEM_TYPE,
-    item: { rowIndex },
+    // A function, so it runs once when the drag BEGINS (#775). Hover moves
+    // arrive faster than re-renders, so mapping a hover's position back to a
+    // channel reads a stale order and marks whichever channel used to be there.
+    item: () => {
+      onPickUp();
+      return { rowIndex };
+    },
     canDrag: !disableDrag,
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
@@ -1028,14 +1036,6 @@ export function ChannelsTab() {
       });
     },
     [activeBank, bankChannels],
-  );
-
-  const dragMoveRow = useCallback(
-    (fromIndex: number, toIndex: number) => {
-      markMoved([currentBankOrder[fromIndex]]);
-      moveRow(fromIndex, toIndex);
-    },
-    [currentBankOrder, markMoved, moveRow],
   );
 
   // Keyboard reorder (#236). `grabbedChannelIndex` holds the channel index —
@@ -2150,7 +2150,8 @@ export function ChannelsTab() {
                           </ul>
                         ) : null
                       }
-                      onMove={dragMoveRow}
+                      onMove={moveRow}
+                      onPickUp={() => markMoved([channel.index])}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {
                         if (activeGrabIndex === channel.index) {
