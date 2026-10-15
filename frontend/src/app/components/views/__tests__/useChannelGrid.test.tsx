@@ -27,6 +27,12 @@ function Harness(props: {
     rowCount: data.length,
     cellText: (r, f) => data[r][fields.indexOf(f)],
     booleanDelay: props.booleanDelay ?? false,
+    listOptions: (f) =>
+      f === 'modulation'
+        ? ['AUTO', 'FM', 'AM', 'NFM']
+        : f === 'delay' && !props.booleanDelay
+          ? ['0', '2']
+          : null,
     onApply: props.onApply ?? vi.fn(),
     onTogglePriority: props.onTogglePriority ?? vi.fn(),
     pasteBlocked: props.pasteBlocked ?? false,
@@ -45,7 +51,29 @@ function Harness(props: {
                 {g.editing !== null && g.active.r === r && g.active.c === c ? (
                   <input {...g.editorProps(r, c)} />
                 ) : (
-                  text
+                  <>
+                    {text}
+                    <button aria-label={`toggle ${r}-${c}`} onClick={() => g.toggleAt(r, c)} />
+                    <button aria-label={`open ${r}-${c}`} onClick={() => g.openMenu(r, c)} />
+                  </>
+                )}
+                {g.menu && g.menu.r === r && g.menu.c === c && (
+                  <ul role="listbox">
+                    {g.menu.options.map((o, i) => (
+                      <li
+                        key={o}
+                        role="option"
+                        aria-selected={i === g.menu!.highlight}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={() => g.pickOption(i)}
+                      >
+                        {o}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             ))}
@@ -60,6 +88,102 @@ const sink = () => screen.getByRole('textbox', { name: /^Channels grid/ });
 const clip = (text = '') => ({ clipboardData: { getData: () => text, setData: vi.fn() } });
 
 describe('useChannelGrid', () => {
+  // Closed sets (Mode; Delay on a BC125AT) are picked from a list, the
+  // spreadsheet convention, instead of typed into a text editor.
+  describe('list cells', () => {
+    const toMode = () => {
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+    };
+
+    it('Enter opens the list at the current value; arrows and Enter pick', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      toMode();
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(screen.getByRole('option', { name: 'FM' })).toHaveAttribute('aria-selected', 'true');
+      expect(screen.queryByRole('textbox', { name: /^Mode/ })).toBeNull();
+      fireEvent.keyDown(sink(), { key: 'ArrowDown' });
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(onApply).toHaveBeenCalledWith([{ r: 0, field: 'modulation', text: 'AM' }]);
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('Alt+ArrowDown opens it; Escape closes without changing anything', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      toMode();
+      fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      fireEvent.keyDown(sink(), { key: 'Escape' });
+      expect(screen.queryByRole('listbox')).toBeNull();
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('Alt+ArrowDown on a text cell opens nothing', () => {
+      render(<Harness />);
+      fireEvent.keyDown(sink(), { key: 'ArrowDown', altKey: true });
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
+    it('clicking the chevron opens it and clicking an option picks it', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      fireEvent.click(screen.getByRole('button', { name: 'open 1-2' }));
+      fireEvent.click(screen.getByRole('option', { name: 'AUTO' }));
+      expect(onApply).toHaveBeenCalledWith([{ r: 1, field: 'modulation', text: 'AUTO' }]);
+    });
+
+    it('typing still edits it as text, for fast entry and paste-like input', () => {
+      render(<Harness />);
+      toMode();
+      fireEvent.keyDown(sink(), { key: 'n' });
+      expect(screen.getByRole('textbox', { name: 'Mode, row 1' })).toHaveValue('n');
+    });
+
+    it('the delay is a list on a BC125AT', () => {
+      const fields: GridField[] = ['frequency', 'delay'];
+      render(
+        <Harness
+          fields={fields}
+          data={[
+            ['154.4300', '2'],
+            ['155.1150', '0'],
+          ]}
+        />,
+      );
+      fireEvent.keyDown(sink(), { key: 'ArrowRight' });
+      fireEvent.keyDown(sink(), { key: 'Enter' });
+      expect(screen.getByRole('option', { name: '2' })).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  // On/off cells toggle with a single click on their checkbox.
+  describe('toggle cells', () => {
+    it('a click toggles that row only', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      fireEvent.click(screen.getByRole('button', { name: 'toggle 1-3' }));
+      expect(onApply).toHaveBeenCalledWith([{ r: 1, field: 'lockout', text: 'n' }]);
+    });
+
+    it('a click on priority fires the immediate action', () => {
+      const onTogglePriority = vi.fn();
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} onTogglePriority={onTogglePriority} />);
+      fireEvent.click(screen.getByRole('button', { name: 'toggle 2-4' }));
+      expect(onTogglePriority).toHaveBeenCalledWith(2);
+      expect(onApply).not.toHaveBeenCalled();
+    });
+
+    it('a click on a text cell does nothing', () => {
+      const onApply = vi.fn();
+      render(<Harness onApply={onApply} />);
+      fireEvent.click(screen.getByRole('button', { name: 'toggle 0-0' }));
+      expect(onApply).not.toHaveBeenCalled();
+    });
+  });
+
   // A BC75XLT's delay is a boolean the cell shows as ON/OFF. Editing it as
   // text put the raw 0/1 in the editor, so typing over it produced "0on" and
   // turned the row red. It is a toggle, like lockout (hardware report,

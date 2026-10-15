@@ -312,6 +312,36 @@ describe('ChannelsTab', () => {
       expect(store.setMemoryDraft).not.toHaveBeenCalled();
     });
 
+    it('one click on the lockout checkbox stages the toggle', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const lockout = within(row).getAllByRole('gridcell')[5];
+      await userEvent.click(within(lockout).getByRole('button'));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ lockout: !mockChannels[0].lockout }),
+      );
+    });
+
+    it('Mode is picked from its list', async () => {
+      const store = createMockStore({ channels: mockChannels });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      const row = screen.getByRole('row', { name: /^Channel 1,/ });
+      const mode = within(row).getAllByRole('gridcell')[2];
+      await userEvent.click(within(mode).getByRole('button', { hidden: true }));
+      await userEvent.click(screen.getByRole('option', { name: 'NFM' }));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ modulation: 'NFM' }),
+      );
+      expect(screen.queryByRole('listbox')).toBeNull();
+    });
+
     it('does not open an edit dialog', async () => {
       render(<ChannelsTab />);
       await userEvent.dblClick(screen.getAllByRole('gridcell')[0]);
