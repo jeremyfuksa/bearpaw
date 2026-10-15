@@ -255,6 +255,14 @@ export function useChannelGrid({
       e.preventDefault();
       return;
     }
+    // Cmd/Ctrl+A selects every channel in the bank. (Inside an open cell the
+    // editor gets the key first, so there it still selects the cell's text.)
+    if (jump && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      setAnchor({ r: 0, c: 0 });
+      setActive({ r: lastRow, c: lastCol });
+      return;
+    }
     // Plain Alt+Down opens a list cell's list (the spreadsheet convention).
     if (e.altKey && !e.shiftKey && e.key === 'ArrowDown') {
       e.preventDefault();

@@ -248,7 +248,7 @@ describe('useChannelGrid', () => {
     for (const key of ['s', 'h', 'y']) {
       expect(fireEvent.keyDown(sink(), { key, metaKey: true })).toBe(false);
     }
-    for (const key of ['c', 'v', 'x', 'a', 'z']) {
+    for (const key of ['c', 'v', 'x', 'z']) {
       expect(fireEvent.keyDown(sink(), { key, metaKey: true })).toBe(true);
     }
   });
@@ -373,6 +373,22 @@ describe('useChannelGrid', () => {
     // The mouseup was lost entirely (e.g. released outside the window).
     fireEvent.mouseEnter(cells[10], { buttons: 0 });
     expect(cells[10]).toHaveAttribute('aria-selected', 'false');
+  });
+
+  // Cmd/Ctrl+A in the grid selects every channel in the bank (the header
+  // select-all checkbox it replaces did the same). Inside an open cell the
+  // editor handles it, so it still selects that cell's text.
+  it('Cmd+A selects every row; Ctrl+A too', () => {
+    render(<Harness />);
+    expect(fireEvent.keyDown(sink(), { key: 'a', metaKey: true })).toBe(false);
+    expect(
+      screen.getAllByRole('gridcell').every((c) => c.getAttribute('aria-selected') === 'true'),
+    ).toBe(true);
+    fireEvent.keyDown(sink(), { key: 'Escape' });
+    fireEvent.keyDown(sink(), { key: 'A', ctrlKey: true, shiftKey: false });
+    expect(
+      screen.getAllByRole('gridcell').every((c) => c.getAttribute('aria-selected') === 'true'),
+    ).toBe(true);
   });
 
   it('Shift+arrow extends the selection', () => {

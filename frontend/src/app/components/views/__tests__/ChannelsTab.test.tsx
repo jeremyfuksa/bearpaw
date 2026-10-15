@@ -779,6 +779,18 @@ describe('ChannelsTab', () => {
       );
     });
 
+    it('Cmd+A then Clear Selected clears every channel in the bank', async () => {
+      const store = createMockStore({ channels: two() });
+      store.setMemoryDraft = vi.fn();
+      setMockStore(store);
+      render(<ChannelsTab />);
+      screen.getByRole('textbox', { name: /^Channels grid/ }).focus();
+      await userEvent.keyboard('{Meta>}a{/Meta}');
+      await userEvent.click(screen.getByRole('button', { name: /Clear Selected/i }));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(1, buildEmptyDraft(2));
+      expect(store.setMemoryDraft).toHaveBeenCalledWith(2, buildEmptyDraft(2));
+    });
+
     it('has no checkboxes', () => {
       setMockStore(createMockStore({ channels: two() }));
       render(<ChannelsTab />);
