@@ -1255,6 +1255,14 @@ export function ChannelsTab() {
           if (!ok) return;
         }
       } else {
+        // No remote clear exists on some models (#787); their firmware moves
+        // the flag itself when another channel in the bank is set.
+        if (!capabilities.has_priority_clear) {
+          toast.info(
+            "This scanner can't clear priority remotely. To move it, pick another channel in this bank.",
+          );
+          return;
+        }
         const ok = await confirmDialog(
           `Clear priority on CH${channelIndex}? The channel is rewritten in place.`,
           'Clear priority',
@@ -1269,7 +1277,7 @@ export function ChannelsTab() {
         toast.error(`Failed to ${next ? 'set' : 'clear'} priority on CH${channelIndex}`);
       }
     },
-    [bankCount, channels, channelsPerBank, setChannels],
+    [bankCount, capabilities.has_priority_clear, channels, channelsPerBank, setChannels],
   );
 
   const gridFields = useMemo(

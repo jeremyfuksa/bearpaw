@@ -451,6 +451,29 @@ describe('ChannelsTab', () => {
       expect(merged.find((c: ChannelData) => c.index === 20)).toBe(priorityChannels[1]);
     });
 
+    // A BC75XLT cannot clear priority by any known means (#787): offering the
+    // clear only led to a confirm and then a failure toast.
+    it('does not offer a priority clear where the scanner cannot clear', async () => {
+      mockApiClient.setChannelPriority = vi.fn();
+      setMockStore(
+        createMockStore({
+          channels: [createTestChannel({ index: 9, bank: 1, priority: true })],
+          deviceInfo: {
+            ...createMockStore().deviceInfo,
+            capabilities: capabilityFixture.BC75XLT,
+          } as ReturnType<typeof createMockStore>['deviceInfo'],
+        }),
+      );
+
+      render(<ChannelsTab />);
+      // No alpha-tag column on this model, so find the row by frequency.
+      await togglePriority(/151\.25/);
+
+      await waitFor(() => expect(toast.info).toHaveBeenCalled());
+      expect(confirmDialog).not.toHaveBeenCalled();
+      expect(mockApiClient.setChannelPriority).not.toHaveBeenCalled();
+    });
+
     it('shows an error toast and leaves the store unchanged when setChannelPriority throws', async () => {
       const priorityChannels = [createTestChannel({ index: 9, bank: 1, priority: false })];
       mockApiClient.setChannelPriority = vi.fn().mockRejectedValue(new Error('write failed'));
