@@ -158,7 +158,11 @@ fn start_backend_runtime(
     let resolved = bearpaw_api::resolve_scanner_port(&cfg);
     let resolved_serial = resolved.as_ref().map(|r| r.port_name.clone());
     let assert_dtr = cfg.device.assert_dtr_on_open;
-    let serial_port = resolved.map(|r| (r.port_name, r.baud, assert_dtr));
+    let serial_port = resolved.map(|target| bearpaw_api::ScannerLink {
+        target,
+        assert_dtr,
+        resolve: Box::new(move || bearpaw_api::resolve_scanner_port(&cfg)),
+    });
 
     // `last_error` drives the status-bar "(error)" badge in the UI, so it
     // must only hold real failures. "No config file found" is benign —

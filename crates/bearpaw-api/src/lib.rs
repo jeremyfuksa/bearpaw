@@ -10,7 +10,9 @@ pub mod state;
 pub mod transport;
 pub mod transport_usb;
 
-pub use api::{default_state, run_server, run_server_with_shutdown, spawn_poll_loop};
+pub use api::{
+    default_state, run_server, run_server_with_shutdown, spawn_poll_loop, PortResolver, ScannerLink,
+};
 pub use config::{load_config, resolve_scanner_port, Config, ResolvedPort};
 pub use logging::{init_backend_logging, LoggingGuard};
 pub use state::{DeviceInfo, LiveState};
