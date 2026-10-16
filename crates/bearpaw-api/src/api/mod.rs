@@ -3546,6 +3546,39 @@ mod tests {
         assert!(body.get("timestamp").is_some());
     }
 
+    // REGRESSION GUARD (#795): the desktop webview's origin differs from the
+    // API's, so every non-simple request is preflighted. A method the client
+    // sends but the CORS layer omits fails in the packaged app only -- curl,
+    // the Vite proxy and every handler test pass. PATCH (scanner rename) was
+    // the one missing. Keep this list in step with `frontend/src/api/client.ts`.
+    #[tokio::test]
+    async fn the_tauri_origin_may_preflight_every_method_the_client_sends() {
+        for method in ["GET", "POST", "PUT", "PATCH", "DELETE"] {
+            let response = router(default_state())
+                .oneshot(
+                    Request::builder()
+                        .method(Method::OPTIONS)
+                        .uri("/api/v1/scanners/x")
+                        .header("origin", "tauri://localhost")
+                        .header("access-control-request-method", method)
+                        .header("access-control-request-headers", "content-type")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let allowed = response
+                .headers()
+                .get("access-control-allow-methods")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            assert!(
+                allowed.split(',').any(|m| m.trim() == method),
+                "{method} missing from preflight allow-methods: {allowed:?}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn disallowed_browser_origins_are_rejected_before_any_handler_runs() {
         let state = default_state();
