@@ -62,6 +62,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A reorder that partly fails no longer loses a channel.** If one write in
+  a reorder failed while another landed, the scanner could end up with one
+  channel twice and the other gone, and Bearpaw discarded the only remaining
+  copy. The channel that didn't move now stays staged in its new spot, so
+  Upload Changes finishes the reorder.
+
 - **A BC75XLT no longer offers a priority clear it can't do.** Clicking the
   priority channel used to ask to clear it, then fail every time: this scanner
   has no way to clear priority remotely. Bearpaw now says so and tells you to
