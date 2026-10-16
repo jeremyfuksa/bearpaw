@@ -1293,6 +1293,23 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
         let display_name = resolved
             .as_deref()
             .and_then(|id| super::scanner_registry::display_name(&state.preferences_db_path, id));
+        // REGRESSION GUARD (#794, paired with the id re-read in
+        // `flush_channel_cache`): clear the old radio's channels BEFORE the
+        // new `scanner_id` is published, never after. The periodic flush runs
+        // off this thread and pairs a shadow snapshot with the id it reads.
+        // Cleared-then-published means any snapshot still holding the old
+        // radio's channels was taken before the id moved, so the flush's
+        // before/after id check sees the change and skips. Published-then-
+        // cleared left a gap where a complete old image sat under the new id,
+        // and a flush landing in it wrote one scanner's channels into the
+        // other's cache.
+        if previous_id.is_some() && previous_id != resolved {
+            if let Ok(mut shadow) = state.shadow.write() {
+                shadow.channels.clear();
+                shadow.last_sync = 0.0;
+            }
+            info!("scanner changed; cleared the previous radio's channel memory");
+        }
         if let Ok(mut d) = state.device.write() {
             // REGRESSION GUARD (`the_serial_number_does_not_latch_across_a_swap`):
             // both fields are assigned UNCONDITIONALLY, and they move together.
@@ -1340,13 +1357,9 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
         // Only on a CHANGE. `previous_id.is_some()` keeps the first connect of
         // a session from wiping channels a handler read off the wire before any
         // MDL landed.
-        if previous_id.is_some() && previous_id != resolved {
-            if let Ok(mut shadow) = state.shadow.write() {
-                shadow.channels.clear();
-                shadow.last_sync = 0.0;
-            }
-            info!("scanner changed; cleared the previous radio's channel memory");
-        }
+        //
+        // The clear itself runs ABOVE, before the new `scanner_id` is
+        // published -- see the #794 guard there.
         if let Some(id) = resolved.as_deref() {
             super::channel_cache::adopt_placeholder_cache(
                 &state.preferences_db_path,

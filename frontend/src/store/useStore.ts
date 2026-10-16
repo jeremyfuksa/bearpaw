@@ -107,6 +107,8 @@ export interface AppStore {
   preferences: Preferences;
   lastSequence: number;
   memoryDrafts: Record<number, ChannelDraft>;
+  /** The scanner `memoryDrafts` were made on: the last non-null `scanner_id`. */
+  draftScannerId: string | null;
   memoryEditingIndex: number | null;
 
   updateLiveState: (state: Partial<LiveState>, sequence?: number) => void;
@@ -226,6 +228,7 @@ export const useStore = create<AppStore>((set) => ({
   preferences: defaultPreferences,
   lastSequence: 0,
   memoryDrafts: {},
+  draftScannerId: null,
   memoryEditingIndex: null,
 
   updateLiveState: (state, sequence) =>
@@ -249,7 +252,21 @@ export const useStore = create<AppStore>((set) => ({
   // this whenever the WebSocket (re)connects.
   resetSequence: () => set({ lastSequence: 0 }),
 
-  setDeviceInfo: (deviceInfo) => set({ deviceInfo }),
+  // REGRESSION GUARD (`draftsFollowScanner.test.ts`, #791): drafts are keyed by
+  // slot index alone, so they are only meaningful against the scanner they
+  // were made on. A DIFFERENT scanner_id drops them; a reconnect of the same
+  // one, or a reply with no id yet, keeps them. App keys ChannelsTab on
+  // `draftScannerId` so the tab's staged reorder goes with them.
+  setDeviceInfo: (deviceInfo) =>
+    set((prev) => {
+      const id = deviceInfo?.scanner_id ?? null;
+      if (!id || id === prev.draftScannerId) return { deviceInfo };
+      return {
+        deviceInfo,
+        draftScannerId: id,
+        memoryDrafts: prev.draftScannerId ? {} : prev.memoryDrafts,
+      };
+    }),
   setChannels: (channels) =>
     set((prev) => ({
       channels:

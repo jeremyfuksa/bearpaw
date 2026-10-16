@@ -19,6 +19,9 @@ describe('validateField', () => {
     expect(validateField('frequency', '300.0000', bc75)).toMatch(/covered band/);
     expect(validateField('frequency', '0', bc75)).toBeNull();
     expect(validateField('frequency', 'abc', bc75)).toBe('Invalid frequency');
+    // #793: a numeric prefix is not a frequency.
+    expect(validateField('frequency', '146,520', bc125)).toBe('Invalid frequency');
+    expect(validateField('frequency', '0,145', bc125)).toBe('Invalid frequency');
   });
 
   it('checks delay against the model set', () => {

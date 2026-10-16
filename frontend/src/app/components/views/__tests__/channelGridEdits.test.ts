@@ -202,6 +202,40 @@ describe('applyCellEdits', () => {
     expect(out.get(1)?.frequency).toBe('abc');
   });
 
+  // #793: parseFloat reads a numeric PREFIX, so a decimal-comma frequency
+  // became a different, valid one and '0,145' became a channel clear.
+  it('keeps a partly numeric frequency as typed instead of reading its prefix', () => {
+    for (const text of ['146,520', '146.52x', '1e2']) {
+      const out = applyCellEdits(
+        () => programmed(),
+        [{ index: 1, field: 'frequency', text }],
+        BC125,
+      );
+      expect(out.get(1)?.frequency).toBe(text);
+    }
+  });
+
+  it('does not clear the channel for a value that only starts with zero', () => {
+    const out = applyCellEdits(
+      () => programmed(),
+      [{ index: 1, field: 'frequency', text: '0,145' }],
+      BC125,
+    );
+    // A clear would also flip lockout to the cleared slot's `true`.
+    expect(out.get(1)).toMatchObject({ frequency: '0,145', lockout: false });
+  });
+
+  it('still accepts a frequency with an MHz suffix, spaced or not', () => {
+    for (const text of ['146.52MHz', '146.52 mhz', ' 146.52 ']) {
+      const out = applyCellEdits(
+        () => programmed(),
+        [{ index: 1, field: 'frequency', text }],
+        BC125,
+      );
+      expect(out.get(1)?.frequency).toBe('146.5200');
+    }
+  });
+
   it('returns one draft per channel touched', () => {
     const out = applyCellEdits(
       () => programmed(),
