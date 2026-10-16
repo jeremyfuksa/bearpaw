@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A dragged channel stays inside the list.** Dragging a channel past the
+  top or bottom of the Channels list carried it out of view until you let go.
+  It now stops at the edge, and the list scrolls under it as before.
+
 ## [1.2.0] — 2026-10-15
 
 Edit channels like a spreadsheet, swap scanners without restarting, and name
