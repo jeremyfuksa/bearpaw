@@ -62,6 +62,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Switching scanners can no longer save one scanner's channels as the
+  other's.** In rare timing, swapping between two scanners with the same number
+  of channels could store the first one's channels under the second, so the
+  second showed the wrong memory until you synced. The scanner itself was never
+  changed.
+
 - **A BC75XLT no longer offers a priority clear it can't do.** Clicking the
   priority channel used to ask to clear it, then fail every time: this scanner
   has no way to clear priority remotely. Bearpaw now says so and tells you to
