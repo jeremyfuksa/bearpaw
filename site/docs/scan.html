@@ -131,22 +131,28 @@
             >.)
           </li>
           <li>
-            <strong>Disconnected</strong>: "Scanner Offline" with a plain-language
-            reason, and the USB icon shows an error.
+            <strong>Disconnected</strong>: "Disconnected", with the reason
+            underneath ("No scanner connected" if there's nothing more
+            specific). The USB icon disappears.
           </li>
         </ul>
 
         <h2 id="the-controls">The controls</h2>
         <p>
-          Four kinds of control live on the display: <strong>VOL</strong>,
-          <strong>L/O</strong>, <strong>HOLD</strong>, and the row of
-          <strong>bank</strong> buttons.
+          Five kinds of control live on the display: the <strong>VOL</strong>
+          and <strong>SQL</strong> sliders, <strong>L/O</strong>,
+          <strong>HOLD</strong>, and the row of <strong>bank</strong> buttons.
         </p>
 
-        <h3 id="vol-volume">VOL: volume</h3>
+        <h3 id="vol-volume">VOL and SQL: volume and squelch</h3>
         <p>
-          Click <strong>VOL</strong> to open a slider. Volume runs 0 to 15.
-          Dragging it changes the scanner's speaker level, live.
+          Two sliders run along the top of the display, each from 0 to 15, with
+          the current number beside it. <strong>VOL</strong> is the speaker
+          level. <strong>SQL</strong> is
+          <a href="glossary.html#squelch">squelch</a>, how strong a signal has
+          to be before the scanner stops on it. The change goes to the scanner
+          when you let go of the slider. Turning a knob on the radio moves the
+          slider too, within a couple of seconds.
         </p>
 
         <h3 id="hold-park-on-the-current-channel">
@@ -271,6 +277,11 @@
             <a href="preferences.html"
               >Preferences → Hit Minimum Duration</a
             >.
+          </p>
+          <p>
+            Nothing is recorded while <strong>SQL</strong> is at 0. Squelch 0
+            leaves the radio open to noise, so every moment would count as a
+            hit. Raise it to 1 or more to start recording again.
           </p>
         </div>
 

@@ -91,8 +91,21 @@
         <p>
           <strong>Click a bank to see its channels.</strong> Only one bank
           shows at a time; the app opens on Bank 1. The selected bank is
-          highlighted with a small glowing dot, and its number appears next to
-          the "Bank Channels" heading.
+          highlighted, and its number appears next to the "Bank Channels"
+          heading.
+        </p>
+        <p>
+          <strong>To name a bank</strong>, select it and click the pencil
+          beside it. Type a name of up to 16 characters, like Ham, Air, or
+          Work, then press Enter or click away to save it (Esc cancels). Clear
+          the name to go back to a plain number. The name replaces "Bank
+          Channels" as the heading, and it also shows under that bank's button
+          on the Scan tab and in the Locked Channels bank filter.
+        </p>
+        <p>
+          The scanner has nowhere to store bank names, so Bearpaw keeps them,
+          separately for each scanner you connect. Until a scanner has
+          connected, there's no pencil.
         </p>
         <div class="callout">
           <p>
@@ -125,22 +138,18 @@
             </thead>
             <tbody>
               <tr>
-                <td>☑</td>
-                <td>
-                  A checkbox to <strong>select</strong> the row for a bulk action
-                  (see the <a href="#the-toolbar">toolbar</a>).
-                </td>
-              </tr>
-              <tr>
                 <td>⠿</td>
                 <td>
-                  A <strong>drag handle</strong>. Grab it to reorder the channel
-                  within its bank.
+                  A <strong>grip</strong>. Grab it to move the channel within
+                  its bank (see <a href="#moving-channels">Moving channels</a>).
                 </td>
               </tr>
               <tr>
                 <td><strong>CH</strong></td>
-                <td>The channel number (1 to 500).</td>
+                <td>
+                  The channel number (1 to 500, or 1 to 300 on a BC75XLT).
+                  Click it to <a href="#selecting-rows">select the row</a>.
+                </td>
               </tr>
               <tr>
                 <td><strong>FREQ</strong></td>
@@ -194,9 +203,7 @@
           </table>
         </div>
         <p>
-          <strong>To edit a channel, click anywhere on its row</strong> except
-          the checkbox. That opens the edit panel. The checkbox in the header row
-          selects (or clears) every channel currently shown.
+          The list works like a spreadsheet: you edit right in the cells.
         </p>
 
         <figure class="docs-figure">
@@ -212,15 +219,45 @@
 
         <h2 id="editing-a-channel">Editing a channel</h2>
         <p>
-          Clicking a row opens the <strong>Edit Channel</strong> panel. Every
-          field:
+          Click a cell and start typing to replace what's in it, or press
+          <kbd>Enter</kbd> (or double-click it) to change what's there.
+          <kbd>Enter</kbd> keeps your edit and moves down a row, and
+          <kbd>Tab</kbd> keeps it and moves right. Hold <kbd>Shift</kbd> to go
+          the other way, or press <kbd>Esc</kbd> to cancel.
         </p>
         <p>
-          <strong>Frequency (MHz)</strong> is a direct entry. The BC125AT doesn't
-          cover one continuous range; it covers four bands:
-          <strong>25 to 54, 108 to 174, 225 to 380, and 400 to 512 MHz</strong>.
-          Enter something outside those bands (say, 90.0 MHz) and the app rejects
-          it with a message. Enter <code>0</code> to mark the channel empty.
+          A few cells aren't typed into. <strong>MODE</strong> opens a list,
+          and so does <strong>DLY</strong> on a BC125AT-family scanner.
+          <strong>L/O</strong> flips on and off with <kbd>Enter</kbd> or
+          <kbd>Space</kbd>, and so does <strong>DLY</strong> on a BC75XLT.
+        </p>
+        <p>
+          A value the scanner can't take stays in the cell and turns red. Point
+          at the cell to read why. The strip above the list counts the red
+          cells, and <strong>Upload Changes</strong> waits until you've fixed
+          every one.
+        </p>
+        <p>
+          <strong>Frequency (MHz)</strong> has to fall inside a band your
+          scanner can tune, and that depends on the model:
+        </p>
+        <ul>
+          <li>
+            BC125AT, BCT125AT, AE125H: <strong>25 to 54, 108 to 174, 225 to
+            380, and 400 to 512</strong>.
+          </li>
+          <li>
+            UBC125XLT: <strong>25 to 88, 108 to 174, 225 to 512, and 806 to
+            960</strong>. The UBC126AT is the same except its third band runs
+            to 520.
+          </li>
+          <li>
+            BC75XLT: <strong>25 to 54, 108 to 174, and 406 to 512</strong>.
+          </li>
+        </ul>
+        <p>
+          Clearing the frequency, or entering <code>0</code>, empties the whole
+          channel.
         </p>
         <p>
           <strong>Alpha Tag</strong> is the channel's name, up to
@@ -236,7 +273,7 @@
           <a href="glossary.html#ctcss--tone--dcs">CTCSS tone</a> so the scanner
           only opens on transmissions carrying that tone. Leave it blank for none.
           The app accepts only the standard CTCSS tones (67.0 to 254.1 Hz) and
-          warns you on a value that isn't one of them.
+          turns anything else red.
         </p>
         <p>
           <strong>Delay (seconds)</strong> is how long the scanner waits on a
@@ -247,15 +284,60 @@
           transmission.
         </p>
         <p>
-          <strong>Lockout</strong> is a switch. On means the scanner skips this
-          channel.
+          <strong>Lockout</strong> is on or off. On means the scanner skips
+          this channel.
         </p>
         <p>
-          <strong>Priority</strong> is a switch, and it applies to the scanner
-          immediately rather than waiting for Upload. The radio allows only one
-          priority channel per bank, so turning it on where another channel
-          already has priority asks you to confirm moving it. (More on priority in
-          the <a href="glossary.html#priority">Glossary</a>.)
+          <strong>Priority</strong> applies to the scanner the moment you click
+          it, rather than waiting for Upload. The radio allows one priority
+          channel per bank, so turning it on where another channel already has
+          it asks you to confirm the move. (More on priority in the
+          <a href="glossary.html#priority">Glossary</a>.)
+        </p>
+        <p>
+          On a BC125AT-family scanner, taking priority off a channel means
+          erasing it and writing it back without the flag, and the confirmation
+          says so. A BC75XLT can't take priority off a channel at all. To move
+          it, click <strong>PRIO</strong> on another channel in the same bank,
+          and the radio moves it for you.
+        </p>
+
+        <h3 id="selecting-rows">Selecting rows</h3>
+        <p>
+          Click a channel number to select its row, and Shift-click another
+          number to select everything between. <kbd>⌘</kbd>+<kbd>A</kbd>
+          (<kbd>Ctrl</kbd>+<kbd>A</kbd> on Windows and Linux) selects the whole
+          bank.
+        </p>
+        <p>
+          <kbd>Delete</kbd> clears the selected cells. A cleared FREQ cell
+          empties its whole channel. A cleared MODE cell goes back to AUTO,
+          and a cleared L/O cell turns off. DLY and PRIO cells don't change.
+          To empty entire rows instead, select them and use
+          <strong>Clear Selected</strong> in the toolbar.
+        </p>
+
+        <h3 id="copy-and-paste">Copy and paste</h3>
+        <p>
+          Copy cells from Excel, Numbers, or Google Sheets, click the cell
+          where they should start, and paste. Columns fill left to right from
+          there, skipping PRIO. A single value pasted over a selection fills
+          every selected cell.
+        </p>
+        <p>
+          If your first row is a header, columns match by name instead, in any
+          order. Bearpaw knows <code>Frequency</code>, <code>Tag</code>,
+          <code>Mode</code>, <code>Tone</code>, <code>Delay</code>, and
+          <code>Lockout</code>, plus a few short forms like <code>Freq</code>
+          and <code>DLY</code>. A header can also include <code>Channel</code>,
+          <code>Bank</code>, or <code>Priority</code>, which are skipped, and
+          a BC75XLT skips Tag, Mode, and Tone too. If any heading is something
+          else, Bearpaw treats that row as data.
+        </p>
+        <p>
+          A paste becomes drafts like any other edit. It stops at the last row
+          of the bank and tells you how many rows didn't fit. It won't paste
+          while a search is active.
         </p>
 
         <h2 id="drafts-and-uploading-the-important-part">
@@ -288,24 +370,38 @@
           To throw away all your pending edits without uploading, press
           <strong>Discard Changes</strong> (it asks you to confirm first).
         </p>
-        <div class="callout">
-          <p>
-            The <strong>Priority</strong> switch is the exception. It applies the
-            moment you toggle it. Everything else waits for Upload.
-          </p>
-        </div>
+        <p>
+          Drafts last only while Bearpaw is open, and they're thrown away when
+          a different scanner connects. Upload before you quit or swap
+          scanners.
+        </p>
+
+        <h3 id="when-an-upload-fails">When an upload fails</h3>
+        <p>
+          A message names the first channel that didn't take, and why.
+          Anything that didn't land stays pending, so fix the problem and press
+          <strong>Upload Changes</strong> again.
+        </p>
+        <p>
+          A move that fails can leave the scanner holding one channel twice,
+          with the pending draft as the only copy of the other. Upload again
+          before you discard anything.
+        </p>
 
         <h2 id="the-toolbar">The toolbar</h2>
         <p>Across the top of the tab:</p>
         <ul>
           <li>
             <strong>Search box</strong>: filter the current bank by frequency or
-            name. Drag-reorder is turned off while a search is active.
+            name. Moving and pasting are off while a search is active, because
+            a filtered list skips channels and rows would land in the wrong
+            places.
           </li>
           <li>
-            <strong>Clear Selected</strong>: blanks all the checkbox-selected
-            channels. Like edits, this creates drafts; it doesn't wipe them from
-            the radio until you upload.
+            <strong>Clear Selected</strong>: empties the
+            <a href="#selecting-rows">selected rows</a>, after asking. Like
+            edits, this creates drafts; nothing is wiped from the radio until
+            you upload.
           </li>
           <li>
             <strong>Import</strong> / <strong>Export</strong>: move channels
@@ -313,29 +409,27 @@
             native Uniden. See
             <a href="#import-and-export">Import and export</a> below.
           </li>
-          <li>
-            <strong>Drag to reorder</strong>: change the channel order within the
-            bank by dragging. Reordering is a draft, and uploads with everything
-            else.
-          </li>
         </ul>
+
+        <h3 id="moving-channels">Moving channels</h3>
         <p>
-          <strong>To reorder a channel:</strong> point at the
-          <strong>drag handle</strong> (⠿) at the left of the row then press and
-          hold the mouse button and drag the row up or down. Release it where you
-          want the channel to land. The move is saved as a draft (a colored bar
-          appears on the affected rows) and goes to the radio on your next
-          <strong>Upload Changes</strong>.
+          Drag a row by its grip (⠿) and let go where you want the channel to
+          land. From the keyboard, focus the grip, press <kbd>Enter</kbd> or
+          <kbd>Space</kbd> to pick the row up, move it with the arrow keys, and
+          press <kbd>Enter</kbd>, <kbd>Space</kbd>, or <kbd>Esc</kbd> to put it
+          down. Putting it down keeps the move, even with <kbd>Esc</kbd>, so
+          use <strong>Discard Changes</strong> to undo one.
         </p>
-        <div class="callout">
-          <p>
-            Two limits. Reordering is <strong>mouse-only</strong> — there's no
-            keyboard path to it yet. And drag is
-            <strong>turned off while a search is active</strong>, since the list
-            you see is filtered rather than the full bank order; clear the search
-            box to drag again.
-          </p>
-        </div>
+        <p>
+          To move several rows at once, <a href="#selecting-rows">select
+          them</a> and press <kbd>Option</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> or
+          <kbd>↓</kbd> (<kbd>Alt</kbd>+<kbd>Shift</kbd> on Windows and Linux).
+        </p>
+        <p>
+          A move is a draft, marked with a colored bar, and goes to the radio on
+          your next <strong>Upload Changes</strong>. Channels only move within
+          their bank, and not while a search is active.
+        </p>
 
         <h2 id="import-and-export">Import and export</h2>
         <p>
@@ -385,8 +479,8 @@
         <h3 id="importing">Importing</h3>
         <p>
           <strong>Import</strong> loads channels from a file, and reads either
-          format automatically. A CSV brings in just the channels. A settings
-          file brings in everything it holds and
+          format automatically. A CSV brings in just the channels it lists. A
+          settings file brings in everything it holds and
           <strong>overwrites all channels and settings</strong> on the radio, so
           the app asks you to confirm before it does.
         </p>
@@ -404,6 +498,26 @@
             CSV instead.
           </p>
         </div>
+        <p>
+          The easiest CSV to import is one Bearpaw exported, because its
+          headings are already right. If you build one yourself:
+        </p>
+        <ul>
+          <li>
+            Headings have to match Bearpaw's exactly, capitals included. Only
+            <code>Index</code> and <code>Frequency</code> are required.
+          </li>
+          <li>
+            <code>Index</code> is the channel number the row overwrites, and it
+            decides the bank. Changing <code>Bank</code> does nothing.
+          </li>
+          <li>A row with a frequency of 0 is skipped, not cleared.</li>
+          <li>
+            A missing <code>Delay</code> means 2 seconds, which a BC75XLT
+            refuses. For that scanner, include a <code>Delay</code> column of
+            0 or 1.
+          </li>
+        </ul>
         <div class="callout">
           <p>
             Import writes straight to the scanner. Unlike a hand edit, it isn't
@@ -455,11 +569,13 @@
 
         <div class="callout">
           <p>
-            <strong>Editing a channel is safe even when the list is stale.</strong>
-            Bearpaw re-reads a channel from the scanner immediately before
-            writing to it, and keeps the scanner's own values for every field you
-            didn't change. So editing the tag on a channel whose frequency you
-            retuned at the keypad won't put the old frequency back.
+            Bearpaw re-reads each channel from the scanner just before writing
+            to it, and keeps the scanner's values for every field you didn't
+            change. So editing the tag on a channel whose frequency you retuned
+            at the keypad won't normally put the old frequency back. If that
+            read fails, though, the upload uses the older values from the list.
+            If you've changed channels on the radio, press
+            <strong>Refresh</strong> before you edit them.
           </p>
         </div>
         <p class="docs-support">

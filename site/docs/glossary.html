@@ -70,9 +70,10 @@
         </p>
         <div class="callout">
           <p>
-            Alpha tags come from the scanner's memory, so they're blank until the
-            <a href="#memory-sync">memory sync</a> finishes. Before sync
-            completes, hits show just the frequency.
+            Alpha tags come from the scanner's memory, so a hit shows just the
+            frequency until Bearpaw has your channels, either from a
+            <a href="#memory-sync">memory sync</a> or from the copy it saved
+            last time.
           </p>
         </div>
 
@@ -185,13 +186,14 @@
 
         <h2 id="memory-sync">Memory sync</h2>
         <p>
-          Reading every channel out of the scanner into the app — 500 on a
-          BC125AT, 300 on a BC75XLT. Because the scanner hands them over one at
-          a time, it takes about five seconds (less on a BC75XLT, which has
-          fewer to read).
-          It runs automatically when the app connects, and you can re-run it from
-          <strong>Scanner → Sync Memory</strong>. Bearpaw doesn't store your
-          channels between sessions; it re-reads them from the radio each time.
+          Reading every channel out of the scanner into the app: 500 on a
+          BC125AT, 300 on a BC75XLT. The scanner hands them over one at a time,
+          so it takes about five seconds. It runs when the app connects, and
+          you can re-run it from <strong>Scanner → Sync Memory</strong>.
+          Bearpaw also saves a copy of each scanner's channels between
+          sessions. Turn off
+          <a href="preferences.html">Re-read Channels on Connect</a> to start
+          from that copy instead of syncing.
         </p>
 
         <h2 id="modulation">Modulation</h2>

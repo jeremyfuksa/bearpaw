@@ -68,9 +68,9 @@
         <div class="callout">
           <p>
             Changes to scanner settings apply immediately. There's no Save button.
-            When you move a slider or flip a switch, the app enters the scanner's
-            programming mode to write the change, and live scanning pauses while
-            that write happens. A failed write shows a red error message.
+            Most changes put the scanner in programming mode to write them, which
+            leaves it on Hold at channel 1 until you switch to Scan or Channels.
+            Volume and Squelch change without stopping the scan. A failed write shows a red error message.
           </p>
         </div>
 
@@ -158,12 +158,50 @@
 
         <h2 id="device-information">Device Information</h2>
         <p>
-          Read-only, not settings: your scanner's <strong>Model</strong>, the
-          <strong>Port</strong> it's on, the connection <strong>Status</strong>,
-          and the <strong>Firmware</strong> version. A connection problem shows a
+          The top line names the scanner Bearpaw is using: its model, and the
+          name you gave it, if you did. Under that is read-only information,
+          not settings: the <strong>Model</strong>, the <strong>Port</strong>
+          it's on, the connection <strong>Status</strong>, and the
+          <strong>Firmware</strong> version. A connection problem shows a
           diagnostic message here, and a USB issue adds a short troubleshooting
           checklist.
         </p>
+
+        <h3 id="more-than-one-scanner">More than one scanner</h3>
+        <p>
+          Unplug one scanner and plug in another, and Bearpaw finds the new one
+          within about 15 seconds. You don't need to relaunch, even going
+          between a BC125AT and a BC75XLT. If your <code>config.yaml</code>
+          sets a port or a USB ID, Bearpaw only looks there.
+        </p>
+        <p>
+          When a different scanner connects, Bearpaw throws away any channel
+          edits you haven't uploaded, so they can't land on the wrong radio,
+          and there's no undo. Upload before you swap.
+        </p>
+        <p>
+          Once you've used more than one, the top line becomes a list of every
+          scanner Bearpaw remembers, each marked Connected or with when it was
+          last seen. Click <strong>Rename</strong> to give each one a name,
+          like "Base" or "Truck". Save a blank name to clear it.
+        </p>
+        <p>
+          <strong>Forget</strong> removes a scanner you don't use anymore.
+          Bearpaw tells you what it will delete before it does: the channels it
+          saved for that scanner, its bank names, and its activity history.
+          (History stays if you have another scanner of the same model, because
+          they share it.) Nothing on the scanner itself changes. The scanner
+          you're using has no Forget button.
+        </p>
+        <div class="callout">
+          <p>
+            Two scanners of the same BC125AT-family model show up as one entry.
+            Every one of them reports the same serial number over USB, so
+            Bearpaw can't tell them apart. To Bearpaw they're one scanner:
+            edits you haven't uploaded and bank names carry over when you swap
+            one for the other. Two BC75XLTs each get their own entry.
+          </p>
+        </div>
         <p class="docs-support">
           Did this help? Your support keeps me building Bearpaw and buys the
           scanners it learns to work with next.
