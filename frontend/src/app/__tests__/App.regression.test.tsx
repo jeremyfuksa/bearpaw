@@ -646,4 +646,16 @@ describe('App.tsx regression guards', () => {
       expect(body).toMatch(/if\s*\(\s*syncInProgress\s*\)\s*return\s*;/);
     });
   });
+
+  describe('the Channels tab remounts when a different scanner connects', () => {
+    // #791: the store drops a swapped-out scanner's drafts, but the tab's
+    // staged reorder (bankOrders, a held row) is component state. Keying on
+    // `draftScannerId` remounts it on a real swap only. Keying on
+    // `deviceInfo?.scanner_id` would also remount on every reply with no id,
+    // dropping a staged reorder for the SAME scanner. Behaviour of the id
+    // itself is in `store/__tests__/draftsFollowScanner.test.ts`.
+    it('keys ChannelsTab on draftScannerId', () => {
+      expect(APP_SOURCE).toMatch(/<ChannelsTab key=\{draftScannerId\b/);
+    });
+  });
 });

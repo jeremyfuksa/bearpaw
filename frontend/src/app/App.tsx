@@ -104,6 +104,7 @@ export default function App() {
 
   const liveState = useStore((state) => state.liveState);
   const deviceInfo = useStore((state) => state.deviceInfo);
+  const draftScannerId = useStore((state) => state.draftScannerId);
   // Falls back to the BC125AT-family defaults until device_info arrives, so
   // the status bar does not flash a differently-shaped stat row on connect.
   const capabilities = useScannerCapabilities();
@@ -1241,7 +1242,9 @@ export default function App() {
                 checkingForUpdates={checkingForUpdates}
               />
             )}
-            {currentTab === 'Channels' && <ChannelsTab />}
+            {/* Keyed on the drafts' scanner (#791): a swap drops the store's
+                drafts, and the remount drops the tab's staged reorder. */}
+            {currentTab === 'Channels' && <ChannelsTab key={draftScannerId ?? ''} />}
           </AnimatePresence>
         </main>
 
