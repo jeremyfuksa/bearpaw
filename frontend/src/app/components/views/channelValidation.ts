@@ -35,6 +35,16 @@ const CTCSS_TONES = [
   218.1, 225.7, 229.1, 233.6, 241.8, 250.3, 254.1,
 ];
 
+/** The MHz a frequency cell's text holds, or NaN. The WHOLE text must be a
+ * decimal number, an optional MHz suffix aside. `parseFloat` reads a prefix,
+ * which turned a pasted '146,520' into 146 and '0,145' into a channel clear
+ * (#793). Every reader of draft frequency text goes through this, so the
+ * grid, validation and upload agree on what the text means. */
+export function parseFrequency(text: string): number {
+  const t = text.trim().replace(/\s*mhz$/i, '');
+  return /^(\d+(\.\d*)?|\.\d+)$/.test(t) ? Number(t) : NaN;
+}
+
 export function validateField(
   field: keyof ChannelDraft,
   value: string | boolean,
@@ -54,7 +64,7 @@ export function validateField(
     }
   }
   if (field === 'frequency' && typeof value === 'string') {
-    const freq = parseFloat(value);
+    const freq = parseFrequency(value);
     if (isNaN(freq)) return 'Invalid frequency';
     if (freq === 0) return null;
     // #402: the families do not cover the same spectrum. A BC75XLT has no

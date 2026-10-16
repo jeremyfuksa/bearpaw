@@ -18,7 +18,7 @@ import { confirmDialog, saveExport, pickAndReadFile, openExternalUrl } from '../
 import type { ChannelData, ChannelDraft } from '../../../types';
 import { useChannelGrid, type GridEdit } from './useChannelGrid';
 import { applyCellEdits, cellText, type GridField } from './channelGridEdits';
-import { validateField, MODULATIONS } from './channelValidation';
+import { validateField, parseFrequency, MODULATIONS } from './channelValidation';
 import { formatSyncedAt } from '../ScannerUI';
 
 const bankTabs = Array.from({ length: 10 }, (_, index) => index + 1);
@@ -925,7 +925,7 @@ export function ChannelsTab() {
       const matchesBank =
         deriveBankFromIndex(channel.index, channelsPerBank, bankCount) === activeBank;
       const draft = memoryDrafts[channel.index];
-      const draftFrequency = draft ? Number.parseFloat(draft.frequency) : channel.frequency;
+      const draftFrequency = draft ? parseFrequency(draft.frequency) : channel.frequency;
       const isCleared = Number.isFinite(draftFrequency) && draftFrequency === 0;
       const displayTag = isCleared
         ? ''
@@ -1108,7 +1108,7 @@ export function ChannelsTab() {
         const channelIndex = channel.index;
         const draft = memoryDrafts[channelIndex];
 
-        const parsedFrequency = Number.parseFloat(draft?.frequency ?? channel.frequency.toString());
+        const parsedFrequency = parseFrequency(draft?.frequency ?? channel.frequency.toString());
         const parsedDelay = Number.parseInt(draft?.delay ?? channel.delay.toString(), 10);
         const draftTone = draft?.tone_squelch;
         const parsedTone =
@@ -1379,7 +1379,7 @@ export function ChannelsTab() {
     const out = new Map<number, Partial<Record<GridField, string>>>();
     for (const channel of channels) {
       const draft = memoryDrafts[channel.index];
-      if (!draft || Number.parseFloat(draft.frequency) === 0) continue;
+      if (!draft || parseFrequency(draft.frequency) === 0) continue;
       const errs: Partial<Record<GridField, string>> = {};
       for (const field of [
         'frequency',
@@ -2127,7 +2127,7 @@ export function ChannelsTab() {
                   const draft = memoryDrafts[channel.index];
                   const displayIndex = reorderTargets[channel.index] ?? channel.index;
                   const draftFrequency = draft
-                    ? Number.parseFloat(draft.frequency)
+                    ? parseFrequency(draft.frequency)
                     : channel.frequency;
                   const isCleared = Number.isFinite(draftFrequency) && draftFrequency === 0;
                   const displayAlpha = isCleared
