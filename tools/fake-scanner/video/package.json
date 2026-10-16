@@ -1,0 +1,9 @@
+{
+  "name": "bearpaw-demo-video",
+  "private": true,
+  "type": "module",
+  "description": "Records Bearpaw's demo video against the fake scanner",
+  "dependencies": {
+    "playwright-core": "1.56.1"
+  }
+}
