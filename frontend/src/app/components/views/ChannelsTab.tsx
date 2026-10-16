@@ -1418,7 +1418,8 @@ export function ChannelsTab() {
   const handleUploadDrafts = useCallback(async () => {
     if (draftChanges.length === 0 || isUploading || invalidCount > 0) return;
     setIsUploading(true);
-    const failed: Array<{ index: number; detail?: string }> = [];
+    // `restage` is set for a failed MOVE: what it tried to write, at its target.
+    const failed: Array<{ index: number; detail?: string; restage?: ChannelData }> = [];
     const warnings: Array<{ index: number; detail: string }> = [];
     // Channels where the scanner's value replaced the draft's for a field the
     // user never touched. Reported rather than applied silently: this changes
@@ -1453,9 +1454,9 @@ export function ChannelsTab() {
 
       writeAttempted = true;
       for (const change of draftChanges) {
+        let payload = change.payload;
+        const targetIndex = change.targetIndex ?? change.channelIndex;
         try {
-          let payload = change.payload;
-          const targetIndex = change.targetIndex ?? change.channelIndex;
           const targetBank = deriveBankFromIndex(targetIndex, channelsPerBank, bankCount);
           payload = {
             ...payload,
@@ -1561,7 +1562,12 @@ export function ChannelsTab() {
             }
           }
 
-          failed.push({ index: change.channelIndex, detail });
+          failed.push({
+            index: change.channelIndex,
+            detail,
+            restage:
+              targetIndex !== change.channelIndex ? { ...payload, index: targetIndex } : undefined,
+          });
         }
       }
     } catch (error) {
@@ -1601,9 +1607,11 @@ export function ChannelsTab() {
       // so the user can fix it and upload again; rebuilding it here silently
       // replaced their edits with what the scanner already had. Guarded by
       // ChannelsTab.test.tsx :: a failed write keeps its staged edits (#771).
-      // Only an in-place edit is kept. A failed MOVE still rebuilds: the
-      // reorder state is reset below, and a kept draft from a half-applied
-      // permutation would rewrite whichever slot it no longer belongs to.
+      // Only an in-place edit is kept where it is. A failed MOVE's source draft
+      // still rebuilds: the reorder state is reset below, and a kept draft from
+      // a half-applied permutation would rewrite whichever slot it no longer
+      // belongs to. Its CONTENT is re-staged at its target instead; see #792
+      // below.
       const failedIndexes = new Set(failed.map((f) => f.index));
       const targetsOfOthers = new Set(
         draftChanges
@@ -1624,6 +1632,19 @@ export function ChannelsTab() {
         const refreshed = byIndex.get(idx);
         if (refreshed) {
           setMemoryDraft(idx, buildDraft(refreshed, capabilities.cleared_delay));
+        }
+      }
+      // REGRESSION GUARD (#792): a failed move's content is re-staged as an
+      // in-place edit of the slot it was moving TO. In a swap where A -> 2
+      // fails and B -> 1 lands, the radio holds B twice and A nowhere; the
+      // rebuild above would make A unrecoverable. Every channel's content now
+      // ends the batch either written at its target or staged there, so the
+      // next Upload finishes the permutation and Discard is an explicit choice.
+      // Guarded by ChannelsTab.test.tsx :: keeps a failed move staged at its
+      // target so nothing is lost.
+      for (const { restage } of failed) {
+        if (restage) {
+          setMemoryDraft(restage.index, buildDraft(restage, capabilities.cleared_delay));
         }
       }
       setBankOrders({});

@@ -2084,7 +2084,11 @@ describe('ChannelsTab', () => {
   });
 
   describe('collision-safe reorder upload (#618)', () => {
-    const uploadPermutation = async (sourceIndex: number, arrowUps: number) => {
+    const uploadPermutation = async (
+      sourceIndex: number,
+      arrowUps: number,
+      failWriteTo?: number,
+    ) => {
       const cached = [
         createTestChannel({
           index: 1,
@@ -2136,7 +2140,8 @@ describe('ChannelsTab', () => {
       };
       const scannerMemory = new Map(scannerSources.map((channel) => [channel.index, channel]));
 
-      setMockStore(createMockStore({ channels: cached }));
+      const store = createMockStore({ channels: cached });
+      setMockStore(store);
       mockApiClient.startProgramMode = vi.fn().mockResolvedValue(undefined);
       mockApiClient.endProgramMode = vi.fn().mockResolvedValue(undefined);
       mockApiClient.getChannel = vi.fn(async (index: number) => ({
@@ -2144,6 +2149,11 @@ describe('ChannelsTab', () => {
       }));
       mockApiClient.updateChannel = vi.fn(
         async (index: number, payload: Omit<ChannelData, 'index'>) => {
+          if (index === failWriteTo) {
+            throw Object.assign(new Error('rejected'), {
+              payload: { detail: 'channel_write_rejected' },
+            });
+          }
           const updated = { ...payload, index } as ChannelData;
           scannerMemory.set(index, updated);
           return { ...updated };
@@ -2166,7 +2176,7 @@ describe('ChannelsTab', () => {
       await userEvent.click(screen.getByRole('button', { name: /Upload Changes/i }));
       await waitFor(() => expect(mockApiClient.endProgramMode).toHaveBeenCalled());
 
-      return { scannerMemory, scannerSources };
+      return { scannerMemory, scannerSources, store };
     };
 
     const expectPermutation = (
@@ -2204,6 +2214,38 @@ describe('ChannelsTab', () => {
       const { scannerMemory, scannerSources } = await uploadPermutation(3, 2);
 
       expectPermutation(scannerMemory, [scannerSources[2], scannerSources[0], scannerSources[1]]);
+    });
+
+    // REGRESSION GUARD (#792): in a swap where one write fails and the other
+    // lands, the radio holds the landed channel twice and the failed one
+    // nowhere. The post-upload rebuild used to reset the order and rebuild
+    // every participating draft from the radio, so Alpha survived nowhere at
+    // all. It must stay staged -- at the slot it was moving TO, the only place
+    // a kept draft means the right thing once the reorder state is reset.
+    it('keeps a failed move staged at its target so nothing is lost', async () => {
+      const { scannerMemory, scannerSources, store } = await uploadPermutation(2, 1, 2);
+
+      // The scenario: Alpha -> 2 was refused, Bravo -> 1 landed.
+      expect(scannerMemory.get(1)?.alpha_tag).toBe('Bravo');
+      expect(scannerMemory.get(2)?.alpha_tag).toBe('Bravo');
+
+      const lastDraftFor = (index: number) =>
+        store.setMemoryDraft.mock.calls.filter(([i]) => i === index).at(-1)?.[1];
+      expect(lastDraftFor(2)).toMatchObject({
+        alpha_tag: scannerSources[0].alpha_tag,
+        frequency: scannerSources[0].frequency.toFixed(4),
+      });
+      expect(lastDraftFor(1)).toMatchObject({ alpha_tag: 'Bravo' });
+    });
+
+    it('keeps the other source staged when the opposite write fails', async () => {
+      const { scannerMemory, scannerSources, store } = await uploadPermutation(2, 1, 1);
+
+      expect(scannerMemory.get(1)?.alpha_tag).toBe(scannerSources[0].alpha_tag);
+      expect(scannerMemory.get(2)?.alpha_tag).toBe(scannerSources[0].alpha_tag);
+      const lastDraftFor = (index: number) =>
+        store.setMemoryDraft.mock.calls.filter(([i]) => i === index).at(-1)?.[1];
+      expect(lastDraftFor(1)).toMatchObject({ alpha_tag: 'Bravo', frequency: '146.2000' });
     });
   });
 });

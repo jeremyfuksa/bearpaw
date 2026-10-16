@@ -62,6 +62,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A reorder that partly fails no longer loses a channel.** If one write in
+  a reorder failed while another landed, the scanner could end up with one
+  channel twice and the other gone, and Bearpaw discarded the only remaining
+  copy. The channel that didn't move now stays staged in its new spot, so
+  Upload Changes finishes the reorder.
+
 - **Switching scanners can no longer save one scanner's channels as the
   other's.** In rare timing, swapping between two scanners with the same number
   of channels could store the first one's channels under the second, so the
