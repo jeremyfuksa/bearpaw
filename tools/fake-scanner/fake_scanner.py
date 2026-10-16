@@ -7,7 +7,8 @@ scan loop that "hits" a channel every few seconds. Busier channels hit more
 often. Hits come from a seeded RNG, so the same --seed replays the same
 session. Wire shapes are copied from docs/wire_captures/. Send SIGUSR1 to
 swap scanners: the port disappears, and a few seconds later the other model
-appears on it.
+appears on it. Send SIGUSR2 to freeze the scan where it is (a hit stays open)
+and again to resume, e.g. to hold a hit through a slow camera move.
 
 --seed-history DB instead writes a week of past hits into an analytics
 database, so the Scan view's charts have history to show. Run it while the
@@ -52,30 +53,30 @@ MODELS = {
 # Weight is how often the channel hits relative to the others. A BC75XLT has
 # no tags, tones or per-channel modulation, so it ignores those fields.
 PROGRAMMED = [
-    (1, "2m Rptr North", 146.760, "FM", 88, 9),
-    (1, "2m Rptr South", 147.255, "FM", 82, 4),
-    (1, "2m Simplex", 146.520, "FM", 0, 1),
-    (1, "70cm Rptr", 444.375, "FM", 76, 3),
-    (1, "Club Net", 145.290, "FM", 88, 2),
+    (1, "North Hill Rptr", 146.760, "FM", 88, 9),
+    (1, "Downtown Rptr", 147.255, "FM", 82, 4),
+    (1, "2m Calling Freq", 146.520, "FM", 0, 1),
+    (1, "70cm Link Rptr", 444.375, "FM", 76, 3),
+    (1, "Tues Club Net", 145.290, "FM", 88, 2),
     (2, "Tower", 128.725, "AM", 0, 12),
     (2, "Ground", 121.900, "AM", 0, 8),
     (2, "Approach", 119.000, "AM", 0, 6),
     (2, "ATIS", 128.375, "AM", 0, 2),
     (2, "Unicom", 122.800, "AM", 0, 2),
-    (2, "Guard", 121.500, "AM", 0, 1),
-    (3, "NOAA WX 1", 162.400, "FM", 0, 2),
-    (3, "NOAA WX 2", 162.475, "FM", 0, 1),
-    (3, "NOAA WX 3", 162.550, "FM", 0, 1),
-    (4, "Rail Road", 160.920, "NFM", 0, 7),
-    (4, "Rail Yard", 161.250, "NFM", 0, 5),
-    (4, "Rail Dispatch", 160.530, "NFM", 0, 3),
-    (5, "GMRS 1", 462.5625, "NFM", 0, 2),
-    (5, "GMRS 3", 462.6125, "NFM", 0, 1),
-    (5, "GMRS 15R", 462.5500, "NFM", 72, 3),
-    (5, "MURS 1", 151.820, "NFM", 0, 1),
+    (2, "Air Guard", 121.500, "AM", 0, 1),
+    (3, "NOAA Weather 2", 162.400, "FM", 0, 2),
+    (3, "NOAA Weather 3", 162.475, "FM", 0, 1),
+    (3, "NOAA Weather 1", 162.550, "FM", 0, 1),
+    (4, "Railroad Main", 160.920, "NFM", 0, 7),
+    (4, "Railroad Yard", 161.250, "NFM", 0, 5),
+    (4, "Train Dispatch", 160.530, "NFM", 0, 3),
+    (5, "GMRS Ch 1", 462.5625, "NFM", 0, 2),
+    (5, "GMRS Ch 3", 462.6125, "NFM", 0, 1),
+    (5, "GMRS 15 Repeater", 462.5500, "NFM", 72, 3),
+    (5, "MURS Ch 1", 151.820, "NFM", 0, 1),
     (6, "Fire Dispatch", 154.430, "FM", 0, 10),
     (6, "Fire Tac 2", 154.280, "FM", 0, 3),
-    (6, "EMS Ops", 155.340, "FM", 0, 6),
+    (6, "EMS Operations", 155.340, "FM", 0, 6),
     (7, "Stadium Ops", 464.500, "NFM", 0, 4),
     (7, "Mall Security", 463.325, "NFM", 0, 2),
 ]
@@ -130,6 +131,24 @@ class Radio:
         self.current = self.scan_list()[0]
         self.hit_until = 0.0
         self.next_hit = time.monotonic() + 3.0
+        self.frozen_at = None
+
+    def toggle_freeze(self):
+        now = time.monotonic()
+        if self.frozen_at is None:
+            self.frozen_at = now
+            return
+        # Resume with the same time left on the hit and until the next one.
+        paused = now - self.frozen_at
+        self.frozen_at = None
+        if self.hit_until:
+            self.hit_until += paused
+        self.next_hit += paused
+
+    def squelch_open(self):
+        if self.frozen_at is not None:
+            return self.hit_until > 0.0
+        return self.hit_until > time.monotonic()
 
     def cleared(self):
         return {"tag": "", "freq": 0.0, "mod": "AUTO", "tone": 0,
@@ -152,6 +171,8 @@ class Radio:
 
     def tick(self):
         """Advance the scan: cycle channels, open and close hits on schedule."""
+        if self.frozen_at is not None:
+            return self.squelch_open()
         now = time.monotonic()
         if now < self.hit_until:
             return True
@@ -175,7 +196,7 @@ class Radio:
         cmd, _, rest = line.partition(",")
         args = rest.split(",") if rest else []
         # GLG is the poll's first command each tick, so it advances the scan.
-        sql = int(self.tick() if cmd == "GLG" else self.hit_until > time.monotonic())
+        sql = int(self.tick() if cmd == "GLG" else self.squelch_open())
         ch = self.channels.get(self.current, self.cleared())
         mod = ch["mod"] if ch["mod"] != "AUTO" else live_modulation(ch["freq"])
         bc75 = self.model == "BC75XLT"
@@ -316,12 +337,19 @@ class Swap(Exception):
 
 
 def serve(link, model, seed, quiet):
-    """Serve until Ctrl-C. SIGUSR1 unplugs this model and plugs in the other."""
+    """Serve until Ctrl-C. SIGUSR1 unplugs this model and plugs in the other;
+    SIGUSR2 freezes or resumes the scan."""
+    radio = None
 
     def swap(*_):
         raise Swap
 
+    def freeze(*_):
+        if radio:
+            radio.toggle_freeze()
+
     signal.signal(signal.SIGUSR1, swap)
+    signal.signal(signal.SIGUSR2, freeze)
     while True:
         master, slave = os.openpty()
         tty.setraw(slave)  # Bearpaw sets raw mode too; this covers the gap before it opens.
