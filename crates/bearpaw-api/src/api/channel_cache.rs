@@ -206,12 +206,23 @@ pub(crate) fn load_channels(path: &str, scanner_id: &str) -> HashMap<u16, Channe
 /// "cache last written", which is always within one interval of now. #413 wants
 /// it to answer "last synced 3 days ago"; that answer has to survive a flush.
 pub(crate) fn flush_channel_cache(state: &AppState) {
+    // REGRESSION GUARD (#794, paired with the clear-before-publish order in
+    // `update_device_info_from_mdl`): the id is read on BOTH sides of the
+    // snapshot, and a change skips the flush. Shadow and id sit behind
+    // separate locks and this runs off the poll thread, so reading the id
+    // once, after the snapshot, could pair the old radio's channels with the
+    // new radio's id -- and `save_channels` replaces that profile's rows.
+    let scanner_id = state.scanner_id();
     let (channels, last_sync) = match state.shadow.read() {
         Ok(shadow) => (shadow.channels.clone(), shadow.last_sync),
         // A poisoned lock means another thread panicked mid-write. Skip the
         // flush rather than persist a half-updated map; the next tick retries.
         Err(_) => return,
     };
+    if state.scanner_id() != scanner_id {
+        tracing::debug!("skipping channel-cache flush: the scanner changed mid-snapshot");
+        return;
+    }
     // REGRESSION GUARD (`a_partial_shadow_does_not_overwrite_a_complete_cache`,
     // `a_holed_walk_does_not_delete_the_good_cache`): only a COMPLETE image is
     // written.
@@ -248,7 +259,7 @@ pub(crate) fn flush_channel_cache(state: &AppState) {
     };
     save_channels(
         &state.preferences_db_path,
-        &state.scanner_id(),
+        &scanner_id,
         &channels,
         synced_at,
     );
