@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { toast } from 'sonner';
-import { motion, Reorder, useDragControls } from 'motion/react';
+import { motion, Reorder, useDragControls, useMotionValue } from 'motion/react';
 import { Search, Lock, GripVertical, ChevronDown, RefreshCw, Pencil, Check } from 'lucide-react';
 
 import {
@@ -161,6 +161,8 @@ interface ChannelRowProps {
   onToggleGrab: () => void;
   onKeyboardMove: (direction: -1 | 1) => void;
   onReleaseGrab: () => void;
+  /** The scrolling list a dragged row must stay inside. */
+  dragBounds: React.RefObject<HTMLDivElement | null>;
 }
 
 function ChannelRow({
@@ -198,6 +200,7 @@ function ChannelRow({
   onToggleGrab,
   onKeyboardMove,
   onReleaseGrab,
+  dragBounds,
 }: ChannelRowProps) {
   // Pointer reorder (#778): motion's Reorder, driven by pointer events, which
   // WKWebView delivers (react-dnd's HTML5 backend never got dragover/drop
@@ -205,6 +208,26 @@ function ChannelRow({
   // the handle, dragging across cells to select a range moved the row instead.
   const dragControls = useDragControls();
   const [isDragging, setIsDragging] = useState(false);
+
+  // Keep a dragged row inside the visible list. Unbounded, a row dragged past
+  // the top rode up out of the scroller, clipped out of sight until dropped.
+  // motion's dragConstraints cannot do this: it measures once at drag start,
+  // so after an auto-scroll the row floated off the top again. This recomputes
+  // the range on every move, from the row's place in the scrolled content.
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const y = useMotionValue(0);
+  useEffect(
+    () =>
+      y.on('change', (v) => {
+        const row = rowRef.current;
+        const list = dragBounds.current;
+        if (!row || !list) return;
+        const top = row.offsetTop - list.scrollTop;
+        const clamped = Math.min(Math.max(v, -top), list.clientHeight - top - row.offsetHeight);
+        if (clamped !== v) y.set(clamped);
+      }),
+    [y, dragBounds],
+  );
 
   const shows = (key: ChannelColumnKey) => columns.some((c) => c.key === key);
 
@@ -224,6 +247,7 @@ function ChannelRow({
     <Reorder.Item
       as="div"
       value={channelIndex}
+      ref={rowRef}
       dragListener={false}
       dragControls={dragControls}
       onDragStart={() => {
@@ -240,7 +264,7 @@ function ChannelRow({
       // set has to come through an inline style. Header and row share
       // `channelGridTemplate(columns)` — these are grid children, not table
       // cells, so a mismatch misaligns silently rather than failing.
-      style={{ gridTemplateColumns: channelGridTemplate(columns) }}
+      style={{ gridTemplateColumns: channelGridTemplate(columns), y }}
       aria-rowindex={rowIndex + 2}
       data-grabbed={isGrabbed || undefined}
       // #272: a staged clear is destructive but was styled identically to an
@@ -918,6 +942,7 @@ export function ChannelsTab() {
   }, []);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const rowsRef = useRef<HTMLDivElement | null>(null);
 
   const filteredChannels = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -2126,7 +2151,14 @@ export function ChannelsTab() {
           {/* Rows. layoutScroll so rows measure correctly once scrolled; the
                 Reorder.Group sits INSIDE the scroller because its auto-scroll
                 searches from the group's parent for an overflow ancestor. */}
-          <motion.div role="rowgroup" layoutScroll className="overflow-y-auto flex-1 p-0">
+          <motion.div
+            ref={rowsRef}
+            role="rowgroup"
+            layoutScroll
+            // `relative` makes this the rows' offsetParent, which the drag
+            // clamp in ChannelRow measures against.
+            className="relative overflow-y-auto flex-1 p-0"
+          >
             {orderedFilteredChannels.length === 0 ? (
               <div
                 role="status"
@@ -2257,6 +2289,7 @@ export function ChannelsTab() {
                       channelIndex={channel.index}
                       onDragStart={() => beginSession(channel.index)}
                       onDragEnd={releaseGrab}
+                      dragBounds={rowsRef}
                       isGrabbed={activeGrabIndex === channel.index}
                       onToggleGrab={() => {
                         if (activeGrabIndex === channel.index) {
