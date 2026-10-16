@@ -957,6 +957,20 @@ describe('ChannelsTab', () => {
       expect(screen.getByText(/1 channel has an invalid value/)).toBeInTheDocument();
     });
 
+    // #793: the row loop skipped validation for any draft whose frequency
+    // parseFloat read as 0, so '0,145' was never flagged and uploaded as a clear.
+    it('flags a frequency that only starts with zero and holds Upload', () => {
+      setMockStore(
+        createMockStore({
+          channels: mockChannels,
+          memoryDrafts: { 1: { ...buildDraft(mockChannels[0], 2), frequency: '0,145' } },
+        }),
+      );
+      render(<ChannelsTab />);
+      expect(screen.getByRole('button', { name: /Upload Changes/i })).toBeDisabled();
+      expect(screen.getByText(/1 channel has an invalid value/)).toBeInTheDocument();
+    });
+
     it('says how many pasted rows did not fit in the bank', () => {
       render(<ChannelsTab />);
       fireEvent.paste(screen.getByRole('textbox', { name: /^Channels grid/ }), {

@@ -3,6 +3,7 @@
 // indexes, and this module turns both into ChannelDrafts.
 import type { ChannelDraft } from '../../../types';
 import { buildEmptyDraft } from './ChannelsTab';
+import { parseFrequency } from './channelValidation';
 
 export type GridField =
   'frequency' | 'alpha_tag' | 'modulation' | 'tone_squelch' | 'delay' | 'lockout' | 'priority';
@@ -85,7 +86,7 @@ export function cellText(
   // user sees. coerce() maps ON/OFF back on paste.
   if (field === 'delay' && booleanDelay) return draft.delay === '1' ? 'ON' : 'OFF';
   if (field === 'lockout') return draft.lockout ? 'Yes' : '';
-  if (field === 'frequency') return Number.parseFloat(draft.frequency) === 0 ? '' : draft.frequency;
+  if (field === 'frequency') return parseFrequency(draft.frequency) === 0 ? '' : draft.frequency;
   return String(draft[field] ?? '');
 }
 
@@ -104,7 +105,7 @@ function coerce(field: DraftField, text: string, booleanDelay: boolean): string 
     case 'lockout':
       return TRUTHY.test(t);
     case 'frequency': {
-      const n = Number.parseFloat(t.replace(/mhz/i, ''));
+      const n = parseFrequency(t);
       if (t === '' || n === 0) return '0';
       return Number.isFinite(n) ? n.toFixed(4) : t;
     }
@@ -140,12 +141,12 @@ export function applyCellEdits(
   const out = new Map<number, ChannelDraft>();
   for (const [index, list] of byIndex) {
     const before = current(index);
-    const wasEmpty = Number.parseFloat(before.frequency) === 0;
+    const wasEmpty = parseFrequency(before.frequency) === 0;
     let next: ChannelDraft = { ...before };
     for (const { field, text } of list) {
       next = { ...next, [field]: coerce(field, text, booleanDelay) };
     }
-    if (Number.parseFloat(next.frequency) === 0) {
+    if (parseFrequency(next.frequency) === 0) {
       // A zero frequency clears the CHANNEL, in the one shape that matches
       // what the scanner reports (third rail #272/#404). Never hand-build it.
       next = buildEmptyDraft(caps.cleared_delay);
