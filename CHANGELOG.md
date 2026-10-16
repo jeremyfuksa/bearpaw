@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-15
+
+Edit channels like a spreadsheet, swap scanners without restarting, and name
+your banks and scanners. This release also stops a partly failed reorder from
+losing a channel.
+
 ### Added
 
 - **Swap scanners without restarting.** Unplug one scanner and plug in

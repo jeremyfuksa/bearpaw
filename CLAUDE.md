@@ -489,9 +489,12 @@ redundant write costs a couple of milliseconds.
 
 Reading all 500 channels takes **~5 s** on a BC125AT over the macOS direct-USB path
 (measured three times, 2026-08-30, POST to `in_progress:false`). This section long said
-30–45 s; that figure predates the current transport and is wrong by roughly 8x. The
-BC75XLT is unmeasured — 300 channels at 57600 through a CP210x is a different transport,
-so do not assume it matches.
+30–45 s; that figure predates the current transport and is wrong by roughly 8x. A
+2026-10-15 run measured 4.9 s, consistent with that.
+
+Reading all 300 channels takes **~4 s** on a BC75XLT at 57600 through its CP210x serial
+bridge on macOS (4.1 s, measured once, 2026-10-15, same method). One sample: re-measure
+before relying on it for anything tighter than "a few seconds".
 
 Why it is not instant:
 - Each channel is one `CIN,N` round-trip inside the PRG bracket.
