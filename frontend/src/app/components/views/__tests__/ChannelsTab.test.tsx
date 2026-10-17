@@ -2024,7 +2024,7 @@ describe('ChannelsTab', () => {
     // channelIndex` and drag the reorder path into a test about lockout.
     const uploadLockoutEditOverKeypadRetune = async () => {
       // The cache says 154.100. The radio was retuned to 155.400 on its own
-      // keypad, which 45% of users do "all the time" (poll, n=20, 2026-08-30).
+      // keypad, which 51% of users do "all the time" (poll, n=35, closed 2026-09-06).
       const cached = createTestChannel({
         index: 1,
         frequency: 154.1,

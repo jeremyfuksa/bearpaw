@@ -841,9 +841,9 @@ pub(crate) fn default_preferences() -> Map<String, Value> {
     // #413 follow-on: whether channel memory is re-read from the scanner at
     // every connect, or rendered from the SQLite cache until the user asks.
     //
-    // Defaults ON, which is the pre-cache behaviour. A user poll (n=20,
-    // 2026-08-30) found 45% program their scanner on its own keypad "all the
-    // time" and 65% do so at least sometimes -- for them the cache is stale
+    // Defaults ON, which is the pre-cache behaviour. A user poll (n=35,
+    // closed 2026-09-06) found 51% program their scanner on its own keypad "all
+    // the time" and 69% do so at least sometimes -- for them the cache is stale
     // before Bearpaw opens, and being quietly wrong is worse than being
     // visibly slow. A full walk costs ~5 s on a BC125AT over direct USB.
     //
