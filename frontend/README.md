@@ -1,9 +1,9 @@
 # Bearpaw — frontend
 
 The React frontend for [Bearpaw](../README.md), a desktop control interface for
-the Uniden BC125AT scanner. This is a Vite single-page app (React 18 +
-TypeScript, Zustand for state) that displays live scanner state and sends
-commands to the Rust backend.
+Uniden handheld scanners (the BC125AT family and the BC75XLT). This is a Vite
+single-page app (React 19 + TypeScript, Zustand for state) that displays live
+scanner state and sends commands to the Rust backend.
 
 The architecture is strictly client/server: the backend owns all state and
 hardware communication, and this frontend only renders current state and issues
