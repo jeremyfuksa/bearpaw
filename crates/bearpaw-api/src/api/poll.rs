@@ -2223,7 +2223,7 @@ mod tests {
     }
 
     /// REGRESSION GUARD: a cache matching the connected scanner is adopted,
-    /// so the channel list renders without a 30-45 s memory sync.
+    /// so the channel list renders without a ~5 s memory sync.
     ///
     /// This is the positive half of the capacity guard and it is not optional:
     /// every negative assertion below ("this cache is discarded") also passes

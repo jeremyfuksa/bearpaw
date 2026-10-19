@@ -277,7 +277,7 @@ fn main() {
 ///
 /// Walks `CIN,1..500` inside a single PRG bracket and stops at the first hit,
 /// so a radio that has one usually answers in a few round-trips. A full walk
-/// (nothing flagged) is the slow path at ~30-45 s — the same cost as a memory
+/// (nothing flagged) is the slow path at ~5 s — the same cost as a memory
 /// sync, and only paid when the answer is "no" and the run is aborting anyway.
 ///
 /// `CIN,<idx>,<name>,<freq>,<mod>,<tone>,<delay>,<lockout>,<priority>` — split

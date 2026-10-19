@@ -33,7 +33,7 @@ npm run build            # production build
 ```bash
 npm test -- --run        # Vitest (one-shot)
 npm run lint             # ESLint
-npm run type-check       # tsc --noEmit (src/ only; test files excluded)
+npm run type-check       # tsc --noEmit (all of src/, tests included)
 npm run format:check     # Prettier
 ```
 
