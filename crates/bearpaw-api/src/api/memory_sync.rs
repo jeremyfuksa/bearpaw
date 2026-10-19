@@ -156,7 +156,7 @@ where
         shadow.last_sync = now;
     }
     // Persist immediately rather than waiting up to CHANNEL_CACHE_FLUSH_SECS.
-    // A sync is the most expensive thing this app does (30–45 s of PRG/CIN/EPG
+    // A sync is the most expensive thing this app does (~5 s of PRG/CIN/EPG
     // with the radio deaf throughout), so the window where that work exists
     // only in memory should be as close to zero as it can be. The periodic
     // flush would get here eventually; this makes durability a property of
@@ -209,7 +209,7 @@ mod tests {
     /// in `run` and this goes red; nothing else in the suite does.
     ///
     /// It matters because a sync is the most expensive operation in the app --
-    /// 30-45 s with the radio in program mode and deaf throughout -- so the
+    /// ~5 s with the radio in program mode and deaf throughout -- so the
     /// window where that result exists only in memory should be near zero.
     #[test]
     fn a_completed_sync_writes_the_cache() {

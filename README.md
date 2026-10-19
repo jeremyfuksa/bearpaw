@@ -113,8 +113,8 @@ If it doesn't connect, two things to check:
   have, try a different cable.
 - Make sure the scanner is **powered on**.
 
-Once connected, Bearpaw reads your channels from the radio, which takes about 30 to 45
-seconds the first time.
+Once connected, Bearpaw reads your channels from the radio, which takes a few
+seconds.
 
 ## Learn your way around
 
