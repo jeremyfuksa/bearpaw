@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
-import { SyncSpinner } from './components/SyncSpinner';
+import { SyncPaw } from './components/SyncPaw';
+import { syncOutcomeFromMessage, useSyncFeedback } from '../hooks/useSyncFeedback';
 import { ImportProgressOverlay } from './components/ImportProgressOverlay';
 import { StatusBar, type LockoutKind } from './components/ScannerUI';
 import { ScanAnnouncer } from './components/ScanAnnouncer';
@@ -127,6 +128,19 @@ export default function App() {
   const setImportProgress = useStore((state) => state.setImportProgress);
   const isMemorySyncing = sync.inProgress;
   const syncProgressMessage = sync.message;
+  const {
+    feedback: syncFeedback,
+    finish: finishSync,
+    dismiss: dismissSyncFeedback,
+  } = useSyncFeedback(isMemorySyncing, preferences.reducedMotion);
+  const showMemorySyncOverlay = isMemorySyncing || syncFeedback !== null;
+  const syncOutcome = isMemorySyncing ? undefined : syncFeedback?.outcome;
+  const displayedSyncPercent =
+    syncOutcome === 'success'
+      ? 100
+      : syncFeedback && !isMemorySyncing
+        ? syncFeedback.percent
+        : sync.percent;
 
   const [currentTab, setCurrentTab] = useState<Tab>(() => {
     // Query param `?tab=scan|device|channels` → initial tab. Lets deep
@@ -337,8 +351,11 @@ export default function App() {
       // post-sync getBanks/etc race into the still-set sync_task_id and
       // get 409. memory_sync.rs guarantees the text patterns only appear
       // after finish() has actually run.
-      const isComplete =
-        /sync complete/i.test(payload.message) || /sync cancelled/i.test(payload.message);
+      const outcome = syncOutcomeFromMessage(payload.message);
+      const isComplete = outcome !== null;
+      if (outcome && useStore.getState().sync.inProgress) {
+        finishSync(outcome, useStore.getState().sync.percent, payload.message);
+      }
 
       if (payload.message) {
         updateSync({ message: payload.message });
@@ -466,6 +483,7 @@ export default function App() {
     setDeviceInfo,
     updateLiveState,
     updateSync,
+    finishSync,
     setImportProgress,
     ws,
   ]);
@@ -674,6 +692,7 @@ export default function App() {
       updateSync({ message: 'Cancelling sync...' });
       const result = await api.cancelSync(taskId);
       if (result.status === 'no_task') {
+        finishSync('cancelled', useStore.getState().sync.percent, 'Sync cancelled');
         updateSync({ inProgress: false, taskId: null, message: 'No sync in progress' });
         return;
       }
@@ -682,7 +701,7 @@ export default function App() {
       console.warn('Failed to cancel sync', error);
       toast.error('Unable to cancel sync');
     }
-  }, [api, updateSync]);
+  }, [api, updateSync, finishSync]);
 
   useEffect(() => {
     // One-shot fetch on mount as fallback in case the client connects
@@ -1104,13 +1123,12 @@ export default function App() {
   );
 
   // Focus management + trap for the blocking sync overlay (a11y S2). Standalone
-  // effect keyed on isMemorySyncing — it touches none of the four
-  // regression-guarded sync flows (WS deps, overlay gate, handleCancelSync,
-  // reconnect probe). On open: remember the previously-focused element and move
-  // focus to Cancel. While open: the overlay has one focusable control, so Tab
+  // effect covers both the running sync and its terminal feedback. On open:
+  // remember the previously-focused element and move focus to Cancel (or Close
+  // for a finished sync). The overlay has one focusable control, so Tab
   // is trapped by re-focusing it. On close: restore focus.
   useEffect(() => {
-    if (!isMemorySyncing) return;
+    if (!showMemorySyncOverlay) return;
     overlayReturnFocusRef.current = document.activeElement as HTMLElement | null;
     cancelSyncButtonRef.current?.focus();
 
@@ -1125,7 +1143,7 @@ export default function App() {
       document.removeEventListener('keydown', handleTrapKey);
       overlayReturnFocusRef.current?.focus();
     };
-  }, [isMemorySyncing]);
+  }, [showMemorySyncOverlay]);
 
   return (
     // MotionConfig honors the user's reduced-motion preference — the OS setting
@@ -1279,13 +1297,13 @@ export default function App() {
         />
 
         {/* REGRESSION GUARD: App.regression.test.tsx :: memory-sync overlay
-          covers subsequent syncs, not just initial. Gate on `isMemorySyncing`
-          (any in-progress sync) rather than `isInitialSyncing` (first-time
-          only) so that a user-triggered File → Sync Memory after the initial
+          covers subsequent syncs, not just initial. Gate on any in-progress
+          sync, plus a presentation-only terminal hold, rather than
+          `isInitialSyncing` so a user-triggered File → Sync Memory after the initial
           sync still blocks the UI for the duration of the PRG bracket — the
           original intent of #102. */}
         <AnimatePresence>
-          {isMemorySyncing && (
+          {showMemorySyncOverlay && (
             <motion.div
               key="memory-sync-overlay"
               role="dialog"
@@ -1298,27 +1316,40 @@ export default function App() {
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
             >
               <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border border-white/10 bg-scanner-bg-dark p-6 shadow-lg">
-                <SyncSpinner percent={sync.percent} size={56} />
+                <SyncPaw
+                  percent={displayedSyncPercent}
+                  outcome={syncOutcome}
+                  reducedMotion={preferences.reducedMotion}
+                  size={56}
+                />
                 <div className="flex flex-col items-center gap-1">
                   <span id="sync-overlay-title" className="text-sm font-medium text-white">
-                    Syncing Scanner Memory
+                    {syncOutcome === 'success'
+                      ? 'Sync Complete'
+                      : syncOutcome === 'cancelled'
+                        ? 'Sync Cancelled'
+                        : syncOutcome === 'error'
+                          ? 'Sync Failed'
+                          : 'Syncing Scanner Memory'}
                   </span>
                   <span className="font-mono text-xs text-scanner-text-secondary">
-                    {Math.round(sync.percent)}%
+                    {Math.round(displayedSyncPercent)}%
                   </span>
                 </div>
                 {/* Progress text is the polite live region so screen readers hear
                   updates without the whole dialog re-announcing. */}
                 <p aria-live="polite" className="text-center text-xs text-scanner-text-secondary">
-                  {syncProgressMessage || 'Loading channels from device...'}
+                  {syncOutcome
+                    ? syncFeedback?.message
+                    : syncProgressMessage || 'Loading channels from device...'}
                 </p>
                 <button
                   type="button"
                   ref={cancelSyncButtonRef}
-                  onClick={handleCancelSync}
+                  onClick={syncOutcome ? dismissSyncFeedback : handleCancelSync}
                   className="rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-scanner-text-light transition-colors hover:bg-white/20"
                 >
-                  Cancel Sync
+                  {syncOutcome ? 'Close' : 'Cancel Sync'}
                 </button>
               </div>
             </motion.div>
