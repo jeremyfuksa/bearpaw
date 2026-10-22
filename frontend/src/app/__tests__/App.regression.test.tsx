@@ -131,7 +131,10 @@ describe('App.tsx regression guards', () => {
 
       // Walk backwards ~400 chars to find the enclosing `{<expr> && (`.
       const window = APP_SOURCE.slice(Math.max(0, idx - 400), idx);
-      expect(window).toMatch(/\{\s*isMemorySyncing\s*&&\s*\(/);
+      expect(window).toMatch(/\{\s*showMemorySyncOverlay\s*&&\s*\(/);
+      expect(APP_SOURCE).toContain(
+        'const showMemorySyncOverlay = isMemorySyncing || syncFeedback !== null',
+      );
       expect(window).not.toMatch(/\{\s*isInitialSyncing\s*&&\s*\(/);
     });
   });
@@ -218,7 +221,7 @@ describe('App.tsx regression guards', () => {
       expect(start, 'progress handler must exist').toBeGreaterThan(-1);
       // Within the handler, the import branch must appear BEFORE the first
       // updateSync call, and must contain a `return`.
-      const handler = APP_SOURCE.slice(start, start + 1600);
+      const handler = APP_SOURCE.slice(start, APP_SOURCE.indexOf('const unsubscribeBanks', start));
       const importIdx = handler.indexOf("task_id?.startsWith('import')");
       const updateSyncIdx = handler.indexOf('updateSync(');
       expect(importIdx, 'import branch must exist in the handler').toBeGreaterThan(-1);
