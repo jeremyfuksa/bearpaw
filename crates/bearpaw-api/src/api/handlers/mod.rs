@@ -1,4 +1,5 @@
 pub mod analytics;
+pub(crate) mod audio;
 pub mod banks;
 pub mod commands;
 pub mod exports;

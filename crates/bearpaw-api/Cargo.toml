@@ -29,6 +29,8 @@ rusb = { version = "0.9", features = ["vendored"] }
 thiserror = "2"
 csv = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
+# Host audio discovery (CoreAudio / WASAPI / ALSA); Linux needs libasound2-dev.
+cpal = "0.15"
 
 [dev-dependencies]
 tokio-test = "0.4"

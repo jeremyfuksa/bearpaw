@@ -13,6 +13,11 @@ system fits together — read it before a non-trivial change.
 
 **Backend (Rust):**
 
+On Linux, host audio discovery requires ALSA development headers
+(`sudo apt-get install libasound2-dev pkg-config` on Debian/Ubuntu), in addition
+to the USB and desktop build dependencies. macOS uses CoreAudio and Windows
+uses WASAPI; neither needs an extra audio SDK.
+
 ```bash
 # copy the example config and edit for your setup
 cp crates/bearpaw-api/config.example.yaml ./config.yaml
