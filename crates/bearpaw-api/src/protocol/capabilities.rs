@@ -9,7 +9,7 @@
 //! The BC75XLT keeps the BC125AT's `CIN` field *positions* and marks the unused
 //! ones `[RSV]` (reserved), so a position-based parser does not shift. See
 //! `docs/wire_captures/2026-08-26/bc75xlt-compatibility.md` and the vendor spec
-//! at `docs/BC75XLT_PROTOCOL.pdf`.
+//! at <https://info.uniden.com/twiki/pub/UnidenMan4/BC75XLT/BC75XLT_Protocol.pdf>.
 //!
 //! Everything here is a *family memory-model* fact, not a protocol fact. This
 //! is the distinction #396 drew when it moved the model allowlist to the

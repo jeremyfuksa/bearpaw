@@ -4,7 +4,7 @@
 **Device:** BC75XLT (firmware `Version 1.02.04`)
 **Connection:** CP210x USB-to-UART bridge (`0x10C4:0xEA60`) at **57600** baud, 8N1
 **Raw capture:** [bc75xlt-probe.txt](bc75xlt-probe.txt) · **Probe script:** [probe.py](probe.py)
-**Vendor spec:** [docs/BC75XLT_PROTOCOL.pdf](../../BC75XLT_PROTOCOL.pdf) (text: [.txt](../../BC75XLT_PROTOCOL.txt))
+**Vendor spec:** [Uniden BC75XLT Operation Specification](https://info.uniden.com/twiki/pub/UnidenMan4/BC75XLT/BC75XLT_Protocol.pdf)
 
 Read-only probe. No `CIN` writes, no settings mutation, no `CLR`.
 

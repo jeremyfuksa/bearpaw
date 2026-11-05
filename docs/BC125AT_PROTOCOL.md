@@ -62,7 +62,7 @@ Bluetooth modems and unrelated USB-serial dongles — don't rely on path pattern
 alone.
 
 Sentinel's port enumeration explicitly filters out `COM1` on Windows
-([Remote.cs:56](reversed/source/Uniden.Scaner.SS/Remote.cs)) — a Windows-only
+(`Remote.cs:56`) — a Windows-only
 heuristic; do not replicate on other platforms.
 
 ---
@@ -87,8 +87,8 @@ Both Sentinel and Scan125 use identical settings.
 | Read timeout | 500 ms typical, 5000 ms for slow ops, 30 000 ms for `CLR` |
 | Write timeout | 500 ms typical, 5000 ms for slow ops |
 
-Source: [Remote.cs:18–39](reversed/source/Uniden.Scaner.SS/Remote.cs),
-[FormMain.cs:10348–10358](../Scan125_V3910/reversed/FormMain.cs).
+Source: `Remote.cs:18–39`,
+`FormMain.cs:10348–10358`.
 
 ---
 
@@ -125,7 +125,7 @@ The first field always echoes the command name. Parse responses by splitting on
 ### Error handling
 
 Sentinel's transport layer retries every write twice before raising
-([Remote.cs:90–122](reversed/source/Uniden.Scaner.SS/Remote.cs)). On a failed
+(`Remote.cs:90–122`). On a failed
 write, it reads the response code and maps:
 
 - `ERR` → `RemoteErrorResponse` exception
@@ -219,7 +219,7 @@ CIN,<idx>,<name>,<freq>,<mod>,<ctcss>,<delay>,<lockout>,<priority>
 | `priority` | `0` \| `1` | 0 = normal, 1 = priority channel. |
 
 > **Field order on write vs read is reportedly not identical**, per
-> Sentinel's source ([hpdbCFrequency.cs:17–21](reversed/source/Uniden.Scaner.SS/hpdbCFrequency.cs)):
+> Sentinel's source (`hpdbCFrequency.cs:17–21`):
 > on read the radio returns `..., ctcss, lockout, delay, priority` but on
 > write Sentinel sends `..., ctcss, delay, lockout, priority`.
 >
@@ -259,7 +259,7 @@ CSG / CSG,<10-char mask>      → custom-search avoid mask
 - `CSG` mask: `'1'` = avoid (skip during custom search).
 
 Default custom-search ranges (used when memory is cleared) — from
-[DbCustomSearch.cs:14–26](reversed/source/BC125AT_SS/DbCustomSearch.cs):
+`DbCustomSearch.cs:14–26`:
 
 | # | Lower (MHz) | Upper (MHz) | Typical use |
 | --- | --- | --- | --- |
@@ -285,7 +285,7 @@ SSG,<10-char mask>
 ```
 
 Mask is 10 chars, fixed service order — from
-[DbServiceSearch.cs:13](reversed/source/Uniden.Scaner.SS/DbServiceSearch.cs):
+`DbServiceSearch.cs:13`:
 
 | Position | Service |
 | --- | --- |
@@ -338,7 +338,7 @@ GLF                  → read NEXT lockout (advances internal cursor)
 - To replace the entire list: enumerate existing with `GLF`, send `ULF` for each
   to clear, then `LOF` for each new entry.
 
-Source: [DbSearchLockoutList.cs:108–144](reversed/source/Uniden.Scaner.SS/DbSearchLockoutList.cs).
+Source: `DbSearchLockoutList.cs:108–144`.
 
 ### 5.9 Close Call (programming mode)
 
@@ -396,7 +396,7 @@ KEY,<key>,<mode>
 
 #### Key codes
 
-Compiled from [FormMain.cs:14617, 14648, 14679, 14776, 14794, 16050–16086, 16094–16664, 17017, 18534–18569](../Scan125_V3910/reversed/FormMain.cs):
+Compiled from `FormMain.cs:14617, 14648, 14679, 14776, 14794, 16050–16086, 16094–16664, 17017, 18534–18569`:
 
 | Code | Button on radio |
 | --- | --- |
@@ -459,7 +459,7 @@ The BC125AT's tunable range is approximately 25 MHz – 512 MHz with documented
 gaps. The custom-search default table (§5.5) reflects the allowed sub-ranges
 the firmware exposes.
 
-Source: [FrequencyItem.cs:62–77](reversed/source/Uniden.Scaner.SS/FrequencyItem.cs).
+Source: `FrequencyItem.cs:62–77`.
 
 ### 6.2 CTCSS / DCS codes
 
@@ -477,7 +477,7 @@ sentinel values. Full table in §7.2.
 ### 6.3 Channel name alphabet
 
 Maximum 16 characters. Allowed character set, from
-[SntlLib.cs:10](reversed/source/Uniden.Scaner.SS/SntlLib.cs):
+`SntlLib.cs:10`:
 
 ```
 ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890!@#$%&*()-/<>.? (space)
@@ -506,7 +506,7 @@ In all cases `'1'` = "skip/avoid/locked-out" and `'0'` = "include/active".
 ### 6.5 ASCII validation
 
 The scanner only accepts printable ASCII (`0x20`–`0x7E`) — see
-[SntlLib.cs:12–27](reversed/source/Uniden.Scaner.SS/SntlLib.cs). Anything
+`SntlLib.cs:12–27`. Anything
 outside that range should be rejected client-side before transmission.
 
 ---
@@ -707,7 +707,7 @@ buffer when a hit occurs).
 ## 8. Programming session — write to radio
 
 Exactly the sequence Sentinel emits when uploading a fresh configuration.
-Source: [Database.cs:99–116](reversed/source/Uniden.Scaner.SS/Database.cs) plus
+Source: `Database.cs:99–116` plus
 each `Db*.cs` and `hpdb*.cs` class's `WriteToTarget` method.
 
 ```text
@@ -855,7 +855,7 @@ on user opens scanner LCD overlay: parse last STS response
 
 ### Parsing `STS`
 
-Format is positional. From [FormMain.cs:14908–14966](../Scan125_V3910/reversed/FormMain.cs):
+Format is positional. From `FormMain.cs:14908–14966`:
 
 ```
 STS,<dsp_form>,<line1_text>,<line1_color>,<line2_text>,<line2_color>, ...
@@ -886,7 +886,7 @@ retry.
 
 ### Parsing `GLG`
 
-Format from [FormMain.cs:15040–15073](../Scan125_V3910/reversed/FormMain.cs)
+Format from `FormMain.cs:15040–15073`
 (reading position 4 for the tone field) and the surrounding `o()` decoder:
 
 ```
@@ -915,7 +915,7 @@ PWR,<rssi>,<freq>
 
 ## 11. Memory model & limits
 
-From [DEFINE.cs](reversed/source/Uniden.Scaner.SS/DEFINE.cs) and observation:
+From `DEFINE.cs` and observation:
 
 | Resource | Count | Notes |
 | --- | --- | --- |
