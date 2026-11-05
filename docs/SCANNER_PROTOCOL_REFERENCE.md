@@ -7,8 +7,8 @@
 
 **Authoritative sources:**
 - Uniden, *BC125AT PC Protocol v1.01* (programming command set, serial settings)
-- Uniden, *BC75XLT Operation Specification* — [`BC75XLT_PROTOCOL.pdf`](BC75XLT_PROTOCOL.pdf), text at [`.txt`](BC75XLT_PROTOCOL.txt)
-- Uniden, *BC75XLT Owner's Manual* — [`BC75XLT_OWNERS_MANUAL.pdf`](BC75XLT_OWNERS_MANUAL.pdf) (frequency coverage, user-facing feature set)
+- Uniden, [*BC75XLT Operation Specification*](https://info.uniden.com/twiki/pub/UnidenMan4/BC75XLT/BC75XLT_Protocol.pdf)
+- Uniden, *BC75XLT Owner's Manual* (frequency coverage, user-facing feature set)
 - Uniden, *BCT15X v1.03 Protocol* (operational commands `STS`/`GLG`/`KEY`/`PWR`; BearTracker commands)
 
 > This document is the **wire-protocol** spec. For Bearpaw's REST/WebSocket API see [API_SPEC.md](API_SPEC.md) and [WEBSOCKET_SCHEMA.md](WEBSOCKET_SCHEMA.md). For the UI hit-workflow see [UI_WORKFLOW.md](UI_WORKFLOW.md).
