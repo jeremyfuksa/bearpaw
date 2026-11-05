@@ -956,6 +956,35 @@ request/response shapes.
 
 ---
 
+### 3.8 Host audio inputs
+
+`GET /api/v1/audio/devices` lists inputs on the **backend computer**, not the
+browser's computer. It works without a connected scanner. Uses the platform's
+default audio host (CoreAudio on macOS, WASAPI on Windows, ALSA on Linux).
+
+```json
+{"devices": [{"name": "USB Audio", "channels": 2, "sample_rate": 48000}]}
+```
+
+Entries are sorted by name. `channels` and `sample_rate` (Hz) describe the
+device's default input configuration, not a recording format. Names may be
+duplicated or change; they are display labels, not persistent selection IDs.
+No default-device identity or saved selection is promised by this endpoint.
+
+An empty host returns `200` with `{"devices": []}`. Enumeration, device-name,
+default-configuration or worker failures return `500` with the standard
+`{"error": "...", "message": "...", "code": 500}` envelope, never a partial
+list or a successful empty list. Error text begins with `audio_`.
+
+This is discovery only: it opens no stream and does not record or monitor audio.
+The scanner's USB control link carries no audio; future capture requires a cable
+from its headphone jack to a host input (a USB audio adapter is recommended).
+Segmentation, WAV storage, retention, playback and independent monitor volume
+remain follow-up work for #383. Recording is not complete without monitoring,
+because plugging into the headphone jack mutes the scanner's speaker.
+
+---
+
 ## 4. WebSocket API
 
 ### 4.1 Connection

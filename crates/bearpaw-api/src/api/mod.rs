@@ -224,6 +224,10 @@ const ANALYTICS_HIT_LOAD_CAP: usize = 5000;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/health", get(handlers::status::get_health))
+        .route(
+            "/api/v1/audio/devices",
+            get(handlers::audio::get_audio_devices),
+        )
         .route("/api/v1/status", get(handlers::status::get_status))
         .route(
             "/api/v1/device/info",

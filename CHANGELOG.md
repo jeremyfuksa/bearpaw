@@ -8,6 +8,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Audio input discovery API.** API clients can list the backend computer's
+  sound inputs as a first step toward recording. This does not yet capture
+  audio or add recording controls to the app (#383).
+
 - **A paw that lights up as your radio syncs.** Amber outlines illuminate at
   each 20% milestone, then fill on success. Cancelled syncs fade to gray;
   failed syncs show a red circle-and-slash and remain visible until closed.

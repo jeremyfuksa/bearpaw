@@ -3,6 +3,7 @@
 //! Used by the Tauri desktop app (in-process server) or as a standalone binary.
 
 pub mod api;
+pub mod audio;
 pub mod config;
 pub mod logging;
 pub mod protocol;
