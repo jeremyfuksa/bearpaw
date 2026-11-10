@@ -76,7 +76,7 @@ jobs:
         id: apt-key
         run: |
           echo "pkgs=$APT_PKGS" >> "$GITHUB_OUTPUT"
-          echo "key=apt-$ImageOS-$ImageVersion-$(echo "$APT_PKGS" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "key=apt-v2-$ImageOS-$ImageVersion-$(echo "$APT_PKGS" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
         env:
           APT_PKGS: libudev-dev pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Cache apt packages
@@ -90,11 +90,18 @@ jobs:
           # Retries plus a connection timeout turn a stalled mirror into a
           # retry, not a 10-minute hang.
           opts="-o Dir::Cache::Archives=$HOME/apt-archives -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
-          # Warm path: resolve against the image's own package lists and
-          # install from the cache with no network at all. If anything is
-          # missing, fall back to the old update-and-download path.
-          if ! sudo apt-get install -y --no-download $opts $PKGS; then
-            echo "apt cache incomplete; downloading"
+          # Three tiers, all resolving against the image's own package lists
+          # until the last. 1: install from the cache, no network. 2: download
+          # the versions those lists name, which is what the cache must hold
+          # for tier 1 to work next time; running `apt-get update` first
+          # caches newer versions the next run will not ask for. 3: if the
+          # mirror no longer has them, update and install as before.
+          if sudo apt-get install -y --no-download $opts $PKGS; then
+            echo "apt: installed from cache"
+          elif sudo apt-get install -y $opts $PKGS; then
+            echo "apt: downloaded from the image's package lists"
+          else
+            echo "apt: image's package lists are stale; updating"
             sudo apt-get update $opts
             sudo apt-get install -y $opts $PKGS
           fi
