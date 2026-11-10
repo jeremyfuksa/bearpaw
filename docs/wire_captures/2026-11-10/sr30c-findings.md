@@ -3,13 +3,14 @@
 **Hardware:** SR30C (`MDL,SR30C`, firmware `Version 1.01.04`), CP2104 bridge
 `0x10C4:0xEA60` serial `02A72C10`, `/dev/cu.usbserial-02A72C10`, 57600 8N1 on macOS.
 
-Three sessions:
+Four sessions:
 
 | Session | Date | Script | Transcript | Writes? |
 |---|---|---|---|---|
 | Read-only probe | 2026-11-09 | [`sr30c-probe.py`](sr30c-probe.py), [`sr30c-banks.py`](sr30c-banks.py) | [`sr30c-probe.txt`](sr30c-probe.txt), [`sr30c-banks.txt`](sr30c-banks.txt) | No: GET forms only |
 | `CIN` write probe | 2026-11-10 | [`sr30c-cin-write-probe.py`](sr30c-cin-write-probe.py) | [`sr30c-cin-write-probe.txt`](sr30c-cin-write-probe.txt) | Bank 9 (401–408), restored and verified |
 | Full-memory copy from a BC125AT | 2026-11-10 | [`sr30c-write-image.py`](sr30c-write-image.py) | [`sr30c-copy-run.txt`](sr30c-copy-run.txt) | All 500 slots, each read back |
+| Settings write probe | 2026-11-10 | [`sr30c-settings-probe.py`](sr30c-settings-probe.py) | [`sr30c-settings-probe.txt`](sr30c-settings-probe.txt) | `VOL` `SQL` `SCG` `BPL` `PRI` `KBP` `SCO` `CLC` `CSG`, each restored and verified (`ALL RESTORED`) |
 
 The read-only probe ran a day earlier. It is filed here with the write
 sessions so all the SR30C evidence sits in one folder.
@@ -88,6 +89,49 @@ cannot be left with no priority channel, so `has_priority_clear = false`.
 
 The other 485 slots matched exactly, including every slot written empty.
 
+## 4. Settings writes
+
+Each setting was read, written, read back, then restored by sending the
+original read reply verbatim. Write shapes are the ones Bearpaw sends today,
+plus an echo of the radio's own reply. `VOL` and `SQL` ran outside program
+mode; the rest inside.
+
+| Command | Write | Reply | Read back | Verdict |
+|---|---|---|---|---|
+| `VOL` | `VOL,5` | `OK` | `VOL,5` | stored |
+| `SQL` | `SQL,4` | `OK` | `SQL,4` | stored |
+| `SCG` | `SCG,0000000000` | `OK` | same | stored |
+| `SCG` | `SCG,1111111111` (all banks disabled) | `OK` | **same** | **stored** — see below |
+| `BPL` | `BPL,1` | `OK` | `BPL,1` | stored |
+| `PRI` | `PRI,1`, `PRI,2` | `OK` | same | stored |
+| `KBP` | `KBP,,1` (lock on) | `OK` | `KBP,,1` | stored |
+| `KBP` | `KBP,1,0` (value in the beep field) | `OK` | `KBP,,0` | beep field reserved, as on the BC75XLT |
+| `SCO` | `SCO,1,,0` (echo of its reply) | `OK` | same | stored |
+| `SCO` | `SCO,2,1` (**Bearpaw's 2-field form**) | **`ERR`** | unchanged | **refused** |
+| `SCO` | `SCO,0,,0`, `SCO,1,,1` | `OK` | same | stored |
+| `SCO` | `SCO,2,,0` | `OK` | `SCO,1,,0` | delay `2` not applied |
+| `CLC` | `CLC,2,0,0,11111,` | `OK` | `…,11101,` | band position 4 reserved, as on the BC75XLT |
+| `CLC` | `CLC,3,0,0,11101,` | `OK` | same | mode 3 stored, as on the BC75XLT |
+| `CLC` | `CLC,2,0,0,11101,1` | `OK` | `…,11101,` | field 5 (`hit_scan`) reserved, as on the BC75XLT |
+| `CSG` | echo, then `CSG,1000000000,1,0` | `OK` | same | stored; 3-field shape, as on the BC75XLT |
+
+**`SCO` is settable, in a different shape than Bearpaw sends.** The SR30C's
+`SCO` has three fields, `SCO,<delay>,<reserved>,<code search>`, and accepts
+writes in that shape: delay `0`/`1` and code search `0`/`1` both round-trip.
+Bearpaw writes `SCO,<delay>,<code search>`, which this radio answers `ERR`.
+This differs from the BC75XLT, which refused every `SCO` write including an
+echo of its own reply (`has_search_options = false` there). As with `CSG`
+(`docs/wire_captures/2026-08-28/findings.md` §1), the read is self-describing,
+so a write can follow the field count of the read rather than branch on model.
+Delay `2` behaves as in `CIN` (§2): `OK`, not applied, and ambiguous between
+ignored and clamped because the slot already held `1`.
+
+**An all-disabled `SCG` mask is accepted.** CLAUDE.md pitfall #7 says the
+scanner refuses one. This radio stored `1111111111` and returned it on read.
+Bearpaw rejects that mask before the wire on every model, which is still
+right: a scanner with every bank disabled has nothing to scan. Only the stated
+reason ("the scanner refuses it") does not hold here.
+
 ## Values for the descriptor (#849)
 
 | Field | Value | Evidence |
@@ -98,6 +142,9 @@ The other 485 slots matched exactly, including every slot written empty.
 | `valid_delays` | `0, 1` | §2 |
 | `cleared_delay` | 0 | empty shape `,00000000,,,0,1,0`, §1 and §3 |
 | `has_priority_clear` | false | §2, §3 |
+| `has_key_beep` | false | §4 |
+| `key_beep_needs_program_mode` | true | `KBP,NG` outside PRG (§1); lock round-trips inside (§4) |
+| `has_search_options` | true **only once the write follows the 3-field read**; false until then | §4 |
+| `close_call_bands` | position 4 reserved, as on the BC75XLT. The other four labels are **not** verified: take them from the owner's manual, not by copying the BC75XLT list (CLAUDE.md capabilities rule 5) | §4 |
+| `has_close_call_hit_scan` | false | §4 |
 | `coverage_bands` | **open**: 239.0–347.5 MHz is outside | §3 |
-
-Still unprobed from #846: the `CLC`, `SCO`, `KBP` write paths, and a round-trip of `SCG`, `BPL`, `PRI`, `VOL` and `SQL`.
