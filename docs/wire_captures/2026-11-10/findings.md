@@ -88,7 +88,15 @@ the summary leaves out: its 5 bars were read on hiss.
    is about 366–375. A transmission described as "super clear" read 428–431,
    about the same as the clear NOAA on VHF (431).
 
-7. **Unexplained: the August reading.** The 2026-08-26 probe read `PWR,278`
+7. **VHF-low (27.025, CB, AM): `PWR` does not separate signal from noise.**
+   Two 2-minute runs. With no transmission marked, the reading sat at
+   410–464 (median 443-445). Two transmissions called clear read 422–434,
+   no higher than the background. One unexplained dip to 133–166 lasted
+   about 4 s with `GLG` still reporting squelch open. This is one frequency
+   in a very noisy part of the spectrum, so a 6 m or 30–50 MHz FM signal may
+   behave like VHF high. Nothing here supports a scale for 25–54 MHz.
+
+8. **Unexplained: the August reading.** The 2026-08-26 probe read `PWR,278`
    on 145.130 with `GLG` reporting squelch closed. Finding 4 says a closed
    squelch reads about 70. Not reproduced, not explained.
 
@@ -104,6 +112,23 @@ the summary leaves out: its 5 bars were read on hiss.
 - **Airband AM:** enough to scale it now. Noise about 371 at the bottom, a
   clear transmission about 430 at the top. It rests on one transmission, and
   a steady strong signal would firm it up.
-- **Code:** the bar count would depend on band and modulation, not just the
-  model. That is a bigger change to `ScannerCapabilities` than a single
-  breakpoint list, so it gets its own design before any code.
+- **VHF low (25–54):** not scaled. See finding 7. A clear FM signal against
+  an empty frequency in that range would settle it.
+
+## What Bearpaw does with it
+
+`ScannerCapabilities::pwr_bands` holds a floor (0 bars) and a top (5 bars)
+for each band, and `rssi` is scaled linearly between them on the band the
+`PWR` sample's own frequency falls in:
+
+| Band | MHz | floor | top | Source |
+|---|---|---|---|---|
+| Airband | 108–137 | 371 | 430 | quiet 123.950 / its clear transmission |
+| VHF high | 137–174 | 337 | 431 | 155.0025 hiss / NOAA 162.550 |
+| UHF | 406–512 | 225 | 403 | middle of 214–237 / the 443.775 repeater |
+
+The UHF top is 403, the repeater, by decision: the two clear 463.350
+transmissions (~368) then show 4 bars. 25–54 MHz has no entry and keeps the
+old linear 0–1023 mapping (finding 7). A `PWR` below 100 while `GLG` says
+squelch is open is skipped as a Close Call dip (finding 5), and the last good
+reading carries over.

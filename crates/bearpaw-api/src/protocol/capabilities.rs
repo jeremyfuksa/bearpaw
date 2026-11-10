@@ -253,6 +253,31 @@ pub struct ScannerCapabilities {
     /// scanner cannot tune, and the user gets a bare wire error instead of a
     /// message naming the problem.
     pub coverage_bands: &'static [(f64, f64)],
+    /// How to turn raw `PWR` into the 0–100 `rssi` on a model whose `STS`
+    /// carries no `SIG_LVL` (#815), per band: the reading with squelch open
+    /// on an empty frequency is 0, a clear signal is 100. Empty means "no
+    /// measured scale": the BC125AT family draws its bars from `SIG_LVL`, and
+    /// a frequency outside every band falls back to the linear 0–1023 map.
+    ///
+    /// Per band because the noise level and the clear-signal reading both
+    /// differ by band, so one scale is wrong on at least one of them
+    /// (`docs/wire_captures/2026-11-10/findings.md`).
+    ///
+    /// Backend-only: the frontend reads the scaled `rssi`, never this table.
+    #[serde(skip)]
+    pub pwr_bands: &'static [PwrBand],
+}
+
+/// One band's `PWR` scale. Bands are checked in order and the first one whose
+/// `low_mhz..=high_mhz` holds the frequency wins.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PwrBand {
+    pub low_mhz: f64,
+    pub high_mhz: f64,
+    /// `PWR` with squelch open on an empty frequency: 0 bars.
+    pub floor: u16,
+    /// `PWR` on a clear signal: 5 bars.
+    pub top: u16,
 }
 
 /// BC125AT family: BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H.
@@ -294,6 +319,8 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     default_baud: 115_200,
     // docs/SCANNER_PROTOCOL_REFERENCE.md §6.
     coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (225.0, 380.0), (400.0, 512.0)],
+    // Bars come from `STS` `SIG_LVL`, the count the LCD draws (#861).
+    pwr_bands: &[],
 };
 
 /// The UBC125XLT's receive coverage. Same memory model as the BC125AT, but a
@@ -352,6 +379,32 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     default_baud: 57_600,
     // Owner's manual, "FREQUENCY RANGE". No 225-380 band; UHF starts at 406.
     coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (406.0, 512.0)],
+    // Measured 2026-11-10 (docs/wire_captures/2026-11-10/findings.md). Floors
+    // are the squelch-open reading on an empty frequency; tops are clear
+    // signals (NOAA 162.550; a clear 123.950 transmission; the 443.775
+    // repeater). 25–54 MHz has no entry on purpose: at 27.025 a clear
+    // transmission read no higher than the background, so no scale there
+    // could be defended, and it keeps the linear fallback.
+    pwr_bands: &[
+        PwrBand {
+            low_mhz: 108.0,
+            high_mhz: 137.0,
+            floor: 371,
+            top: 430,
+        },
+        PwrBand {
+            low_mhz: 137.0,
+            high_mhz: 174.0,
+            floor: 337,
+            top: 431,
+        },
+        PwrBand {
+            low_mhz: 406.0,
+            high_mhz: 512.0,
+            floor: 225,
+            top: 403,
+        },
+    ],
 };
 
 impl ScannerCapabilities {

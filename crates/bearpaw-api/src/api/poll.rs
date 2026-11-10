@@ -1455,6 +1455,12 @@ impl PollState {
 /// doesn't show a frozen "live" frequency for minutes.
 const STALE_AFTER_FAILED_TICKS: u32 = 15;
 
+/// Below this, a PWR reading is the closed-squelch level: a BC75XLT reads
+/// 68–81 with squelch closed and during Close Call's off-frequency checks,
+/// and its lowest squelch-open reading on any band is 205 (UHF noise)
+/// (docs/wire_captures/2026-11-10/findings.md, findings 4 and 5).
+const CLOSED_SQUELCH_PWR: u16 = 100;
+
 /// One poll tick's worth of parsed responses, assembled into LiveState.
 ///
 /// Returns `false` if all three parses failed and nothing should be broadcast.
@@ -1479,7 +1485,16 @@ fn process_poll_tick(
 
     // PWR sampled this tick (if any); else fall back to the last good sample
     // so RSSI stays continuous across non-PWR ticks.
-    let pwr_this_tick = pwr_resp.and_then(parse_pwr_response);
+    // REGRESSION GUARD (#815): a PWR at the closed-squelch level while GLG
+    // says the squelch is OPEN is not a reading of this signal. With Close
+    // Call on, a BC75XLT leaves the frequency every ~2.3 s and PWR reads ~70
+    // for that sample, which would blink the meter to 0 bars mid-hit. Skip
+    // it, so the last good sample carries over as on a non-PWR tick.
+    // Test: `a_close_call_dip_keeps_the_last_reading`.
+    let squelch_open = glg.as_ref().is_some_and(|g| g.squelch_open);
+    let pwr_this_tick = pwr_resp
+        .and_then(parse_pwr_response)
+        .filter(|p| !(squelch_open && p.rssi_raw < CLOSED_SQUELCH_PWR));
     if let Some(p) = pwr_this_tick.as_ref() {
         poll.last_pwr = Some(p.clone());
     }
@@ -1532,6 +1547,7 @@ fn process_poll_tick(
         glg.as_ref(),
         pwr_effective,
         poll.last_sig_lvl,
+        state.capabilities().pwr_bands,
         commanded_mode,
         volume,
         squelch_level,
@@ -1678,6 +1694,54 @@ mod tests {
             rssi(&state),
             100,
             "a truncated STS must not hand the meter to PWR"
+        );
+    }
+
+    /// REGRESSION GUARD (#815): a Close Call dip does not blink a BC75XLT's
+    /// meter, and the poll loop scales PWR with the connected radio's table.
+    ///
+    /// Tick 1 is a clear NOAA 162.550 at 431, which only the BC75XLT's VHF
+    /// band makes 100 (the linear map says 42), so it also fails a poll loop
+    /// that forgets to pass `pwr_bands`. Tick 2 is the ~70 Close Call sample
+    /// with GLG still open: it must not reach the meter. Tick 3 is the paired
+    /// half: the same ~70 with the squelch really CLOSED is a real reading,
+    /// so a build that drops every low PWR fails here.
+    #[test]
+    fn a_close_call_dip_keeps_the_last_reading() {
+        let state = crate::api::default_state();
+        state.device.write().unwrap().capabilities = Some(crate::protocol::capabilities::BC75XLT);
+        let mut poll = PollState::new();
+        let sts = "STS,1, 162.5500      ,,1,0";
+        let open = "GLG,162.5500,NFM,,,,,,1,0,,,";
+        let closed = "GLG,162.5500,NFM,,,,,,0,1,,,";
+        let rssi = |state: &AppState| state.live.read().unwrap().rssi;
+        let mut tick = |glg: &str, pwr: &str| {
+            process_poll_tick(
+                &state,
+                &mut poll,
+                ScannerMode::Scan,
+                Some(sts),
+                Some(glg),
+                Some(pwr),
+                "test",
+            );
+        };
+
+        tick(open, "PWR,431,01625500");
+        assert_eq!(rssi(&state), 100, "clear NOAA on the VHF band is 5 bars");
+
+        tick(open, "PWR,70,01625500");
+        assert_eq!(
+            rssi(&state),
+            100,
+            "a Close Call dip must not reach the meter"
+        );
+
+        tick(closed, "PWR,70,01625500");
+        assert_eq!(
+            rssi(&state),
+            0,
+            "with the squelch really closed, 70 is real"
         );
     }
 

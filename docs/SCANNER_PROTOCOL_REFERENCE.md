@@ -237,7 +237,7 @@ GLG,,,,,,,,,\r
 
 RSSI updates slowly on this family and has limited dynamic range. Use it for "signal present / strong / weak," not as a precision S-meter. Calibration varies by band.
 
-On a BC75XLT, measured (`docs/wire_captures/2026-11-10/findings.md`): the noise level with squelch open differs by band (VHF ≈337, UHF ≈237, airband ≈366–375), a closed squelch reads ≈70, and Close Call takes the radio off-frequency every ≈2.3 s, which shows up as a dip to ≈70. A signal reads higher than noise on both FM and AM. A clear signal reached ≈430 on VHF FM and airband AM, but only ≈370–400 on UHF, so each band needs its own top as well as its own floor.
+On a BC75XLT, measured (`docs/wire_captures/2026-11-10/findings.md`): the noise level with squelch open differs by band (VHF ≈337, UHF ≈237, airband ≈366–375), a closed squelch reads ≈70, and Close Call takes the radio off-frequency every ≈2.3 s, which shows up as a dip to ≈70. A signal reads higher than noise on both FM and AM. A clear signal reached ≈430 on VHF FM and airband AM, but only ≈370–400 on UHF, so each band needs its own top as well as its own floor. At 27.025 MHz (CB) a clear signal read no higher than the background, so 25–54 MHz has no scale yet. Bearpaw's per-band table is `ScannerCapabilities::pwr_bands`.
 
 ### KEY — Simulate keypress
 
