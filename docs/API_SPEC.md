@@ -61,7 +61,7 @@ Current scanner receiver state.
 | `frequency` | number | Current frequency (MHz) | 25.0000 - 512.0000 |
 | `modulation` | string | Modulation mode | "FM", "AM", "NFM", "AUTO" |
 | `squelch_open` | boolean | True if signal present | true, false |
-| `rssi` | number | Signal strength percentage | 0 - 100 |
+| `rssi` | number | Signal strength. The scanner's own LCD bars × 20 where its `STS` reports them (BC125AT family); otherwise linear from raw `PWR` (#815) | 0 - 100 |
 | `mode` | string | Receiver mode | "SCAN", "HOLD", "DIRECT" |
 | `channel` | number or null | Current channel number | 1..`capabilities.channel_count`, or null |
 | `volume` | number | Volume level | 0-15 |
@@ -906,7 +906,7 @@ Get activity log entries with optional filtering.
 | `frequency` | number | Frequency in MHz |
 | `channel` | number or null | Channel number |
 | `alpha_tag` | string | Channel name |
-| `rssi` | number | Signal strength (0-100) |
+| `rssi` | number | Signal strength (0-100), same scale as live `rssi` |
 | `duration` | number or null | Duration in seconds |
 | `modulation` | string | Modulation mode |
 | `mode` | string | Receiver mode when hit occurred |

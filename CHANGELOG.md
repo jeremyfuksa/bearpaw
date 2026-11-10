@@ -15,6 +15,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Signal bars match the scanner's display.** On a BC125AT-family scanner,
+  a hit the scanner showed at 3–5 bars showed in Bearpaw at only 1–2. Bearpaw
+  now shows the scanner's own bar count on the Scan view and in Recent Hits.
+  Hits logged before this update keep their old readings.
 - **A dragged channel stays inside the list.** Dragging a channel past the
   top or bottom of the Channels list carried it out of view until you let go.
   It now stops at the edge, and the list scrolls under it as before.
