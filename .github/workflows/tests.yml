@@ -63,15 +63,50 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+      # apt's package lists and the .debs they name are cached together, so a
+      # warm run installs with no network at all. The Ubuntu mirror's stalls
+      # ran this job into its timeout before any test ran (#858). The lists
+      # must be cached too: the runner image's own lists go stale within
+      # days, so a .deb cache built from fresh lists never matches them, and
+      # one built from the image's lists can't be built at all once the
+      # mirror drops the versions they name (both seen on #860).
+      #
+      # Keyed on the runner image, so a new image rebuilds the cache against
+      # its own installed packages, and on the package list.
+      #
+      # Not awalsh128/cache-apt-pkgs-action: on a miss it pipes an install
+      # script from another repo's master branch into bash under sudo, which a
+      # pinned SHA does not pin, and this job also runs in the release
+      # pipeline (build.yml).
+      - name: Compute apt cache key
+        id: apt-key
+        run: |
+          echo "pkgs=$APT_PKGS" >> "$GITHUB_OUTPUT"
+          echo "key=apt-v3-$ImageOS-$ImageVersion-$(echo "$APT_PKGS" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+        env:
+          APT_PKGS: libudev-dev pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Cache apt packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-cache
+          key: ${{ steps.apt-key.outputs.key }}
       - name: Install Linux system deps (USB + Tauri)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libudev-dev \
-            pkg-config \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+          mkdir -p ~/apt-cache/archives/partial ~/apt-cache/lists/partial
+          # Retries plus a connection timeout turn a stalled mirror into a
+          # retry, not a 10-minute hang.
+          opts="-o Dir::Cache::Archives=$HOME/apt-cache/archives -o Dir::State::Lists=$HOME/apt-cache/lists -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+          if sudo apt-get install -y --no-download $opts $PKGS; then
+            echo "apt: installed from cache"
+          else
+            echo "apt: cache miss; updating"
+            sudo apt-get update $opts
+            sudo apt-get install -y $opts $PKGS
+          fi
+          # apt writes as root; let the cache step read and save it.
+          sudo chown -R "$USER" ~/apt-cache
+        env:
+          PKGS: ${{ steps.apt-key.outputs.pkgs }}
       - name: Run backend tests
         run: cargo test -p bearpaw-api --lib
       # Tauri's `generate_context!` macro validates that the configured
