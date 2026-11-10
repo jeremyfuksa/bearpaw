@@ -45,6 +45,18 @@ export function useActivityLogTracker(): void {
         return;
       }
 
+      // #873: keep the hit's PEAK strength. The scan_hit event carries the
+      // opening tick's rssi, which can be 0 on a BC125AT (its STS is read
+      // before GLG, so SIG_LVL can lag the squelch by a tick). The backend
+      // keeps the peak for the stored row; this keeps the live row matching.
+      if (squelchOpen && lastHitOpenRef.current) {
+        const rssi = payload.data.rssi;
+        if (currentHitDataRef.current && typeof rssi === 'number') {
+          currentHitDataRef.current.rssi = Math.max(currentHitDataRef.current.rssi ?? 0, rssi);
+        }
+        return;
+      }
+
       if (!squelchOpen && lastHitOpenRef.current) {
         const startTime = squelchOpenStartTimeRef.current ?? payload.timestamp;
         const duration = payload.timestamp - startTime;

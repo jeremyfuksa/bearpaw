@@ -89,6 +89,35 @@ describe('useActivityLogTracker', () => {
     expect(addSpy).toHaveBeenCalledTimes(2);
   });
 
+  // Regression guard (#873): the logged hit carries its PEAK strength. The
+  // order is the backend's: the opening state_update, then scan_hit, both at
+  // the opening tick's rssi, which on a BC125AT can be 0 because STS is read
+  // before GLG. A build that keeps the opening value logs 0; one that keeps the
+  // LAST value logs 60. Only the peak is 100.
+  it('logs the strongest reading of the hit, not the first', () => {
+    renderHook(() => useActivityLogTracker());
+    const open = (sequence: number, timestamp: number, rssi: number): WSMessage => ({
+      type: 'state_update',
+      timestamp,
+      sequence,
+      data: { squelch_open: true, rssi },
+    });
+
+    fakeWs.emit('state_update', open(1, 10_000, 0));
+    fakeWs.emit('event', {
+      type: 'event',
+      timestamp: 10_000,
+      event: 'scan_hit',
+      data: { frequency: 146.85, channel: 1, alpha_tag: 'TEST', rssi: 0 },
+    });
+    fakeWs.emit('state_update', open(2, 10_200, 100));
+    fakeWs.emit('state_update', open(3, 10_400, 60));
+    fakeWs.emit('state_update', stateUpdate(4, 10_600, false));
+
+    expect(addSpy).toHaveBeenCalledTimes(1);
+    expect(addSpy.mock.calls[0][0].rssi).toBe(100);
+  });
+
   it('drops a half-open hit captured before a reconnect', () => {
     renderHook(() => useActivityLogTracker());
 
