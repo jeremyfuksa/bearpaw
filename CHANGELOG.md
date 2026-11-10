@@ -12,6 +12,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   each 20% milestone, then fill on success. Cancelled syncs fade to gray;
   failed syncs show a red circle-and-slash and remain visible until closed.
   The animation respects reduced-motion preferences.
+- **The SR30C connects.** Bearpaw finds it on its own, reads all 500
+  channels in about six seconds, and lets you edit, export and import them.
+  Like the BC75XLT, it stores no channel names, modulation or tones, and its
+  delay is on or off. A frequency it can't tune, such as military air, is
+  refused before it reaches the radio. Settings files, backlight and search
+  options are not supported on it yet, and its signal bars are not yet
+  calibrated.
 
 ### Fixed
 
