@@ -139,13 +139,18 @@ pub(crate) async fn put_memory_channel(
     if validate_wire_field(&body.modulation).is_err() {
         return Err(ApiError::BadRequest("modulation_invalid".to_string()));
     }
-    let updated = write_channel_to_scanner(&state, &body).await?;
+    let mut updated = write_channel_to_scanner(&state, &body).await?;
     state
         .shadow
         .write()
         .unwrap()
         .channels
         .insert(index, updated.clone());
+    // Bank is not a wire field: the readback leaves it 0, and only the
+    // connected scanner's capabilities can derive it (#790). The shadow keeps
+    // 0, as every other parsed channel does; only the response is derived.
+    // Test: written_channel_responses_carry_the_derived_bank
+    updated.bank = caps.index_to_bank(index);
     Ok(Json(updated))
 }
 
@@ -174,11 +179,16 @@ pub(crate) async fn put_memory_channel_priority(
         return Err(ApiError::BadRequest("channel_out_of_range".to_string()));
     }
     let _ = command_sender(&state)?;
-    let changed = if body.priority {
+    let mut changed = if body.priority {
         super::super::set_channel_priority(&state, index).await?
     } else {
         vec![super::super::clear_channel_priority(&state, index).await?]
     };
+    // Same as `put_memory_channel`: derive bank for the response (#790).
+    let caps = state.capabilities();
+    for c in &mut changed {
+        c.bank = caps.index_to_bank(c.index);
+    }
     Ok(Json(PriorityResponse { changed }))
 }
 
