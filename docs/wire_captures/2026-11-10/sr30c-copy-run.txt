@@ -1,0 +1,60 @@
+backup: 500 slots -> /private/tmp/claude-501/-Users-jeremyfuksa-Dev-bearpaw--claude-worktrees-fix-signal-bars-from-sts/7fa967e7-53e3-4ffd-b139-296289e2cd58/scratchpad/sr30c-backup-before-copy.json
+  bank 1 done
+  bank 2 done
+  bank 3 done
+  bank 4 done
+  bank 5 done
+  bank 6 done
+  bank 7 done
+  bank 8 done
+  bank 9 done
+  bank 10 done
+
+write replies other than CIN,OK: 0
+slots not matching the image: 15
+  CIN,51: priority differs
+      wanted ['', '00270250', '', '', '1', '0', '0']
+      got    ['', '00270250', '', '', '1', '0', '1']
+  CIN,101: priority differs
+      wanted ['', '01453900', '', '', '1', '0', '0']
+      got    ['', '01453900', '', '', '1', '0', '1']
+  CIN,151: priority differs
+      wanted ['', '04426750', '', '', '1', '0', '0']
+      got    ['', '04426750', '', '', '1', '0', '1']
+  CIN,201: priority differs
+      wanted ['', '01182000', '', '', '1', '0', '0']
+      got    ['', '01182000', '', '', '1', '0', '1']
+  CIN,233: differs
+      wanted ['', '02390000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,234: differs
+      wanted ['', '02424000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,235: differs
+      wanted ['', '02758000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,236: differs
+      wanted ['', '02840000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,237: differs
+      wanted ['', '03110000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,238: differs
+      wanted ['', '03188000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,239: differs
+      wanted ['', '03358000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,240: differs
+      wanted ['', '03436500', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,241: differs
+      wanted ['', '03475000', '', '', '1', '0', '0']
+      got    ['', '00000000', '', '', '0', '1', '0']
+  CIN,251: priority differs
+      wanted ['', '00445800', '', '', '1', '0', '0']
+      got    ['', '00445800', '', '', '1', '0', '1']
+  CIN,351: priority differs
+      wanted ['', '01545700', '', '', '1', '0', '0']
+      got    ['', '01545700', '', '', '1', '0', '1']
+EPG -> EPG,OK
