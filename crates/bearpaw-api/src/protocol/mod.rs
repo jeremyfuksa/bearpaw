@@ -104,8 +104,10 @@ pub fn parse_mdl_response(response: &str) -> Option<String> {
 pub struct StsFrame {
     pub squelch_open: bool,
     pub muted: bool,
-    /// Signal level bars, 0–5 (LCD scale, not a 0–100 percentage).
-    pub sig_lvl: u8,
+    /// Signal level bars, 0–5: the count the scanner draws on its own LCD
+    /// (not a 0–100 percentage). `None` when the frame carries no status
+    /// block -- the BC75XLT's short frame.
+    pub sig_lvl: Option<u8>,
     /// Backlight dimmer: 0=Off, 1=Low, 2=Mid, 3=High.
     pub bk_dimmer: u8,
 }
@@ -151,8 +153,8 @@ pub fn parse_sts_frame(response: &str) -> Option<StsFrame> {
     // `find_sts_tail_start` needs >= 10 fields because it anchors on that
     // nine-field tail, so EVERY BC75XLT frame failed to parse -- 5,450 drops
     // in one session, one per poll at 5 Hz. Nothing visibly broke because
-    // STS only supplies `squelch_open` and `sig_lvl` as fallbacks behind GLG
-    // and PWR, both of which this model answers. It was a wasted round-trip
+    // STS only supplied `squelch_open` as a fallback behind GLG, and this
+    // model sends no `sig_lvl` at all. It was a wasted round-trip
     // 5x/sec on a 57600 link, and 5,450 warnings hiding real ones.
     //
     // Structural, not model-gated: this function is pure and has no
@@ -167,11 +169,12 @@ pub fn parse_sts_frame(response: &str) -> Option<StsFrame> {
     let sql = tail.first().and_then(|s| parse_bit(s))?;
     let muted = tail.get(1).and_then(|s| parse_bit(s)).unwrap_or(false);
     // SIG_LVL is at tail offset 6 in the observed layout; bounds-check.
-    let sig_lvl = tail
-        .get(6)
-        .and_then(|s| s.trim().parse::<u8>().ok())
-        .unwrap_or(0)
-        .min(5);
+    let sig_lvl = Some(
+        tail.get(6)
+            .and_then(|s| s.trim().parse::<u8>().ok())
+            .unwrap_or(0)
+            .min(5),
+    );
     let bk_dimmer = tail
         .get(8)
         .and_then(|s| s.trim().parse::<u8>().ok())
@@ -211,9 +214,8 @@ fn parse_short_sts_frame(parts: &[&str]) -> Option<StsFrame> {
     Some(StsFrame {
         squelch_open: sql,
         muted,
-        // Not present in this frame. `sig_lvl` feeds RSSI only as a fallback
-        // behind PWR, which this model answers, so 0 is never rendered.
-        sig_lvl: 0,
+        // Not present in this frame, so RSSI falls back to PWR.
+        sig_lvl: None,
         bk_dimmer: 0,
     })
 }
@@ -383,6 +385,12 @@ pub fn parse_pwr_response(response: &str) -> Option<PwrFrame> {
 }
 
 /// Map raw PWR RSSI (0–1023) to Bearpaw's 0–100 scale.
+///
+/// Linear over the full ADC range, which the hardware never uses: a BC125AT
+/// sits near 258 with squelch closed and reads 454 on a signal its LCD draws
+/// at 5 bars (docs/wire_captures/2026-05-21/raw.txt). So this under-reads
+/// badly, and is only the fallback for a model whose STS has no SIG_LVL
+/// (#815).
 pub fn rssi_raw_to_scaled(raw: u16) -> u8 {
     let pct = (raw as u32 * 100) / 1023;
     pct.min(100) as u8
@@ -639,6 +647,7 @@ pub fn livestate_from_frames(
     sts: Option<&StsFrame>,
     glg: Option<&GlgFrame>,
     pwr: Option<&PwrFrame>,
+    sig_lvl: Option<u8>,
     commanded_mode: ScannerMode,
     volume: u8,
     squelch_level: u8,
@@ -666,10 +675,18 @@ pub fn livestate_from_frames(
         .filter(|m| !m.is_empty())
         .unwrap_or_else(|| "FM".to_string());
 
-    // rssi: prefer PWR (fine-grained), else STS sig_lvl scaled 0–5 → 0–100.
-    let rssi = pwr
-        .map(|p| rssi_raw_to_scaled(p.rssi_raw))
-        .or_else(|| sts.map(|s| s.sig_lvl.saturating_mul(20)))
+    // REGRESSION GUARD (#815): rssi comes from the scanner's own bar count
+    // (STS SIG_LVL, 0–5 → 0–100) whenever it has one, and from PWR only when
+    // it does not. PWR is finer-grained but uncalibrated, and the linear
+    // mapping drew a 5-bar signal as 2. The user compares against the LCD,
+    // so the LCD's number is the right one. `sig_lvl` is passed separately
+    // from `sts` so the poll loop can carry it across a dropped STS frame
+    // instead of flipping to the PWR scale for a tick.
+    // Tests: `rssi_follows_the_scanners_own_bars_over_pwr`,
+    // `rssi_falls_back_to_pwr_without_sig_lvl`.
+    let rssi = sig_lvl
+        .map(|bars| bars.min(5) * 20)
+        .or_else(|| pwr.map(|p| rssi_raw_to_scaled(p.rssi_raw)))
         .unwrap_or(0);
 
     let channel = glg.and_then(|g| g.channel);
@@ -718,10 +735,10 @@ mod tests {
     /// requires >= 10 fields, so EVERY frame from this radio was dropped:
     /// 5,450 in one session, one per poll at 5 Hz.
     ///
-    /// Nothing visibly broke because STS supplies `squelch_open` and
-    /// `sig_lvl` only as fallbacks behind GLG and PWR, which this model
-    /// answers -- so it was a wasted round-trip 5x/sec on a 57600 link, and
-    /// 5,450 warnings hiding real ones.
+    /// Nothing visibly broke because STS supplies `squelch_open` only as a
+    /// fallback behind GLG, and this model sends no SIG_LVL -- so it was a
+    /// wasted round-trip 5x/sec on a 57600 link, and 5,450 warnings hiding
+    /// real ones.
     ///
     /// Captures 2026-08-26; the trailing pair matched the squelch/mute of the
     /// GLG frame taken alongside each one.
@@ -734,6 +751,10 @@ mod tests {
         let open = parse_sts_frame("STS,1, 464.5000      ,,1,0").expect("must parse");
         assert!(open.squelch_open, "trailing pair 1,0 is squelch OPEN");
         assert!(!open.muted);
+        assert_eq!(
+            open.sig_lvl, None,
+            "a short frame has no SIG_LVL; reporting 0 would draw no bars over PWR"
+        );
     }
 
     /// The short path must not swallow a genuinely malformed LONG frame.
@@ -761,7 +782,7 @@ mod tests {
         let long = "STS,011000,          ,,GMRS CH 03     ,,          ,,1,0,0,0,,,3,,2";
         let f = parse_sts_frame(long).expect("long frame must still parse");
         assert!(f.squelch_open);
-        assert_eq!(f.sig_lvl, 3);
+        assert_eq!(f.sig_lvl, Some(3));
     }
     use super::*;
 
@@ -782,7 +803,7 @@ mod tests {
         let f = parse_sts_frame(STS_SIGNAL_PRESENT).unwrap();
         assert!(f.squelch_open, "SQL=1 must mean squelch open");
         assert!(!f.muted);
-        assert_eq!(f.sig_lvl, 5);
+        assert_eq!(f.sig_lvl, Some(5));
         assert_eq!(f.bk_dimmer, 3);
     }
 
@@ -791,7 +812,7 @@ mod tests {
         let f = parse_sts_frame(STS_SIGNAL_ABSENT).unwrap();
         assert!(!f.squelch_open);
         assert!(f.muted, "muted should be 1 when no signal");
-        assert_eq!(f.sig_lvl, 0);
+        assert_eq!(f.sig_lvl, Some(0));
     }
 
     #[test]
@@ -821,7 +842,7 @@ mod tests {
             "SQL=1 must read as squelch_open=true even when LED_CC/LED_ALERT are 0/1 digits"
         );
         assert!(!f.muted, "MUT=0 must read as muted=false (not flipped)");
-        assert_eq!(f.sig_lvl, 5);
+        assert_eq!(f.sig_lvl, Some(5));
         assert_eq!(f.bk_dimmer, 3);
     }
 
@@ -834,7 +855,7 @@ mod tests {
         let variant = "STS,011000,              ,,GMRS CH 03      ,,CH075  462.6125,,            ,,                ,,123          ,,1,0,0,0,,,5,,";
         let f = parse_sts_frame(variant).expect("empty BK_DIMMER must still anchor");
         assert!(f.squelch_open);
-        assert_eq!(f.sig_lvl, 5);
+        assert_eq!(f.sig_lvl, Some(5));
         assert_eq!(f.bk_dimmer, 0, "empty dimmer field defaults to 0");
     }
 
@@ -1112,8 +1133,15 @@ mod tests {
         let sts = parse_sts_frame(STS_SIGNAL_PRESENT).unwrap();
         let glg = parse_glg_response(GLG_SIGNAL_PRESENT).unwrap();
         let pwr = parse_pwr_response(PWR_SAMPLE).unwrap();
-        let live =
-            livestate_from_frames(Some(&sts), Some(&glg), Some(&pwr), ScannerMode::Scan, 7, 0);
+        let live = livestate_from_frames(
+            Some(&sts),
+            Some(&glg),
+            Some(&pwr),
+            sts.sig_lvl,
+            ScannerMode::Scan,
+            7,
+            0,
+        );
         assert_eq!(live.frequency, 462.6125);
         assert_eq!(live.modulation, "NFM");
         assert!(live.squelch_open);
@@ -1122,17 +1150,64 @@ mod tests {
         assert_eq!(live.mode, ScannerMode::Scan);
         assert_eq!(live.volume, 7);
         assert!(live.battery.is_none());
-        // RSSI from PWR=454/1023 = 44%
-        assert_eq!(live.rssi, 44);
     }
 
+    /// REGRESSION GUARD (#815): the bars follow the scanner's LCD, not PWR.
+    ///
+    /// These two frames were captured back to back on one signal: the LCD
+    /// drew 5 bars (SIG_LVL 5) while PWR read 454. The old linear mapping
+    /// made that 44%, which the frontend drew as 2 bars -- the RadioReference
+    /// report exactly. Asserting 100 rather than "not 44" pins the value, so
+    /// a build that blends the two sources fails too.
     #[test]
-    fn livestate_falls_back_to_sts_sig_lvl_when_pwr_absent() {
+    fn rssi_follows_the_scanners_own_bars_over_pwr() {
         let sts = parse_sts_frame(STS_SIGNAL_PRESENT).unwrap();
         let glg = parse_glg_response(GLG_SIGNAL_PRESENT).unwrap();
-        let live = livestate_from_frames(Some(&sts), Some(&glg), None, ScannerMode::Scan, 0, 0);
-        // sig_lvl=5 → 5*20 = 100
-        assert_eq!(live.rssi, 100);
+        let pwr = parse_pwr_response(PWR_SAMPLE).unwrap();
+        let live = livestate_from_frames(
+            Some(&sts),
+            Some(&glg),
+            Some(&pwr),
+            sts.sig_lvl,
+            ScannerMode::Scan,
+            0,
+            0,
+        );
+        assert_eq!(live.rssi, 100, "SIG_LVL 5 is 5 bars, whatever PWR says");
+
+        let closed = parse_sts_frame(STS_SIGNAL_ABSENT).unwrap();
+        let live = livestate_from_frames(
+            Some(&closed),
+            None,
+            Some(&pwr),
+            closed.sig_lvl,
+            ScannerMode::Scan,
+            0,
+            0,
+        );
+        assert_eq!(
+            live.rssi, 0,
+            "SIG_LVL 0 is a real reading, not a gap for PWR to fill"
+        );
+    }
+
+    /// The paired half of the #815 guard: with no SIG_LVL (the BC75XLT's short
+    /// STS) PWR still drives the meter. Without this, a build that dropped PWR
+    /// entirely would pass the guard above and leave the BC75XLT at 0 bars.
+    #[test]
+    fn rssi_falls_back_to_pwr_without_sig_lvl() {
+        let sts = parse_sts_frame("STS,1, 145.1300      ,,1,0").unwrap();
+        let pwr = parse_pwr_response("PWR,454,01451300").unwrap();
+        let live = livestate_from_frames(
+            Some(&sts),
+            None,
+            Some(&pwr),
+            sts.sig_lvl,
+            ScannerMode::Scan,
+            0,
+            0,
+        );
+        assert_eq!(live.rssi, 44);
     }
 
     #[test]
@@ -1282,7 +1357,7 @@ mod tests {
     #[test]
     fn livestate_decodes_ctcss_tone_when_squelch_open() {
         let glg = parse_glg_response(GLG_CTCSS_OPEN).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0, 0);
+        let live = livestate_from_frames(None, Some(&glg), None, None, ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Ctcss);
         assert_eq!(live.tone_squelch, Some(100.0));
         assert_eq!(live.tone_dcs_code, None);
@@ -1292,7 +1367,7 @@ mod tests {
     #[test]
     fn livestate_suppresses_tone_when_squelch_closed() {
         let glg = parse_glg_response(GLG_CTCSS_CLOSED).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0, 0);
+        let live = livestate_from_frames(None, Some(&glg), None, None, ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::None);
         assert_eq!(live.tone_squelch, None);
         assert_eq!(live.tone_dcs_code, None);
@@ -1302,7 +1377,7 @@ mod tests {
     #[test]
     fn livestate_decodes_dcs_tone_with_label_when_squelch_open() {
         let glg = parse_glg_response(GLG_DCS_OPEN).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, ScannerMode::Scan, 0, 0);
+        let live = livestate_from_frames(None, Some(&glg), None, None, ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Dcs);
         assert_eq!(live.tone_squelch, None);
         assert_eq!(live.tone_dcs_code, Some(151));

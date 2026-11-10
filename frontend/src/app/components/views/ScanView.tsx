@@ -62,9 +62,11 @@ function getRelativeTime(date: Date | number) {
   return `${days} days ago`;
 }
 
+/** `rssi` is 0–100 (the scanner's own 0–5 bars × 20 where it reports them,
+ *  #815), so this recovers the LCD's bar count exactly. A value of 0–5 is a
+ *  weak 0–100 reading, never a bar count: treating it as one drew 3% as 3 bars. */
 function normalizeSignal(value?: number) {
   if (value === undefined || value === null) return 0;
-  if (value <= 5) return Math.round(value);
   return Math.min(5, Math.round(value / 20));
 }
 

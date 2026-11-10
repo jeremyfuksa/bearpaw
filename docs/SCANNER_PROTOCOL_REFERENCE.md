@@ -549,7 +549,7 @@ class LiveState:
     frequency: float              # MHz, from GLG[1] / 10000  (or PWR[2] / 10000)
     modulation: str               # "FM" | "AM" | "NFM" | "AUTO", from GLG[2]
     squelch_open: bool            # True = signal present; from GLG SQL field (1=open)
-    rssi: int                     # Bearpaw scale 0–100, mapped from PWR (0–1023) or STS SIG_LVL (0–5)
+    rssi: int                     # Bearpaw scale 0–100: STS SIG_LVL (0–5) × 20, else PWR (0–1023) rescaled
     mode: str                     # "SCAN" | "HOLD" | "DIRECT", commanded by scheduler — NOT a wire field
     channel: Optional[int]        # 1–500 or None, from GLG trailing CHAN_NUM (firmware-dependent)
     alpha_tag: Optional[str]      # First non-empty name field in GLG
@@ -563,7 +563,7 @@ class LiveState:
 - **`mode` is not in the protocol.** It's tracked by the command scheduler as "the last commanded mode": `SCAN` after `KEY,S,P`, `HOLD` after `KEY,H,P`, `DIRECT` after `DO,…`. The scanner reports no mode enum. Do not look for a `MODE` key in `STS` — it doesn't exist.
 - **Squelch polarity:** `SQL=1` means **open** (signal present, scanner auto-paused). `SQL=0` means **closed** (no signal, scanner cycling if mode=SCAN). This is true in both `STS` and `GLG`.
 - **`battery` is always `None` for this family.** The protocol does not expose it.
-- **`rssi` mapping:** Either rescale `PWR` field 1 (0–1023 → 0–100) or surface `STS` `SIG_LVL` (0–5) directly. Don't pretend `STS` has a 0–100 `RSSI` key — it doesn't.
+- **`rssi` mapping:** Prefer `STS` `SIG_LVL` (0–5), which is the bar count the scanner draws on its own LCD; fall back to `PWR` field 1 only when `STS` has no status block (the BC75XLT's short frame). `PWR` is finer-grained but uncalibrated, and its working range is nowhere near 0–1023: on a BC125AT it reads ~258 with squelch closed and 454 on a signal the LCD shows at 5 bars (`docs/wire_captures/2026-05-21/raw.txt`), so a linear rescale drew that signal as 2 bars (#815). Don't pretend `STS` has a 0–100 `RSSI` key — it doesn't.
 - **Hit detection:** A "hit" is the transition `squelch_open: false → true` while `mode == "SCAN"`. The scanner pauses on the channel automatically; the wire `mode` does not change. See [UI_WORKFLOW.md](UI_WORKFLOW.md).
 
 ### State transition examples

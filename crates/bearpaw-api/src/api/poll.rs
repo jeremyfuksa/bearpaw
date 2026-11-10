@@ -1417,6 +1417,12 @@ struct PollState {
     /// Last successfully parsed PWR frame — carried forward on ticks that
     /// don't poll PWR so RSSI stays continuous rather than flickering to 0.
     last_pwr: Option<PwrFrame>,
+    /// Last SIG_LVL from a parsed STS frame, carried across the firmware's
+    /// documented dropped/truncated STS replies. Without it a dropped frame
+    /// falls through to PWR for one tick, on a different scale: a 5-bar
+    /// signal blinks to 2 (#815). `None` for a model whose STS has no
+    /// SIG_LVL, which leaves PWR in charge there.
+    last_sig_lvl: Option<u8>,
     /// Count of STS responses that failed to parse (truncation, garbage).
     /// Logged periodically — these are normal under the firmware's documented
     /// "occasionally drops or truncates STS" behavior.
@@ -1435,6 +1441,7 @@ impl PollState {
     fn new() -> Self {
         Self {
             last_pwr: None,
+            last_sig_lvl: None,
             dropped_sts: 0,
             consecutive_failed_ticks: 0,
             stale_broadcast: false,
@@ -1477,6 +1484,9 @@ fn process_poll_tick(
         poll.last_pwr = Some(p.clone());
     }
     let pwr_effective = pwr_this_tick.as_ref().or(poll.last_pwr.as_ref());
+    if let Some(s) = sts.as_ref() {
+        poll.last_sig_lvl = s.sig_lvl;
+    }
 
     // Track STS truncation (asked for it, got something, but didn't parse).
     if sts_resp.is_some() && sts.is_none() {
@@ -1521,6 +1531,7 @@ fn process_poll_tick(
         sts.as_ref(),
         glg.as_ref(),
         pwr_effective,
+        poll.last_sig_lvl,
         commanded_mode,
         volume,
         squelch_level,
@@ -1626,6 +1637,49 @@ fn parse_sql_response(resp: &str) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// REGRESSION GUARD (#815): a dropped STS frame keeps the LCD's bars.
+    ///
+    /// The firmware occasionally truncates STS. With SIG_LVL gone for a tick
+    /// and the carried PWR (454, captured beside a 5-bar LCD) still present,
+    /// RSSI used to fall through to PWR's scale: 100 → 44 → 100, a visible
+    /// 5-2-5 blink, and the value a hit opening on that tick would store.
+    /// The middle tick is the one that matters; the first pins the setup.
+    #[test]
+    fn a_dropped_sts_frame_keeps_the_scanners_bars() {
+        let state = crate::api::default_state();
+        let mut poll = PollState::new();
+        let sts = "STS,011000,              ,,GMRS CH 03      ,,CH075  462.6125,,            ,,                ,,123          ,,1,0,0,0,,,5,,3";
+        let glg = "GLG,04626125,NFM,,0,,,GMRS CH 03,1,0,,75,";
+        let pwr = "PWR,454,04626125";
+        let rssi = |state: &AppState| state.live.read().unwrap().rssi;
+
+        process_poll_tick(
+            &state,
+            &mut poll,
+            ScannerMode::Scan,
+            Some(sts),
+            Some(glg),
+            Some(pwr),
+            "test",
+        );
+        assert_eq!(rssi(&state), 100);
+
+        process_poll_tick(
+            &state,
+            &mut poll,
+            ScannerMode::Scan,
+            Some("STS,0110"),
+            Some(glg),
+            None,
+            "test",
+        );
+        assert_eq!(
+            rssi(&state),
+            100,
+            "a truncated STS must not hand the meter to PWR"
+        );
+    }
 
     /// REGRESSION GUARD (#711): an open squelch at 0 MHz is not a hit.
     ///

@@ -144,6 +144,16 @@ describe('rollUpHits', () => {
     expect(rolled[0].strength).toBe(4);
   });
 
+  // #815: rssi is always 0–100. A reading of 3 is 3%, not three bars -- the
+  // old `<= 5` branch read it as a bar count. 100 is the top of the meter.
+  it('reads a low rssi as a weak signal, not as a bar count', () => {
+    const rolled = rollUpHits([
+      hit({ id: 'w1', timestamp: 30, channel: 1, alpha_tag: 'A', rssi: 3 }),
+      hit({ id: 'w2', timestamp: 20, channel: 2, alpha_tag: 'B', rssi: 100 }),
+    ]);
+    expect(rolled.map((r) => r.strength)).toEqual([0, 5]);
+  });
+
   // The em dash is applied by the renderer, and ONLY when the tag column is
   // shown. Baking it in here produced a full column of dashes on a BC75XLT,
   // which has no alpha tags at all -- roughly a third of every row saying
