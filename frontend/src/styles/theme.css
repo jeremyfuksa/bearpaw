@@ -302,6 +302,10 @@
   --color-border-inset: var(--border-inset);
   --color-border-scanner: var(--border-scanner);
   --color-border-button-light: var(--border-button-light);
+  /* `bg-scanner-bg-dark` / `border-scanner-bg-dark` were used in six places
+     with no token behind them, so Tailwind emitted nothing and each surface
+     was transparent: the Channels DLY menu showed the rows through it (#871). */
+  --color-scanner-bg-dark: var(--bg-scanner-dark);
   --color-scanner-default: #3e4f66;
   --color-scanner-hover: #4c627d;
   --color-scanner-border: #8098b0;
