@@ -1665,25 +1665,6 @@ export function ChannelsTab() {
           setMemoryDraft(idx, buildDraft(refreshed, capabilities.cleared_delay));
         }
       }
-      // REGRESSION GUARD (#792): a failed move's content is re-staged as an
-      // in-place edit of the slot it was moving TO. In a swap where A -> 2
-      // fails and B -> 1 lands, the radio holds B twice and A nowhere; the
-      // rebuild above would make A unrecoverable. Every channel's content now
-      // ends the batch either written at its target or staged there, so the
-      // next Upload finishes the permutation and Discard is an explicit choice.
-      // Guarded by ChannelsTab.test.tsx :: keeps a failed move staged at its
-      // target so nothing is lost.
-      for (const { restage } of failed) {
-        if (restage) {
-          setMemoryDraft(restage.index, buildDraft(restage, capabilities.cleared_delay));
-        }
-      }
-      setBankOrders({});
-      setMovedChannelIds(new Set());
-      // Remount the rows rather than let them animate. The grid already shows
-      // the uploaded order; only the keys move, and sliding every row to where
-      // it already appears to be is noise.
-      setOrderEpoch((n) => n + 1);
     } catch (error) {
       console.warn('Failed to refresh channels after upload', error);
       const byIndex = new Map(landedChannels.map((c) => [c.index, c]));
@@ -1692,6 +1673,33 @@ export function ChannelsTab() {
         setMemoryDraft(landed.index, buildDraft(landed, capabilities.cleared_delay));
       }
     }
+
+    // REGRESSION GUARD (#792): a failed move's content is re-staged as an
+    // in-place edit of the slot it was moving TO. In a swap where A -> 2
+    // fails and B -> 1 lands, the radio holds B twice and A nowhere; the
+    // rebuild above would make A unrecoverable. Every channel's content now
+    // ends the batch either written at its target or staged there, so the
+    // next Upload finishes the permutation and Discard is an explicit choice.
+    // Guarded by ChannelsTab.test.tsx :: keeps a failed move staged at its
+    // target so nothing is lost.
+    //
+    // REGRESSION GUARD (#803): this and the reorder reset run whether or not
+    // the refetch succeeded. The re-stage payloads come from the upload, not
+    // the refetch, and a staged reorder left in place after a partly-applied
+    // upload makes the next Upload re-run it against a radio that already
+    // half-applied it. Guarded by ChannelsTab.test.tsx :: finishes a
+    // half-applied swap on the next upload when the refetch also failed.
+    for (const { restage } of failed) {
+      if (restage) {
+        setMemoryDraft(restage.index, buildDraft(restage, capabilities.cleared_delay));
+      }
+    }
+    setBankOrders({});
+    setMovedChannelIds(new Set());
+    // Remount the rows rather than let them animate. The grid already shows
+    // the uploaded order; only the keys move, and sliding every row to where
+    // it already appears to be is noise.
+    setOrderEpoch((n) => n + 1);
 
     const reconciledNote =
       reconciledChannels.length > 0 ? ` (${reconciledChannels.length} refreshed from scanner)` : '';
