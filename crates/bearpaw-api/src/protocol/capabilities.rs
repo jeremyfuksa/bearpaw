@@ -419,15 +419,17 @@ impl ScannerCapabilities {
         // The European variants. An explicit allowlist rather than
         // `model.contains("UBC")`: substring tests on model names are how the
         // export gate ended up matching "BC125AT" inside "BCT125AT".
-        const EUR_MODELS: &[&str] = &["UBC125XLT", "UBC126AT"];
+        const EUR_MODELS: &[&str] = &["UBC125XLT", "UBC126AT", "AE125H"];
         if BC125AT_MODELS.iter().any(|m| model.eq_ignore_ascii_case(m)) {
             let mut caps = BC125AT_FAMILY;
             if EUR_MODELS.iter().any(|m| model.eq_ignore_ascii_case(m)) {
                 caps.ss_region = "EUR";
             }
             // UBC125XLT owner's manual, "Frequency Range; Band Plan 1" (#703);
-            // UBC126AT owner's manual, "Frequency Range" (#723).
-            if model.eq_ignore_ascii_case("UBC125XLT") {
+            // UBC126AT owner's manual, "Frequency Range" (#723). The AE125H is
+            // an Albrecht-branded UBC125XLT: same bands and the same seven EU
+            // service bands per Alan Electronics' datasheet (#869).
+            if model.eq_ignore_ascii_case("UBC125XLT") || model.eq_ignore_ascii_case("AE125H") {
                 caps.coverage_bands = UBC125XLT_COVERAGE;
             }
             if model.eq_ignore_ascii_case("UBC126AT") {
@@ -553,6 +555,19 @@ mod tests {
         for mhz in [60.0, 398.025, 870.0] {
             assert!(!us.covers_frequency(mhz), "BC125AT cannot tune {mhz}");
         }
+    }
+
+    // #869: the AE125H is an Albrecht-branded UBC125XLT (Alan Electronics'
+    // datasheet: 25–88, 108–174, 225–512, 806–960 MHz and the EU firmware's
+    // seven service bands). Comparing whole descriptors pins coverage AND
+    // region at once, and keeps pinning them if the UBC125XLT's ever change;
+    // the 870 MHz check fails a build that "fixes" it by making both US.
+    #[test]
+    fn ae125h_is_a_ubc125xlt() {
+        let ae = ScannerCapabilities::for_model("AE125H").unwrap();
+        assert_eq!(Some(ae), ScannerCapabilities::for_model("UBC125XLT"));
+        assert_eq!(ae.ss_region, "EUR");
+        assert!(ae.covers_frequency(870.0), "AE125H should tune 870");
     }
 
     // #723: the UBC126AT's owner's manual lists 25–88, 108–174, 225–399.975,

@@ -14,7 +14,7 @@
     "coverage_bands": [
       [
         25.0,
-        54.0
+        88.0
       ],
       [
         108.0,
@@ -22,11 +22,11 @@
       ],
       [
         225.0,
-        380.0
+        512.0
       ],
       [
-        400.0,
-        512.0
+        806.0,
+        960.0
       ]
     ],
     "default_baud": 115200,
@@ -46,7 +46,7 @@
     "key_beep_needs_program_mode": false,
     "reports_live_channel": true,
     "ss_format": "bc125at",
-    "ss_region": "USA",
+    "ss_region": "EUR",
     "valid_delays": [
       -10,
       -5,

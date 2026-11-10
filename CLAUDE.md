@@ -90,7 +90,7 @@ capabilities are always read under one lock.
 | `cleared_delay` | 2 | 0 |
 | `has_unique_usb_serial` | false (every unit reports `0001`) | true (per-unit CP2104) |
 | `default_baud` | 115200 | 57600 |
-| `coverage_bands` | 25–54, 108–174, 225–380, 400–512 (UBC125XLT: 25–88, 108–174, 225–512, 806–960; UBC126AT: 25–88, 108–174, 225–520, 806–960) | 25–54, 108–174, 406–512 |
+| `coverage_bands` | 25–54, 108–174, 225–380, 400–512 (UBC125XLT and AE125H: 25–88, 108–174, 225–512, 806–960; UBC126AT: 25–88, 108–174, 225–520, 806–960) | 25–54, 108–174, 406–512 |
 | `pwr_bands` | empty (bars come from `STS` `SIG_LVL`) | `PWR` floor/top per band: air 371/430, VHF 337/431, UHF 225/403; none for 25–54 (`docs/wire_captures/2026-11-10/findings.md`) |
 
 **Rules:**
