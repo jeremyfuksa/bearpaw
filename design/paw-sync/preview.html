@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bearpaw motion study</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10151d;color:#dbe1ea;font:16px system-ui,sans-serif}main{max-width:1100px;margin:48px auto;padding:24px}h1{font-size:32px;margin:0 0 12px}p{color:#9da9ba;line-height:1.6}.grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.panel{background:#12171f;border:1px solid #303b4c;border-radius:16px;padding:20px}.panel h2{font-size:16px;margin:0}.panel img,.panel object{display:block;width:100%;aspect-ratio:1;pointer-events:none}.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:24px}button,a{color:#dbe1ea}button{background:#263244;border:1px solid #46566d;border-radius:8px;padding:10px 16px;cursor:pointer}button:hover{background:#39495f}input{flex:1;min-width:160px;accent-color:#ed9546}output{min-width:65px;font-variant-numeric:tabular-nums}.note{font-size:14px}a{margin-right:18px}@media(max-width:700px){main{margin-top:8px}.grid{grid-template-columns:1fr}}
+</style></head><body><main>
+<h1>Bearpaw / opening study</h1><p>Five articulated digits, a fixed palm, and the original logo at completion. Scrub to compare the 3D render with its projected vector shapes.</p>
+<div class="grid"><section class="panel"><h2>3D • shaded geometry</h2><img id="render" src="sequence/0001.png" alt="3D bear paw pose"></section><section class="panel"><h2>SVG • flat vector projection</h2><object id="vector" data="bearpaw-motion.svg" type="image/svg+xml" aria-label="Vector bear paw pose"></object></section></div>
+<div class="controls"><button id="play">Play</button><input id="time" aria-label="Animation time" type="range" min="0" max="5.999" value="0" step="0.033333"><output id="readout">0.00s</output></div>
+<div class="controls" id="poses"></div>
+<p class="note">Prototype: the vector view uses approximate object depth ordering. Its overlapping contours need cleanup before production. The last transition dissolves into the unchanged logo. Playback is a review timeline; real sync progress will trigger and hold each opening.</p>
+<p><a href="bearpaw-motion.blend">Blender scene</a><a href="bearpaw-motion.svg">Animated SVG</a><a href="bearpaw-preview.mp4">MP4 preview</a><a href="pose-sheet.png">Pose sheet</a></p>
+</main><script>
+const slider=document.querySelector('#time'), vector=document.querySelector('#vector'), render=document.querySelector('#render'), button=document.querySelector('#play');
+let playing=false,last=0,svg;
+function show(t){t=Math.max(0,Math.min(5.999,t));slider.value=t;document.querySelector('#readout').textContent=t.toFixed(2)+'s';render.src='sequence/'+String(Math.min(180,Math.floor(t*30)+1)).padStart(4,'0')+'.png';if(svg)svg.setCurrentTime(t+0.001)}
+vector.addEventListener('load',()=>{svg=vector.getSVGDocument()?.documentElement;if(svg){svg.pauseAnimations();show(Number(slider.value))}});
+function stop(){playing=false;button.textContent='Play'}
+slider.addEventListener('input',()=>{stop();show(Number(slider.value))});
+button.addEventListener('click',()=>{playing=!playing;button.textContent=playing?'Pause':'Play';if(playing&&Number(slider.value)>=5.99)show(0);last=performance.now()});
+[1,28,54,80,106,151].forEach((frame,i)=>{const b=document.createElement('button');b.textContent=i*20+'%';b.onclick=()=>{stop();show((frame-1)/30)};document.querySelector('#poses').append(b)});
+function tick(now){if(playing){let t=Number(slider.value)+(now-last)/1000;show(t);if(t>=5.999)stop()}last=now;requestAnimationFrame(tick)}requestAnimationFrame(tick);
+</script></body></html>

@@ -33,8 +33,11 @@ export const mockFetchError = (status: number, message: string): void => {
     Promise.resolve({
       ok: false,
       status,
+      // Both readers describe the SAME JSON body, as a real server's would.
+      // The client reads error bodies as text (#737), so a bare-message
+      // text() would describe a response the backend never sends.
       json: () => Promise.resolve({ error: message, message }),
-      text: () => Promise.resolve(message),
+      text: () => Promise.resolve(JSON.stringify({ error: message, message })),
     } as Response),
   );
 };

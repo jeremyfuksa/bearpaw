@@ -29,6 +29,28 @@ export class APIError extends Error {
   }
 }
 
+/**
+ * Build the APIError for a failed response. The body is read ONCE, as text,
+ * then parsed as JSON when it parses: a `json()` that fails has already
+ * consumed the body, so falling back to `text()` threw "body stream already
+ * read" and hid the real status (#737). Handler errors are JSON; the security
+ * layer's 403, axum's extractor rejections and the routing 404 are not.
+ */
+async function errorFromResponse(response: Response): Promise<APIError> {
+  const text = await response.text();
+  let payload: unknown = text;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    // Not JSON: keep the text.
+  }
+  const message =
+    typeof payload === 'object' && payload && 'message' in payload
+      ? String((payload as { message?: string }).message)
+      : response.statusText;
+  return new APIError(message || 'Request failed', response.status, payload);
+}
+
 export class ScannerAPIClient {
   private baseURL: string;
 
@@ -64,17 +86,7 @@ export class ScannerAPIClient {
     });
 
     if (!response.ok) {
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch {
-        payload = await response.text();
-      }
-      const message =
-        typeof payload === 'object' && payload && 'message' in payload
-          ? String((payload as { message?: string }).message)
-          : response.statusText;
-      throw new APIError(message || 'Request failed', response.status, payload);
+      throw await errorFromResponse(response);
     }
 
     if (response.status === 204) {
@@ -93,17 +105,7 @@ export class ScannerAPIClient {
     });
 
     if (!response.ok) {
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch {
-        payload = await response.text();
-      }
-      const message =
-        typeof payload === 'object' && payload && 'message' in payload
-          ? String((payload as { message?: string }).message)
-          : response.statusText;
-      throw new APIError(message || 'Request failed', response.status, payload);
+      throw await errorFromResponse(response);
     }
 
     return response.text();
