@@ -17,10 +17,10 @@ use crate::state::{ChannelData, ToneSquelchKind};
 
 use super::{epoch_now, open_sqlite, AppState};
 
-/// Profile key used until #414 introduces real scanner identity.
-///
-/// The column exists now so #412 migrates once; #414 adopts these rows onto
-/// the first real profile rather than orphaning them.
+/// Fallback profile key: used before the first `MDL` resolves a profile, or
+/// when the profile can't be written (`AppState::scanner_id`). Rows a pre-#414
+/// install cached under it are adopted onto the first matching real profile by
+/// `adopt_placeholder_cache` rather than orphaned.
 pub(crate) const PLACEHOLDER_SCANNER_ID: &str = "_default";
 
 fn tone_kind_to_text(kind: &ToneSquelchKind) -> &'static str {
