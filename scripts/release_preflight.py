@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Fail a release when its tag and shipped version sources disagree."""
+"""Fail a release when its tag and shipped version sources disagree, or when
+`tauri build` would refuse to run because a Tauri crate and its npm package
+have drifted apart (#808)."""
 
 from __future__ import annotations
 
@@ -7,6 +9,7 @@ import argparse
 import json
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 SEMVER = re.compile(
@@ -50,6 +53,44 @@ def toml_version(path: Path) -> str:
     raise ValueError(f"{path}: package.version is missing or is not a string")
 
 
+# Tauri's own check (tauri-cli `info/plugins.rs`, `check_mismatched_packages`)
+# pairs each crate with its npm package, requires the same major.minor, and
+# skips any crate whose version does not parse as a full X.Y.Z. Without a
+# committed Cargo.lock it reads the version straight from Cargo.toml, so a bare
+# "2" is never compared while "2.7.2" is. Mirror that exactly: stricter would
+# fail PRs `tauri build` accepts, looser would miss the v1.2.0 failure.
+# If Cargo.lock is ever committed, Tauri reads the LOCKED version instead and
+# this must follow.
+FULL_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+def tauri_drift_errors(root: Path) -> list[str]:
+    manifest = tomllib.loads(
+        (root / "frontend/src-tauri/Cargo.toml").read_text(encoding="utf-8")
+    )
+    lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
+    installed = lock.get("packages", {})
+    errors = []
+    for crate, spec in manifest.get("dependencies", {}).items():
+        if crate == "tauri":
+            npm = "@tauri-apps/api"
+        elif crate.startswith("tauri-plugin-"):
+            npm = "@tauri-apps/plugin-" + crate.removeprefix("tauri-plugin-")
+        else:
+            continue
+        crate_version = spec.get("version") if isinstance(spec, dict) else spec
+        npm_version = installed.get(f"node_modules/{npm}", {}).get("version")
+        if not crate_version or not FULL_VERSION.match(crate_version) or not npm_version:
+            continue
+        if crate_version.split(".")[:2] != npm_version.split(".")[:2]:
+            errors.append(
+                f"{crate} {crate_version} (frontend/src-tauri/Cargo.toml) and "
+                f"{npm} {npm_version} (frontend/package-lock.json) are on "
+                "different minor releases; `tauri build` refuses to run"
+            )
+    return errors
+
+
 def inspect_release(root: Path, tag: str) -> list[str]:
     expected = normalized_version(tag)
     sources = {
@@ -80,6 +121,7 @@ def inspect_release(root: Path, tag: str) -> list[str]:
     heading = re.compile(rf"^## \[{re.escape(expected)}\](?:\s|$)", re.MULTILINE)
     if not heading.search(changelog):
         errors.append(f"CHANGELOG.md has no section headed ## [{expected}]")
+    errors.extend(tauri_drift_errors(root))
     return errors
 
 
