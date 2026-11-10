@@ -10,6 +10,7 @@ pub mod capabilities;
 pub mod tones;
 
 use crate::state::{ChannelData, LiveState, ScannerMode, ToneSquelchKind};
+use capabilities::PwrBand;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -389,11 +390,26 @@ pub fn parse_pwr_response(response: &str) -> Option<PwrFrame> {
 /// Linear over the full ADC range, which the hardware never uses: a BC125AT
 /// sits near 258 with squelch closed and reads 454 on a signal its LCD draws
 /// at 5 bars (docs/wire_captures/2026-05-21/raw.txt). So this under-reads
-/// badly, and is only the fallback for a model whose STS has no SIG_LVL
-/// (#815).
+/// badly. It is only the last resort: no SIG_LVL, and a frequency outside
+/// every measured band in `ScannerCapabilities::pwr_bands` (#815).
 pub fn rssi_raw_to_scaled(raw: u16) -> u8 {
     let pct = (raw as u32 * 100) / 1023;
     pct.min(100) as u8
+}
+
+/// Scale a PWR frame on the measured band its own frequency falls in: the
+/// band's squelch-open noise reading is 0, its clear-signal reading is 100.
+/// Outside every band, the linear `rssi_raw_to_scaled`.
+fn pwr_to_scaled(p: &PwrFrame, bands: &[PwrBand]) -> u8 {
+    let Some(b) = bands
+        .iter()
+        .find(|b| (b.low_mhz..=b.high_mhz).contains(&p.frequency))
+    else {
+        return rssi_raw_to_scaled(p.rssi_raw);
+    };
+    let above = p.rssi_raw.saturating_sub(b.floor) as u32;
+    let span = b.top.saturating_sub(b.floor).max(1) as u32;
+    (above * 100 / span).min(100) as u8
 }
 
 // ---------- CIN ----------
@@ -648,6 +664,7 @@ pub fn livestate_from_frames(
     glg: Option<&GlgFrame>,
     pwr: Option<&PwrFrame>,
     sig_lvl: Option<u8>,
+    pwr_bands: &[PwrBand],
     commanded_mode: ScannerMode,
     volume: u8,
     squelch_level: u8,
@@ -682,11 +699,15 @@ pub fn livestate_from_frames(
     // so the LCD's number is the right one. `sig_lvl` is passed separately
     // from `sts` so the poll loop can carry it across a dropped STS frame
     // instead of flipping to the PWR scale for a tick.
+    // Without SIG_LVL, PWR is scaled on its band's measured range
+    // (`ScannerCapabilities::pwr_bands`), because noise and a clear signal
+    // read differently on every band.
     // Tests: `rssi_follows_the_scanners_own_bars_over_pwr`,
-    // `rssi_falls_back_to_pwr_without_sig_lvl`.
+    // `rssi_falls_back_to_pwr_without_sig_lvl`,
+    // `a_bc75xlt_reading_is_scaled_on_its_own_band`.
     let rssi = sig_lvl
         .map(|bars| bars.min(5) * 20)
-        .or_else(|| pwr.map(|p| rssi_raw_to_scaled(p.rssi_raw)))
+        .or_else(|| pwr.map(|p| pwr_to_scaled(p, pwr_bands)))
         .unwrap_or(0);
 
     let channel = glg.and_then(|g| g.channel);
@@ -1138,6 +1159,7 @@ mod tests {
             Some(&glg),
             Some(&pwr),
             sts.sig_lvl,
+            &[],
             ScannerMode::Scan,
             7,
             0,
@@ -1169,6 +1191,7 @@ mod tests {
             Some(&glg),
             Some(&pwr),
             sts.sig_lvl,
+            &[],
             ScannerMode::Scan,
             0,
             0,
@@ -1181,6 +1204,7 @@ mod tests {
             None,
             Some(&pwr),
             closed.sig_lvl,
+            &[],
             ScannerMode::Scan,
             0,
             0,
@@ -1203,11 +1227,50 @@ mod tests {
             None,
             Some(&pwr),
             sts.sig_lvl,
+            &[],
             ScannerMode::Scan,
             0,
             0,
         );
         assert_eq!(live.rssi, 44);
+    }
+
+    /// REGRESSION GUARD (#815): a BC75XLT's PWR is scaled on the band it was
+    /// read on, using the real descriptor and readings from
+    /// docs/wire_captures/2026-11-10/. Without per-band scaling, the linear
+    /// map draws the clear NOAA as 2 bars and the noise beside it as 2 too.
+    ///
+    /// The 368 pair is the point: the same raw reading is a clear signal on
+    /// UHF and barely above noise on VHF. A build with one scale for every
+    /// band cannot give both answers, so it fails here even if each band's
+    /// ends happen to come out right. 27.025 pins the deliberate gap: no
+    /// measured scale there, so it keeps the linear fallback.
+    #[test]
+    fn a_bc75xlt_reading_is_scaled_on_its_own_band() {
+        let rssi = |pwr: &str| {
+            let p = parse_pwr_response(pwr).unwrap();
+            livestate_from_frames(
+                None,
+                None,
+                Some(&p),
+                None,
+                capabilities::BC75XLT.pwr_bands,
+                ScannerMode::Scan,
+                0,
+                0,
+            )
+            .rssi
+        };
+        assert_eq!(
+            rssi("PWR,431,01625500"),
+            100,
+            "clear NOAA 162.550 is 5 bars"
+        );
+        assert_eq!(rssi("PWR,337,01550025"), 0, "VHF noise is 0 bars");
+        assert_eq!(rssi("PWR,430,01239500"), 100, "clear airband is 5 bars");
+        assert_eq!(rssi("PWR,368,04633500"), 80, "clear 463.350: 4 bars on UHF");
+        assert_eq!(rssi("PWR,368,01451300"), 32, "the same 368 on VHF: 2 bars");
+        assert_eq!(rssi("PWR,443,00270250"), 43, "27.025 has no scale: linear");
     }
 
     #[test]
@@ -1357,7 +1420,8 @@ mod tests {
     #[test]
     fn livestate_decodes_ctcss_tone_when_squelch_open() {
         let glg = parse_glg_response(GLG_CTCSS_OPEN).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, None, ScannerMode::Scan, 0, 0);
+        let live =
+            livestate_from_frames(None, Some(&glg), None, None, &[], ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Ctcss);
         assert_eq!(live.tone_squelch, Some(100.0));
         assert_eq!(live.tone_dcs_code, None);
@@ -1367,7 +1431,8 @@ mod tests {
     #[test]
     fn livestate_suppresses_tone_when_squelch_closed() {
         let glg = parse_glg_response(GLG_CTCSS_CLOSED).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, None, ScannerMode::Scan, 0, 0);
+        let live =
+            livestate_from_frames(None, Some(&glg), None, None, &[], ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::None);
         assert_eq!(live.tone_squelch, None);
         assert_eq!(live.tone_dcs_code, None);
@@ -1377,7 +1442,8 @@ mod tests {
     #[test]
     fn livestate_decodes_dcs_tone_with_label_when_squelch_open() {
         let glg = parse_glg_response(GLG_DCS_OPEN).unwrap();
-        let live = livestate_from_frames(None, Some(&glg), None, None, ScannerMode::Scan, 0, 0);
+        let live =
+            livestate_from_frames(None, Some(&glg), None, None, &[], ScannerMode::Scan, 0, 0);
         assert_eq!(live.tone_squelch_kind, ToneSquelchKind::Dcs);
         assert_eq!(live.tone_squelch, None);
         assert_eq!(live.tone_dcs_code, Some(151));
