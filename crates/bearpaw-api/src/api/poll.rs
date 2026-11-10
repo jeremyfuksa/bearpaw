@@ -1792,6 +1792,36 @@ mod tests {
         assert_eq!(log[0].frequency, 162.55);
     }
 
+    /// REGRESSION GUARD (#873): a hit is stored at its PEAK strength.
+    ///
+    /// The opening frame carries rssi 0: on a BC125AT the STS read that
+    /// supplies SIG_LVL comes before the GLG read that opens the hit, so the
+    /// two can straddle the squelch opening. Then 100, then 60. Storing the
+    /// opening value gives 0 (the bug), storing the last gives 60; only the
+    /// peak is 100, so this fails both wrong builds.
+    #[test]
+    fn a_hit_records_its_peak_strength() {
+        let state = crate::api::default_state();
+        let frame = |t: f64, squelch_open: bool, rssi: u8| LiveState {
+            timestamp: t,
+            frequency: 162.55,
+            squelch_open,
+            squelch_level: 2,
+            rssi,
+            ..LiveState::default()
+        };
+
+        broadcast_live_update(&state, frame(0.0, false, 0));
+        broadcast_live_update(&state, frame(1.0, true, 0));
+        broadcast_live_update(&state, frame(2.0, true, 100));
+        broadcast_live_update(&state, frame(3.0, true, 60));
+        broadcast_live_update(&state, frame(5.0, false, 0));
+
+        let log = state.analytics_log.lock().unwrap();
+        assert_eq!(log.len(), 1, "one hit is logged");
+        assert_eq!(log[0].rssi, 100, "the hit keeps its strongest reading");
+    }
+
     /// REGRESSION GUARD (#722): an open squelch at `SQL,0` is not a hit.
     ///
     /// At squelch 0 the squelch never closes. Opening it while parked on a

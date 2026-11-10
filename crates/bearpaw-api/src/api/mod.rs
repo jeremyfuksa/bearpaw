@@ -964,6 +964,19 @@ pub(crate) fn track_analytics_transition(state: &AppState, live: &LiveState, pre
         return;
     }
 
+    // REGRESSION GUARD (#873): a hit stores its PEAK strength, not the
+    // opening tick's. STS is read before GLG within a tick and the two can
+    // disagree on squelch (#202), so the tick a hit opens on can carry
+    // SIG_LVL 0 from an STS read taken just before the squelch opened. Since
+    // #861 made SIG_LVL the meter's source, that logged hits at 0 bars while
+    // the live display showed 5. Test: `a_hit_records_its_peak_strength`.
+    if hit && prev_hit {
+        if let Some(open_hit) = state.active_hit.lock().unwrap().as_mut() {
+            open_hit.rssi = open_hit.rssi.max(live.rssi);
+        }
+        return;
+    }
+
     if !hit && prev_hit {
         let mut active = state.active_hit.lock().unwrap();
         if let Some(open_hit) = active.take() {

@@ -25,7 +25,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the UBC125XLT, which it is under another name.
 - **Signal bars match the scanner's display.** On a BC125AT-family scanner,
   a hit the scanner showed at 3–5 bars showed in Bearpaw at only 1–2. Bearpaw
-  now shows the scanner's own bar count on the Scan view and in Recent Hits.
+  now shows the scanner's own bar count on the Scan view, and Recent Hits
+  shows the strongest reading during each hit.
   Hits logged before this update keep their old readings.
 - **Signal bars mean something on a BC75XLT.** That scanner has no meter of
   its own, and Bearpaw's bars sat near 2 for almost everything, noise
