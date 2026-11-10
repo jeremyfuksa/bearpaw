@@ -112,12 +112,13 @@ describe('ScannerCapabilities contract', () => {
     expect(DEFAULT_CAPABILITIES).toEqual(payloads.BC125AT);
   });
 
-  it.each(['UBC125XLT', 'UBC126AT'])('%s is a European variant', (model) => {
+  // The AE125H is an Albrecht-branded UBC125XLT (#869), not a US model.
+  it.each(['UBC125XLT', 'UBC126AT', 'AE125H'])('%s is a European variant', (model) => {
     expect(payloads[model].ss_region).toBe('EUR');
     expect(payloads[model].ss_format).toBe('bc125at');
   });
 
-  it.each(['BC125AT', 'BCT125AT', 'AE125H'])('%s is a USA variant', (model) => {
+  it.each(['BC125AT', 'BCT125AT'])('%s is a USA variant', (model) => {
     expect(payloads[model].ss_region).toBe('USA');
   });
 

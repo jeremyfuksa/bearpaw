@@ -15,6 +15,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The AE125H gets its own bands.** Bearpaw treated the Albrecht AE125H as a
+  US BC125AT, so it refused 54–88, 380–400 and 806–960 MHz and showed ten US
+  service-search bands. It now gets the same coverage and seven EU bands as
+  the UBC125XLT, which it is under another name.
 - **Signal bars match the scanner's display.** On a BC125AT-family scanner,
   a hit the scanner showed at 3–5 bars showed in Bearpaw at only 1–2. Bearpaw
   now shows the scanner's own bar count on the Scan view and in Recent Hits.
