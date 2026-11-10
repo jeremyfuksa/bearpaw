@@ -1,0 +1,101 @@
+MDL                                      -> '\x00MDL,SR30C'
+MDL                                      -> 'MDL,SR30C'
+VER                                      -> 'VER,Version 1.01.04'
+PRG                                      -> 'PRG,OK'
+
+=== BEFORE: bank 9 slots 401-408 ===
+CIN,401                                  -> 'CIN,401,,00000000,,,0,1,1'
+CIN,402                                  -> 'CIN,402,,00000000,,,0,1,0'
+CIN,403                                  -> 'CIN,403,,00000000,,,0,1,0'
+CIN,404                                  -> 'CIN,404,,00000000,,,0,1,0'
+CIN,405                                  -> 'CIN,405,,00000000,,,0,1,0'
+CIN,406                                  -> 'CIN,406,,00000000,,,0,1,0'
+CIN,407                                  -> 'CIN,407,,00000000,,,0,1,0'
+CIN,408                                  -> 'CIN,408,,00000000,,,0,1,0'
+    CIN,401  ['', '00000000', '', '', '0', '1', '1']
+    CIN,402  ['', '00000000', '', '', '0', '1', '0']
+    CIN,403  ['', '00000000', '', '', '0', '1', '0']
+    CIN,404  ['', '00000000', '', '', '0', '1', '0']
+    CIN,405  ['', '00000000', '', '', '0', '1', '0']
+    CIN,406  ['', '00000000', '', '', '0', '1', '0']
+    CIN,407  ['', '00000000', '', '', '0', '1', '0']
+    CIN,408  ['', '00000000', '', '', '0', '1', '0']
+
+=== TESTS ===
+
+--- baseline: freq only, reserved fields empty
+CIN,402,,01462500,,,0,0,0                -> 'CIN,OK'
+CIN,402                                  -> 'CIN,402,,01462500,,,0,0,0'
+    VERDICT: every field kept
+
+--- name (has_alpha_tags)
+CIN,403,BEARPAW TEST,01462500,,,0,0,0    -> 'CIN,OK'
+CIN,403                                  -> 'CIN,403,,01462500,,,0,0,0'
+    VERDICT: write landed; differs: field 0 sent 'BEARPAW TEST' read ''
+
+--- modulation FM (has_per_channel_modulation)
+CIN,404,,01462500,FM,,0,0,0              -> 'CIN,OK'
+CIN,404                                  -> 'CIN,404,,01462500,,,0,0,0'
+    VERDICT: write landed; differs: field 2 sent 'FM' read ''
+
+--- tone code 64 = 67.0 Hz (has_tone_squelch)
+CIN,405,,01462500,,64,0,0,0              -> 'CIN,OK'
+CIN,405                                  -> 'CIN,405,,01462500,,,0,0,0'
+    VERDICT: write landed; differs: field 3 sent '64' read ''
+
+--- delay 1 (valid_delays)
+CIN,406,,01462500,,,1,0,0                -> 'CIN,OK'
+CIN,406                                  -> 'CIN,406,,01462500,,,1,0,0'
+    VERDICT: every field kept
+
+--- delay 2 (BC125AT-only value?)
+CIN,406,,01462500,,,2,0,0                -> 'CIN,OK'
+CIN,406                                  -> 'CIN,406,,01462500,,,1,0,0'
+    VERDICT: write landed; differs: field 4 sent '2' read '1'
+
+--- delay -5 (BC125AT-only value?)
+CIN,406,,01462500,,,-5,0,0               -> 'CIN,OK'
+CIN,406                                  -> 'CIN,406,,01462500,,,1,0,0'
+    VERDICT: write landed; differs: field 4 sent '-5' read '1'
+
+--- lockout 1
+CIN,407,,01462500,,,0,1,0                -> 'CIN,OK'
+CIN,407                                  -> 'CIN,407,,01462500,,,0,1,0'
+    VERDICT: every field kept
+
+--- priority 1 (does 401 lose its flag?)
+CIN,408,,01462500,,,0,0,1                -> 'CIN,OK'
+CIN,408                                  -> 'CIN,408,,01462500,,,0,0,1'
+    VERDICT: every field kept
+CIN,401                                  -> 'CIN,401,,00000000,,,0,1,0'
+    CIN,401 now: ['', '00000000', '', '', '0', '1', '0']
+
+=== RESTORE (401 last, so the firmware can move priority back) ===
+CIN,402,,00000000,,,0,1,0                -> 'CIN,OK'
+CIN,403,,00000000,,,0,1,0                -> 'CIN,OK'
+CIN,404,,00000000,,,0,1,0                -> 'CIN,OK'
+CIN,405,,00000000,,,0,1,0                -> 'CIN,OK'
+CIN,406,,00000000,,,0,1,0                -> 'CIN,OK'
+CIN,407,,00000000,,,0,1,0                -> 'CIN,OK'
+CIN,408,,00000000,,,0,1,0                -> 'CIN,OK'
+CIN,401,,00000000,,,0,1,1                -> 'CIN,OK'
+
+=== VERIFY RESTORE ===
+CIN,401                                  -> 'CIN,401,,00000000,,,0,1,1'
+    CIN,401  MATCH
+CIN,402                                  -> 'CIN,402,,00000000,,,0,1,0'
+    CIN,402  MATCH
+CIN,403                                  -> 'CIN,403,,00000000,,,0,1,0'
+    CIN,403  MATCH
+CIN,404                                  -> 'CIN,404,,00000000,,,0,1,0'
+    CIN,404  MATCH
+CIN,405                                  -> 'CIN,405,,00000000,,,0,1,0'
+    CIN,405  MATCH
+CIN,406                                  -> 'CIN,406,,00000000,,,0,1,0'
+    CIN,406  MATCH
+CIN,407                                  -> 'CIN,407,,00000000,,,0,1,0'
+    CIN,407  MATCH
+CIN,408                                  -> 'CIN,408,,00000000,,,0,1,0'
+    CIN,408  MATCH
+RESTORE OK
+EPG                                      -> 'EPG,OK'
