@@ -63,15 +63,45 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+      # The .debs are cached so a warm run never touches the Ubuntu mirror,
+      # whose stalls ran this job into its timeout before any test ran (#858).
+      # Keyed on the runner image, whose package lists the cached versions
+      # must match, and on the package list itself.
+      #
+      # Not awalsh128/cache-apt-pkgs-action: on a miss it pipes an install
+      # script from another repo's master branch into bash under sudo, which a
+      # pinned SHA does not pin, and this job also runs in the release
+      # pipeline (build.yml).
+      - name: Compute apt cache key
+        id: apt-key
+        run: |
+          echo "pkgs=$APT_PKGS" >> "$GITHUB_OUTPUT"
+          echo "key=apt-$ImageOS-$ImageVersion-$(echo "$APT_PKGS" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+        env:
+          APT_PKGS: libudev-dev pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Cache apt packages
+        uses: actions/cache@v6
+        with:
+          path: ~/apt-archives
+          key: ${{ steps.apt-key.outputs.key }}
       - name: Install Linux system deps (USB + Tauri)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libudev-dev \
-            pkg-config \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+          mkdir -p ~/apt-archives/partial
+          # Retries plus a connection timeout turn a stalled mirror into a
+          # retry, not a 10-minute hang.
+          opts="-o Dir::Cache::Archives=$HOME/apt-archives -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+          # Warm path: resolve against the image's own package lists and
+          # install from the cache with no network at all. If anything is
+          # missing, fall back to the old update-and-download path.
+          if ! sudo apt-get install -y --no-download $opts $PKGS; then
+            echo "apt cache incomplete; downloading"
+            sudo apt-get update $opts
+            sudo apt-get install -y $opts $PKGS
+          fi
+          # apt writes as root; let the cache step read and save it.
+          sudo chown -R "$USER" ~/apt-archives
+        env:
+          PKGS: ${{ steps.apt-key.outputs.pkgs }}
       - name: Run backend tests
         run: cargo test -p bearpaw-api --lib
       # Tauri's `generate_context!` macro validates that the configured
