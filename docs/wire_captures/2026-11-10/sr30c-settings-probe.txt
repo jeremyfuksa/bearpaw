@@ -1,0 +1,124 @@
+MDL                          -> 'MDL,SR30C'
+VER                          -> 'VER,Version 1.01.04'
+
+=== Outside program mode ===
+
+--- VOL
+VOL                          -> 'VOL,2'
+VOL,5                        -> 'VOL,OK'
+VOL                          -> 'VOL,5'
+    'VOL,5': reply 'VOL,OK', now 'VOL,5' -> stored as sent
+VOL,2                        -> 'VOL,OK'
+VOL                          -> 'VOL,2'
+    restore: OK
+
+--- SQL
+SQL                          -> 'SQL,2'
+SQL,4                        -> 'SQL,OK'
+SQL                          -> 'SQL,4'
+    'SQL,4': reply 'SQL,OK', now 'SQL,4' -> stored as sent
+SQL,2                        -> 'SQL,OK'
+SQL                          -> 'SQL,2'
+    restore: OK
+
+=== Inside program mode ===
+PRG                          -> 'PRG,OK'
+
+--- SCG
+SCG                          -> 'SCG,0000000010'
+SCG,0000000000               -> 'SCG,OK'
+SCG                          -> 'SCG,0000000000'
+    'SCG,0000000000': reply 'SCG,OK', now 'SCG,0000000000' -> stored as sent
+SCG,0000000010               -> 'SCG,OK'
+SCG,1111111111               -> 'SCG,OK'
+SCG                          -> 'SCG,1111111111'
+    'SCG,1111111111': reply 'SCG,OK', now 'SCG,1111111111' -> stored as sent
+SCG,0000000010               -> 'SCG,OK'
+SCG                          -> 'SCG,0000000010'
+    restore: OK
+
+--- BPL
+BPL                          -> 'BPL,0'
+BPL,1                        -> 'BPL,OK'
+BPL                          -> 'BPL,1'
+    'BPL,1': reply 'BPL,OK', now 'BPL,1' -> stored as sent
+BPL,0                        -> 'BPL,OK'
+BPL                          -> 'BPL,0'
+    restore: OK
+
+--- PRI
+PRI                          -> 'PRI,0'
+PRI,1                        -> 'PRI,OK'
+PRI                          -> 'PRI,1'
+    'PRI,1': reply 'PRI,OK', now 'PRI,1' -> stored as sent
+PRI,0                        -> 'PRI,OK'
+PRI,2                        -> 'PRI,OK'
+PRI                          -> 'PRI,2'
+    'PRI,2': reply 'PRI,OK', now 'PRI,2' -> stored as sent
+PRI,0                        -> 'PRI,OK'
+PRI                          -> 'PRI,0'
+    restore: OK
+
+--- KBP
+KBP                          -> 'KBP,,0'
+KBP,,1                       -> 'KBP,OK'
+KBP                          -> 'KBP,,1'
+    'KBP,,1': reply 'KBP,OK', now 'KBP,,1' -> stored as sent
+KBP,,0                       -> 'KBP,OK'
+KBP,1,0                      -> 'KBP,OK'
+KBP                          -> 'KBP,,0'
+    'KBP,1,0': reply 'KBP,OK', now 'KBP,,0' -> unchanged
+KBP                          -> 'KBP,,0'
+    restore: OK
+
+--- SCO
+SCO                          -> 'SCO,1,,0'
+SCO,1,,0                     -> 'SCO,OK'
+SCO                          -> 'SCO,1,,0'
+    'SCO,1,,0': reply 'SCO,OK', now 'SCO,1,,0' -> stored as sent
+SCO,2,1                      -> 'SCO,ERR'
+SCO                          -> 'SCO,1,,0'
+    'SCO,2,1': reply 'SCO,ERR', now 'SCO,1,,0' -> unchanged
+SCO,0,,0                     -> 'SCO,OK'
+SCO                          -> 'SCO,0,,0'
+    'SCO,0,,0': reply 'SCO,OK', now 'SCO,0,,0' -> stored as sent
+SCO,1,,0                     -> 'SCO,OK'
+SCO,1,,1                     -> 'SCO,OK'
+SCO                          -> 'SCO,1,,1'
+    'SCO,1,,1': reply 'SCO,OK', now 'SCO,1,,1' -> stored as sent
+SCO,1,,0                     -> 'SCO,OK'
+SCO,2,,0                     -> 'SCO,OK'
+SCO                          -> 'SCO,1,,0'
+    'SCO,2,,0': reply 'SCO,OK', now 'SCO,1,,0' -> unchanged
+SCO                          -> 'SCO,1,,0'
+    restore: OK
+
+--- CLC
+CLC                          -> 'CLC,2,0,0,11101,'
+CLC,2,0,0,11111,             -> 'CLC,OK'
+CLC                          -> 'CLC,2,0,0,11101,'
+    'CLC,2,0,0,11111,': reply 'CLC,OK', now 'CLC,2,0,0,11101,' -> unchanged
+CLC,3,0,0,11101,             -> 'CLC,OK'
+CLC                          -> 'CLC,3,0,0,11101,'
+    'CLC,3,0,0,11101,': reply 'CLC,OK', now 'CLC,3,0,0,11101,' -> stored as sent
+CLC,2,0,0,11101,             -> 'CLC,OK'
+CLC,2,0,0,11101,1            -> 'CLC,OK'
+CLC                          -> 'CLC,2,0,0,11101,'
+    'CLC,2,0,0,11101,1': reply 'CLC,OK', now 'CLC,2,0,0,11101,' -> unchanged
+CLC                          -> 'CLC,2,0,0,11101,'
+    restore: OK
+
+--- CSG
+CSG                          -> 'CSG,0000000000,1,0'
+CSG,0000000000,1,0           -> 'CSG,OK'
+CSG                          -> 'CSG,0000000000,1,0'
+    'CSG,0000000000,1,0': reply 'CSG,OK', now 'CSG,0000000000,1,0' -> stored as sent
+CSG,1000000000,1,0           -> 'CSG,OK'
+CSG                          -> 'CSG,1000000000,1,0'
+    'CSG,1000000000,1,0': reply 'CSG,OK', now 'CSG,1000000000,1,0' -> stored as sent
+CSG,0000000000,1,0           -> 'CSG,OK'
+CSG                          -> 'CSG,0000000000,1,0'
+    restore: OK
+EPG                          -> 'EPG,OK'
+
+ALL RESTORED
