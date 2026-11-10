@@ -63,10 +63,16 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-      # The .debs are cached so a warm run never touches the Ubuntu mirror,
-      # whose stalls ran this job into its timeout before any test ran (#858).
-      # Keyed on the runner image, whose package lists the cached versions
-      # must match, and on the package list itself.
+      # apt's package lists and the .debs they name are cached together, so a
+      # warm run installs with no network at all. The Ubuntu mirror's stalls
+      # ran this job into its timeout before any test ran (#858). The lists
+      # must be cached too: the runner image's own lists go stale within
+      # days, so a .deb cache built from fresh lists never matches them, and
+      # one built from the image's lists can't be built at all once the
+      # mirror drops the versions they name (both seen on #860).
+      #
+      # Keyed on the runner image, so a new image rebuilds the cache against
+      # its own installed packages, and on the package list.
       #
       # Not awalsh128/cache-apt-pkgs-action: on a miss it pipes an install
       # script from another repo's master branch into bash under sudo, which a
@@ -76,37 +82,29 @@ jobs:
         id: apt-key
         run: |
           echo "pkgs=$APT_PKGS" >> "$GITHUB_OUTPUT"
-          echo "key=apt-v2-$ImageOS-$ImageVersion-$(echo "$APT_PKGS" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "key=apt-v3-$ImageOS-$ImageVersion-$(echo "$APT_PKGS" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
         env:
           APT_PKGS: libudev-dev pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Cache apt packages
         uses: actions/cache@v6
         with:
-          path: ~/apt-archives
+          path: ~/apt-cache
           key: ${{ steps.apt-key.outputs.key }}
       - name: Install Linux system deps (USB + Tauri)
         run: |
-          mkdir -p ~/apt-archives/partial
+          mkdir -p ~/apt-cache/archives/partial ~/apt-cache/lists/partial
           # Retries plus a connection timeout turn a stalled mirror into a
           # retry, not a 10-minute hang.
-          opts="-o Dir::Cache::Archives=$HOME/apt-archives -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
-          # Three tiers, all resolving against the image's own package lists
-          # until the last. 1: install from the cache, no network. 2: download
-          # the versions those lists name, which is what the cache must hold
-          # for tier 1 to work next time; running `apt-get update` first
-          # caches newer versions the next run will not ask for. 3: if the
-          # mirror no longer has them, update and install as before.
+          opts="-o Dir::Cache::Archives=$HOME/apt-cache/archives -o Dir::State::Lists=$HOME/apt-cache/lists -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
           if sudo apt-get install -y --no-download $opts $PKGS; then
             echo "apt: installed from cache"
-          elif sudo apt-get install -y $opts $PKGS; then
-            echo "apt: downloaded from the image's package lists"
           else
-            echo "apt: image's package lists are stale; updating"
+            echo "apt: cache miss; updating"
             sudo apt-get update $opts
             sudo apt-get install -y $opts $PKGS
           fi
           # apt writes as root; let the cache step read and save it.
-          sudo chown -R "$USER" ~/apt-archives
+          sudo chown -R "$USER" ~/apt-cache
         env:
           PKGS: ${{ steps.apt-key.outputs.pkgs }}
       - name: Run backend tests
