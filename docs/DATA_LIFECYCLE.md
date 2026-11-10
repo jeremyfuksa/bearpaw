@@ -15,14 +15,25 @@ Define how Bearpaw stores, migrates, retains, and cleans up local data so app up
 
 ## Databases
 
-- Preferences DB: `scanner.db` — key/value preferences, plus the
-  `channel_memory` table (schema version 2, #413): cached channel memory keyed
-  by `(scanner_id, channel_index)`. `scanner_id` is the fixed placeholder
-  `_default` until #414 introduces real scanner identity.
-  Also `bank_names` (schema version 4, #677): a user-chosen name per bank,
-  keyed by `(scanner_id, bank)`. Unlike channel memory these are NOT
-  disposable: the radio cannot store a bank name, so this table is the only
-  copy.
+- Preferences DB: `scanner.db` — key/value preferences, plus three tables
+  keyed by scanner profile:
+  - `scanners` (schema version 3, #414): one row per scanner profile, with a
+    generated `scanner_id`, the model, the reported USB serial (a per-unit id
+    on a BC75XLT, the constant `0001` on every BC125AT), a display name, and
+    first/last-seen times. Resolved on every
+    connect by `scanner_registry::resolve_scanner` from the `MDL` reply.
+  - `channel_memory` (schema version 2, #413): cached channel memory keyed by
+    `(scanner_id, channel_index)`.
+  - `bank_names` (schema version 4, #677): a user-chosen name per bank,
+    keyed by `(scanner_id, bank)`. Unlike channel memory these are NOT
+    disposable: the radio cannot store a bank name, so this table is the only
+    copy.
+
+  `_default` is the fallback `scanner_id` used before the first `MDL` reply
+  resolves a profile, or when the profile can't be written
+  (`AppState::scanner_id`). Channel memory cached under `_default` by a
+  pre-#414 install is moved onto the first real profile it is a complete image
+  of, once (`channel_cache::adopt_placeholder_cache`).
 - Analytics DB: `analytics.db` (scan hit history and aggregates)
 
 Cached channel memory is **disposable**. It is a read accelerator; the scanner

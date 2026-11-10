@@ -3807,6 +3807,100 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
+    // #790: the PUT and priority endpoints returned the written channel with
+    // `bank: 0`, because bank is not a wire field and only
+    // `channels_with_banks`/`channel_with_bank` derive it. Asserts the derived
+    // VALUE per model at an index where the families disagree (270 is bank 9 on
+    // a BC75XLT, bank 6 on the BC125AT family), so a hardcoded width fails too.
+    async fn written_channel_banks(
+        caps: crate::protocol::capabilities::ScannerCapabilities,
+        readback: &'static str,
+        put_body: &'static str,
+    ) -> (u64, Vec<u64>) {
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(caps);
+        state.shadow.write().unwrap().channels.insert(
+            270,
+            ChannelData {
+                index: 270,
+                frequency: 145.13,
+                ..Default::default()
+            },
+        );
+        let _scanner = FakeScanner::attach(&state, move |command: &str| match command {
+            "PRG" => Ok("PRG,OK\r".to_string()),
+            "EPG" => Ok("EPG,OK\r".to_string()),
+            "CIN,270" => Ok(format!("{readback}\r")),
+            _ => Ok("CIN,OK\r".to_string()),
+        });
+
+        let send = |method: Method, uri: &'static str, body: &'static str| {
+            let app = router(state.clone());
+            async move {
+                let response = app
+                    .oneshot(
+                        Request::builder()
+                            .method(method)
+                            .uri(uri)
+                            .header("content-type", "application/json")
+                            .body(Body::from(body))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                let status = response.status();
+                let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    status,
+                    StatusCode::OK,
+                    "{}",
+                    String::from_utf8_lossy(&bytes)
+                );
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()
+            }
+        };
+
+        let put = send(Method::PUT, "/api/v1/memory/channels/270", put_body).await;
+        let priority = send(
+            Method::POST,
+            "/api/v1/memory/channels/270/priority",
+            r#"{"priority":true}"#,
+        )
+        .await;
+        let priority_banks = priority["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["bank"].as_u64().unwrap())
+            .collect();
+        (put["bank"].as_u64().unwrap(), priority_banks)
+    }
+
+    #[tokio::test]
+    async fn written_channel_responses_carry_the_derived_bank() {
+        use crate::protocol::capabilities::{BC125AT_FAMILY, BC75XLT};
+
+        let (put, priority) = written_channel_banks(
+            BC75XLT,
+            "CIN,270,,01451300,,,1,0,1",
+            r#"{"index":270,"frequency":145.13,"modulation":"","alpha_tag":"","bank":0,"delay":1,"lockout":false,"priority":true}"#,
+        )
+        .await;
+        assert_eq!(put, 9, "BC75XLT PUT response bank");
+        assert_eq!(priority, vec![9], "BC75XLT priority response banks");
+
+        let (put, priority) = written_channel_banks(
+            BC125AT_FAMILY,
+            "CIN,270,,01451300,FM,0,2,0,1",
+            r#"{"index":270,"frequency":145.13,"modulation":"FM","alpha_tag":"","bank":0,"delay":2,"lockout":false,"priority":true}"#,
+        )
+        .await;
+        assert_eq!(put, 6, "BC125AT PUT response bank");
+        assert_eq!(priority, vec![6], "BC125AT priority response banks");
+    }
+
     async fn post_lockout_channel(
         caps: crate::protocol::capabilities::ScannerCapabilities,
         mode: &str,

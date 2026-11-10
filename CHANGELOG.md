@@ -22,6 +22,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   "Key + Squelc" on the Device tab.
 - **Locked Channels headers no longer run together.** The checkbox column's
   "SELECT" header spilled into "CH"; the column now has no visible header.
+- **A reorder that partly fails can't lose a channel, even if the link drops.**
+  When some moves in an upload failed and Bearpaw then couldn't re-read the
+  channel list, the next upload replayed the old order against the
+  half-moved radio and could overwrite a channel. The failed moves now stay
+  staged at their new slots, as they already did when the re-read worked.
+- **Errors say what actually went wrong.** When the backend refused a request
+  with a plain-text or empty reply, Bearpaw logged "body stream already read"
+  instead of the real error, such as a 403 or 404.
+- **Saving a channel reports the right bank.** The API's reply to a channel
+  edit or a priority change said bank 0. Bearpaw's own screens worked around
+  it, but anything else reading the reply filed the channel in no bank.
 
 ## [1.2.0] — 2026-10-15
 
