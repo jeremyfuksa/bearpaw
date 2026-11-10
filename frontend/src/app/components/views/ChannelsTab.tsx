@@ -259,6 +259,12 @@ function ChannelRow({
         onDragEnd();
       }}
       role="row"
+      // REGRESSION GUARD (rows are not tab stops, #659): motion >= 14.9 gives
+      // Reorder.Item a roving tabIndex plus its own Space/arrow reorder on the
+      // focused row. Rows stay unfocusable so the grid sink and the grip own
+      // the keyboard. Undefined, not -1: -1 still takes focus on click.
+      // Test: ChannelsTab.test.tsx :: reaches the grip by tabbing, without a pointer
+      tabIndex={undefined}
       aria-label={rowLabel}
       // Tailwind arbitrary values are static strings, so a per-scanner column
       // set has to come through an inline style. Header and row share

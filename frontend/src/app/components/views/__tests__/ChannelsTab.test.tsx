@@ -1465,6 +1465,12 @@ describe('ChannelsTab', () => {
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: /reorder channel 1, position 1 of 3/i }),
       );
+      // motion 14.9's Reorder.Item adds a roving tabIndex (and its own
+      // Space/arrow reorder on the focused row). A row must not be focusable
+      // at all — not even tabIndex=-1, which a click would still focus.
+      for (const row of screen.getAllByRole('row')) {
+        expect(row).not.toHaveAttribute('tabindex');
+      }
     });
 
     it('moves a channel down with the arrow keys and commits the new order', async () => {
