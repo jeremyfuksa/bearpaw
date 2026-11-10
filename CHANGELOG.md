@@ -18,6 +18,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A dragged channel stays inside the list.** Dragging a channel past the
   top or bottom of the Channels list carried it out of view until you let go.
   It now stops at the edge, and the list scrolls under it as before.
+- **Errors say what actually went wrong.** When the backend refused a request
+  with a plain-text or empty reply, Bearpaw logged "body stream already read"
+  instead of the real error, such as a 403 or 404.
 - **Saving a channel reports the right bank.** The API's reply to a channel
   edit or a priority change said bank 0. Bearpaw's own screens worked around
   it, but anything else reading the reply filed the channel in no bank.

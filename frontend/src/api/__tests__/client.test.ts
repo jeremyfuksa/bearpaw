@@ -41,6 +41,42 @@ describe('ScannerAPIClient', () => {
     });
   });
 
+  // #737: a non-JSON error body (the security layer's 403, an axum extractor
+  // rejection, an empty 404) must still surface as an APIError with its
+  // status. These stub a REAL Response: only a real one refuses a second read
+  // of its body, so `mockFetchError`'s independent json()/text() pair could
+  // never catch reading it twice.
+  describe('non-JSON error bodies', () => {
+    const respondWith = (body: string, status: number, statusText: string) => {
+      global.fetch = (() =>
+        Promise.resolve(new Response(body, { status, statusText }))) as typeof fetch;
+    };
+
+    it('request() throws an APIError carrying the status and the text body', async () => {
+      respondWith('Forbidden: origin not allowed', 403, 'Forbidden');
+      const error = await client.sendHold().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(APIError);
+      expect(error).toMatchObject({ status: 403, payload: 'Forbidden: origin not allowed' });
+    });
+
+    it('requestText() throws an APIError for an empty error body', async () => {
+      respondWith('', 404, 'Not Found');
+      const error = await client.exportCsv().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(APIError);
+      expect(error).toMatchObject({ status: 404, message: 'Not Found' });
+    });
+
+    it('still reads the message out of a JSON error body', async () => {
+      respondWith('{"error":"conflict","message":"sync in progress"}', 409, 'Conflict');
+      const error = await client.sendHold().catch((e: unknown) => e);
+      expect(error).toMatchObject({
+        status: 409,
+        message: 'sync in progress',
+        payload: { error: 'conflict', message: 'sync in progress' },
+      });
+    });
+  });
+
   describe('status and device info', () => {
     it('should get status successfully', async () => {
       mockFetch(mockApiResponses.status);
