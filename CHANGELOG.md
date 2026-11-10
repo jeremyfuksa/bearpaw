@@ -15,6 +15,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The Delay menu on the Channels page is readable.** It had no background,
+  so the delays in the rows behind it showed straight through the open menu.
+  The same missing color also left the Bank Select header and the sync and
+  import progress cards see-through.
 - **The AE125H gets its own bands.** Bearpaw treated the Albrecht AE125H as a
   US BC125AT, so it refused 54–88, 380–400 and 806–960 MHz and showed ten US
   service-search bands. It now gets the same coverage and seven EU bands as
