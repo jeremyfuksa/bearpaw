@@ -407,6 +407,33 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     ],
 };
 
+/// SR30C: a BC75XLT with 500 channels in 10 banks of 50. Same CP2104 bridge,
+/// baud, `CIN` shape and reserved fields.
+///
+/// Verified against hardware (firmware 1.01.04) in
+/// `docs/wire_captures/2026-11-10/sr30c-findings.md`. One difference from the
+/// BC75XLT does not show in these flags: a `CIN` write replies `OK` while
+/// dropping a reserved field or refusing an out-of-coverage frequency, so the
+/// read-back is the only proof a write landed.
+pub const SR30C: ScannerCapabilities = ScannerCapabilities {
+    channel_count: 500,
+    channels_per_bank: 50,
+    // Not yet known whether Uniden's software writes an SR30C file (#848).
+    ss_format: "",
+    // `BLT` answers `BLT,,,10`, a shape neither family uses (#847).
+    has_backlight_control: false,
+    // Settable, but only as `SCO,<delay>,,<code search>`; the 2-field write
+    // Bearpaw sends replies ERR (sr30c-findings.md §4).
+    has_search_options: false,
+    // Owner's manual (SR30Com.pdf), "USA BAND PLAN": 25-54, 108-174,
+    // 406-512. The copy run found 239.0-347.5 refused.
+    coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (406.0, 512.0)],
+    // Not measured on this model. A BC75XLT's scale would be a guess, so
+    // `PWR` keeps the linear fallback until a capture exists.
+    pwr_bands: &[],
+    ..BC75XLT
+};
+
 impl ScannerCapabilities {
     /// Capabilities for a model string from `MDL`, or `None` if unrecognised.
     ///
@@ -439,6 +466,9 @@ impl ScannerCapabilities {
         }
         if model.eq_ignore_ascii_case("BC75XLT") {
             return Some(BC75XLT);
+        }
+        if model.eq_ignore_ascii_case("SR30C") {
+            return Some(SR30C);
         }
         None
     }
@@ -530,6 +560,7 @@ mod tests {
             "UBC126AT",
             "AE125H",
             "BC75XLT",
+            "SR30C",
         ] {
             assert!(
                 ScannerCapabilities::for_model(model).is_some(),
@@ -669,9 +700,74 @@ mod tests {
         assert!(c.key_beep_needs_program_mode);
     }
 
+    // Every value is from the SR30C captures in
+    // docs/wire_captures/2026-11-10/sr30c-findings.md (section in parentheses)
+    // or its owner's manual. Asserted through `for_model`, the path the poll
+    // loop takes, so a descriptor that exists but is never returned fails.
+    #[test]
+    fn sr30c_values_match_the_wire_capture() {
+        let c = ScannerCapabilities::for_model("SR30C").expect("SR30C resolves");
+        // CIN,500 OK, CIN,501 -> ERR; empty-slot priority on 1, 51 ... 451 (§1).
+        assert_eq!(c.channel_count, 500);
+        assert_eq!(c.channels_per_bank, 50);
+        assert_eq!(c.bank_count, 10);
+        assert_eq!(c.default_baud, 57_600);
+        // Name, modulation and tone written with a frequency: OK, the
+        // frequency lands, the field reads back empty (§2).
+        assert!(!c.has_alpha_tags);
+        assert!(!c.has_per_channel_modulation);
+        assert!(!c.has_tone_squelch);
+        // Delay 2 and -5: OK, not applied (§2).
+        assert_eq!(c.valid_delays, &[0, 1]);
+        // Empty slot reads `,00000000,,,0,1,0` (§1, §3).
+        assert_eq!(c.cleared_delay, 0);
+        // A bank's priority flag moves only when another channel takes it (§2, §3).
+        assert!(!c.has_priority_clear);
+        // GLG field 11 empty (§1).
+        assert!(!c.reports_live_channel);
+        // BSV, CNT, WXS, SSG -> ERR (§1).
+        assert!(!c.has_battery_save);
+        assert!(!c.has_contrast);
+        assert!(!c.has_weather_alert);
+        assert!(!c.has_service_search_groups);
+        // KBP,NG outside PRG; the beep field is reserved, the lock round-trips (§4).
+        assert!(!c.has_key_beep);
+        assert!(c.key_beep_needs_program_mode);
+        // SCO is settable only in its own 3-field shape; Bearpaw's 2-field
+        // write gets ERR (§4), so the control stays hidden until the write
+        // follows the read.
+        assert!(!c.has_search_options);
+        // BLT answers `BLT,,,10`, a shape Bearpaw cannot drive yet (#847).
+        assert!(!c.has_backlight_control);
+        // Writing 11111 reads back 11101, field 5 reads back empty (§4); the
+        // manual's four bands are VHF Low, AIR, VHF High, UHF.
+        assert_eq!(
+            c.close_call_bands,
+            &[
+                Some("VHF Low"),
+                Some("Air"),
+                Some("VHF High"),
+                None,
+                Some("UHF")
+            ]
+        );
+        assert!(!c.has_close_call_hit_scan);
+        // Per-unit CP2104 serial, 02A72C10.
+        assert!(c.has_unique_usb_serial);
+        // No settings-file format known yet (#848).
+        assert_eq!(c.ss_format, "");
+        // Owner's manual, USA band plan; 239.0-347.5 refused on hardware (§3).
+        for mhz in [25.0, 54.0, 108.0, 174.0, 406.0, 512.0] {
+            assert!(c.covers_frequency(mhz), "SR30C should tune {mhz}");
+        }
+        for mhz in [239.0, 347.5, 380.0, 400.0, 405.0, 513.0] {
+            assert!(!c.covers_frequency(mhz), "SR30C cannot tune {mhz}");
+        }
+    }
+
     #[test]
     fn channel_count_is_consistent_with_bank_layout() {
-        for c in [BC125AT_FAMILY, BC75XLT] {
+        for c in [BC125AT_FAMILY, BC75XLT, SR30C] {
             assert_eq!(
                 c.channel_count,
                 c.channels_per_bank * c.bank_count as u16,

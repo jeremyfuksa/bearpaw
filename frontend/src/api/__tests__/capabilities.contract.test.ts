@@ -60,6 +60,7 @@ describe('ScannerCapabilities contract', () => {
       'BC125AT',
       'BC75XLT',
       'BCT125AT',
+      'SR30C',
       'UBC125XLT',
       'UBC126AT',
     ]);

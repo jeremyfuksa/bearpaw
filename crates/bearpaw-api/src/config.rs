@@ -52,6 +52,8 @@ pub(crate) const ACCEPTED_MDL_MODELS: &[&str] = &[
     // no alpha tags, boolean delay, 57600 baud. Driven via ScannerCapabilities
     // rather than the BC125AT-family constants. See #398.
     "BC75XLT",
+    // A BC75XLT with 500 channels in banks of 50 (#849).
+    "SR30C",
 ];
 
 /// Is this `MDL` model string a scanner Bearpaw can drive?

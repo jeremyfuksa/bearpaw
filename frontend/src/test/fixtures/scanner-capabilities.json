@@ -225,6 +225,55 @@
       5
     ]
   },
+  "SR30C": {
+    "bank_count": 10,
+    "channel_count": 500,
+    "channels_per_bank": 50,
+    "cleared_delay": 0,
+    "close_call_bands": [
+      "VHF Low",
+      "Air",
+      "VHF High",
+      null,
+      "UHF"
+    ],
+    "coverage_bands": [
+      [
+        25.0,
+        54.0
+      ],
+      [
+        108.0,
+        174.0
+      ],
+      [
+        406.0,
+        512.0
+      ]
+    ],
+    "default_baud": 57600,
+    "has_alpha_tags": false,
+    "has_backlight_control": false,
+    "has_battery_save": false,
+    "has_close_call_hit_scan": false,
+    "has_contrast": false,
+    "has_key_beep": false,
+    "has_per_channel_modulation": false,
+    "has_priority_clear": false,
+    "has_search_options": false,
+    "has_service_search_groups": false,
+    "has_tone_squelch": false,
+    "has_unique_usb_serial": true,
+    "has_weather_alert": false,
+    "key_beep_needs_program_mode": true,
+    "reports_live_channel": false,
+    "ss_format": "",
+    "ss_region": "USA",
+    "valid_delays": [
+      0,
+      1
+    ]
+  },
   "UBC125XLT": {
     "bank_count": 10,
     "channel_count": 500,
