@@ -45,3 +45,4 @@ frontend/src-tauri/gen/schemas/
 # Agent worktrees (.claude/worktrees/) — isolated checkouts, never source.
 .claude/worktrees/
 __pycache__/
+.claude/settings.local.json

@@ -128,7 +128,6 @@ The first motion study is available in `design/paw-sync`: an editable Blender
 scene with two curl controls per digit, six-pose contact sheet, MP4/GIF preview,
 transparent PNG sequence, and animated SVG projected from the geometry. Open
 `preview.html` through the local preview server to scrub both versions together.
-Reproduction commands are in `tools/paw-sync/README.md`.
 
 The exact final SVG paths are preserved, and the last PNG frame is verified
 against the registered original-logo render. The vector study uses discrete
