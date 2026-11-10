@@ -2094,6 +2094,7 @@ describe('ChannelsTab', () => {
       sourceIndex: number,
       arrowUps: number,
       failWriteTo?: number,
+      failRefetch = false,
     ) => {
       const cached = [
         createTestChannel({
@@ -2165,9 +2166,13 @@ describe('ChannelsTab', () => {
           return { ...updated };
         },
       );
-      mockApiClient.getChannels = vi.fn(async () =>
-        [...scannerMemory.values()].sort((a, b) => a.index - b.index),
-      );
+      mockApiClient.getChannels = vi.fn(async () => {
+        // Only the post-upload refetch is ever reached with a write recorded.
+        if (failRefetch && mockApiClient.updateChannel.mock.calls.length > 0) {
+          throw new Error('link dropped');
+        }
+        return [...scannerMemory.values()].sort((a, b) => a.index - b.index);
+      });
 
       render(<ChannelsTab />);
       const grip = screen.getByRole('button', {
@@ -2242,6 +2247,34 @@ describe('ChannelsTab', () => {
         frequency: scannerSources[0].frequency.toFixed(4),
       });
       expect(lastDraftFor(1)).toMatchObject({ alpha_tag: 'Bravo' });
+    });
+
+    // REGRESSION GUARD (#803): the same swap, but the post-upload refetch ALSO
+    // fails (most likely the link dropped). The fallback used to apply only the
+    // writes that landed: it neither re-staged the failed move nor reset the
+    // staged reorder, so the next Upload re-ran the old reorder against a radio
+    // that had already half-applied it, and Alpha was lost. Both halves are
+    // asserted: the re-stage on the draft, the reset on the grip's position.
+    it('re-stages a failed move and resets the order when the refetch also fails', async () => {
+      const { scannerMemory, scannerSources, store } = await uploadPermutation(2, 1, 2, true);
+      expect(scannerMemory.get(1)?.alpha_tag).toBe('Bravo');
+      expect(scannerMemory.get(2)?.alpha_tag).toBe('Bravo');
+
+      const lastDraftFor = (index: number) =>
+        store.setMemoryDraft.mock.calls.filter(([i]) => i === index).at(-1)?.[1];
+      expect(lastDraftFor(2)).toMatchObject({
+        alpha_tag: scannerSources[0].alpha_tag,
+        frequency: scannerSources[0].frequency.toFixed(4),
+      });
+      // The keyboard move showed Bravo first. The mock store's channels never
+      // change, so a reset order shows the original order again; a staged one
+      // still shows Bravo first. (Grip labels can't tell: they name the slot.)
+      const tagOrder = () =>
+        screen
+          .getAllByRole('row')
+          .slice(1) // drop the header row
+          .map((row) => (/Alpha|Bravo|Charlie/.exec(row.textContent ?? '') ?? [''])[0]);
+      await waitFor(() => expect(tagOrder()).toEqual(['Alpha', 'Bravo', 'Charlie']));
     });
 
     it('keeps the other source staged when the opposite write fails', async () => {

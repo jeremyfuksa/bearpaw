@@ -18,6 +18,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A dragged channel stays inside the list.** Dragging a channel past the
   top or bottom of the Channels list carried it out of view until you let go.
   It now stops at the edge, and the list scrolls under it as before.
+- **A reorder that partly fails can't lose a channel, even if the link drops.**
+  When some moves in an upload failed and Bearpaw then couldn't re-read the
+  channel list, the next upload replayed the old order against the
+  half-moved radio and could overwrite a channel. The failed moves now stay
+  staged at their new slots, as they already did when the re-read worked.
 
 ## [1.2.0] — 2026-10-15
 
