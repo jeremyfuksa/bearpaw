@@ -18,6 +18,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A dragged channel stays inside the list.** Dragging a channel past the
   top or bottom of the Channels list carried it out of view until you let go.
   It now stops at the edge, and the list scrolls under it as before.
+- **The Backlight setting shows in full.** "Key + Squelch" was cut off to
+  "Key + Squelc" on the Device tab.
+- **Locked Channels headers no longer run together.** The checkbox column's
+  "SELECT" header spilled into "CH"; the column now has no visible header.
 
 ## [1.2.0] — 2026-10-15
 

@@ -1160,7 +1160,12 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   lockedGridCols,
                 )}
               >
-                <div role="columnheader">Select</div>
+                {/* The column holds only checkboxes, and "SELECT" in this header
+                    style overflows its 40px column into CH (#804). The name
+                    stays for assistive tech. */}
+                <div role="columnheader">
+                  <span className="sr-only">Select</span>
+                </div>
                 <div role="columnheader" className="text-center">
                   CH
                 </div>
@@ -1371,7 +1376,8 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                         <Select value={backlight} onValueChange={handleBacklightChange}>
                           <SelectTrigger
                             aria-label="Backlight"
-                            className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
+                            // Wide, not medium: "Key + Squelch" clips at medium (#805).
+                            className="scanner-input h-7 w-[var(--size-select-wide)] text-sm"
                           >
                             <SelectValue />
                           </SelectTrigger>
@@ -1395,7 +1401,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                           min={1}
                           max={15}
                           step={1}
-                          className="w-[var(--size-select-medium)]"
+                          className="w-[var(--size-select-wide)]"
                           onValueChange={handleContrastChange}
                         />
                       </div>
