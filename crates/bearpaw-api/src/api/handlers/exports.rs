@@ -569,15 +569,36 @@ const BC75XLT_CUSTOM_RANGES: [(u32, u32); 10] = [
 pub(crate) async fn export_bc75xlt_ss_file(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
+    export_bc75xlt_layout_ss_file(state, "bc75xlt").await
+}
+
+/// Export the connected SR30C as a `.sr30c_ss` file (#848).
+///
+/// The BC75XLT's layout with 500 channels, recovered from a real file Uniden's
+/// software wrote from a radio Bearpaw had just read
+/// (`fixtures/sample.sr30c_ss`, `docs/SS_FILE_FORMAT.md`). Two differences,
+/// both handled in the shared body: the channel delay column follows the
+/// radio, and `Misc` carries the backlight level as a tenth field.
+pub(crate) async fn export_sr30c_ss_file(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
+    export_bc75xlt_layout_ss_file(state, "sr30c").await
+}
+
+async fn export_bc75xlt_layout_ss_file(
+    state: AppState,
+    format: &'static str,
+) -> Result<impl IntoResponse, ApiError> {
     let _ = command_sender(&state)?;
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
     require_complete_channel_image(&state)?;
     let caps = state.capabilities();
-    if caps.ss_format != "bc75xlt" {
+    if caps.ss_format != format {
         return Err(ApiError::BadRequest("unsupported_model".to_string()));
     }
+    let is_sr30c = format == "sr30c";
 
     let result = async {
         let _prg = ProgramModeGuard::enter(&state).await?;
@@ -622,6 +643,23 @@ pub(crate) async fn export_bc75xlt_ss_file(
             ));
         }
 
+        // The SR30C's file ends `Misc` with the backlight level, which `BLT`
+        // reports in its third field: `High` = `BLT,,,10`, `Low` = `BLT,,,5`
+        // (Uniden's software wrote each to the radio, 2026-11-10). The radio
+        // also stores other values its software never offers; anything but 5
+        // is written `High`, the default.
+        let backlight_level = if is_sr30c {
+            let blt = split_command_parts(&send_raw_command(&state, "BLT", false).await?);
+            let level = if blt.get(2).map(String::as_str) == Some("5") {
+                "Low"
+            } else {
+                "High"
+            };
+            format!("\t{level}")
+        } else {
+            String::new()
+        };
+
         let mut lines = Vec::new();
 
         // Backlight, beep, contrast and volume are empty in every real file
@@ -631,10 +669,11 @@ pub(crate) async fn export_bc75xlt_ss_file(
         // radio could tell us, is the point: this file is read by Uniden's
         // software, not by us.
         lines.push(format!(
-            "Misc\t\t\t{}\t\t\t{}\t2\t{}",
+            "Misc\t\t\t{}\t\t\t{}\t2\t{}{}",
             on_off(&key_lock),
             squelch,
-            caps.ss_region
+            caps.ss_region,
+            backlight_level
         ));
         lines.push(format!("Priority\t{}", on_off(&priority)));
 
@@ -724,6 +763,18 @@ pub(crate) async fn export_bc75xlt_ss_file(
                 let hz = ch
                     .map(|c| (c.frequency * 1_000_000.0).round() as u64)
                     .unwrap_or(0);
+                // The SR30C's file records the radio's delay: `2` for on, `0`
+                // for off, empty slots included (500 of 500 rows match a
+                // same-evening read of the radio). The BC75XLT's does not.
+                let delay = if is_sr30c {
+                    if ch.map(|c| c.delay != 0).unwrap_or(false) {
+                        2
+                    } else {
+                        0
+                    }
+                } else {
+                    BC75XLT_SS_CHANNEL_DELAY
+                };
                 lines.push(format!(
                     "C-Freq\t{}\t\t{}\t\t\t{}\t{}\t{}",
                     idx,
@@ -738,9 +789,10 @@ pub(crate) async fn export_bc75xlt_ss_file(
                     // model has no counterpart for, and the tool fills it with
                     // a fixed 2.
                     //
-                    // The BC125AT files DO vary here (490 x 2, 10 x 0), so this
-                    // is specific to the BC75XLT, not the format.
-                    BC75XLT_SS_CHANNEL_DELAY,
+                    // The BC125AT files DO vary here (490 x 2, 10 x 0), and so
+                    // do the SR30C's, so this is specific to the BC75XLT, not
+                    // the format.
+                    delay,
                     on_off_bool(ch.map(|c| c.priority).unwrap_or(false))
                 ));
             }
@@ -753,10 +805,10 @@ pub(crate) async fn export_bc75xlt_ss_file(
 
     Ok((
         [
-            ("content-type", "text/plain"),
+            ("content-type", "text/plain".to_string()),
             (
                 "content-disposition",
-                "attachment; filename=scanner.bc75xlt_ss",
+                format!("attachment; filename=scanner.{format}_ss"),
             ),
         ],
         payload,

@@ -16,6 +16,7 @@ use crate::state::{ChannelData, ToneSquelchKind};
 #[derive(Default)]
 pub(crate) struct SsSettings {
     pub backlight: Option<String>, // BLT: On->AO Off->AF Key->KY Squelch->SQ K+S->KS
+    pub backlight_level: Option<String>, // SR30C Misc field 10, BLT,,,<n>: High->10 Low->5
     pub beep: Option<String>,      // KBP field 1: Auto->0 Off->99 else digits
     pub key_lock: Option<String>,  // KBP field 2: On->1 Off->0
     pub contrast: Option<String>,  // CNT
@@ -110,6 +111,12 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
                 s.volume = Some(f[5].to_string());
                 s.squelch = Some(f[6].to_string());
                 s.charge_time = Some(f[7].to_string());
+                // Only the SR30C's file has a tenth field (#848).
+                s.backlight_level = match f.get(9).copied() {
+                    Some("High") => Some("10".to_string()),
+                    Some("Low") => Some("5".to_string()),
+                    _ => None,
+                };
             }
             Some("Priority") if f.len() >= 2 => {
                 s.priority = Some(
@@ -255,6 +262,14 @@ fn parse_ss_channel(f: &[&str], caps: &ScannerCapabilities) -> Result<ChannelDat
         ));
     }
     let parsed_delay: i8 = f[7].parse().map_err(|_| "bad C-Freq delay".to_string())?;
+    // The SR30C's file records its boolean delay in seconds: `2` on, `0` off
+    // (#848). Mapped, not clamped -- the clamp below would turn every `2`
+    // into `cleared_delay` and switch delay off on every channel.
+    let parsed_delay = if caps.ss_format == "sr30c" {
+        i8::from(parsed_delay != 0)
+    } else {
+        parsed_delay
+    };
     // Clamp to something the radio can take. The file's delay column does not
     // always carry a usable value: on a BC75XLT it is a constant 2 in every
     // row (docs/SS_FILE_FORMAT.md) while that model's wire delay is a boolean.
@@ -332,6 +347,10 @@ fn parse_ss_tone(
 /// no-ops on unproven writes (CSP/CLC). Caller holds the program-mode
 /// bracket. A full field-by-field verify is overkill for a first cut; write
 /// returned OK and the read-back's first field changed is enough.
+///
+/// An `expect_first_field` containing a comma is compared against the WHOLE
+/// read-back payload instead. `BLT,,,10`'s first field is empty, so a
+/// first-field check would pass whether or not the write landed.
 async fn write_setting_verified(
     state: &AppState,
     write_cmd: &str,
@@ -348,10 +367,12 @@ async fn write_setting_verified(
     let read_resp = send_raw_command(state, read_cmd, false)
         .await
         .map_err(|e| format!("{:?}", e))?;
-    let got = split_command_parts(&read_resp)
-        .into_iter()
-        .next()
-        .unwrap_or_default();
+    let parts = split_command_parts(&read_resp);
+    let got = if expect_first_field.contains(',') {
+        parts.join(",")
+    } else {
+        parts.into_iter().next().unwrap_or_default()
+    };
     if got == expect_first_field {
         Ok(())
     } else {
@@ -424,11 +445,16 @@ fn settings_jobs(
             }
         };
 
+    // A file with a backlight LEVEL (SR30C) restores the backlight through it,
+    // below; reporting its blank mode column as unsupported would tell the
+    // user the backlight was skipped while restoring it.
     gated(
         caps.has_backlight_control,
         "BLT",
         "Backlight",
-        value(&s.backlight).map(|v| (format!("BLT,{}", v), "BLT".to_string(), v)),
+        value(&s.backlight)
+            .filter(|_| s.backlight_level.is_none())
+            .map(|v| (format!("BLT,{}", v), "BLT".to_string(), v)),
     );
     gated(
         caps.has_battery_save,
@@ -472,6 +498,14 @@ fn settings_jobs(
         "Service search groups",
         value(&s.service_flags).map(|v| (format!("SSG,{}", v), "SSG".to_string(), v)),
     );
+
+    // Only an SR30C file carries a level (`Misc` field 10), and only the
+    // SR30C's import route accepts that file. `BLT,,,<n>` writes and reads
+    // back in and out of program mode (docs/wire_captures/2026-11-10/
+    // sr30c-blt-probe.txt).
+    if let Some(v) = value(&s.backlight_level) {
+        jobs.push((format!("BLT,,,{v}"), "BLT".to_string(), format!(",,{v}")));
+    }
 
     // Supported on both families.
     if let Some(v) = value(&s.volume) {
@@ -652,12 +686,57 @@ pub(crate) async fn import_bc75xlt_ss(
     State(state): State<AppState>,
     multipart: Multipart,
 ) -> Result<Json<Value>, ApiError> {
+    import_bc75xlt_layout_ss(state, multipart, "bc75xlt").await
+}
+
+/// Import a `.sr30c_ss` file (#848): the BC75XLT's layout, except that its
+/// delay column is real (so it is kept) and `Misc` carries the backlight
+/// level (so `BLT` is restored).
+pub(crate) async fn import_sr30c_ss(
+    State(state): State<AppState>,
+    multipart: Multipart,
+) -> Result<Json<Value>, ApiError> {
+    import_bc75xlt_layout_ss(state, multipart, "sr30c").await
+}
+
+/// Give each programmed row the delay its slot already has -- on a BC75XLT
+/// only, whose file carries a constant `2` rather than the radio's delay. An
+/// SR30C's file records the real delay, so substituting there would undo
+/// every delay change in it.
+///
+/// A cleared row already carries `cleared_delay`, which is what the radio
+/// stamps on an empty slot and what `is_factory_empty` checks for.
+/// Substituting the slot's old programmed delay there would describe a
+/// channel that is about to stop existing.
+fn keep_existing_delays(
+    existing: &std::collections::HashMap<u16, ChannelData>,
+    channels: &mut [ChannelData],
+    caps: &ScannerCapabilities,
+) {
+    if caps.ss_format != "bc75xlt" {
+        return;
+    }
+    for ch in channels.iter_mut() {
+        if ch.frequency.abs() >= 0.00005 {
+            ch.delay = existing
+                .get(&ch.index)
+                .map(|slot| slot.delay)
+                .unwrap_or(caps.cleared_delay);
+        }
+    }
+}
+
+async fn import_bc75xlt_layout_ss(
+    state: AppState,
+    multipart: Multipart,
+    format: &'static str,
+) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
     let caps = state.capabilities();
-    if caps.ss_format != "bc75xlt" {
+    if caps.ss_format != format {
         return Err(ApiError::BadRequest("unsupported_model".to_string()));
     }
 
@@ -669,30 +748,13 @@ pub(crate) async fn import_bc75xlt_ss(
     let mut imported = 0usize;
     let total = cfg.channels.len();
 
-    // Substitute each channel's existing delay BEFORE the bracket opens, so
-    // the shadow read is not holding a lock across a wire round-trip.
-    let mut channels: Vec<ChannelData> = {
+    // Substitute delays BEFORE the bracket opens, so the shadow read is not
+    // holding a lock across a wire round-trip.
+    let mut channels = cfg.channels.clone();
+    {
         let shadow = state.shadow.read().unwrap();
-        cfg.channels
-            .iter()
-            .map(|ch| {
-                let mut ch = ch.clone();
-                // A cleared row already carries `cleared_delay`, which is what
-                // the radio stamps on an empty slot and what `is_factory_empty`
-                // checks for. Substituting the slot's old programmed delay
-                // there would describe a channel that is about to stop
-                // existing.
-                if ch.frequency.abs() >= 0.00005 {
-                    ch.delay = shadow
-                        .channels
-                        .get(&ch.index)
-                        .map(|existing| existing.delay)
-                        .unwrap_or(caps.cleared_delay);
-                }
-                ch
-            })
-            .collect()
-    };
+        keep_existing_delays(&shadow.channels, &mut channels, &caps);
+    }
     carry_stuck_priority(&state, &mut channels);
 
     let _prg = ProgramModeGuard::enter(&state).await?;
@@ -1233,6 +1295,115 @@ mod tests {
     /// and that model's `CIN` delay is a boolean. Sending 2 is a format error,
     /// and the vendor spec aborts the ENTIRE set command on one -- so a single
     /// imported row would silently discard its own frequency and lockout.
+    fn sr30c_radio() -> std::collections::HashMap<u16, (i64, i8, bool, bool)> {
+        include_str!("../../../fixtures/sample.sr30c_radio.csv")
+            .lines()
+            .skip(1)
+            .map(|line| {
+                let f: Vec<&str> = line.split(',').collect();
+                (
+                    f[0].parse().unwrap(),
+                    (
+                        f[1].parse().unwrap(),
+                        f[2].parse().unwrap(),
+                        f[3] == "1",
+                        f[4] == "1",
+                    ),
+                )
+            })
+            .collect()
+    }
+
+    // GOLDEN (#848): Uniden's SR30C file, parsed, describes the radio it was
+    // read from -- checked against Bearpaw's own read of that radio, not
+    // against the file. The delay column is `2`/`0` and must land as the
+    // radio's `1`/`0`; clamping `2` to `cleared_delay` would switch delay off
+    // on 335 channels.
+    #[test]
+    fn an_sr30c_file_parses_to_the_radio_it_was_read_from() {
+        use crate::protocol::capabilities::SR30C;
+        let cfg = parse_ss_config(include_str!("../../../fixtures/sample.sr30c_ss"), &SR30C);
+        assert!(cfg.errors.is_empty(), "{:?}", cfg.errors);
+        assert_eq!(cfg.channels.len(), 500);
+        let radio = sr30c_radio();
+        for ch in &cfg.channels {
+            let (hz, delay, lockout, priority) = radio[&ch.index];
+            assert_eq!((ch.frequency * 1e6).round() as i64, hz, "ch {}", ch.index);
+            assert_eq!(ch.delay, delay, "ch {} delay", ch.index);
+            assert_eq!(ch.lockout, lockout, "ch {} lockout", ch.index);
+            // An empty slot's priority is the firmware's, not the file's to
+            // set (`carry_stuck_priority`).
+            if hz != 0 {
+                assert_eq!(ch.priority, priority, "ch {} priority", ch.index);
+            }
+        }
+        assert_eq!(cfg.settings.scan_flags.as_deref(), Some("0000000010"));
+    }
+
+    // The tenth `Misc` field is the backlight level: High = `BLT,,,10`,
+    // Low = `BLT,,,5` (hardware 2026-11-10). Verified on the whole reply,
+    // because `BLT`'s first field is empty and a first-field check would pass
+    // whether or not the write landed.
+    #[test]
+    fn an_sr30c_files_backlight_level_is_restored() {
+        use crate::protocol::capabilities::SR30C;
+        for (word, level) in [("High", "10"), ("Low", "5")] {
+            let text = format!("Misc\t\t\tOff\t\t\t2\t2\tUSA\t{word}\r\n");
+            let cfg = parse_ss_config(&text, &SR30C);
+            let (jobs, skipped) = settings_jobs(&cfg.settings, &SR30C);
+            let blt: Vec<_> = jobs
+                .iter()
+                .filter(|(w, _, _)| w.starts_with("BLT"))
+                .collect();
+            assert_eq!(
+                blt,
+                vec![&(
+                    format!("BLT,,,{level}"),
+                    "BLT".to_string(),
+                    format!(",,{level}")
+                )]
+            );
+            assert!(
+                !skipped.iter().any(|s| s.command == "BLT"),
+                "the backlight is restored, so it must not ALSO be reported skipped"
+            );
+        }
+        // A nine-field `Misc` (BC75XLT) carries no level and writes no BLT.
+        let cfg = parse_ss_config("Misc\t\t\tOff\t\t\t2\t2\tUSA\r\n", &BC75XLT);
+        let (jobs, _) = settings_jobs(&cfg.settings, &BC75XLT);
+        assert!(!jobs.iter().any(|(w, _, _)| w.starts_with("BLT")));
+    }
+
+    // The BC75XLT's file carries a constant delay, so its import keeps each
+    // channel's existing one. The SR30C's records the real delay, so it must
+    // not: substituting would undo every delay change in the file.
+    #[test]
+    fn only_a_bc75xlt_import_keeps_the_existing_delay() {
+        use crate::protocol::capabilities::SR30C;
+        let mut existing = std::collections::HashMap::new();
+        existing.insert(
+            2,
+            ChannelData {
+                index: 2,
+                frequency: 145.13,
+                delay: 1,
+                ..Default::default()
+            },
+        );
+        let file_row = ChannelData {
+            index: 2,
+            frequency: 145.13,
+            delay: 0,
+            ..Default::default()
+        };
+        let mut sr30c = vec![file_row.clone()];
+        keep_existing_delays(&existing, &mut sr30c, &SR30C);
+        assert_eq!(sr30c[0].delay, 0, "the SR30C file's delay must stand");
+        let mut bc75 = vec![file_row];
+        keep_existing_delays(&existing, &mut bc75, &BC75XLT);
+        assert_eq!(bc75[0].delay, 1, "the BC75XLT keeps the radio's delay");
+    }
+
     #[test]
     fn the_files_delay_never_reaches_a_bc75xlt() {
         let row = "C-Freq\t1\t\t145130000\t\t\tOff\t2\tOff";

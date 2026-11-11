@@ -418,8 +418,10 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
 pub const SR30C: ScannerCapabilities = ScannerCapabilities {
     channel_count: 500,
     channels_per_bank: 50,
-    // Not yet known whether Uniden's software writes an SR30C file (#848).
-    ss_format: "",
+    // `.sr30c_ss`: the BC75XLT's layout with 500 rows, a delay column that
+    // follows the radio, and the backlight level in `Misc` (#848,
+    // docs/SS_FILE_FORMAT.md).
+    ss_format: "sr30c",
     // `BLT` answers `BLT,,,10`, a shape neither family uses (#847).
     has_backlight_control: false,
     // Settable, but only as `SCO,<delay>,,<code search>`; the 2-field write
@@ -754,8 +756,8 @@ mod tests {
         assert!(!c.has_close_call_hit_scan);
         // Per-unit CP2104 serial, 02A72C10.
         assert!(c.has_unique_usb_serial);
-        // No settings-file format known yet (#848).
-        assert_eq!(c.ss_format, "");
+        // Its own `.sr30c_ss` layout (#848, fixtures/sample.sr30c_ss).
+        assert_eq!(c.ss_format, "sr30c");
         // Owner's manual, USA band plan; 239.0-347.5 refused on hardware (§3).
         for mhz in [25.0, 54.0, 108.0, 174.0, 406.0, 512.0] {
             assert!(c.covers_frequency(mhz), "SR30C should tune {mhz}");

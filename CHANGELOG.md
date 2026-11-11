@@ -16,9 +16,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   channels in about six seconds, and lets you edit, export and import them.
   Like the BC75XLT, it stores no channel names, modulation or tones, and its
   delay is on or off. A frequency it can't tune, such as military air, is
-  refused before it reaches the radio. Settings files, backlight and search
-  options are not supported on it yet, and its signal bars are not yet
-  calibrated.
+  refused before it reaches the radio. It also reads and writes Uniden's
+  `.sr30c_ss` settings files, with every channel, the bank and search setup,
+  and the backlight level, byte for byte what Uniden's own software writes.
+  Setting the backlight and search options from the Device page is not
+  supported on it yet, and its signal bars are not yet calibrated.
 
 ### Fixed
 
