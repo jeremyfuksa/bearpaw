@@ -442,9 +442,27 @@ pub const SR30C: ScannerCapabilities = ScannerCapabilities {
     // Owner's manual (SR30Com.pdf), "USA BAND PLAN": 25-54, 108-174,
     // 406-512. The copy run found 239.0-347.5 refused.
     coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (406.0, 512.0)],
-    // Not measured on this model. A BC75XLT's scale would be a guess, so
-    // `PWR` keeps the linear fallback until a capture exists.
-    pwr_bands: &[],
+    // Measured 2026-11-10 on this radio (#880,
+    // docs/wire_captures/2026-11-10/sr30c-signal.csv). Floors are the median
+    // with squelch open on a quiet frequency (118.900 between transmissions,
+    // n=2125; 155.000, n=135); tops are clear signals (a 118.900
+    // transmission, n=17; NOAA 162.550, n=137). Not the BC75XLT's table:
+    // the same NOAA signal reads 431 there and 449 here. UHF and 25-54 MHz
+    // were not measured and keep the linear fallback.
+    pwr_bands: &[
+        PwrBand {
+            low_mhz: 108.0,
+            high_mhz: 137.0,
+            floor: 353,
+            top: 450,
+        },
+        PwrBand {
+            low_mhz: 137.0,
+            high_mhz: 174.0,
+            floor: 317,
+            top: 449,
+        },
+    ],
     ..BC75XLT
 };
 

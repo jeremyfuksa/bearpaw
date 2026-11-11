@@ -3,7 +3,7 @@
 **Hardware:** SR30C (`MDL,SR30C`, firmware `Version 1.01.04`), CP2104 bridge
 `0x10C4:0xEA60` serial `02A72C10`, `/dev/cu.usbserial-02A72C10`, 57600 8N1 on macOS.
 
-Five sessions:
+Six sessions:
 
 | Session | Date | Script | Transcript | Writes? |
 |---|---|---|---|---|
@@ -12,6 +12,7 @@ Five sessions:
 | Full-memory copy from a BC125AT | 2026-11-10 | [`sr30c-write-image.py`](sr30c-write-image.py) | [`sr30c-copy-run.txt`](sr30c-copy-run.txt) | All 500 slots, each read back |
 | Settings write probe | 2026-11-10 | [`sr30c-settings-probe.py`](sr30c-settings-probe.py) | [`sr30c-settings-probe.txt`](sr30c-settings-probe.txt) | `VOL` `SQL` `SCG` `BPL` `PRI` `KBP` `SCO` `CLC` `CSG`, each restored and verified (`ALL RESTORED`) |
 | Backlight (`BLT`) probe | 2026-11-10 | [`sr30c-blt-probe.py`](sr30c-blt-probe.py) | [`sr30c-blt-probe.txt`](sr30c-blt-probe.txt) | `BLT` only, left on High (`RESTORED`) |
+| Signal strength (`PWR`) | 2026-11-10 | [`sr30c-signal-capture.py`](sr30c-signal-capture.py) | [`sr30c-signal.csv`](sr30c-signal.csv) | No: `MDL`, `GLG`, `PWR` only |
 
 The read-only probe ran a day earlier. It is filed here with the write
 sessions so all the SR30C evidence sits in one folder.
@@ -169,6 +170,39 @@ Two more single-variable tests came out of it:
   and the saved file changed in one line, `Conventional 3` `Off` → `On`. That
   is the evidence for #881 (`On` = locked out, on every model).
 - `SCG` answers `NG` outside program mode on this radio.
+
+## 7. Signal strength: `PWR` by band (#880)
+
+The SR30C's `STS` is the BC75XLT's short frame with no `SIG_LVL`, so its bars
+come from `PWR`, scaled per band from a floor (squelch open on a quiet
+frequency) and a top (a clear signal), the method of
+[`findings.md`](findings.md). Captured with
+[`sr30c-signal-capture.py`](sr30c-signal-capture.py) (read-only: `MDL`, `GLG`,
+`PWR`) into [`sr30c-signal.csv`](sr30c-signal.csv). Squelch-open samples
+only:
+
+| Band | Reading | Where | n | `PWR` |
+|---|---|---|---|---|
+| Air 108–137 | **floor** | 118.900, quiet between transmissions | 2,125 | median **353** (p10 328, p90 370) |
+| Air 108–137 | **top** | 118.900, one clear transmission | 17 | median **450** (445–453) |
+| VHF 137–174 | **floor** | 155.000, hiss | 135 | median **317** (304–338) |
+| VHF 137–174 | **top** | NOAA 162.550 | 137 | median **449** (447–450) |
+| VHF | (reference) | a live net on 147.330, strength not judged | 247 | median 387 |
+
+The 118.900 rows are split at `PWR` 420: the two clusters do not overlap
+(quiet tops out at 409, the transmission starts at 445). The airband top
+rests on a single transmission; another would firm it up.
+
+**Not the BC75XLT's scale.** The same NOAA station reads 431 on the BC75XLT
+and 449 here, and the VHF floors are 337 and 317. Borrowing that table would
+leave the SR30C's hiss reading above zero and clamp everything above 431.
+
+**Verified in the app** (Bearpaw built from the #880 branch, `GET /status`):
+NOAA 162.550 read `rssi` 91–95 (5 bars; the linear map read 43, 2 bars), and
+hiss on 160.260 read 9–15 (0–1 bar; linear read about 32, 2 bars).
+
+**Open:** UHF (406–512) and 25–54 MHz were not measured and keep the linear
+fallback. A UHF capture needs a busy repeater and a quiet frequency.
 
 ## Values for the descriptor (#849)
 

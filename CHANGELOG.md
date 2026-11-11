@@ -20,7 +20,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `.sr30c_ss` settings files, with every channel, the bank and search setup,
   and the backlight level, byte for byte what Uniden's own software writes.
   The Device page sets its backlight to High or Low. Search options can't be
-  set from the Device page yet, and its signal bars are not yet calibrated.
+  set from the Device page yet. Its signal bars are calibrated on airband and
+  VHF, where a full-strength station reads 5 bars and hiss reads 0 or 1. UHF
+  and 25–54 MHz still use the uncalibrated scale.
 
 ### Fixed
 
