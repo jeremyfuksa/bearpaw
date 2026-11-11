@@ -650,11 +650,7 @@ async fn export_bc75xlt_layout_ss_file(
         // is written `High`, the default.
         let backlight_level = if is_sr30c {
             let blt = split_command_parts(&send_raw_command(&state, "BLT", false).await?);
-            let level = if blt.get(2).map(String::as_str) == Some("5") {
-                "Low"
-            } else {
-                "High"
-            };
+            let level = super::settings::backlight_level_name(blt.get(2).map(String::as_str));
             format!("\t{level}")
         } else {
             String::new()

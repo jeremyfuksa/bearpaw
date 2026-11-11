@@ -27,3 +27,6 @@ export const BC125AT_CAPS: ScannerCapabilities = models.BC125AT;
 
 /** BC75XLT — 300 channels in banks of 30, and the feature flags that differ. */
 export const BC75XLT_CAPS: ScannerCapabilities = models.BC75XLT;
+
+/** SR30C — a BC75XLT with 500 channels and a settable backlight level. */
+export const SR30C_CAPS: ScannerCapabilities = models.SR30C;

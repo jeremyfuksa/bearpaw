@@ -95,6 +95,15 @@ pub struct ScannerCapabilities {
     /// different features, not one feature present or absent, so the flag names
     /// what Bearpaw can control rather than what the hardware has.
     pub has_backlight_control: bool,
+    /// Whether `BLT` sets a backlight *level*: `BLT,,,10` = High, `BLT,,,5` =
+    /// Low (#847). The SR30C's backlight is a button that lights the display
+    /// for 15 seconds, like the BC75XLT's, but how bright it lights is
+    /// settable -- the two levels its owner's manual and Uniden's software
+    /// offer, verified by writing each and reading `BLT`
+    /// (docs/wire_captures/2026-11-10/sr30c-findings.md §5). It has no mode,
+    /// so `has_backlight_control` stays false: a different feature, not the
+    /// same one in another shape.
+    pub has_backlight_level: bool,
     /// Whether `BSV` (battery save) works. Absent on the BC75XLT -- `ERR` in
     /// both modes, verified 2026-08-26.
     pub has_battery_save: bool,
@@ -295,6 +304,7 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     has_per_channel_modulation: true,
     has_tone_squelch: true,
     has_backlight_control: true,
+    has_backlight_level: false,
     has_battery_save: true,
     has_contrast: true,
     has_weather_alert: true,
@@ -354,6 +364,7 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_per_channel_modulation: false,
     has_tone_squelch: false,
     has_backlight_control: false,
+    has_backlight_level: false,
     has_battery_save: false,
     has_contrast: false,
     has_weather_alert: false,
@@ -422,9 +433,10 @@ pub const SR30C: ScannerCapabilities = ScannerCapabilities {
     // follows the radio, and the backlight level in `Misc` (#848,
     // docs/SS_FILE_FORMAT.md).
     ss_format: "sr30c",
-    // `BLT` answers `BLT,,,10`, a shape neither family uses (#847).
+    // No backlight MODE; `BLT,,,<n>` sets the level instead (#847).
     has_backlight_control: false,
-    // Settable, but only as `SCO,<delay>,,<code search>`; the 2-field write
+    has_backlight_level: true,
+    // Settable, but only as `SCO,<delay>,,<direction>`; the 2-field write
     // Bearpaw sends replies ERR (sr30c-findings.md §4).
     has_search_options: false,
     // Owner's manual (SR30Com.pdf), "USA BAND PLAN": 25-54, 108-174,
@@ -644,6 +656,7 @@ mod tests {
         assert!(c.has_per_channel_modulation);
         assert!(c.has_tone_squelch);
         assert!(c.has_backlight_control);
+        assert!(!c.has_backlight_level, "BLT sets a mode here, not a level");
         assert!(c.has_battery_save);
         assert!(c.has_contrast);
         assert!(c.has_weather_alert);
@@ -685,6 +698,7 @@ mod tests {
         // BLT is absent from the command table; replies bare ERR. The scanner
         // still HAS a backlight -- a 15-second button, per the owner's manual.
         assert!(!c.has_backlight_control);
+        assert!(!c.has_backlight_level);
         // BSV/CNT/WXS all reply ERR in both modes (settings probe 2026-08-26).
         assert!(!c.has_battery_save);
         assert!(!c.has_contrast);
@@ -739,8 +753,9 @@ mod tests {
         // write gets ERR (§4), so the control stays hidden until the write
         // follows the read.
         assert!(!c.has_search_options);
-        // BLT answers `BLT,,,10`, a shape Bearpaw cannot drive yet (#847).
+        // `BLT,,,10` / `BLT,,,5` set the level; there is no mode (§5, #847).
         assert!(!c.has_backlight_control);
+        assert!(c.has_backlight_level);
         // Writing 11111 reads back 11101, field 5 reads back empty (§4); the
         // manual's four bands are VHF Low, AIR, VHF High, UHF.
         assert_eq!(

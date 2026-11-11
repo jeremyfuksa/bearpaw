@@ -78,6 +78,7 @@ capabilities are always read under one lock.
 | `has_per_channel_modulation` | true | false (global `BPL` band plan) |
 | `has_tone_squelch` | true | false (`[RSV]`) |
 | `has_backlight_control` | true | false (no `BLT` command) |
+| `has_backlight_level` | false (`BLT` sets a mode) | false — true only on the SR30C, whose `BLT,,,10`/`BLT,,,5` set High/Low (#847) |
 | `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) |
 | `has_service_search_groups` | true | false (no `SSG` command) |
 | `has_search_options` | true | false (`SCO` writes rejected, incl. a write of the value it just reported — hardware 2026-09-02) |

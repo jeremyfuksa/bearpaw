@@ -21,6 +21,7 @@ import { bankLabel } from '../../../lib/bankNames';
 import { openExternalUrl, revealLogs, isTauriRuntime } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
+import type { BacklightLevel } from '../../../types';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -284,7 +285,10 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     : 'grid-cols-[40px_60px_1fr_80px_100px]';
 
   const showDisplayCard =
-    capabilities.has_backlight_control || capabilities.has_contrast || capabilities.has_key_beep;
+    capabilities.has_backlight_control ||
+    capabilities.has_backlight_level ||
+    capabilities.has_contrast ||
+    capabilities.has_key_beep;
 
   const activeCategory: DeviceCategory =
     selectedCategory === 'Preferences' || categories.includes(selectedCategory)
@@ -292,6 +296,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
       : 'Device Config';
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState('AO');
+  const [backlightLevel, setBacklightLevel] = useState<BacklightLevel>('High');
   const [contrast, setContrast] = useState(7);
   const [keyBeepEnabled, setKeyBeepEnabled] = useState(true);
   const [priorityMode, setPriorityMode] = useState('off');
@@ -448,6 +453,9 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         }
         if (settings.backlight) {
           setBacklight(settings.backlight.event || 'AO');
+        }
+        if (settings.backlight_level) {
+          setBacklightLevel(settings.backlight_level.level);
         }
         if (settings.contrast) {
           setContrast(settings.contrast.level);
@@ -699,6 +707,20 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         setBacklight(value);
       } catch (error) {
         console.error('Failed to set backlight', error);
+        toast.error('Failed to set backlight');
+      }
+    },
+    [api],
+  );
+
+  const handleBacklightLevelChange = useCallback(
+    async (value: string) => {
+      const level = value as BacklightLevel;
+      try {
+        await api.setBacklightLevel(level);
+        setBacklightLevel(level);
+      } catch (error) {
+        console.error('Failed to set backlight level', error);
         toast.error('Failed to set backlight');
       }
     },
@@ -1387,6 +1409,28 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                             <SelectItem value="KY">Keypress</SelectItem>
                             <SelectItem value="SQ">Squelch</SelectItem>
                             <SelectItem value="KS">Key + Squelch</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* The SR30C sets how bright its 15-second backlight is,
+                      not a mode (#847). Both options mirror Uniden's own
+                      software; the radio accepts other values, but what they
+                      look like is unverified. */}
+                    {capabilities.has_backlight_level && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-white/70">Backlight</span>
+                        <Select value={backlightLevel} onValueChange={handleBacklightLevelChange}>
+                          <SelectTrigger
+                            aria-label="Backlight"
+                            className="scanner-input h-7 w-[var(--size-select-wide)] text-sm"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="scanner-select-content">
+                            <SelectItem value="High">High</SelectItem>
+                            <SelectItem value="Low">Low</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>

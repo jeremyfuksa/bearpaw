@@ -99,6 +99,11 @@ export interface ScannerCapabilities {
    * its owner's manual) but no `BLT` command and no persistent mode to set.
    */
   has_backlight_control: boolean;
+  /**
+   * Whether `BLT` sets a backlight *level*, High or Low (#847). True on the
+   * SR30C only. A different feature from `has_backlight_control`'s mode.
+   */
+  has_backlight_level: boolean;
   /** False on the BC75XLT: `BSV` replies ERR in both modes. */
   has_battery_save: boolean;
   /** False on the BC75XLT, which has no contrast setting at all. */
@@ -326,6 +331,12 @@ export interface BacklightSettings {
   event: string;
 }
 
+export type BacklightLevel = 'High' | 'Low';
+
+export interface BacklightLevelSettings {
+  level: BacklightLevel;
+}
+
 export interface BatterySettings {
   charge_time: number;
 }
@@ -382,6 +393,7 @@ export interface ConfigSnapshot {
   firmware?: string | null;
   squelch?: SquelchSettings | null;
   backlight?: BacklightSettings | null;
+  backlight_level?: BacklightLevelSettings | null;
   battery?: BatterySettings | null;
   key_beep?: KeyBeepSettings | null;
   priority?: PrioritySettings | null;

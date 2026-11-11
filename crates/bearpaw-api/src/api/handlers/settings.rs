@@ -123,6 +123,88 @@ pub(crate) async fn set_backlight(
     Ok(Json(json!({ "status": "ok" })))
 }
 
+/// The two backlight levels, as Uniden's software and the SR30C owner's
+/// manual name them, and the `BLT` value each writes (#847, hardware
+/// 2026-11-10, `docs/wire_captures/2026-11-10/sr30c-blt-probe.txt`).
+const BACKLIGHT_LEVELS: [(&str, &str); 2] = [("High", "10"), ("Low", "5")];
+
+/// The level a `BLT,,,<n>` reply reports. The radio also stores values its
+/// software never offers (`BLT,,,7` reads back); those read as `High`, the
+/// default, here and in the `.sr30c_ss` export alike.
+pub(crate) fn backlight_level_name(blt_value: Option<&str>) -> &'static str {
+    if blt_value == Some("5") {
+        "Low"
+    } else {
+        "High"
+    }
+}
+
+/// `BLT,,,<n>` -> the `<n>`, or a read error when the radio refuses the read.
+async fn read_backlight_value(state: &AppState) -> Result<Option<String>, ApiError> {
+    let response = send_raw_command(state, "BLT", false).await?;
+    if matches!(
+        classify_response(&response),
+        ScannerReply::Ng | ScannerReply::Err
+    ) {
+        return Err(ApiError::BadRequest("blt_read_failed".to_string()));
+    }
+    Ok(parse_command_parts(&response, "BLT").get(2).cloned())
+}
+
+/// `GET /settings/backlight_level`: `{"level": "High" | "Low"}` (#847).
+///
+/// No program-mode bracket: `BLT` answers outside it on the SR30C, and a
+/// bracket would park the scanner in HOLD for a read.
+pub(crate) async fn get_backlight_level(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, ApiError> {
+    let _ = command_sender(&state)?;
+    if !state.capabilities().has_backlight_level {
+        return Err(ApiError::BadRequest(
+            "backlight_level_unsupported".to_string(),
+        ));
+    }
+    let value = read_backlight_value(&state).await?;
+    let level = backlight_level_name(value.as_deref());
+    set_setting_section(&state, "backlight_level", json!({ "level": level }));
+    Ok(Json(json!({ "level": level })))
+}
+
+/// `POST /settings/backlight_level` with `{"level": "High" | "Low"}` (#847).
+///
+/// Verified by read-back, not by the `BLT,OK` reply: this radio answers OK
+/// while ignoring values elsewhere (`CIN` names, a delay of 2,
+/// sr30c-findings.md §2).
+pub(crate) async fn set_backlight_level(
+    State(state): State<AppState>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let _ = command_sender(&state)?;
+    if !state.capabilities().has_backlight_level {
+        return Err(ApiError::BadRequest(
+            "backlight_level_unsupported".to_string(),
+        ));
+    }
+    let requested = body.get("level").and_then(Value::as_str).unwrap_or("");
+    let Some(&(level, wire)) = BACKLIGHT_LEVELS
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(requested))
+    else {
+        return Err(ApiError::BadRequest("backlight_level_invalid".to_string()));
+    };
+    let response = send_raw_command(&state, &format!("BLT,,,{wire}"), false).await?;
+    if !matches!(classify_response(&response), ScannerReply::Ok) {
+        return Err(ApiError::BadRequest("backlight_level_failed".to_string()));
+    }
+    if read_backlight_value(&state).await?.as_deref() != Some(wire) {
+        return Err(ApiError::BadRequest(
+            "backlight_level_not_persisted".to_string(),
+        ));
+    }
+    set_setting_section(&state, "backlight_level", json!({ "level": level }));
+    Ok(Json(json!({ "status": "ok", "level": level })))
+}
+
 pub(crate) async fn get_battery(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {

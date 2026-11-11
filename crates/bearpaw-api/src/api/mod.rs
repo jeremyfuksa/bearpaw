@@ -264,6 +264,11 @@ pub fn router(state: AppState) -> Router {
             get(handlers::settings::get_backlight).post(handlers::settings::set_backlight),
         )
         .route(
+            "/api/v1/settings/backlight_level",
+            get(handlers::settings::get_backlight_level)
+                .post(handlers::settings::set_backlight_level),
+        )
+        .route(
             "/api/v1/settings/battery",
             get(handlers::settings::get_battery).post(handlers::settings::set_battery),
         )
@@ -2061,6 +2066,22 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
                 _ => Value::Null,
             }
         };
+        // The SR30C's level (#847): `BLT,,,10` High, `BLT,,,5` Low.
+        let backlight_level = if !caps.has_backlight_level {
+            Value::Null
+        } else {
+            let resp = send_raw_command(state, "BLT", false).await?;
+            let parts = parse_command_parts(&resp, "BLT");
+            if usable(&resp) {
+                json!({
+                    "level": handlers::settings::backlight_level_name(
+                        parts.get(2).map(String::as_str)
+                    )
+                })
+            } else {
+                Value::Null
+            }
+        };
         let battery = if !caps.has_battery_save {
             Value::Null
         } else {
@@ -2232,6 +2253,7 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
             "firmware": firmware,
             "squelch": squelch,
             "backlight": backlight,
+            "backlight_level": backlight_level,
             "battery": battery,
             "key_beep": key_beep,
             "priority": priority,
@@ -6624,6 +6646,8 @@ mod tests {
         ("GET", "/api/v1/settings/all"),
         ("GET", "/api/v1/settings/backlight"),
         ("POST", "/api/v1/settings/backlight"),
+        ("GET", "/api/v1/settings/backlight_level"),
+        ("POST", "/api/v1/settings/backlight_level"),
         ("GET", "/api/v1/settings/battery"),
         ("POST", "/api/v1/settings/battery"),
         ("GET", "/api/v1/settings/key-beep"),
@@ -8713,6 +8737,108 @@ mod tests {
             settings_payload(&t).is_empty(),
             "a rejected backlight event must not reach the scanner: {t:?}"
         );
+    }
+
+    /// An SR30C whose fake `BLT` stores what it is sent, unless `sticky`, in
+    /// which case it ignores writes -- the "OK but not applied" shape this
+    /// radio produces for other commands (sr30c-findings.md §2, §4).
+    async fn sr30c_backlight_request(
+        method: Method,
+        body: &'static str,
+        start: &'static str,
+        sticky: bool,
+    ) -> (StatusCode, Value, Vec<String>) {
+        use crate::protocol::capabilities::SR30C;
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(SR30C);
+        let level = std::sync::Arc::new(std::sync::Mutex::new(start.to_string()));
+        let stored = level.clone();
+        let fake = FakeScanner::attach(&state, move |cmd: &str| {
+            Ok(match cmd {
+                "BLT" => format!("BLT,,,{}", stored.lock().unwrap()),
+                c if c.starts_with("BLT,,,") => {
+                    if !sticky {
+                        *stored.lock().unwrap() = c.trim_start_matches("BLT,,,").to_string();
+                    }
+                    "BLT,OK".to_string()
+                }
+                _ => "OK".to_string(),
+            })
+        });
+        let mut request = Request::builder()
+            .method(method)
+            .uri("/api/v1/settings/backlight_level");
+        if !body.is_empty() {
+            request = request.header("content-type", "application/json");
+        }
+        let response = router(state)
+            .oneshot(request.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, json, fake.transcript())
+    }
+
+    // #847: High and Low are `BLT,,,10` and `BLT,,,5` (hardware 2026-11-10,
+    // sr30c-blt-probe.txt). Paired: a build that ignores the requested level
+    // and always sends one value fails one of the two.
+    #[tokio::test]
+    async fn set_backlight_level_sends_the_levels_blt_value() {
+        for (level, wire, start) in [("Low", "BLT,,,5", "10"), ("High", "BLT,,,10", "5")] {
+            let body: &'static str = if level == "Low" {
+                r#"{"level":"Low"}"#
+            } else {
+                r#"{"level":"High"}"#
+            };
+            let (status, json, t) = sr30c_backlight_request(Method::POST, body, start, false).await;
+            assert_eq!(status, StatusCode::OK, "{level}: {json}");
+            assert!(t.contains(&wire.to_string()), "{level}: {t:?}");
+            assert_eq!(json["level"], level);
+        }
+    }
+
+    // `BLT,OK` is not proof: this radio answers OK while ignoring values in
+    // other commands. The read-back is the proof.
+    #[tokio::test]
+    async fn set_backlight_level_fails_when_the_radio_does_not_take_it() {
+        let (status, json, _) =
+            sr30c_backlight_request(Method::POST, r#"{"level":"Low"}"#, "10", true).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{json}");
+        assert_eq!(json["error"], "backlight_level_not_persisted");
+    }
+
+    #[tokio::test]
+    async fn set_backlight_level_rejects_an_unknown_level_without_touching_the_wire() {
+        let (status, _, t) =
+            sr30c_backlight_request(Method::POST, r#"{"level":"7"}"#, "10", false).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            !t.iter().any(|c| c.starts_with("BLT,")),
+            "a rejected level must not reach the scanner: {t:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_backlight_level_reads_blt() {
+        let (status, json, _) = sr30c_backlight_request(Method::GET, "", "5", false).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["level"], "Low");
+        let (_, json, _) = sr30c_backlight_request(Method::GET, "", "10", false).await;
+        assert_eq!(json["level"], "High");
+    }
+
+    // A BC125AT's `BLT` takes a MODE; a level write there would be a format
+    // error. Refused before the wire, like every capability-gated setting.
+    #[tokio::test]
+    async fn set_backlight_level_is_refused_where_blt_sets_a_mode() {
+        let (status, t) =
+            post_json_capture("/api/v1/settings/backlight_level", r#"{"level":"Low"}"#).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(t.is_empty(), "nothing may reach the wire: {t:?}");
     }
 
     #[tokio::test]

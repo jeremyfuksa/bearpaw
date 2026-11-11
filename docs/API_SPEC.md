@@ -940,6 +940,7 @@ request/response shapes.
 | GET, POST | `/api/v1/squelch` | Read / set squelch level. |
 | GET | `/api/v1/config` (alias `/api/v1/settings/all`) | Full settings snapshot read from the scanner. |
 | GET, POST | `/api/v1/settings/backlight`, `/battery`, `/close-call`, `/contrast`, `/custom-search`, `/custom-search/ranges/{index}`, `/key-beep`, `/priority`, `/search`, `/service-search`, `/weather` | Individual global-setting getters/setters (each brackets its work in PRG). |
+| GET, POST | `/api/v1/settings/backlight_level` | The SR30C's backlight level, `{"level": "High" \| "Low"}` (`BLT,,,10` / `BLT,,,5`). No PRG bracket; a write is verified by reading `BLT` back (`backlight_level_not_persisted` otherwise). `400 backlight_level_unsupported` unless `has_backlight_level`. (#847) |
 | GET | `/api/v1/lockouts` | Frequency + channel + temporary lockouts. |
 | DELETE | `/api/v1/lockouts/frequencies` | Remove (`ULF`) one entry from the GLOBAL avoid list, body `{"frequency": <MHz>}`. Distinct from a channel lockout: this list is what Search and Close Call consult. Validated against the connected scanner's coverage bands before the wire; 0 and negatives are rejected. There is deliberately no add verb — see #531. |
 | POST | `/api/v1/lockouts/clear`, `/lockouts/channels/clear`, `/lockouts/temporary/clear` | Clear the respective lockout sets. |

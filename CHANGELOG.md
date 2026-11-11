@@ -19,8 +19,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   refused before it reaches the radio. It also reads and writes Uniden's
   `.sr30c_ss` settings files, with every channel, the bank and search setup,
   and the backlight level, byte for byte what Uniden's own software writes.
-  Setting the backlight and search options from the Device page is not
-  supported on it yet, and its signal bars are not yet calibrated.
+  The Device page sets its backlight to High or Low. Search options can't be
+  set from the Device page yet, and its signal bars are not yet calibrated.
 
 ### Fixed
 
