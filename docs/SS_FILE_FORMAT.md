@@ -112,6 +112,12 @@ WX, Police, Fire/Emergency, Marine, Racing, Civil Air, HAM Radio,
 Railroad, CB Radio, Other (FRS/GMRS/MURS)
 ```
 
+**The BC125AT's `Service` flag polarity is unverified.** Bearpaw reads `On` as
+enabled. `blank.bc125at_ss` has all ten `Off`, which fits the locked-out
+reading `Conventional` and `Custom` use (#881) better than this one. Settling
+it needs one controlled BC125AT file: a single service group toggled in
+Uniden's software, written to the radio, with `SSG` read back.
+
 ### `CustomSearch` — 3 (BC75XLT only)
 
 ```
@@ -123,6 +129,9 @@ CustomSearch  delay  direction
 ```
 Custom  n  name  lowerHz  upperHz  On|Off
 ```
+
+**`On` means the range is locked out of search** — the same inverted sense as
+`Conventional` below (#881). Every blank file has all ten `Off`.
 
 **The `name` differs between tools and both spellings are load-bearing:**
 
@@ -204,6 +213,22 @@ Bearpaw writes this section as of #523.
 Conventional  n  Bank n  On|Off
 C-Freq  idx  name  freqHz  modulation  tone  lockout  delay  priority
 ```
+
+**`Conventional`'s flag means the bank is locked out of scan: `On` =
+disabled.** It is the opposite of what the word suggests, and Bearpaw read it
+the other way from #186 until #881. Three pieces of evidence:
+
+- `blank.bc125at_ss` and `blank.bc75xlt_ss`, written for fresh radios with every
+  bank enabled, carry all ten `Off`.
+- An SR30C read `SCG,0000000010` (bank 9 disabled), and Uniden's software
+  saved bank 9 `On` and the rest `Off`.
+- The controlled test (2026-11-10): banks 3 and 9 set off in Uniden's software
+  and written to that SR30C. The radio then read `SCG,0010000010`, and the
+  saved file differed from the previous one in one line, `Conventional 3`,
+  `Off` → `On`.
+
+So `On` maps to `'1'` in the `SCG` mask, and `Off` to `'0'`. `CloseCallBands`
+is **not** inverted: there `On` = enabled, matching `CLC`'s `1` = enabled.
 
 `C-Freq` count is the model's channel capacity — 500 on the BC125AT family,
 300 on the BC75XLT — and every slot is written, empty ones included

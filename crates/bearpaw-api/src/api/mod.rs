@@ -5643,7 +5643,10 @@ mod tests {
                 "KBP" => "KBP,99,0".to_string(),
                 "BSV" => "BSV,2".to_string(),
                 "PRI" => "PRI,0".to_string(),
-                "SCG" => "SCG,1111111111".to_string(),
+                // Banks 3 and 9 disabled, custom range 2 disabled: exactly
+                // those flags must come out `On` (#881).
+                "SCG" => "SCG,0010000010".to_string(),
+                "CSG" => "CSG,0100000000".to_string(),
                 "SCO" => "SCO,1,0".to_string(),
                 "CLC" => "CLC,0,0,0,11111,0".to_string(),
                 "WXS" => "WXS,0".to_string(),
@@ -5705,6 +5708,20 @@ mod tests {
 
         // Uniden's own typo, present in every real file. It must NOT be fixed.
         assert!(ours.contains("Custom\t1\tSearch Bnak1\t"));
+
+        // REGRESSION GUARD (#881): `On` = locked out. Paired: a build that
+        // writes every flag `On` or every flag `Off` fails one of each pair.
+        let flag = |prefix: &str| -> String {
+            let line = ours
+                .split("\r\n")
+                .find(|l| l.starts_with(prefix))
+                .unwrap_or_else(|| panic!("no line starting {prefix:?}"));
+            line.rsplit('\t').next().unwrap().to_string()
+        };
+        assert_eq!(flag("Conventional\t3\t"), "On");
+        assert_eq!(flag("Conventional\t1\t"), "Off");
+        assert_eq!(flag("Custom\t2\t"), "On");
+        assert_eq!(flag("Custom\t1\t"), "Off");
     }
 
     /// GOLDEN TEST: the `.bc75xlt_ss` we write must match the shape of a file
@@ -5812,9 +5829,14 @@ mod tests {
         assert!(ours.contains("Service\t1\tWX\t\t2\tUp\r\n"));
         assert!(ours.contains("Service\t2\tPolice\t\t0\tDown\r\n"));
         assert!(ours.contains("CustomSearch\t0\tDown\r\n"));
-        assert!(ours.contains("Custom\t1\tSearch Bank1\t25000000\t27995000\tOn\r\n"));
-        assert!(ours.contains("Custom\t2\tSearch Bank2\t28000000\t29695000\tOff\r\n"));
-        assert!(ours.contains("Custom\t10\tSearch Bank10\t470000000\t512000000\tOn\r\n"));
+        // `On` = locked out (#881). CSG `0111111110`: range 1 and 10 enabled
+        // ('0') write `Off`; range 2 disabled ('1') writes `On`.
+        assert!(ours.contains("Custom\t1\tSearch Bank1\t25000000\t27995000\tOff\r\n"));
+        assert!(ours.contains("Custom\t2\tSearch Bank2\t28000000\t29695000\tOn\r\n"));
+        assert!(ours.contains("Custom\t10\tSearch Bank10\t470000000\t512000000\tOff\r\n"));
+        // SCG `1111111111`: every bank disabled, so every bank line is `On`.
+        assert!(ours.contains("Conventional\t1\tBank 1\tOn\r\n"));
+        assert!(ours.contains("Conventional\t10\tBank 10\tOn\r\n"));
         assert!(ours.contains("CloseCall\tDND\tOn\tOn\t\r\n"));
         assert!(ours.contains("CloseCallBands\tOn\tOn\tOn\t\tOn\r\n"));
         assert!(ours.contains("GeneralSearch\t2\t\tDown\r\n"));

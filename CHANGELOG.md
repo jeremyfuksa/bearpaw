@@ -22,6 +22,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Settings files keep the right banks turned on.** Bearpaw read and wrote
+  Uniden's bank and custom-search on/off flags backwards. Restoring a settings
+  file switched off the banks you scan and switched on the ones you'd turned
+  off, and an exported file opened in Uniden's software the same way. Both
+  directions now match Uniden's software.
 - **The Delay menu on the Channels page is readable.** It had no background,
   so the delays in the rows behind it showed straight through the open menu.
   The same missing color also left the Bank Select header and the sync and
