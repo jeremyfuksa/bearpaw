@@ -1,0 +1,53 @@
+MDL                          -> 'MDL,BC75XLT'
+VER                          -> 'VER,Version 1.02.04'
+
+=== Outside program mode (reads only) ===
+SCO                          -> 'SCO,NG'
+SCG                          -> 'SCG,NG'
+
+=== Inside program mode ===
+PRG                          -> 'PRG,OK'
+
+--- SCO
+SCO                          -> 'SCO,0,,0'
+SCO,1,0                      -> 'SCO,ERR'
+SCO                          -> 'SCO,0,,0'
+    'SCO,1,0': reply 'SCO,ERR', now 'SCO,0,,0' -> unchanged
+SCO,0,,0                     -> 'SCO,OK'
+SCO                          -> 'SCO,0,,0'
+    'SCO,0,,0': reply 'SCO,OK', now 'SCO,0,,0' -> stored as sent
+SCO,0,,0                     -> 'SCO,OK'
+SCO                          -> 'SCO,0,,0'
+    'SCO,0,,0': reply 'SCO,OK', now 'SCO,0,,0' -> stored as sent
+SCO,1,,1                     -> 'SCO,OK'
+SCO                          -> 'SCO,1,,1'
+    'SCO,1,,1': reply 'SCO,OK', now 'SCO,1,,1' -> stored as sent
+SCO,0,,0                     -> 'SCO,OK'
+SCO,2,,0                     -> 'SCO,OK'
+SCO                          -> 'SCO,1,,0'
+    'SCO,2,,0': reply 'SCO,OK', now 'SCO,1,,0' -> stored differently
+SCO,0,,0                     -> 'SCO,OK'
+SCO                          -> 'SCO,0,,0'
+    restore: OK
+
+--- SCG
+SCG                          -> 'SCG,0000000000'
+SCG,1111111110               -> 'SCG,OK'
+SCG                          -> 'SCG,1111111110'
+    'SCG,1111111110': reply 'SCG,OK', now 'SCG,1111111110' -> stored as sent
+SCG,0000000000               -> 'SCG,OK'
+SCG,1111111111               -> 'SCG,OK'
+SCG                          -> 'SCG,1111111111'
+    'SCG,1111111111': reply 'SCG,OK', now 'SCG,1111111111' -> stored as sent
+SCG,0000000000               -> 'SCG,OK'
+SCG                          -> 'SCG,0000000000'
+    restore: OK
+EPG                          -> 'EPG,OK'
+
+=== Fresh bracket after EPG (reads only) ===
+PRG                          -> 'PRG,OK'
+SCO                          -> 'SCO,0,,0'
+SCG                          -> 'SCG,0000000000'
+EPG                          -> 'EPG,OK'
+
+ALL RESTORED
