@@ -1576,12 +1576,17 @@ mod tests {
         let (jobs, _) = settings_jobs(&cfg.settings, &BC75XLT);
         let sent = commands(&jobs);
 
-        for expected in ["SQL", "PRI", "SCG", "CSP", "CLC"] {
+        for expected in ["SQL", "PRI", "SCG", "CSP", "CLC", "SCO"] {
             assert!(
                 sent.iter().any(|c| c == expected),
                 "{expected} must be restored on a BC75XLT; got {sent:?}"
             );
         }
+        // #897: `SCO` in the three-field shape. The file's `GeneralSearch 2
+        // <empty> Up` is delay on, direction up. The radio answers ERR to the
+        // two-field `SCO,2,0` this gate used to keep off the wire, so the
+        // command name alone would pass for a build that sends that.
+        assert!(jobs.iter().any(|(w, _, _)| w == "SCO,1,,0"), "{jobs:?}");
     }
 
     /// The other half: the four commands this radio answers `ERR` to, plus the
@@ -1598,25 +1603,20 @@ mod tests {
         let sent = commands(&jobs);
         let named: Vec<&str> = skipped.iter().map(|s| s.command).collect();
 
-        for unsupported in ["BLT", "BSV", "CNT", "WXS", "SSG", "KBP", "SCO"] {
+        for unsupported in ["BLT", "BSV", "CNT", "WXS", "SSG", "KBP"] {
             assert!(
                 !sent.contains(&unsupported.to_string()),
                 "{unsupported} must never reach a BC75XLT; got {sent:?}"
             );
         }
-        // The file carries a backlight column, a service-group section and a
-        // GeneralSearch row, so those must be REPORTED, not merely absent. A
-        // build that dropped them silently -- the #625 bug -- satisfies the
-        // loop above.
+        // The file carries a backlight column and a service-group section, so
+        // those must be REPORTED, not merely absent. A build that dropped them
+        // silently -- the #625 bug -- satisfies the loop above.
         //
-        // `SCO` is the one measured live rather than read off a spec: the
-        // radio rejects a write of the value it JUST REPORTED (`SCO,1,0` ->
-        // `Err`, hardware 2026-09-02), which is what rules out a bad value and
-        // makes this a capability rather than a validation problem. Left
-        // ungated, the file's constant-2 `GeneralSearch` column put a rejected
-        // `SCO,2,0` in the error list of every otherwise clean restore --
-        // observed on the dev unit before this gate existed.
-        for reported in ["BLT", "SSG", "SCO"] {
+        // `SCO` used to be in both lists: the file's `SCO,2,0` was rejected
+        // on every restore (hardware 2026-09-02). That was the two-field
+        // shape; the three-field one is stored (#897), so it is restored now.
+        for reported in ["BLT", "SSG"] {
             assert!(
                 named.contains(&reported),
                 "{reported} is in the file and must be reported unsupported; got {named:?}"

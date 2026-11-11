@@ -54,12 +54,12 @@ Bearpaw adapts to whichever is plugged in. On a **BC75XLT** it shows 300
 channels in banks of 30, and hides the controls that scanner doesn't have —
 alpha tags, per-channel modulation and tone, backlight, battery save, contrast,
 and weather alert are all absent from its hardware, so they're absent from the
-interface too. Nothing to configure: it's detected automatically, including its
-different serial speed.
+interface too. Its search delay and direction are settable. Nothing to
+configure: it's detected automatically, including its different serial speed.
 
 The **SR30C** is a BC75XLT with 500 channels in banks of 50. It shows the same
-reduced set of channel columns, plus two settings the BC75XLT can't take from a
-computer: backlight brightness (High or Low) and search delay and direction.
+reduced set of channel columns and search settings, plus one setting the
+BC75XLT can't take from a computer: backlight brightness (High or Low).
 It has its own Uniden settings file (`.sr30c_ss`), which Bearpaw reads and
 writes.
 
