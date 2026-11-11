@@ -83,7 +83,7 @@
         <h2 id="banks-the-sidebar">Banks: the sidebar</h2>
         <p>
           Your channels are organized into <strong>10 banks</strong>, evenly
-          split. A BC125AT-family scanner has 500 channels in banks of 50
+          split. A BC125AT-family scanner or an SR30C has 500 channels in banks of 50
           (channels 1 to 50 are Bank 1, 51 to 100 are Bank 2, and so on); a
           BC75XLT has 300 in banks of 30. The left sidebar has a button for each
           bank.
@@ -120,8 +120,8 @@
         <p>Each row is one channel. The columns, left to right:</p>
         <div class="callout">
           <p>
-            <strong>On a BC75XLT you'll see fewer columns.</strong> That scanner
-            doesn't store channel names, per-channel modulation, or tone, so
+            <strong>On a BC75XLT or SR30C you'll see fewer columns.</strong>
+            Those scanners don't store channel names, per-channel modulation, or tone, so
             <strong>TAG</strong>, <strong>MODE</strong>, and
             <strong>TONE</strong> aren't shown — there'd be nothing to put in
             them. Search matches on frequency alone, and <strong>DLY</strong> is
@@ -229,7 +229,7 @@
           A few cells aren't typed into. <strong>MODE</strong> opens a list,
           and so does <strong>DLY</strong> on a BC125AT-family scanner.
           <strong>L/O</strong> flips on and off with <kbd>Enter</kbd> or
-          <kbd>Space</kbd>, and so does <strong>DLY</strong> on a BC75XLT.
+          <kbd>Space</kbd>, and so does <strong>DLY</strong> on a BC75XLT or SR30C.
         </p>
         <p>
           A value the scanner can't take stays in the cell and turns red. Point
@@ -252,7 +252,8 @@
             runs to 520.
           </li>
           <li>
-            BC75XLT: <strong>25 to 54, 108 to 174, and 406 to 512</strong>.
+            BC75XLT and SR30C: <strong>25 to 54, 108 to 174, and 406 to
+            512</strong>. Military air (225 to 380) isn't among them.
           </li>
         </ul>
         <p>
@@ -297,7 +298,9 @@
         <p>
           On a BC125AT-family scanner, taking priority off a channel means
           erasing it and writing it back without the flag, and the confirmation
-          says so. A BC75XLT can't take priority off a channel at all. To move
+          says so. A BC75XLT or SR30C can't take priority off a channel at all: every bank
+          always has one priority channel, the first in the bank until you move
+          it. To move
           it, click <strong>PRIO</strong> on another channel in the same bank,
           and the radio moves it for you.
         </p>
@@ -331,7 +334,7 @@
           <code>Lockout</code>, plus a few short forms like <code>Freq</code>
           and <code>DLY</code>. A header can also include <code>Channel</code>,
           <code>Bank</code>, or <code>Priority</code>, which are skipped, and
-          a BC75XLT skips Tag, Mode, and Tone too. If any heading is something
+          a BC75XLT or SR30C skips Tag, Mode, and Tone too. If any heading is something
           else, Bearpaw treats that row as data.
         </p>
         <p>
@@ -464,9 +467,10 @@
         </p>
         <p>
           The settings-file format is the one Uniden's own software uses, and
-          there is one per radio family: <code>.bc125at_ss</code> describes a
+          there is one per radio: <code>.bc125at_ss</code> describes a
           500-channel BC125AT-family radio, <code>.bc75xlt_ss</code> a
-          300-channel BC75XLT. Bearpaw offers whichever matches the scanner
+          300-channel BC75XLT, and <code>.sr30c_ss</code> an SR30C. An SR30C's
+          file also carries its backlight brightness and search settings. Bearpaw offers whichever matches the scanner
           that's plugged in.
         </p>
         <p>
@@ -513,8 +517,8 @@
           </li>
           <li>A row with a frequency of 0 is skipped, not cleared.</li>
           <li>
-            A missing <code>Delay</code> means 2 seconds, which a BC75XLT
-            refuses. For that scanner, include a <code>Delay</code> column of
+            A missing <code>Delay</code> means 2 seconds, which a BC75XLT or
+            SR30C refuses. For those scanners, include a <code>Delay</code> column of
             0 or 1.
           </li>
         </ul>
