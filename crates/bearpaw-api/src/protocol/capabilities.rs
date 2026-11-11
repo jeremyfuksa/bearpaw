@@ -382,9 +382,13 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_contrast: false,
     has_weather_alert: false,
     has_service_search_groups: false,
-    has_search_options: false,
+    // `SCO,<delay 0/1>,,<direction>` is stored; code search is reserved and
+    // goes out empty. The BC125AT's two-field `SCO,<delay>,<code>` is what
+    // replies ERR -- the shape #638 tried, which is why this was once false
+    // (#897, docs/wire_captures/2026-11-11/findings.md).
+    has_search_options: true,
     has_search_code: false,
-    has_search_direction: false,
+    has_search_direction: true,
     close_call_bands: &[
         Some("VHF Low"),
         Some("Air"),
@@ -451,11 +455,6 @@ pub const SR30C: ScannerCapabilities = ScannerCapabilities {
     // No backlight MODE; `BLT,,,<n>` sets the level instead (#847).
     has_backlight_control: false,
     has_backlight_level: true,
-    // `SCO,<delay 0/1>,,<direction>` round-trips; code search is reserved
-    // (sr30c-findings.md §4, #879).
-    has_search_options: true,
-    has_search_code: false,
-    has_search_direction: true,
     // Owner's manual (SR30Com.pdf), "USA BAND PLAN": 25-54, 108-174,
     // 406-512. The copy run found 239.0-347.5 refused.
     coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (406.0, 512.0)],
@@ -741,9 +740,10 @@ mod tests {
         assert!(!c.has_contrast);
         assert!(!c.has_weather_alert);
         assert!(!c.has_service_search_groups);
-        assert!(!c.has_search_options);
+        // SCO,<delay>,,<direction> is stored; two fields reply ERR (#897).
+        assert!(c.has_search_options);
         assert!(!c.has_search_code);
-        assert!(!c.has_search_direction);
+        assert!(c.has_search_direction);
         assert!(!c.has_close_call_hit_scan);
         assert!(!c.has_priority_clear);
         // Position 4 is reserved and 5 is UHF -- the reverse of the BC125AT.

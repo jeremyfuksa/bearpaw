@@ -428,11 +428,12 @@ pub(crate) async fn set_search(
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
-    // The BC75XLT answers a `SCO` READ but rejects every write, including a
-    // write of the value it just reported (hardware 2026-09-02). Refused here
-    // rather than sent and hoped, the same guard `set_key_beep` and
-    // `set_weather` carry — the UI hides the control on such a model, so
-    // reaching this is an API client or a stale frontend.
+    // A model without search options is refused here rather than sent and
+    // hoped, the same guard `set_key_beep` and `set_weather` carry -- the UI
+    // hides the control on such a model, so reaching this is an API client or
+    // a stale frontend. Every supported model has them today; the BC75XLT
+    // once looked like it did not, because #638 sent it the two-field shape
+    // it refuses (#897).
     if !state.capabilities().has_search_options {
         return Err(ApiError::BadRequest(
             "search_options_unsupported".to_string(),
@@ -441,8 +442,9 @@ pub(crate) async fn set_search(
     let caps = state.capabilities();
     // Validate before narrowing — a large i64 could wrap into a valid i32
     // delay. #143. The allowed set is the model's: signed seconds on the
-    // BC125AT family, a boolean on the SR30C, which answers OK to a 2 and
-    // does not apply it (sr30c-findings.md §4).
+    // BC125AT family, a boolean on the SR30C and BC75XLT. Both answer OK to a
+    // 2: the SR30C does not apply it (sr30c-findings.md §4), the BC75XLT
+    // stores 1 (2026-11-11/findings.md).
     let delay = body
         .get("delay")
         .and_then(Value::as_i64)

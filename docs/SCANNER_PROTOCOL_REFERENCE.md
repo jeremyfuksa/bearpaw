@@ -3,8 +3,8 @@
 **Last updated:** 2026-08-27
 **Devices:**
 - **BC125AT family** — BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H. 500 channels, 10 banks of 50, 115200 baud.
-- **BC75XLT** — 300 channels, 10 banks of 30, 57600 baud behind a CP210x bridge. Same wire protocol; `CIN` keeps the BC125AT's field positions with alpha tag, modulation, and tone marked `[RSV]`. See [`wire_captures/2026-08-26/bc75xlt-compatibility.md`](wire_captures/2026-08-26/bc75xlt-compatibility.md).
-- **SR30C** — 500 channels, 10 banks of 50, 57600 baud behind a CP210x bridge: a BC75XLT with 500 channels, same `CIN` shape. Supported since #849; adds `BLT,,,<level>` and a three-field `SCO` (`<delay>,<code, reserved>,<direction>`). A `CIN` write replies `OK` even when it drops a field or refuses an out-of-coverage frequency, so only a read-back proves a write. See [`wire_captures/2026-11-10/sr30c-findings.md`](wire_captures/2026-11-10/sr30c-findings.md).
+- **BC75XLT** — 300 channels, 10 banks of 30, 57600 baud behind a CP210x bridge. Same wire protocol; `CIN` keeps the BC125AT's field positions with alpha tag, modulation, and tone marked `[RSV]`. `SCO` has three fields, `<delay>,<code, reserved>,<direction>`; the BC125AT's two-field write replies `ERR` (#897). See [`wire_captures/2026-08-26/bc75xlt-compatibility.md`](wire_captures/2026-08-26/bc75xlt-compatibility.md) and [`wire_captures/2026-11-11/findings.md`](wire_captures/2026-11-11/findings.md).
+- **SR30C** — 500 channels, 10 banks of 50, 57600 baud behind a CP210x bridge: a BC75XLT with 500 channels, same `CIN` and `SCO` shapes. Supported since #849; adds `BLT,,,<level>`. A `CIN` write replies `OK` even when it drops a field or refuses an out-of-coverage frequency, so only a read-back proves a write. See [`wire_captures/2026-11-10/sr30c-findings.md`](wire_captures/2026-11-10/sr30c-findings.md).
 
 **Authoritative sources:**
 - Uniden, *BC125AT PC Protocol v1.01* (programming command set, serial settings)

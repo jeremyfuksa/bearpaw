@@ -28,6 +28,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A BC75XLT's search settings can be changed.** Bearpaw hid search delay
+  and direction on a BC75XLT because the radio seemed to refuse them, but it
+  had been sent the wrong command shape. They're now on the Custom Search page,
+  as on the SR30C, and settings files restore them.
 - **Settings files keep the right banks turned on.** Bearpaw read and wrote
   Uniden's bank and custom-search on/off flags backwards. Restoring a settings
   file switched off the banks you scan and switched on the ones you'd turned

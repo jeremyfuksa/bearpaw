@@ -7,8 +7,8 @@ Guidance for Claude Code (claude.ai/code) working in this repo.
 Bearpaw is a desktop control interface for Uniden handheld scanners. It drives **three memory models** that speak the same wire protocol:
 
 - **BC125AT family** — BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H. 500 channels in 10 banks of 50, alpha tags, per-channel modulation and tone, signed delay, 115200 baud.
-- **BC75XLT** — 300 channels in 10 banks of 30, no alpha tags, no per-channel modulation or tone (those `CIN` fields are `[RSV]`), boolean delay, 57600 baud behind a CP210x bridge.
-- **SR30C** — a BC75XLT with 500 channels in 10 banks of 50: same CP210x bridge, baud and `[RSV]` `CIN` fields. It adds a settable backlight level (`BLT,,,<n>`) and settable search options (`SCO`, three fields), and has its own `.sr30c_ss` settings file. Evidence: [`docs/wire_captures/2026-11-10/sr30c-findings.md`](docs/wire_captures/2026-11-10/sr30c-findings.md).
+- **BC75XLT** — 300 channels in 10 banks of 30, no alpha tags, no per-channel modulation or tone (those `CIN` fields are `[RSV]`), boolean delay, 57600 baud behind a CP210x bridge. Settable search options in a three-field `SCO` (#897).
+- **SR30C** — a BC75XLT with 500 channels in 10 banks of 50: same CP210x bridge, baud, `[RSV]` `CIN` fields and three-field `SCO`. It adds a settable backlight level (`BLT,,,<n>`), and has its own `.sr30c_ss` settings file. Evidence: [`docs/wire_captures/2026-11-10/sr30c-findings.md`](docs/wire_captures/2026-11-10/sr30c-findings.md).
 
 Anything model-specific reads [`ScannerCapabilities`](crates/bearpaw-api/src/protocol/capabilities.rs) rather than hardcoding a constant — see **Scanner capabilities** below.
 
@@ -84,8 +84,8 @@ radio does.
 | `has_backlight_level` | false (`BLT` sets a mode) | false | **true**: `BLT,,,10` High, `BLT,,,5` Low (#847) |
 | `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) | false (`ERR`) |
 | `has_service_search_groups` | true | false (no `SSG` command) | false (`ERR`) |
-| `has_search_options` | true | false (`SCO` writes rejected, incl. a write of the value it just reported — hardware 2026-09-02) | **true** |
-| `has_search_code` / `has_search_direction` | true / false (`SCO,<delay>,<code>`) | false / false | false / **true**: `SCO,<delay 0/1>,,<direction>`, reserved middle field sent empty (#879) |
+| `has_search_options` | true | true — in the three-field shape; the two-field `SCO,<delay>,<code>` replies `ERR`, which is all #638 tried (#897, `docs/wire_captures/2026-11-11/findings.md`) | true |
+| `has_search_code` / `has_search_direction` | true / false (`SCO,<delay>,<code>`) | false / true: `SCO,<delay 0/1>,,<direction>`, reserved middle field sent empty; a delay of 2 is OK'd and stored as 1 | false / true (#879); a delay of 2 is OK'd and not applied |
 | `close_call_bands` | VHF Low, Air, VHF High, UHF, 800 MHz | VHF Low, Air, VHF High, **reserved**, UHF | as BC75XLT |
 | `has_close_call_hit_scan` | true | false (`CLC` field 5 is `[RSV]`) | false |
 | `has_priority_clear` | true (`DCH`+rewrite) | false — no `DCH`, and the firmware swaps within a bank itself | false — every bank always holds one priority flag |
@@ -221,7 +221,7 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 | `PRI` | Priority mode | PRG |
 | `KBP` | Key beep + key lock | either on the BC125AT family; **PRG only** on a BC75XLT (`KBP,NG` outside), where the beep field is `[RSV]` and only the lock is settable |
 | `BLT`, `BSV`, `CNT`, `WXS` | Backlight, battery save, contrast, weather alert | either — **absent on the BC75XLT**, all reply `ERR`. On the SR30C `BSV`/`CNT`/`WXS` reply `ERR` and `BLT` is a level, `BLT,,,<n>` (10 High, 5 Low), settable in either mode |
-| `SCO` | General-search options. BC125AT `<delay>,<code search>`; SR30C `<delay 0/1>,<code search, reserved>,<direction>` | PRG (`SCO,NG` outside on the SR30C) |
+| `SCO` | General-search options. BC125AT `<delay>,<code search>`; BC75XLT and SR30C `<delay 0/1>,<code search, reserved>,<direction>` | PRG (`SCO,NG` outside on the BC75XLT and SR30C) |
 | `SSG` | Service-search avoid mask (10 chars) | PRG — **absent on the BC75XLT and SR30C**, which have service search but no way to enable a band remotely |
 | `BPL` | Band plan (USA/Canada). Where modulation lives on a BC75XLT | PRG |
 

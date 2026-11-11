@@ -7727,18 +7727,23 @@ mod tests {
     /// REGRESSION GUARD (#638): `SCO` is refused BEFORE the wire on a model
     /// that cannot take it.
     ///
-    /// The BC75XLT answers a `SCO` read but rejects every write, including a
-    /// write of the value it just reported (`SCO,1,0` -> `Err`, hardware
-    /// 2026-09-02). Same guard `set_key_beep` and `set_weather` carry.
+    /// Same guard `set_key_beep` and `set_weather` carry. No supported model
+    /// lacks search options any more -- the BC75XLT was the example here
+    /// until #897 found it takes the three-field shape -- so the descriptor
+    /// is synthetic. The refusal still guards any model added without them.
     ///
     /// "Nothing reached the wire" is asserted, not just the status: refusing
     /// after sending would still stall the PRG bracket, which is #436.
     #[tokio::test]
     async fn sco_is_refused_before_the_wire_where_the_model_cannot_take_it() {
-        use crate::protocol::capabilities::BC75XLT;
+        use crate::protocol::capabilities::{ScannerCapabilities, BC75XLT};
 
         let state = default_state();
-        state.device.write().unwrap().capabilities = Some(BC75XLT);
+        state.device.write().unwrap().capabilities = Some(ScannerCapabilities {
+            has_search_options: false,
+            has_search_direction: false,
+            ..BC75XLT
+        });
         let fake = FakeScanner::attach(&state, |command: &str| Ok(format!("{command},OK")));
 
         let response = router(state.clone())
@@ -8893,9 +8898,21 @@ mod tests {
         body: &'static str,
         sticky: bool,
     ) -> (StatusCode, Value, Vec<String>) {
-        use crate::protocol::capabilities::SR30C;
+        three_field_search_request(crate::protocol::capabilities::SR30C, method, body, sticky).await
+    }
+
+    /// A radio taking the three-field `SCO`, as the SR30C and the BC75XLT
+    /// both do: its fake stores `<delay>,,<direction>` and answers `ERR` to
+    /// the BC125AT's two-field shape, which is what each does on hardware
+    /// (#638, 2026-11-11/findings.md).
+    async fn three_field_search_request(
+        caps: crate::protocol::capabilities::ScannerCapabilities,
+        method: Method,
+        body: &'static str,
+        sticky: bool,
+    ) -> (StatusCode, Value, Vec<String>) {
         let state = default_state();
-        state.device.write().unwrap().capabilities = Some(SR30C);
+        state.device.write().unwrap().capabilities = Some(caps);
         let sco = std::sync::Arc::new(std::sync::Mutex::new("1,,0".to_string()));
         let stored = sco.clone();
         let fake = FakeScanner::attach(&state, move |cmd: &str| {
@@ -8965,6 +8982,42 @@ mod tests {
             sr30c_search_request(Method::POST, r#"{"delay":0,"direction":"Down"}"#, true).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{json}");
         assert_eq!(json["error"], "search_not_persisted");
+    }
+
+    /// REGRESSION GUARD (#897): the BC75XLT takes search options in the
+    /// three-field shape.
+    ///
+    /// #638 concluded this radio refuses every `SCO` write, but it was only
+    /// ever sent the BC125AT's two-field `SCO,<delay>,<code>`, which it does
+    /// refuse. `SCO,<delay>,,<direction>` is stored (hardware 2026-11-11,
+    /// `docs/wire_captures/2026-11-11/findings.md`). The fake answers `ERR` to
+    /// two fields, so this fails for a build that enables the setting but
+    /// sends the old shape -- the half a flag-only check would miss.
+    ///
+    /// The delay half: the radio OKs a 2 and stores 1, so a 2 is refused
+    /// before the wire, never sent and "verified" as a different value.
+    #[tokio::test]
+    async fn a_bc75xlt_search_write_uses_the_three_field_shape() {
+        use crate::protocol::capabilities::BC75XLT;
+        let (status, json, t) = three_field_search_request(
+            BC75XLT,
+            Method::POST,
+            r#"{"delay":1,"direction":"Down"}"#,
+            false,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{json}");
+        assert!(t.contains(&"SCO,1,,1".to_string()), "{t:?}");
+
+        let (status, _, t) = three_field_search_request(
+            BC75XLT,
+            Method::POST,
+            r#"{"delay":2,"direction":"Up"}"#,
+            false,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(!t.iter().any(|c| c.starts_with("SCO,")), "{t:?}");
     }
 
     // Direction is a third field the old reader dropped. Code search is
