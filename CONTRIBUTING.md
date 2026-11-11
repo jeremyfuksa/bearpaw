@@ -9,6 +9,10 @@ hardware communication, and a React frontend ([`frontend/`](frontend/)) is a
 replaceable display layer. [`CLAUDE.md`](CLAUDE.md) is the fullest map of how the
 system fits together — read it before a non-trivial change.
 
+**Looking for somewhere to start?** Issues labelled
+[help wanted](https://github.com/jeremyfuksa/bearpaw/issues?q=is%3Aissue+state%3Aopen+label%3A%22help+wanted%22) are ones an outside contributor can pick up. Right now
+that's mostly verifying a scanner model on real hardware.
+
 ## Getting set up
 
 **Backend (Rust):**

@@ -47,7 +47,8 @@ different memory:
 "Expected" means the scanner is in the same family and Bearpaw accepts it, but
 nobody has run it against real hardware yet. If you have one,
 [tell us how it went](https://github.com/jeremyfuksa/bearpaw/issues) — that's
-how the UBC125XLT moved to Verified.
+how the UBC125XLT moved to Verified. Each unverified model has an open
+[help wanted](https://github.com/jeremyfuksa/bearpaw/issues?q=is%3Aissue+state%3Aopen+label%3A%22help+wanted%22) issue that says what to test.
 
 Bearpaw adapts to whichever is plugged in. On a **BC75XLT** it shows 300
 channels in banks of 30, and hides the controls that scanner doesn't have —
