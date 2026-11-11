@@ -34,15 +34,15 @@ Bearpaw drives conventional analog Uniden handhelds — scanners with a flat
 list of channel slots that speak Uniden's ASCII serial protocol. Same protocol,
 different memory:
 
-| Scanner       | Region        | Channels | Status                                                |
-| ------------- | ------------- | -------- | ----------------------------------------------------- |
-| **BC125AT**   | US            | 500      | **Verified** — developed and tested against it        |
-| **BC75XLT**   | US            | 300      | **Verified** — tested against real hardware           |
-| **SR30C**     | US            | 500      | **Verified** — tested against real hardware           |
-| **UBC125XLT** | EU            | 500      | **Verified** — confirmed by a contributor             |
-| **BCT125AT**  | US            | 500      | Expected — same USB ID and command set as the BC125AT |
-| **UBC126AT**  | EU            | 500      | Expected — accepted by the model probe, untested      |
-| **AE125H**    | EU (Albrecht) | 500      | Expected — accepted by the model probe, untested      |
+| Scanner       | Region        | Channels | Status                                                                                                                     |
+| ------------- | ------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **BC125AT**   | US            | 500      | **Verified** — developed and tested against it                                                                             |
+| **BC75XLT**   | US            | 300      | **Verified** — tested against real hardware                                                                                |
+| **SR30C**     | US            | 500      | **Verified** — tested against real hardware                                                                                |
+| **UBC125XLT** | EU            | 500      | **Verified** — confirmed by a contributor; [a few checks remain](https://github.com/jeremyfuksa/bearpaw/issues/865)        |
+| **BCT125AT**  | US            | 500      | Expected — same USB ID and command set as the BC125AT; [help verify it](https://github.com/jeremyfuksa/bearpaw/issues/866) |
+| **UBC126AT**  | EU            | 500      | Expected — accepted by the model probe, untested; [help verify it](https://github.com/jeremyfuksa/bearpaw/issues/867)      |
+| **AE125H**    | EU (Albrecht) | 500      | Expected — accepted by the model probe, untested; [help verify it](https://github.com/jeremyfuksa/bearpaw/issues/868)      |
 
 "Expected" means the scanner is in the same family and Bearpaw accepts it, but
 nobody has run it against real hardware yet. If you have one,
