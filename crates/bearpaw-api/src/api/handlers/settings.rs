@@ -382,6 +382,24 @@ pub(crate) async fn set_priority(
     Ok(Json(json!({ "status": "ok" })))
 }
 
+/// An `SCO` read as the settings JSON, or `None` when the delay is unreadable.
+///
+/// Two shapes, told apart by field count, never by model: the BC125AT's
+/// `<delay>,<code search>` and the SR30C's (and BC75XLT's)
+/// `<delay>,<code search, reserved>,<direction>`, where `0` = Up and `1` =
+/// Down (#879, sr30c-findings.md §4). `direction` is `null` on a two-field
+/// radio. Shared by `get_search` and the settings snapshot so the two reads
+/// cannot disagree about what the third field means.
+pub(crate) fn search_json(parts: &[String]) -> Option<Value> {
+    let delay = parts.first()?.parse::<i32>().ok()?;
+    let direction = parts.get(2).map(|d| if d == "1" { "Down" } else { "Up" });
+    Some(json!({
+        "delay": delay,
+        "code_search": parts.get(1).map(|s| s == "1").unwrap_or(false),
+        "direction": direction,
+    }))
+}
+
 pub(crate) async fn get_search(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let _ = command_sender(&state)?;
     if command_sender(&state).is_ok() {
@@ -390,12 +408,7 @@ pub(crate) async fn get_search(State(state): State<AppState>) -> Result<Json<Val
             let response = send_raw_command(&state, "SCO", false).await;
             let response = response?;
             let parts = parse_command_parts(&response, "SCO");
-            let delay = parts
-                .first()
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(0);
-            let code_search = parts.get(1).map(|s| s == "1").unwrap_or(false);
-            Ok::<Value, ApiError>(json!({ "delay": delay, "code_search": code_search }))
+            search_json(&parts).ok_or_else(|| ApiError::BadRequest("sco_read_failed".to_string()))
         }
         .await;
         if let Ok(value) = result {
@@ -425,26 +438,38 @@ pub(crate) async fn set_search(
             "search_options_unsupported".to_string(),
         ));
     }
+    let caps = state.capabilities();
     // Validate before narrowing — a large i64 could wrap into a valid i32
-    // delay. #143.
+    // delay. #143. The allowed set is the model's: signed seconds on the
+    // BC125AT family, a boolean on the SR30C, which answers OK to a 2 and
+    // does not apply it (sr30c-findings.md §4).
     let delay = body
         .get("delay")
         .and_then(Value::as_i64)
-        .filter(|&v| matches!(v, -10 | -5 | 0 | 1 | 2 | 3 | 4 | 5))
+        .filter(|&v| caps.valid_delays.iter().any(|&d| i64::from(d) == v))
         .ok_or_else(|| ApiError::BadRequest("search_delay_invalid".to_string()))?
         as i32;
     let code_search = body
         .get("code_search")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    // The three-field shape (#879): `<delay>,<code search, reserved>,
+    // <direction>`. The reserved field goes out EMPTY, which means "leave
+    // unchanged" -- a value in it risks the format error that aborts the
+    // whole command (CLAUDE.md pitfall #9, one layer up).
+    let write = if caps.has_search_direction {
+        let direction = match body.get("direction").and_then(Value::as_str) {
+            Some(d) if d.eq_ignore_ascii_case("Up") => 0,
+            Some(d) if d.eq_ignore_ascii_case("Down") => 1,
+            _ => return Err(ApiError::BadRequest("search_direction_invalid".to_string())),
+        };
+        format!("SCO,{delay},,{direction}")
+    } else {
+        format!("SCO,{},{}", delay, if code_search { 1 } else { 0 })
+    };
     if command_sender(&state).is_ok() {
         let _prg = ProgramModeGuard::enter(&state).await?;
-        let response = send_raw_command(
-            &state,
-            &format!("SCO,{},{}", delay, if code_search { 1 } else { 0 }),
-            false,
-        )
-        .await;
+        let response = send_raw_command(&state, &write, false).await;
         let response = response?;
         // REGRESSION GUARD (`a_rejected_sco_write_is_not_success`): the old
         // check was `upper.starts_with("SCO,")`, which `SCO,ERR` satisfies --
@@ -463,6 +488,15 @@ pub(crate) async fn set_search(
             ScannerReply::Err | ScannerReply::Ng
         ) {
             return Err(ApiError::BadRequest("search_failed".to_string()));
+        }
+        // On the three-field radio `OK` is not proof: it OKs a value it then
+        // ignores. The read-back is. (The two-field path is left as it was:
+        // there is no BC125AT on the bench to establish its read-back.)
+        if caps.has_search_direction {
+            let read = send_raw_command(&state, "SCO", false).await?;
+            if parse_command_parts(&read, "SCO").join(",") != write.trim_start_matches("SCO,") {
+                return Err(ApiError::BadRequest("search_not_persisted".to_string()));
+            }
         }
     }
     set_setting_section(&state, "search", body);

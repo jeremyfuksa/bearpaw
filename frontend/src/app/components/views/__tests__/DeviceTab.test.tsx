@@ -515,6 +515,46 @@ describe('DeviceTab', () => {
     });
   });
 
+  // #879: the SR30C's `SCO` is delay (boolean) + direction, with code search
+  // reserved. It has no Service Search page (no `SSG`), so the block shows on
+  // Custom Search instead.
+  describe('Search Settings on an SR30C (#879)', () => {
+    it('offers delay on/off and direction on Custom Search, not code search', async () => {
+      mockApiClient.setSearchSettings = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: SR30C_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
+
+      expect(screen.getByRole('heading', { name: /Search Settings/i })).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: /Search Delay/i })).toBeInTheDocument();
+      expect(screen.queryByRole('slider', { name: /Search Delay/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: /Code Search/i })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('combobox', { name: /Search Direction/i }));
+      await userEvent.click(screen.getByRole('option', { name: 'Down' }));
+      expect(mockApiClient.setSearchSettings).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Boolean),
+        'Down',
+      );
+    });
+
+    // Paired: the BC125AT keeps its controls on Service Search, unchanged,
+    // and Custom Search does not grow a second copy.
+    it('leaves a BC125AT with code search and the slider, on Service Search only', async () => {
+      renderDeviceTab();
+      await selectCategory(/Custom Search/i);
+      expect(screen.queryByRole('heading', { name: /Search Settings/i })).not.toBeInTheDocument();
+
+      await selectCategory(/Service Search/i);
+      expect(screen.getByRole('switch', { name: /Code Search/i })).toBeInTheDocument();
+      expect(screen.getByRole('slider', { name: /Search Delay/i })).toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: /Search Direction/i })).not.toBeInTheDocument();
+    });
+  });
+
   describe('Custom Search category', () => {
     it('should toggle search range enable', async () => {
       mockApiClient.setCustomSearchSettings = vi.fn().mockResolvedValue(undefined);

@@ -32,6 +32,8 @@ export const DEFAULT_CAPABILITIES: ScannerCapabilities = {
   has_weather_alert: true,
   has_service_search_groups: true,
   has_search_options: true,
+  has_search_code: true,
+  has_search_direction: false,
   close_call_bands: ['VHF Low', 'Air', 'VHF High', 'UHF', '800 MHz'],
   has_close_call_hit_scan: true,
   has_priority_clear: true,

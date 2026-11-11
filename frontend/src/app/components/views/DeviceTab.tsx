@@ -21,7 +21,7 @@ import { bankLabel } from '../../../lib/bankNames';
 import { openExternalUrl, revealLogs, isTauriRuntime } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
-import type { BacklightLevel } from '../../../types';
+import type { BacklightLevel, SearchDirection } from '../../../types';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
@@ -324,6 +324,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   );
   const [searchDelay, setSearchDelay] = useState(3);
   const [codeSearchEnabled, setCodeSearchEnabled] = useState(false);
+  const [searchDirection, setSearchDirection] = useState<SearchDirection>('Up');
 
   // Custom Search Settings.
   //
@@ -510,6 +511,9 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         if (settings.search) {
           setSearchDelay(settings.search.delay);
           setCodeSearchEnabled(settings.search.code_search);
+          if (settings.search.direction) {
+            setSearchDirection(settings.search.direction);
+          }
         }
 
         // Populate custom search settings and ranges
@@ -935,31 +939,53 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     [api, serviceSearchGroups],
   );
 
+  // A three-field `SCO` (the SR30C) needs the direction on every write; a
+  // two-field one ignores it (#879).
+  const directionArg = capabilities.has_search_direction ? searchDirection : undefined;
+  const searchDelayIsBoolean =
+    capabilities.valid_delays.length === 2 &&
+    capabilities.valid_delays.includes(0) &&
+    capabilities.valid_delays.includes(1);
+
   const handleSearchDelayChange = useCallback(
     async (value: number[]) => {
       const delay = value[0];
       setSearchDelay(delay);
       try {
-        await api.setSearchSettings(delay, codeSearchEnabled);
+        await api.setSearchSettings(delay, codeSearchEnabled, directionArg);
       } catch (error) {
         console.error('Failed to set search delay', error);
         toast.error('Failed to set search delay');
       }
     },
-    [api, codeSearchEnabled],
+    [api, codeSearchEnabled, directionArg],
   );
 
   const handleCodeSearchToggle = useCallback(
     async (checked: boolean) => {
       setCodeSearchEnabled(checked);
       try {
-        await api.setSearchSettings(searchDelay, checked);
+        await api.setSearchSettings(searchDelay, checked, directionArg);
       } catch (error) {
         console.error('Failed to toggle code search', error);
         toast.error('Failed to toggle code search');
       }
     },
-    [api, searchDelay],
+    [api, searchDelay, directionArg],
+  );
+
+  const handleSearchDirectionChange = useCallback(
+    async (value: string) => {
+      const direction = value as SearchDirection;
+      setSearchDirection(direction);
+      try {
+        await api.setSearchSettings(searchDelay, codeSearchEnabled, direction);
+      } catch (error) {
+        console.error('Failed to set search direction', error);
+        toast.error('Failed to set search direction');
+      }
+    },
+    [api, searchDelay, codeSearchEnabled],
   );
 
   const toggleRange = useCallback(
@@ -1006,6 +1032,84 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   const activeRangeCount = searchRanges.filter((r) => r.enabled).length;
 
   const volume = liveState?.volume ?? 0;
+
+  // `SCO` is the GENERAL search's options, not service search's. It sits
+  // on the Service Search page where that page exists; a scanner without
+  // `SSG` (the SR30C) has no such page, so it shows on Custom Search
+  // instead -- one block, rendered in one of two places (#879).
+  const searchSettingsBlock = capabilities.has_search_options ? (
+    <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
+      <h3 className="text-base font-bold text-white">Search Settings</h3>
+
+      {/* Code search is reserved in the SR30C's `SCO` (#879). */}
+      {capabilities.has_search_code && (
+        <div className="flex items-center justify-between">
+          <label htmlFor="code-search" className="text-base font-medium text-white/70">
+            Code Search
+          </label>
+          <Switch
+            id="code-search"
+            className="data-[state=checked]:bg-brand-primary"
+            checked={codeSearchEnabled}
+            onCheckedChange={handleCodeSearchToggle}
+          />
+        </div>
+      )}
+
+      {/* A model whose delay is a boolean (`valid_delays` [0, 1]:
+                    the SR30C's fixed 2-second delay, on or off) gets a switch;
+                    a 0–5 s slider there would offer values it OKs and ignores. */}
+      {searchDelayIsBoolean ? (
+        <div className="flex items-center justify-between">
+          <label htmlFor="search-delay" className="text-base font-medium text-white/70">
+            Search Delay
+          </label>
+          <Switch
+            id="search-delay"
+            className="data-[state=checked]:bg-brand-primary"
+            checked={searchDelay !== 0}
+            onCheckedChange={(checked) => handleSearchDelayChange([checked ? 1 : 0])}
+          />
+        </div>
+      ) : (
+        <div>
+          <div className="flex justify-between text-sm font-medium text-white/70 mb-2">
+            {/* Radix puts an id on the slider Root, not the role=slider
+                          thumb, so htmlFor can't target it — name via aria-label. */}
+            <span>Search Delay</span>
+            <span className="text-white">{searchDelay}s</span>
+          </div>
+          <Slider
+            aria-label="Search Delay"
+            min={0}
+            max={5}
+            step={1}
+            value={[searchDelay]}
+            onValueChange={handleSearchDelayChange}
+            className="w-full"
+          />
+        </div>
+      )}
+
+      {capabilities.has_search_direction && (
+        <div className="flex items-center justify-between">
+          <span className="text-base font-medium text-white/70">Search Direction</span>
+          <Select value={searchDirection} onValueChange={handleSearchDirectionChange}>
+            <SelectTrigger
+              aria-label="Search Direction"
+              className="scanner-input h-7 w-[var(--size-select-wide)] text-sm"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="scanner-select-content">
+              <SelectItem value="Up">Up</SelectItem>
+              <SelectItem value="Down">Down</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>
+  ) : null;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full gap-6">
@@ -1789,41 +1893,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   A greyed-out control the scanner cannot honour is noise; an
                   absent one asks no questions. See CLAUDE.md frontend pitfall
                   #5 and #638. */}
-              {capabilities.has_search_options && (
-                <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
-                  <h3 className="text-base font-bold text-white">Search Settings</h3>
-
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="code-search" className="text-base font-medium text-white/70">
-                      Code Search
-                    </label>
-                    <Switch
-                      id="code-search"
-                      className="data-[state=checked]:bg-brand-primary"
-                      checked={codeSearchEnabled}
-                      onCheckedChange={handleCodeSearchToggle}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-sm font-medium text-white/70 mb-2">
-                      {/* Radix puts an id on the slider Root, not the role=slider
-                        thumb, so htmlFor can't target it — name via aria-label. */}
-                      <span>Search Delay</span>
-                      <span className="text-white">{searchDelay}s</span>
-                    </div>
-                    <Slider
-                      aria-label="Search Delay"
-                      min={0}
-                      max={5}
-                      step={1}
-                      value={[searchDelay]}
-                      onValueChange={handleSearchDelayChange}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              )}
+              {searchSettingsBlock}
             </div>
           </div>
         )}
@@ -1924,6 +1994,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 ))}
               </div>
             </div>
+            {!capabilities.has_service_search_groups && searchSettingsBlock}
             {editingRange && (
               <SearchRangeEditSheet
                 index={editingRange.id}
