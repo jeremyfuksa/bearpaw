@@ -9,7 +9,7 @@
 
 **A desktop control interface for supported Uniden analog handheld scanners.**
 
-Bearpaw puts your BC125AT-family or BC75XLT scanner on your computer screen. See
+Bearpaw puts your BC125AT-family, BC75XLT or SR30C scanner on your computer screen. See
 what the scanner sees: the live frequency, alpha tag when the model supports
 one, and signal strength, in a display big enough to read across the room. Edit
 the scanner's full 300- or 500-channel memory without its keypad, and move it in
@@ -31,13 +31,14 @@ USB cable, and runs live while you're listening, on macOS, Windows, and Linux.
 ## Supported scanners
 
 Bearpaw drives conventional analog Uniden handhelds — scanners with a flat
-list of channel slots that speak Uniden's ASCII serial protocol. Two families,
-same protocol, different memory:
+list of channel slots that speak Uniden's ASCII serial protocol. Same protocol,
+different memory:
 
 | Scanner       | Region        | Channels | Status                                                |
 | ------------- | ------------- | -------- | ----------------------------------------------------- |
 | **BC125AT**   | US            | 500      | **Verified** — developed and tested against it        |
 | **BC75XLT**   | US            | 300      | **Verified** — tested against real hardware           |
+| **SR30C**     | US            | 500      | **Verified** — tested against real hardware           |
 | **UBC125XLT** | EU            | 500      | **Verified** — confirmed by a contributor             |
 | **BCT125AT**  | US            | 500      | Expected — same USB ID and command set as the BC125AT |
 | **UBC126AT**  | EU            | 500      | Expected — accepted by the model probe, untested      |
@@ -54,6 +55,12 @@ alpha tags, per-channel modulation and tone, backlight, battery save, contrast,
 and weather alert are all absent from its hardware, so they're absent from the
 interface too. Nothing to configure: it's detected automatically, including its
 different serial speed.
+
+The **SR30C** is a BC75XLT with 500 channels in banks of 50. It shows the same
+reduced set of channel columns, plus two settings the BC75XLT can't take from a
+computer: backlight brightness (High or Low) and search delay and direction.
+It has its own Uniden settings file (`.sr30c_ss`), which Bearpaw reads and
+writes.
 
 **Not supported:** trunking scanners (BC346XT, BCD396XT, BCD996XT, and the rest
 of the TrunkTracker line). They organize memory as systems, sites, and groups

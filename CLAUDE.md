@@ -4,10 +4,11 @@ Guidance for Claude Code (claude.ai/code) working in this repo.
 
 ## Project overview
 
-Bearpaw is a desktop control interface for Uniden handheld scanners. It drives **two families** that speak the same wire protocol with different memory models:
+Bearpaw is a desktop control interface for Uniden handheld scanners. It drives **three memory models** that speak the same wire protocol:
 
 - **BC125AT family** — BC125AT, BCT125AT, UBC125XLT, UBC126AT, AE125H. 500 channels in 10 banks of 50, alpha tags, per-channel modulation and tone, signed delay, 115200 baud.
 - **BC75XLT** — 300 channels in 10 banks of 30, no alpha tags, no per-channel modulation or tone (those `CIN` fields are `[RSV]`), boolean delay, 57600 baud behind a CP210x bridge.
+- **SR30C** — a BC75XLT with 500 channels in 10 banks of 50: same CP210x bridge, baud and `[RSV]` `CIN` fields. It adds a settable backlight level (`BLT,,,<n>`) and settable search options (`SCO`, three fields), and has its own `.sr30c_ss` settings file. Evidence: [`docs/wire_captures/2026-11-10/sr30c-findings.md`](docs/wire_captures/2026-11-10/sr30c-findings.md).
 
 Anything model-specific reads [`ScannerCapabilities`](crates/bearpaw-api/src/protocol/capabilities.rs) rather than hardcoding a constant — see **Scanner capabilities** below.
 
@@ -64,36 +65,39 @@ npm run tauri:build      # bundle for release
 
 ### 0. Scanner capabilities
 
-Two families, same wire protocol, different memory models. Every model-specific
+Three memory models, same wire protocol. Every model-specific
 fact lives in one descriptor — [`ScannerCapabilities`](crates/bearpaw-api/src/protocol/capabilities.rs) —
 resolved from the `MDL` reply at connect and stored on `DeviceInfo`, so model and
-capabilities are always read under one lock.
+capabilities are always read under one lock. The SR30C's descriptor is the
+BC75XLT's plus overrides (`..BC75XLT`), so its column differs only where the
+radio does.
 
-| Field | BC125AT family | BC75XLT |
-|---|---|---|
-| `channel_count` | 500 | 300 |
-| `channels_per_bank` | 50 | 30 |
-| `bank_count` | 10 | 10 |
-| `has_alpha_tags` | true | false (`CIN` field is `[RSV]`) |
-| `has_per_channel_modulation` | true | false (global `BPL` band plan) |
-| `has_tone_squelch` | true | false (`[RSV]`) |
-| `has_backlight_control` | true | false (no `BLT` command) |
-| `has_backlight_level` | false (`BLT` sets a mode) | false — true only on the SR30C, whose `BLT,,,10`/`BLT,,,5` set High/Low (#847) |
-| `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) |
-| `has_service_search_groups` | true | false (no `SSG` command) |
-| `has_search_options` | true | false (`SCO` writes rejected, incl. a write of the value it just reported — hardware 2026-09-02) |
-| `has_search_code` / `has_search_direction` | true / false (`SCO,<delay>,<code>`) | false / false — the SR30C is false / true: `SCO,<delay 0/1>,,<direction>`, reserved middle field sent empty (#879) |
-| `close_call_bands` | VHF Low, Air, VHF High, UHF, 800 MHz | VHF Low, Air, VHF High, **reserved**, UHF |
-| `has_close_call_hit_scan` | true | false (`CLC` field 5 is `[RSV]`) |
-| `has_priority_clear` | true (`DCH`+rewrite) | false — no `DCH`, and the firmware swaps within a bank itself |
-| `has_key_beep` | true | false (`KBP` beep field is `[RSV]`) |
-| `key_beep_needs_program_mode` | false | true (`KBP,NG` outside PRG) |
-| `valid_delays` | `-10,-5,0,1,2,3,4,5` (seconds) | `0,1` (boolean) |
-| `cleared_delay` | 2 | 0 |
-| `has_unique_usb_serial` | false (every unit reports `0001`) | true (per-unit CP2104) |
-| `default_baud` | 115200 | 57600 |
-| `coverage_bands` | 25–54, 108–174, 225–380, 400–512 (UBC125XLT and AE125H: 25–88, 108–174, 225–512, 806–960; UBC126AT: 25–88, 108–174, 225–520, 806–960) | 25–54, 108–174, 406–512 |
-| `pwr_bands` | empty (bars come from `STS` `SIG_LVL`) | `PWR` floor/top per band: air 371/430, VHF 337/431, UHF 225/403; none for 25–54 (`docs/wire_captures/2026-11-10/findings.md`) |
+| Field | BC125AT family | BC75XLT | SR30C |
+|---|---|---|---|
+| `channel_count` | 500 | 300 | 500 |
+| `channels_per_bank` | 50 | 30 | 50 |
+| `bank_count` | 10 | 10 | 10 |
+| `has_alpha_tags` | true | false (`CIN` field is `[RSV]`) | false (written, dropped, `CIN,OK`) |
+| `has_per_channel_modulation` | true | false (global `BPL` band plan) | false |
+| `has_tone_squelch` | true | false (`[RSV]`) | false |
+| `has_backlight_control` | true | false (no `BLT` command) | false (`BLT` sets a level, not a mode) |
+| `has_backlight_level` | false (`BLT` sets a mode) | false | **true**: `BLT,,,10` High, `BLT,,,5` Low (#847) |
+| `has_battery_save` / `has_contrast` / `has_weather_alert` | true | false (`ERR`) | false (`ERR`) |
+| `has_service_search_groups` | true | false (no `SSG` command) | false (`ERR`) |
+| `has_search_options` | true | false (`SCO` writes rejected, incl. a write of the value it just reported — hardware 2026-09-02) | **true** |
+| `has_search_code` / `has_search_direction` | true / false (`SCO,<delay>,<code>`) | false / false | false / **true**: `SCO,<delay 0/1>,,<direction>`, reserved middle field sent empty (#879) |
+| `close_call_bands` | VHF Low, Air, VHF High, UHF, 800 MHz | VHF Low, Air, VHF High, **reserved**, UHF | as BC75XLT |
+| `has_close_call_hit_scan` | true | false (`CLC` field 5 is `[RSV]`) | false |
+| `has_priority_clear` | true (`DCH`+rewrite) | false — no `DCH`, and the firmware swaps within a bank itself | false — every bank always holds one priority flag |
+| `has_key_beep` | true | false (`KBP` beep field is `[RSV]`) | false |
+| `key_beep_needs_program_mode` | false | true (`KBP,NG` outside PRG) | true |
+| `valid_delays` | `-10,-5,0,1,2,3,4,5` (seconds) | `0,1` (boolean) | `0,1` (a `2` is OK'd and not applied) |
+| `cleared_delay` | 2 | 0 | 0 |
+| `has_unique_usb_serial` | false (every unit reports `0001`) | true (per-unit CP2104) | true |
+| `default_baud` | 115200 | 57600 | 57600 |
+| `ss_format` | `bc125at` | `bc75xlt` | `sr30c` (delay column follows the radio; `Misc` adds the backlight level) |
+| `coverage_bands` | 25–54, 108–174, 225–380, 400–512 (UBC125XLT and AE125H: 25–88, 108–174, 225–512, 806–960; UBC126AT: 25–88, 108–174, 225–520, 806–960) | 25–54, 108–174, 406–512 | 25–54, 108–174, 406–512 (an out-of-coverage `CIN` write is OK'd and dropped) |
+| `pwr_bands` | empty (bars come from `STS` `SIG_LVL`) | `PWR` floor/top per band: air 371/430, VHF 337/431, UHF 225/403; none for 25–54 (`docs/wire_captures/2026-11-10/findings.md`) | air 353/450, VHF 317/449; none for UHF or 25–54 yet (#886, `sr30c-findings.md` §7) |
 
 **Rules:**
 
@@ -128,7 +132,7 @@ file. A hand-written fixture would pass whether or not it matched.
 - Live tone fields, populated only during a hit (`None` while squelch is closed): `tone_squelch_kind`, `tone_squelch`, `tone_dcs_code`, `tone_dcs_label`.
 - Updated by the poll loop in [`crates/bearpaw-api/src/api/poll.rs`](crates/bearpaw-api/src/api/poll.rs).
 
-**Channel memory** — every channel read once during memory sync via `PRG` → `CIN,1` … `CIN,<channel_count>` → `EPG` (500 on the BC125AT family, 300 on a BC75XLT — the bound comes from `ScannerCapabilities`, not a constant). Cached in `AppState.shadow` (`ShadowState.channels`) and **persisted to SQLite** since #413 ([`channel_cache.rs`](crates/bearpaw-api/src/api/channel_cache.rs)), so a restart adopts the previous session's channels at connect instead of paying the walk again. The cache is a **read accelerator, not the source of truth** — the scanner is the truth, every user write reaches hardware first, and nothing may write to the cache and upload later. See **Channel-memory cache** below.
+**Channel memory** — every channel read once during memory sync via `PRG` → `CIN,1` … `CIN,<channel_count>` → `EPG` (500 on the BC125AT family and the SR30C, 300 on a BC75XLT — the bound comes from `ScannerCapabilities`, not a constant). Cached in `AppState.shadow` (`ShadowState.channels`) and **persisted to SQLite** since #413 ([`channel_cache.rs`](crates/bearpaw-api/src/api/channel_cache.rs)), so a restart adopts the previous session's channels at connect instead of paying the walk again. The cache is a **read accelerator, not the source of truth** — the scanner is the truth, every user write reaches hardware first, and nothing may write to the cache and upload later. See **Channel-memory cache** below.
 
 **`DeviceInfo`** — static metadata: model name (from `MDL`), port, connection_status. Same module.
 
@@ -195,7 +199,7 @@ The connection-status enum (`'connected' | 'connecting' | 'disconnected'`) is de
 
 ## Wire protocol
 
-The BC125AT speaks an ASCII line protocol over USB CDC-ACM at 115200 8N1, `\r`-terminated. **The BC75XLT speaks the same protocol at 57600** behind a CP210x bridge — autodetect probes both rates (see `docs/wire_captures/2026-08-26/bc75xlt-compatibility.md`). See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the canonical wire shape and the audit history. Real wire captures live in [`docs/wire_captures/`](docs/wire_captures/) (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`).
+The BC125AT speaks an ASCII line protocol over USB CDC-ACM at 115200 8N1, `\r`-terminated. **The BC75XLT and SR30C speak the same protocol at 57600** behind a CP210x bridge — autodetect probes both rates (see `docs/wire_captures/2026-08-26/bc75xlt-compatibility.md` and `docs/wire_captures/2026-11-10/sr30c-findings.md`). **On the SR30C, `OK` does not prove a write:** it answers `OK` while dropping a reserved field, a `CIN` delay or `SCO` delay of 2, or an out-of-coverage frequency, so its write paths verify by read-back. See [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) for the canonical wire shape and the audit history. Real wire captures live in [`docs/wire_captures/`](docs/wire_captures/) (`2026-05-21/`, `2026-05-22/`, `2026-07-08/`).
 
 **Captures win.** When a reference doc — including the decompiled [`docs/BC125AT_PROTOCOL.md`](docs/BC125AT_PROTOCOL.md) — disagrees with the wire captures from this hardware, the captures are authoritative. Don't "fix" working code to match a reference; document the disagreement instead (see `docs/wire_captures/2026-05-21/audit-reconciliation.md` for prior reconciliations).
 
@@ -203,7 +207,7 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 
 | Cmd | Purpose | Mode |
 |---|---|---|
-| `MDL` | Model probe — must reply `MDL,BC125AT` (or BCT125AT, UBC125XLT, UBC126AT, AE125H, BC75XLT) | any |
+| `MDL` | Model probe — must reply `MDL,BC125AT` (or BCT125AT, UBC125XLT, UBC126AT, AE125H, BC75XLT, SR30C) | any |
 | `VER` | Firmware version | any |
 | `STS` | LCD dump + status flags | any |
 | `GLG` | Canonical live frequency/mod/tone/name/squelch | any |
@@ -216,8 +220,9 @@ Commonly used commands (all implemented in [`crates/bearpaw-api/src/protocol/mod
 | `VOL`, `SQL` | Volume / squelch | any |
 | `PRI` | Priority mode | PRG |
 | `KBP` | Key beep + key lock | either on the BC125AT family; **PRG only** on a BC75XLT (`KBP,NG` outside), where the beep field is `[RSV]` and only the lock is settable |
-| `BLT`, `BSV`, `CNT`, `WXS` | Backlight, battery save, contrast, weather alert | either — **absent on the BC75XLT**, all reply `ERR` |
-| `SSG` | Service-search avoid mask (10 chars) | PRG — **absent on the BC75XLT**, which has service search but no way to enable a band remotely |
+| `BLT`, `BSV`, `CNT`, `WXS` | Backlight, battery save, contrast, weather alert | either — **absent on the BC75XLT**, all reply `ERR`. On the SR30C `BSV`/`CNT`/`WXS` reply `ERR` and `BLT` is a level, `BLT,,,<n>` (10 High, 5 Low), settable in either mode |
+| `SCO` | General-search options. BC125AT `<delay>,<code search>`; SR30C `<delay 0/1>,<code search, reserved>,<direction>` | PRG (`SCO,NG` outside on the SR30C) |
+| `SSG` | Service-search avoid mask (10 chars) | PRG — **absent on the BC75XLT and SR30C**, which have service search but no way to enable a band remotely |
 | `BPL` | Band plan (USA/Canada). Where modulation lives on a BC75XLT | PRG |
 
 CTCSS/DCS codes (0–231) are decoded to Hz in [`crates/bearpaw-api/src/protocol/tones.rs`](crates/bearpaw-api/src/protocol/tones.rs).
@@ -235,7 +240,7 @@ The poll loop dispatches to the right transport based on whether the resolved po
 
 `./config.yaml` at repo root (gitignored). Example in [`crates/bearpaw-api/config.example.yaml`](crates/bearpaw-api/config.example.yaml).
 
-**Neither scanner needs a config file.** Autodetect finds both: the BC125AT family via the direct-USB probe, the BC75XLT via its CP210x serial node, probing 115200 and 57600 in turn.
+**No scanner needs a config file.** Autodetect finds all of them: the BC125AT family via the direct-USB probe, the BC75XLT and SR30C via their CP210x serial nodes, probing 115200 and 57600 in turn.
 
 Minimal macOS config, if you want to pin the BC125AT-family path explicitly:
 
@@ -324,10 +329,10 @@ Gated by the `check_updates_on_launch` preference (default `true`, toggled on th
 4. **`STS` field count varies by firmware.** Use tail-anchored field finding (already done in `parse_sts_response`).
 5. **`SQL=1` means squelch OPEN** (signal present). Inverted from intuition.
 6. **`mode` is not a wire field.** Track it from user commands as `commanded_mode`.
-7. **Bank masks: `'1'` means disabled**, `'0'` means enabled. Counter-intuitive. An all-disabled mask is refused by the scanner — reject it before the wire.
+7. **Bank masks: `'1'` means disabled**, `'0'` means enabled. Counter-intuitive. Reject an all-disabled mask before the wire: the owner's manuals say one bank must stay enabled. Do not cite "the scanner refuses it" as the reason — an SR30C stores `SCG,1111111111` (sr30c-findings.md §4). And in a `.ss` file the bank flag is a LOCKOUT, `On` = disabled (#881).
 8. **A `CIN` format error aborts the WHOLE write.** One bad field discards the frequency, lockout, and priority in the same command. Validate before sending; never send-and-hope.
 9. **Reserved `CIN` fields go out EMPTY.** An empty field means "leave unchanged"; writing a value into a `[RSV]` slot risks the format error in #8.
-10. **Never hardcode 500 / 50 / 115200 / delay 2.** Read `ScannerCapabilities`. The BC75XLT differs on every one of them.
+10. **Never hardcode 500 / 50 / 115200 / delay 2.** Read `ScannerCapabilities`. The BC75XLT differs on every one of them, and the SR30C on all but the first two.
 11. **The first command after a fresh open can return `ERR`.** A CP210x bridge buffers whatever was on the line. Retry — `probe_mdl_on_port` and the poll loop both do.
 12. **One scanner can present as four serial nodes** (two drivers × `cu.`/`tty.`). Dedupe on `(vid, pid, serial)`. Never probe a `/dev/tty.*` node — it blocks on carrier detect, which a scanner never asserts.
 
@@ -343,7 +348,7 @@ Gated by the `check_updates_on_launch` preference (default `true`, toggled on th
 
 **BC125AT family** — enumerates at USB level (visible in `ioreg` with VID/PID `0x1965:0x0017`) but the kernel CDC-ACM driver never binds, so `/dev/cu.usbmodem*` never appears. Configure `usb_vid`/`usb_pid` in `config.yaml` to force the `rusb` direct-USB path, or let autodetect find it.
 
-**BC75XLT** — sits behind a Silicon Labs CP2104 bridge (`0x10C4:0xEA60`), and that driver *does* bind, so ordinary serial works. It needs no config: autodetect probes both 115200 and 57600.
+**BC75XLT** and **SR30C** — sit behind a Silicon Labs CP2104 bridge (`0x10C4:0xEA60`), and that driver *does* bind, so ordinary serial works. They need no config: autodetect probes both 115200 and 57600. Do not set `usb_vid`/`usb_pid` for either.
 
 This resolves a long-standing note in [`docs/SCANNER_PROTOCOL_REFERENCE.md`](docs/SCANNER_PROTOCOL_REFERENCE.md) about reference docs claiming a CP210x VID/PID. Both are right — different models, different bridges.
 
@@ -500,6 +505,9 @@ Reading all 500 channels takes **~5 s** on a BC125AT over the macOS direct-USB p
 Reading all 300 channels takes **~4 s** on a BC75XLT at 57600 through its CP210x serial
 bridge on macOS (4.1 s, measured once, 2026-10-15, same method). One sample: re-measure
 before relying on it for anything tighter than "a few seconds".
+
+Reading all 500 channels takes **~6 s** on an SR30C at 57600 through its CP2104 (5.7 s,
+measured once, 2026-11-10, POST to `in_progress:false`). Also one sample.
 
 Why it is not instant:
 - Each channel is one `CIN,N` round-trip inside the PRG bracket.
