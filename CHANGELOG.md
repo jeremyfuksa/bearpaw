@@ -28,6 +28,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Bearpaw no longer drives a scanner it doesn't know.** Some models Bearpaw
+  doesn't support could still connect, on a Mac on their own, and Bearpaw
+  then read and wrote their memory as if they were a BC125AT. It now sends
+  them no commands at all, so nothing is changed and no memory sync runs. On
+  an SDS150, that sync could leave the radio stuck until it was switched off
+  and on again.
 - **A BC75XLT's search settings can be changed.** Bearpaw hid search delay
   and direction on a BC75XLT because the radio seemed to refuse them, but it
   had been sent the wrong command shape. They're now on the Custom Search page,

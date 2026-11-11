@@ -72,7 +72,8 @@ pub(crate) const ACCEPTED_MDL_MODELS: &[&str] = &[
 /// An unlisted scanner is allowed to connect but flagged with an
 /// `unsupported_model` diagnostic (#396), and it inherits BC125AT-family
 /// capabilities by fallback -- so this list is what separates "we know this
-/// hardware" from "we are guessing".
+/// hardware" from "we are guessing". A guess is never acted on: no handler
+/// sends an unlisted scanner anything (`AppState::model_is_unlisted`, #893).
 pub fn is_supported_model(model: &str) -> bool {
     ACCEPTED_MDL_MODELS
         .iter()

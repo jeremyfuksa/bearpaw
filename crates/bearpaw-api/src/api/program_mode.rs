@@ -66,6 +66,15 @@ impl ProgramModeGuard {
     /// Conflict here lets the frontend retry once the sync finishes. A sync
     /// sets `program_mode_active` too, and is not a bracket anyone may join.
     pub async fn enter(state: &AppState) -> Result<Self, ApiError> {
+        // REGRESSION GUARD (#893, `an_unlisted_scanner_cannot_open_program_mode`,
+        // `a_listed_scanner_still_opens_program_mode`): every write that needs
+        // program mode passes through here, so this one refusal makes an
+        // unlisted scanner read-only. Its capabilities are a BC125AT guess,
+        // and an SDS150 given `PRG` wedges until a power cycle. Before any
+        // wire traffic, and before the opening lock, so nothing waits on it.
+        if state.model_is_unlisted() {
+            return Err(ApiError::BadRequest("unsupported_model".to_string()));
+        }
         // Held until the PRG is answered and settled: a second caller must not
         // join a bracket that is not open yet.
         let _opening = state.program_mode_opening.lock().await;
