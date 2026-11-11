@@ -30,6 +30,7 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
     info: vi.fn(),
     loading: vi.fn(() => 'toast-id'),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -835,6 +836,10 @@ describe('ChannelsTab', () => {
         expect(saveExport).toHaveBeenCalledWith('scanner.sr30c_ss', expect.any(Uint8Array));
       });
       expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/memory/export/sr30c_ss'));
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith('Exported SR30C settings file'),
+      );
+      expect(toast.error).not.toHaveBeenCalled();
     });
   });
 
