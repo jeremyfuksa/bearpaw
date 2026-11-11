@@ -325,11 +325,6 @@ pub(crate) async fn program_mode_start(
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
     }
-    // #893: before the Hold keypress below, which `enter`'s own refusal comes
-    // too late to prevent (`an_unlisted_scanner_is_not_held_by_a_refused_program_mode_start`).
-    if state.model_is_unlisted() {
-        return Err(ApiError::BadRequest("unsupported_model".to_string()));
-    }
     let _ = command_sender(&state)?;
     let pre_mode = state
         .live
@@ -541,7 +536,8 @@ mod tests {
     /// #893: `program-mode/start` presses Hold BEFORE it opens the bracket, so
     /// leaving the refusal to `ProgramModeGuard::enter` still parked an
     /// unlisted radio in Hold (seen against the fake scanner: two `KEY`s, then
-    /// 400). It refuses before any key, as it does for a running sync.
+    /// 400). The Hold keypress goes through `send_raw_command`, which now
+    /// refuses an unlisted scanner, so nothing reaches the wire.
     #[tokio::test]
     async fn an_unlisted_scanner_is_not_held_by_a_refused_program_mode_start() {
         let state = default_state();

@@ -469,6 +469,16 @@ pub(crate) async fn send_raw_command(
         );
         return Err(ApiError::BadRequest("invalid_command".to_string()));
     }
+    // REGRESSION GUARD (#893, `an_unlisted_scanner_gets_nothing_from_a_handler`):
+    // a scanner Bearpaw does not list gets no handler traffic at all, reads
+    // included. Its key codes, status layout and memory model are unknown --
+    // `KEY,P` is Power on a handheld and Priority on a mobile -- so even a
+    // "harmless" control is a guess. The poll loop's own polling does not come
+    // through here. `send_mode_command` (Hold/Scan) and `post_memory_sync`
+    // queue around this function and carry the same check.
+    if state.model_is_unlisted() {
+        return Err(ApiError::BadRequest("unsupported_model".to_string()));
+    }
     let sender = command_sender(state)?;
     let started = std::time::Instant::now();
     let command = command.to_string();
@@ -9599,36 +9609,58 @@ mod tests {
         assert_eq!(settings_payload(&t), vec!["VOL,9"]);
     }
 
-    /// #893, through real routes: an unlisted scanner is read-only, not dead.
-    /// A settings write is refused with nothing on the wire, while volume --
-    /// a live control outside program mode -- still reaches it. The second
-    /// half stops the refusal from creeping down into `send_raw_command`,
-    /// which would pass every "writes are refused" check and leave the radio
-    /// uncontrollable.
+    /// #893, through real routes: an unlisted scanner gets nothing from a
+    /// handler. Writes, controls, the sync and program mode are all refused
+    /// with nothing on the wire. Controls are included because key codes
+    /// differ by family (`KEY,P` is Power on a handheld, Priority on a
+    /// mobile), and Hold/Scan travel a second queue path that bypasses
+    /// `send_raw_command`. The listed half stops the check from refusing every
+    /// known model: almost every other test runs with no model at all.
     #[tokio::test]
-    async fn an_unlisted_scanner_is_read_only_but_still_controllable() {
+    async fn an_unlisted_scanner_gets_nothing_from_a_handler() {
+        async fn post(state: &AppState, uri: &str, body: &'static str) -> StatusCode {
+            router(state.clone())
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(uri)
+                        .header("content-type", "application/json")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+                .status()
+        }
+
         let state = default_state();
         state.device.write().unwrap().model = Some("SDS150".to_string());
         let fake = FakeScanner::attach(&state, |_| Ok("OK".to_string()));
-        let post = |uri: &'static str, body: &'static str| {
-            router(state.clone()).oneshot(
-                Request::builder()
-                    .method(Method::POST)
-                    .uri(uri)
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-        };
-
-        let write = post("/api/v1/settings/priority", r#"{"mode":2}"#)
-            .await
-            .unwrap();
-        assert_eq!(write.status(), StatusCode::BAD_REQUEST);
+        for (uri, body) in [
+            ("/api/v1/settings/priority", r#"{"mode":2}"#),
+            ("/api/v1/volume", r#"{"volume":9}"#),
+            ("/api/v1/squelch", r#"{"level":3}"#),
+            ("/api/v1/commands/key", r#"{"key":"P"}"#),
+            ("/api/v1/commands/hold", "{}"),
+            ("/api/v1/commands/scan", "{}"),
+            ("/api/v1/memory/program-mode/start", "{}"),
+            ("/api/v1/memory/sync", "{}"),
+        ] {
+            assert_eq!(
+                post(&state, uri, body).await,
+                StatusCode::BAD_REQUEST,
+                "{uri}"
+            );
+        }
         assert!(fake.transcript().is_empty(), "{:?}", fake.transcript());
 
-        let control = post("/api/v1/volume", r#"{"volume":9}"#).await.unwrap();
-        assert_eq!(control.status(), StatusCode::OK);
+        let listed = default_state();
+        listed.device.write().unwrap().model = Some("BC75XLT".to_string());
+        let fake = FakeScanner::attach(&listed, |_| Ok("OK".to_string()));
+        assert_eq!(
+            post(&listed, "/api/v1/volume", r#"{"volume":9}"#).await,
+            StatusCode::OK
+        );
         assert_eq!(fake.transcript(), vec!["VOL,9"]);
     }
 

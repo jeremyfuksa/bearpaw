@@ -27,6 +27,10 @@ async fn send_mode_command(
         + 'static,
     error_tag: &'static str,
 ) -> Result<(), ApiError> {
+    // #893: Hold/Scan bypass `send_raw_command`, so they carry its refusal.
+    if state.model_is_unlisted() {
+        return Err(ApiError::BadRequest("unsupported_model".to_string()));
+    }
     let sender = command_sender(state)?;
     tokio::task::spawn_blocking(move || -> Result<(), ApiError> {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();

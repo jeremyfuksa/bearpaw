@@ -171,13 +171,14 @@ its own memory model is authority the backend must keep.
 
 Optional fields `vid`, `pid`, and `description` may also appear (USB transport metadata) and are omitted when unset.
 
-**An `unsupported_model` scanner is read-only** (#893). Its `capabilities` are
-the BC125AT family's by fallback, which is a guess, so every request that
-needs program mode (channel, bank, lockout and settings writes, `.ss`
-imports, `program-mode/start`, `POST /memory/sync`) returns
-`400 unsupported_model` before anything reaches the radio. Live status,
-volume, squelch and keys still work. Autodetect never connects one; only an
-explicit `device.port` does.
+**An `unsupported_model` scanner gets no commands** (#893). Its `capabilities`
+are the BC125AT family's by fallback, which is a guess, and so are its key
+codes and status layout. Every request that would send it anything returns
+`400 unsupported_model` before it reaches the radio: writes, `.ss` imports,
+`POST /memory/sync`, `program-mode/start`, volume, squelch, keys, Hold and
+Scan. Only the poll loop's status polling reaches it. Autodetect can connect
+one: its serial pass skips an unlisted `MDL`, but the USB fallback accepts any
+Uniden-vendor device.
 
 ### 2.4 Error Response
 
