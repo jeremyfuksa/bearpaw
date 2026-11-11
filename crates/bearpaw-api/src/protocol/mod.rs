@@ -1273,6 +1273,53 @@ mod tests {
         assert_eq!(rssi("PWR,443,00270250"), 43, "27.025 has no scale: linear");
     }
 
+    // #880: the SR30C's own scale, measured 2026-11-10
+    // (docs/wire_captures/2026-11-10/sr30c-signal.csv). Not the BC75XLT's:
+    // the same NOAA signal reads 431 there and 449 here, so borrowing that
+    // table would cap an SR30C's clear signal below 5 bars' worth of headroom
+    // and push its noise floor up into the bars.
+    #[test]
+    fn an_sr30c_reading_is_scaled_on_its_own_band() {
+        let rssi = |pwr: &str| {
+            let p = parse_pwr_response(pwr).unwrap();
+            livestate_from_frames(
+                None,
+                None,
+                Some(&p),
+                None,
+                capabilities::SR30C.pwr_bands,
+                ScannerMode::Scan,
+                0,
+                0,
+            )
+            .rssi
+        };
+        assert_eq!(rssi("PWR,449,01625500"), 100, "NOAA 162.550 is 5 bars");
+        assert_eq!(rssi("PWR,317,01550000"), 0, "VHF hiss on 155.000 is 0 bars");
+        assert_eq!(rssi("PWR,450,01189000"), 100, "clear 118.900 is 5 bars");
+        assert_eq!(
+            rssi("PWR,353,01189000"),
+            0,
+            "quiet 118.900, squelch open, is 0"
+        );
+        // Per band, not per model: the net's 387 is half-scale on VHF and
+        // about a third on airband, where the floor is higher.
+        assert_eq!(rssi("PWR,387,01473300"), 53, "the 147.330 net: mid-scale");
+        assert_eq!(rssi("PWR,387,01189000"), 35, "the same 387 on airband");
+        // Values where the SR30C's table and the BC75XLT's disagree. Most of
+        // the readings above clamp to 0 or 100 on both, and 387 on VHF
+        // happens to land at 53 on both, so without these a build reusing
+        // the BC75XLT's table would fail on one assertion alone.
+        assert_eq!(rssi("PWR,340,01550000"), 17, "just above SR30C VHF hiss");
+        assert_eq!(
+            rssi("PWR,440,01625500"),
+            93,
+            "just under NOAA: not yet 5 bars"
+        );
+        // UHF was not measured, so it keeps the linear fallback.
+        assert_eq!(rssi("PWR,387,04633500"), 37, "UHF has no scale yet");
+    }
+
     #[test]
     fn mdl_parser_unchanged() {
         assert_eq!(
