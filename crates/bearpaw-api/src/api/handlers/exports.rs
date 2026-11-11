@@ -363,20 +363,20 @@ pub(crate) async fn export_bc125at_ss_file(
             lines.push(format!("Service\t{}\t{}\t{}", idx + 1, name, enabled));
         }
 
+        // `On` = locked out, the opposite of what the word suggests (#881).
         let custom_enabled = flags_to_bools(&custom_flags);
         for (idx, lower_hz, upper_hz) in custom_ranges {
-            let enabled = if custom_enabled
+            let locked_out = !custom_enabled
                 .get((idx - 1) as usize)
                 .copied()
-                .unwrap_or(false)
-            {
-                "On"
-            } else {
-                "Off"
-            };
+                .unwrap_or(false);
             lines.push(format!(
                 "Custom\t{}\tSearch Bnak{}\t{}\t{}\t{}",
-                idx, idx, lower_hz, upper_hz, enabled
+                idx,
+                idx,
+                lower_hz,
+                upper_hz,
+                on_off_bool(locked_out)
             ));
         }
 
@@ -451,18 +451,16 @@ pub(crate) async fn export_bc125at_ss_file(
         let by_index: std::collections::HashMap<u16, &SsChannelRow> =
             channels.iter().map(|row| (row.0, row)).collect();
         for bank in 1..=caps.bank_count {
-            let enabled = if scan_enabled
+            // `On` = locked out (#881).
+            let locked_out = !scan_enabled
                 .get(usize::from(bank - 1))
                 .copied()
-                .unwrap_or(false)
-            {
-                "On"
-            } else {
-                "Off"
-            };
+                .unwrap_or(false);
             lines.push(format!(
                 "Conventional\t{}\tBank {}\t{}",
-                bank, bank, enabled
+                bank,
+                bank,
+                on_off_bool(locked_out)
             ));
             let first = u16::from(bank - 1) * caps.channels_per_bank + 1;
             for idx in first..first + caps.channels_per_bank {
@@ -657,6 +655,7 @@ pub(crate) async fn export_bc75xlt_ss_file(
 
         // "Search Bank", not the BC125AT's "Search Bnak" -- Uniden fixed the
         // typo in this tool, and the real files prove it.
+        // `On` = locked out (#881).
         let custom_enabled = flags_to_bools(&custom_flags);
         for (idx, (lower, upper)) in BC75XLT_CUSTOM_RANGES.iter().enumerate() {
             lines.push(format!(
@@ -665,7 +664,7 @@ pub(crate) async fn export_bc75xlt_ss_file(
                 idx + 1,
                 lower,
                 upper,
-                on_off_bool(custom_enabled.get(idx).copied().unwrap_or(false))
+                on_off_bool(!custom_enabled.get(idx).copied().unwrap_or(false))
             ));
         }
 
@@ -707,12 +706,13 @@ pub(crate) async fn export_bc75xlt_ss_file(
         let scan_enabled = flags_to_bools(&scan_flags);
         let shadow = state.shadow.read().unwrap();
         for bank in 1..=caps.bank_count {
+            // `On` = locked out (#881).
             lines.push(format!(
                 "Conventional\t{}\tBank {}\t{}",
                 bank,
                 bank,
                 on_off_bool(
-                    scan_enabled
+                    !scan_enabled
                         .get(usize::from(bank - 1))
                         .copied()
                         .unwrap_or(false)

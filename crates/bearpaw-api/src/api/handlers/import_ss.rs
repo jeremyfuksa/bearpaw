@@ -44,11 +44,27 @@ pub(crate) struct SsConfig {
 }
 
 fn on_to_mask_bit(v: &str) -> char {
-    // On -> enabled -> '0'; Off/anything -> disabled -> '1'
+    // On -> enabled -> '0'; Off/anything -> disabled -> '1'. Only `Service`
+    // still reads this way, and that is unverified: `blank.bc125at_ss` has all
+    // ten `Off`, which fits the lockout reading `Conventional` and `Custom`
+    // turned out to use (#881). It needs a controlled BC125AT file.
     if v.eq_ignore_ascii_case("On") {
         '0'
     } else {
         '1'
+    }
+}
+
+/// REGRESSION GUARD (`a_blank_file_restores_every_bank_and_custom_range_enabled`):
+/// `Conventional` and `Custom` flags mean "locked out": `On` = disabled = '1'
+/// in the SCG/CSG mask (#881). Proven on an SR30C: banks 3 and 9 set off in
+/// Uniden's software wrote `SCG,0010000010` and saved those two banks `On`.
+/// Blank files from fresh radios carry every flag `Off`.
+fn lockout_to_mask_bit(v: &str) -> char {
+    if v.eq_ignore_ascii_case("On") {
+        '1'
+    } else {
+        '0'
     }
 }
 
@@ -119,7 +135,7 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
             Some("Conventional") if f.len() >= 4 => {
                 if let Ok(idx) = f[1].parse::<usize>() {
                     if (1..=10).contains(&idx) {
-                        scan[idx - 1] = on_to_mask_bit(f[3]);
+                        scan[idx - 1] = lockout_to_mask_bit(f[3]);
                     }
                 }
             }
@@ -130,7 +146,7 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
                     // export writes Hz; CSP wants units of 100 Hz
                     s.custom_ranges.push((idx, lo / 100, hi / 100));
                     if (1..=10).contains(&(idx as usize)) {
-                        custom_enabled[(idx - 1) as usize] = on_to_mask_bit(f[5]);
+                        custom_enabled[(idx - 1) as usize] = lockout_to_mask_bit(f[5]);
                     }
                 }
             }
@@ -904,12 +920,46 @@ mod tests {
     #[test]
     fn parses_bank_mask_with_correct_polarity() {
         let cfg = parse_ss_config(SAMPLE, &BC125AT_FAMILY);
-        // Conventional 1 On -> '0', Conventional 4 Off -> '1', rest default On->'0'
-        // mask is 10 chars, positions 1..10
+        // In Uniden's file `On` means the bank is locked OUT (#881):
+        // Conventional 1 On -> '1' (disabled), Conventional 4 Off -> '0'.
         let mask = cfg.settings.scan_flags.as_deref().unwrap();
         assert_eq!(mask.len(), 10);
-        assert_eq!(&mask[0..1], "0"); // bank 1 enabled
-        assert_eq!(&mask[3..4], "1"); // bank 4 disabled
+        assert_eq!(&mask[0..1], "1"); // bank 1 disabled
+        assert_eq!(&mask[3..4], "0"); // bank 4 enabled
+    }
+
+    // REGRESSION GUARD (#881): Uniden's `Conventional` and `Custom` flags
+    // mean "locked out" -- `On` = disabled. A file Uniden's tool writes for a
+    // fresh radio has every bank and range enabled and every flag `Off`, so a
+    // blank file must restore an all-enabled mask. Reading `On` as enabled
+    // made a blank restore ask for every bank disabled.
+    #[test]
+    fn a_blank_file_restores_every_bank_and_custom_range_enabled() {
+        for (text, caps) in [
+            (
+                include_str!("../../../fixtures/blank.bc125at_ss"),
+                BC125AT_FAMILY,
+            ),
+            (include_str!("../../../fixtures/blank.bc75xlt_ss"), BC75XLT),
+        ] {
+            let cfg = parse_ss_config(text, &caps);
+            assert_eq!(cfg.settings.scan_flags.as_deref(), Some("0000000000"));
+            assert_eq!(cfg.settings.custom_flags.as_deref(), Some("0000000000"));
+        }
+    }
+
+    // The single-variable evidence for #881: Uniden's software disabled
+    // banks 3 and 9 on an SR30C, wrote it, and the radio then read
+    // `SCG,0010000010`. These are the file's bank lines, verbatim.
+    #[test]
+    fn banks_uniden_marks_on_are_the_banks_the_radio_disables() {
+        let mut text = String::new();
+        for bank in 1..=10 {
+            let flag = if bank == 3 || bank == 9 { "On" } else { "Off" };
+            text.push_str(&format!("Conventional\t{bank}\tBank {bank}\t{flag}\r\n"));
+        }
+        let cfg = parse_ss_config(&text, &BC75XLT);
+        assert_eq!(cfg.settings.scan_flags.as_deref(), Some("0010000010"));
     }
 
     #[test]
@@ -1444,9 +1494,10 @@ mod tests {
     /// opaque `SCG rejected: Err`. Same guard `set_banks` carries.
     #[test]
     fn an_all_disabled_bank_mask_is_refused_before_the_wire() {
+        // `On` = locked out (#881), so every bank `On` is every bank disabled.
         let mut off = String::new();
         for i in 1..=10 {
-            off.push_str(&format!("Conventional\t{i}\tBank {i}\tOff\n"));
+            off.push_str(&format!("Conventional\t{i}\tBank {i}\tOn\n"));
         }
         let cfg = parse_ss_config(&off, &BC75XLT);
         assert_eq!(cfg.settings.scan_flags.as_deref(), Some("1111111111"));
@@ -1459,8 +1510,8 @@ mod tests {
 
         // One bank on is restorable, so the guard is not just "never write SCG".
         let mut one_on = off.replace(
-            "Conventional\t3\tBank 3\tOff",
             "Conventional\t3\tBank 3\tOn",
+            "Conventional\t3\tBank 3\tOff",
         );
         one_on.push('\n');
         let cfg = parse_ss_config(&one_on, &BC75XLT);
