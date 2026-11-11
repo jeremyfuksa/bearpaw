@@ -89,7 +89,10 @@
             <strong>BC75XLT</strong>, Battery Saver, Backlight, Contrast, Key
             Beep and Weather Alert Priority don't appear — that hardware has no
             command for them. (It does have a backlight and a key beep; they're
-            controlled on the radio itself, not by software.) If a control below
+            controlled on the radio itself, not by software.) An
+            <strong>SR30C</strong> is missing the same ones except
+            <strong>Backlight</strong>, which sets how bright its light is
+            rather than when it comes on. If a control below
             isn't on your Device tab, your scanner doesn't support it.
           </p>
         </div>
@@ -118,7 +121,9 @@
             <strong>Always On</strong>, <strong>Always Off</strong>,
             <strong>Keypress</strong> (on a button press),
             <strong>Squelch</strong> (when a signal opens), or
-            <strong>Key + Squelch</strong> (either).
+            <strong>Key + Squelch</strong> (either). On an SR30C it's
+            <strong>High</strong> or <strong>Low</strong> instead: how bright
+            the light is when you turn it on. It stays on for 15 seconds.
           </li>
           <li>
             <strong>Contrast</strong>: 1 to 15. The scanner's LCD contrast.
@@ -171,7 +176,7 @@
         <p>
           Unplug one scanner and plug in another, and Bearpaw finds the new one
           within about 15 seconds. You don't need to relaunch, even going
-          between a BC125AT and a BC75XLT. If your <code>config.yaml</code>
+          between a BC125AT, a BC75XLT and an SR30C. If your <code>config.yaml</code>
           sets a port or a USB ID, Bearpaw only looks there.
         </p>
         <p>
@@ -199,7 +204,7 @@
             Every one of them reports the same serial number over USB, so
             Bearpaw can't tell them apart. To Bearpaw they're one scanner:
             edits you haven't uploaded and bank names carry over when you swap
-            one for the other. Two BC75XLTs each get their own entry.
+            one for the other. Two BC75XLTs or two SR30Cs each get their own entry.
           </p>
         </div>
         <p class="docs-support">
