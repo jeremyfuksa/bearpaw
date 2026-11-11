@@ -362,6 +362,10 @@ pub fn router(state: AppState) -> Router {
             get(handlers::exports::export_bc75xlt_ss_file),
         )
         .route(
+            "/api/v1/memory/export/sr30c_ss",
+            get(handlers::exports::export_sr30c_ss_file),
+        )
+        .route(
             "/api/v1/memory/export/csv",
             get(handlers::exports::export_csv),
         )
@@ -376,6 +380,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/memory/import/bc75xlt_ss",
             post(handlers::import_ss::import_bc75xlt_ss),
+        )
+        .route(
+            "/api/v1/memory/import/sr30c_ss",
+            post(handlers::import_ss::import_sr30c_ss),
         )
         .route(
             "/api/v1/preferences",
@@ -5851,6 +5859,129 @@ mod tests {
         );
     }
 
+    /// The channel memory Bearpaw read off the SR30C (`GET /memory/channels`)
+    /// shortly before Uniden's software read the same radio into
+    /// `sample.sr30c_ss`. Independent of the `.ss` parser on purpose: a shadow
+    /// built by parsing the file would let a wrong delay mapping pass in both
+    /// directions at once.
+    fn sr30c_radio_channels() -> Vec<ChannelData> {
+        include_str!("../../fixtures/sample.sr30c_radio.csv")
+            .lines()
+            .skip(1)
+            .map(|line| {
+                let f: Vec<&str> = line.split(',').collect();
+                ChannelData {
+                    index: f[0].parse().unwrap(),
+                    frequency: f[1].parse::<f64>().unwrap() / 1_000_000.0,
+                    modulation: String::new(),
+                    delay: f[2].parse().unwrap(),
+                    lockout: f[3] == "1",
+                    priority: f[4] == "1",
+                    ..Default::default()
+                }
+            })
+            .collect()
+    }
+
+    /// GOLDEN TEST (#848): the `.sr30c_ss` Bearpaw writes is BYTE-IDENTICAL to
+    /// the one Uniden's software wrote from the same radio, 2026-11-10.
+    ///
+    /// Every reply below is what that SR30C answered at the time (captures in
+    /// `docs/wire_captures/2026-11-10/`). Byte-identity, not shape, because
+    /// this file was not scrubbed: every value in it is real, so every value
+    /// can be held to. Two things differ from the BC75XLT format and are
+    /// pinned here: the delay column follows the radio (`2` on, `0` off --
+    /// channel 4 is the one programmed slot with delay off), and `Misc` gains
+    /// a tenth field, the backlight level, from `BLT`.
+    #[tokio::test]
+    async fn sr30c_ss_export_matches_unidens_file_byte_for_byte() {
+        use crate::protocol::capabilities::SR30C;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(SR30C);
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for ch in sr30c_radio_channels() {
+                shadow.channels.insert(ch.index, ch);
+            }
+        }
+        let _scanner = FakeScanner::attach(&state, |cmd: &str| {
+            Ok(match cmd {
+                "KBP" => "KBP,,0".to_string(),
+                "SQL" => "SQL,2".to_string(),
+                "PRI" => "PRI,0".to_string(),
+                "SCO" => "SCO,1,,0".to_string(),
+                "CLC" => "CLC,2,0,0,11101,".to_string(),
+                "SCG" => "SCG,0000000010".to_string(),
+                "CSG" => "CSG,0000000000,1,0".to_string(),
+                "BLT" => "BLT,,,10".to_string(),
+                "SSP,1" => "SSP,1,1,1".to_string(),
+                c if c.starts_with("SSP,") => format!("{c},1,0"),
+                _ => "OK".to_string(),
+            })
+        });
+
+        let response =
+            super::handlers::exports::export_sr30c_ss_file(axum::extract::State(state.clone()))
+                .await
+                .map_err(|e| format!("{e:?}"))
+                .expect("export should succeed");
+        let body = axum::response::IntoResponse::into_response(response);
+        let bytes = axum::body::to_bytes(body.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let ours = String::from_utf8(bytes.to_vec()).expect("utf8");
+        let reference = include_str!("../../fixtures/sample.sr30c_ss");
+
+        // Line by line first, so a mismatch names the line instead of
+        // dumping 17 KB.
+        for (n, (a, b)) in ours.split("\r\n").zip(reference.split("\r\n")).enumerate() {
+            assert_eq!(a, b, "line {} differs", n + 1);
+        }
+        assert_eq!(ours, reference);
+    }
+
+    /// The reference file is `High`, so the golden test above cannot see the
+    /// other level. `Low` is `BLT,,,5`: Uniden's software wrote Low to the
+    /// SR30C and `BLT` changed from `BLT,,,10` to `BLT,,,5` (2026-11-10).
+    #[tokio::test]
+    async fn sr30c_ss_export_writes_a_low_backlight_as_low() {
+        use crate::protocol::capabilities::SR30C;
+
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(SR30C);
+        {
+            let mut shadow = state.shadow.write().unwrap();
+            for ch in sr30c_radio_channels() {
+                shadow.channels.insert(ch.index, ch);
+            }
+        }
+        let _scanner = FakeScanner::attach(&state, |cmd: &str| {
+            Ok(match cmd {
+                "BLT" => "BLT,,,5".to_string(),
+                "KBP" => "KBP,,0".to_string(),
+                "SQL" => "SQL,2".to_string(),
+                c if c.starts_with("SSP,") => format!("{c},1,0"),
+                _ => "OK".to_string(),
+            })
+        });
+        let response =
+            super::handlers::exports::export_sr30c_ss_file(axum::extract::State(state.clone()))
+                .await
+                .map_err(|e| format!("{e:?}"))
+                .expect("export should succeed");
+        let body = axum::response::IntoResponse::into_response(response);
+        let bytes = axum::body::to_bytes(body.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let ours = String::from_utf8(bytes.to_vec()).expect("utf8");
+        assert!(
+            ours.starts_with("Misc\t\t\tOff\t\t\t2\t2\tUSA\tLow\r\n"),
+            "got {:?}",
+            ours.lines().next()
+        );
+    }
+
     #[test]
     fn clearing_a_priority_channel_is_not_a_failure() {
         use crate::protocol::capabilities::BC75XLT;
@@ -6523,6 +6654,7 @@ mod tests {
         ("GET", "/api/v1/memory/export/csv"),
         ("GET", "/api/v1/memory/export/bc125at_ss"),
         ("GET", "/api/v1/memory/export/bc75xlt_ss"),
+        ("GET", "/api/v1/memory/export/sr30c_ss"),
         ("GET", "/api/v1/preferences"),
         ("POST", "/api/v1/preferences"),
         ("POST", "/api/v1/preferences/reset"),
@@ -6543,6 +6675,7 @@ mod tests {
         // never covered them, so route drift on either would have gone unseen.
         ("POST", "/api/v1/memory/import/bc125at_ss"),
         ("POST", "/api/v1/memory/import/bc75xlt_ss"),
+        ("POST", "/api/v1/memory/import/sr30c_ss"),
         ("GET", "/api/v1/preferences/theme"),
         ("PUT", "/api/v1/preferences/theme"),
         ("PUT", "/api/v1/preferences"),

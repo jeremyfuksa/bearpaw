@@ -1,6 +1,8 @@
-# Uniden settings-file format (`.bc125at_ss`, `.bc75xlt_ss`)
+# Uniden settings-file format (`.bc125at_ss`, `.bc75xlt_ss`, `.sr30c_ss`)
 
-The format Uniden's own "SS" tools read and write. Bearpaw exports both.
+The format Uniden's own "SS" tools read and write. Bearpaw reads and writes
+all three. The SR30C's is the BC75XLT's with two differences; see
+[SR30C](#sr30c-sr30c_ss).
 
 **Recovered from real files, not from a specification.** Uniden publishes no
 format document. Everything here comes from files written by their software,
@@ -279,17 +281,59 @@ model rather than to the format.
 Writing the wire value instead produces a file that differs from Uniden's on
 every channel row — see #458.
 
+## SR30C (`.sr30c_ss`)
+
+Recovered 2026-11-10 from files Uniden's SR30C software wrote, each paired with
+a same-evening wire read of the radio (#848). Reference:
+`fixtures/sample.sr30c_ss`, a real, unscrubbed file. Its radio state is in
+`fixtures/sample.sr30c_radio.csv`, read by Bearpaw independently of the file.
+Bearpaw's export is **byte-identical** to it (`sr30c_ss_export_matches_unidens_file_byte_for_byte`),
+and a live export from the radio matched a second Uniden file byte for byte.
+
+It is the BC75XLT's layout, section for section, with 10 × 50 banks and 500
+`C-Freq` rows. Two differences:
+
+**1. The `C-Freq` delay column follows the radio.** `2` = delay on, `0` = off,
+empty slots included: 500 of 500 rows match the radio (335 × `2`, 165 × `0`).
+The BC75XLT's file writes a constant `2` instead. On the wire the delay is a
+boolean, so the import maps `2` → `1` rather than clamping it, which would
+switch delay off on every channel.
+
+**2. `Misc` has a tenth field, the backlight level.**
+
+```
+Misc  backlight  beep  keylock  contrast  volume  squelch  charge  region  level
+```
+
+| `level` | `BLT` |
+|---|---|
+| `High` | `BLT,,,10` |
+| `Low` | `BLT,,,5` |
+
+Settled by writing each from Uniden's software and reading `BLT`
+(`docs/wire_captures/2026-11-10/sr30c-blt-probe.txt`). The radio also stores
+values the software never offers (`BLT,,,7` reads back); Bearpaw exports any
+level but `5` as `High`. Columns 1–9 are as on the BC75XLT: backlight, beep,
+contrast and volume blank.
+
+**Uniden's software altered a file on re-save.** Opening a `.sr30c_ss`,
+changing only the backlight level and saving it produced a file whose bank 1
+was 50 blank rows (lockout `Off`, delay `2`, a shape the radio never reports)
+and whose Service 1 direction had flipped. The radio was untouched. Single-
+variable tests here therefore read the radio in Uniden's software, change one
+thing, and write it back, rather than editing a saved file.
+
 ## Which wire commands each export may send
 
 An export runs inside one `PRG` bracket. Sending a command the model does not
 answer stalls that bracket (#436), so each exporter is limited to commands
 confirmed on that hardware.
 
-| | BC125AT | BC75XLT |
-|---|---|---|
-| Read | `BLT` `KBP` `BSV` `CNT` `VOL` `SQL` `PRI` `SCO` `CLC` `SCG` `CSP,n` `SSP,n` `WXS` | `KBP` (inside `PRG`) `SQL` `PRI` `SCO` `CLC` `SCG` |
-| Never sent | — | `BLT` `BSV` `CNT` `WXS` — all reply `ERR` |
-| Not probed | — | `CSP` `SSP` |
+| | BC125AT | BC75XLT | SR30C |
+|---|---|---|---|
+| Read | `BLT` `KBP` `BSV` `CNT` `VOL` `SQL` `PRI` `SCO` `CLC` `SCG` `CSP,n` `SSP,n` `WXS` | `KBP` (inside `PRG`) `SQL` `PRI` `SCO` `CLC` `SCG` | as BC75XLT, plus `BLT` |
+| Never sent | — | `BLT` `BSV` `CNT` `WXS` — all reply `ERR` | `BSV` `CNT` `WXS` |
+| Not probed | — | `CSP` `SSP` | — |
 
 Because `CSP` has never been probed on a BC75XLT, its custom-search ranges come
 from a table taken from real files rather than from an unanswered command

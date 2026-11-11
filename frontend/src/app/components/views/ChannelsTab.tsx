@@ -1797,28 +1797,30 @@ export function ChannelsTab() {
     }
   };
 
-  const handleExportBc75xltSs = async () => {
+  // The BC75XLT and SR30C share one file layout and one flow; only the
+  // format name (route + extension) and the label differ.
+  const handleExportBc75xltLayoutSs = async (format: 'bc75xlt' | 'sr30c', label: string) => {
     if (isExportingSs) return;
     setIsExportingSs(true);
-    const toastId = toast.loading('Exporting BC75XLT format…');
+    const toastId = toast.loading(`Exporting ${label} format…`);
     try {
-      const response = await fetch(`${API_BASE}/memory/export/bc75xlt_ss`);
+      const response = await fetch(`${API_BASE}/memory/export/${format}_ss`);
       if (!response.ok) {
         throw new Error(
-          await exportFailureMessage(response, 'Failed to export BC75XLT settings file'),
+          await exportFailureMessage(response, `Failed to export ${label} settings file`),
         );
       }
       const bytes = new Uint8Array(await response.arrayBuffer());
-      const where = await saveExport('scanner.bc75xlt_ss', bytes);
+      const where = await saveExport(`scanner.${format}_ss`, bytes);
       toast.dismiss(toastId);
       if (where !== 'cancelled') {
-        toast.success('Exported BC75XLT settings file');
+        toast.success(`Exported ${label} settings file`);
       }
     } catch (error) {
-      console.error('Failed to export BC75XLT settings file', error);
+      console.error(`Failed to export ${label} settings file`, error);
       toast.dismiss(toastId);
       toast.error(
-        error instanceof Error ? error.message : 'Failed to export BC75XLT settings file',
+        error instanceof Error ? error.message : `Failed to export ${label} settings file`,
       );
     } finally {
       setIsExportingSs(false);
@@ -1862,15 +1864,18 @@ export function ChannelsTab() {
     // Accept both formats. In Tauri a synthetic <input type=file> opens the
     // picker but its change event never fires, so pickAndReadFile uses the
     // native dialog + fs there, and the input element in a browser.
-    const picked = await pickAndReadFile(['csv', 'bc125at_ss', 'bc75xlt_ss']);
+    const picked = await pickAndReadFile(['csv', 'bc125at_ss', 'bc75xlt_ss', 'sr30c_ss']);
     if (!picked) return;
 
     // A .ss file restores the WHOLE config (channels + all settings), so it's
-    // more destructive than a CSV channel import — confirm first.
+    // more destructive than a CSV channel import — confirm first. The
+    // extension names the import route; the backend refuses a format that
+    // doesn't match the connected scanner.
     const lower = picked.name.toLowerCase();
-    const isBc125atSs = lower.endsWith('.bc125at_ss');
-    const isBc75xltSs = lower.endsWith('.bc75xlt_ss');
-    const isSs = isBc125atSs || isBc75xltSs;
+    const ssFormat = (['bc125at_ss', 'bc75xlt_ss', 'sr30c_ss'] as const).find((ext) =>
+      lower.endsWith(`.${ext}`),
+    );
+    const isSs = ssFormat !== undefined;
     if (isSs) {
       const ok = await confirmDialog(
         'Restore full config from this file? This overwrites all channels and settings.',
@@ -1890,9 +1895,7 @@ export function ChannelsTab() {
       message: isSs ? 'Restoring config…' : 'Importing channels…',
     });
     try {
-      const endpoint = isSs
-        ? `${API_BASE}/memory/import/${isBc75xltSs ? 'bc75xlt_ss' : 'bc125at_ss'}`
-        : `${API_BASE}/memory/import/csv`;
+      const endpoint = `${API_BASE}/memory/import/${ssFormat ?? 'csv'}`;
       const formData = new FormData();
       formData.append('file', new File([picked.bytes as BlobPart], picked.name));
 
@@ -2045,7 +2048,16 @@ export function ChannelsTab() {
                   spec for, so offering the item would produce a file its own
                   software would reject. The backend refuses it too. */}
                 {capabilities.ss_format === 'bc75xlt' && (
-                  <DropdownMenuItem onSelect={handleExportBc75xltSs}>BC75XLT</DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => handleExportBc75xltLayoutSs('bc75xlt', 'BC75XLT')}
+                  >
+                    BC75XLT
+                  </DropdownMenuItem>
+                )}
+                {capabilities.ss_format === 'sr30c' && (
+                  <DropdownMenuItem onSelect={() => handleExportBc75xltLayoutSs('sr30c', 'SR30C')}>
+                    SR30C
+                  </DropdownMenuItem>
                 )}
                 {capabilities.ss_format === 'bc125at' && (
                   <DropdownMenuItem onSelect={handleExportBc125atSs}>BC125AT</DropdownMenuItem>

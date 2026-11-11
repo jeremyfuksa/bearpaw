@@ -74,7 +74,7 @@ describe('ScannerCapabilities contract', () => {
     expect(typeof caps.bank_count).toBe('number');
     expect(typeof caps.has_alpha_tags).toBe('boolean');
     expect(typeof caps.reports_live_channel).toBe('boolean');
-    expect(['bc125at', 'bc75xlt', '']).toContain(caps.ss_format);
+    expect(['bc125at', 'bc75xlt', 'sr30c', '']).toContain(caps.ss_format);
     expect(['USA', 'EUR']).toContain(caps.ss_region);
     expect(typeof caps.has_per_channel_modulation).toBe('boolean');
     expect(typeof caps.has_tone_squelch).toBe('boolean');

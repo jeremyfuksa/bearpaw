@@ -84,7 +84,7 @@ export interface ScannerCapabilities {
    * Named for the FORMAT: the BC75XLT has its own layout, which Bearpaw does
    * not implement because we have no spec for it.
    */
-  /** 'bc125at' | 'bc75xlt' | '' when no settings file is supported. */
+  /** 'bc125at' | 'bc75xlt' | 'sr30c' | '' when no settings file is supported. */
   ss_format: string;
   /** Region stamped into the `.bc125at_ss` file: 'USA' or 'EUR'. */
   ss_region: string;

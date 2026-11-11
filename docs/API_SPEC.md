@@ -619,9 +619,10 @@ Download full scanner memory in Uniden `.bc125at_ss` format.
 
 **Completeness precondition:** all three exporters require a complete channel
 image — `channel_count` entries covering `1..=channel_count` — and return
-`409 memory_not_synced` otherwise. `GET /memory/export/bc75xlt_ss` is identical
-for that model. Rationale: `require_complete_channel_image` in
-`api/handlers/exports.rs`.
+`409 memory_not_synced` otherwise. `GET /memory/export/bc75xlt_ss` and
+`GET /memory/export/sr30c_ss` are identical for those models; each returns
+`400 unsupported_model` unless the connected scanner's `ss_format` matches.
+Rationale: `require_complete_channel_image` in `api/handlers/exports.rs`.
 
 ---
 
@@ -741,7 +742,9 @@ extension (#187).
   claim a full restore (#625). The same shape is returned by
   `/memory/import/bc75xlt_ss`, which applies the subset that model supports
   (`SCG`, `PRI`, `SQL`, `SCO`, `CSP`, `CSG`, `CLC`) and skips the rest
-  (`BLT`, `BSV`, `CNT`, `WXS`, `SSG`, `KBP`).
+  (`BLT`, `BSV`, `CNT`, `WXS`, `SSG`, `KBP`), and by
+  `/memory/import/sr30c_ss`, which also restores the backlight level
+  (`BLT,,,<n>`) from the file and keeps the file's per-channel delay.
 
 **Errors:**
 - `400 Bad Request` if the file is malformed

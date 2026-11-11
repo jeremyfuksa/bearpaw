@@ -583,7 +583,32 @@ describe('ChannelsTab', () => {
       // Both settings-file formats are offered; the endpoint is chosen from
       // the extension, not from the connected model, so a file can be opened
       // and rejected with a clear error rather than silently mis-routed.
-      expect(pickAndReadFile).toHaveBeenCalledWith(['csv', 'bc125at_ss', 'bc75xlt_ss']);
+      expect(pickAndReadFile).toHaveBeenCalledWith(['csv', 'bc125at_ss', 'bc75xlt_ss', 'sr30c_ss']);
+    });
+
+    it('should dispatch a .sr30c_ss file to the sr30c import endpoint after confirm', async () => {
+      vi.mocked(pickAndReadFile).mockResolvedValue({
+        name: 'scanner.sr30c_ss',
+        bytes: new TextEncoder().encode('Misc\t\t\tOff'),
+      });
+      vi.mocked(confirmDialog).mockResolvedValue(true);
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ imported: 500, settings_applied: 1, errors: [] }),
+      });
+      global.fetch = fetchSpy as unknown as typeof fetch;
+      mockApiClient.getChannels = vi.fn().mockResolvedValue(mockChannels);
+
+      render(<ChannelsTab />);
+      await userEvent.click(screen.getByRole('button', { name: /Import/i }));
+
+      await waitFor(() => {
+        expect(confirmDialog).toHaveBeenCalled();
+        expect(fetchSpy).toHaveBeenCalledWith(
+          expect.stringContaining('/memory/import/sr30c_ss'),
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
     });
 
     it('should dispatch a .csv file to the csv import endpoint', async () => {
@@ -770,6 +795,46 @@ describe('ChannelsTab', () => {
           'Sync scanner memory before exporting — the channel list is incomplete',
         );
       });
+    });
+  });
+
+  // The settings-file menu item follows `ss_format`, never the model name.
+  describe('Export settings file (SR30C)', () => {
+    const renderSr30c = () => {
+      setMockStore(
+        createMockStore({
+          channels: mockChannels,
+          deviceInfo: {
+            ...createMockStore().deviceInfo,
+            capabilities: capabilityFixture.SR30C,
+          } as ReturnType<typeof createMockStore>['deviceInfo'],
+        }),
+      );
+      render(<ChannelsTab />);
+    };
+
+    it('offers SR30C, and only SR30C, as the settings-file format', async () => {
+      renderSr30c();
+      await userEvent.click(screen.getByRole('button', { name: /Export/i }));
+      expect(await screen.findByRole('menuitem', { name: /^SR30C$/i })).toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /^BC75XLT$/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('menuitem', { name: /^BC125AT$/i })).not.toBeInTheDocument();
+    });
+
+    it('saves the SR30C export from the sr30c route', async () => {
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        arrayBuffer: vi.fn().mockResolvedValue(new TextEncoder().encode('Misc').buffer),
+      } as unknown as Response);
+      global.fetch = fetchSpy as unknown as typeof fetch;
+      renderSr30c();
+      await userEvent.click(screen.getByRole('button', { name: /Export/i }));
+      await userEvent.click(await screen.findByRole('menuitem', { name: /^SR30C$/i }));
+
+      await waitFor(() => {
+        expect(saveExport).toHaveBeenCalledWith('scanner.sr30c_ss', expect.any(Uint8Array));
+      });
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/memory/export/sr30c_ss'));
     });
   });
 

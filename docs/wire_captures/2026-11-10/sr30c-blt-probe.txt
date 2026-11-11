@@ -1,0 +1,23 @@
+MDL            -> 'MDL,SR30C'
+BLT            -> 'BLT,,,5'
+
+=== Outside program mode ===
+BLT,,,10       -> 'BLT,OK'
+BLT            -> 'BLT,,,10'
+BLT,,,5        -> 'BLT,OK'
+BLT            -> 'BLT,,,5'
+BLT,,,7        -> 'BLT,OK'
+BLT            -> 'BLT,,,7'
+
+=== Inside program mode ===
+PRG            -> 'PRG,OK'
+BLT,,,10       -> 'BLT,OK'
+BLT            -> 'BLT,,,10'
+BLT,,,5        -> 'BLT,OK'
+BLT            -> 'BLT,,,5'
+EPG            -> 'EPG,OK'
+
+=== Restore to High ===
+BLT,,,10       -> 'BLT,OK'
+BLT            -> 'BLT,,,10'
+RESTORED

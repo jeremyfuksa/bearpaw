@@ -267,7 +267,7 @@
     "has_weather_alert": false,
     "key_beep_needs_program_mode": true,
     "reports_live_channel": false,
-    "ss_format": "",
+    "ss_format": "sr30c",
     "ss_region": "USA",
     "valid_delays": [
       0,

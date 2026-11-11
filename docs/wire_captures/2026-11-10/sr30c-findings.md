@@ -3,7 +3,7 @@
 **Hardware:** SR30C (`MDL,SR30C`, firmware `Version 1.01.04`), CP2104 bridge
 `0x10C4:0xEA60` serial `02A72C10`, `/dev/cu.usbserial-02A72C10`, 57600 8N1 on macOS.
 
-Four sessions:
+Five sessions:
 
 | Session | Date | Script | Transcript | Writes? |
 |---|---|---|---|---|
@@ -11,6 +11,7 @@ Four sessions:
 | `CIN` write probe | 2026-11-10 | [`sr30c-cin-write-probe.py`](sr30c-cin-write-probe.py) | [`sr30c-cin-write-probe.txt`](sr30c-cin-write-probe.txt) | Bank 9 (401–408), restored and verified |
 | Full-memory copy from a BC125AT | 2026-11-10 | [`sr30c-write-image.py`](sr30c-write-image.py) | [`sr30c-copy-run.txt`](sr30c-copy-run.txt) | All 500 slots, each read back |
 | Settings write probe | 2026-11-10 | [`sr30c-settings-probe.py`](sr30c-settings-probe.py) | [`sr30c-settings-probe.txt`](sr30c-settings-probe.txt) | `VOL` `SQL` `SCG` `BPL` `PRI` `KBP` `SCO` `CLC` `CSG`, each restored and verified (`ALL RESTORED`) |
+| Backlight (`BLT`) probe | 2026-11-10 | [`sr30c-blt-probe.py`](sr30c-blt-probe.py) | [`sr30c-blt-probe.txt`](sr30c-blt-probe.txt) | `BLT` only, left on High (`RESTORED`) |
 
 The read-only probe ran a day earlier. It is filed here with the write
 sessions so all the SR30C evidence sits in one folder.
@@ -116,9 +117,16 @@ mode; the rest inside.
 | `CSG` | echo, then `CSG,1000000000,1,0` | `OK` | same | stored; 3-field shape, as on the BC75XLT |
 
 **`SCO` is settable, in a different shape than Bearpaw sends.** The SR30C's
-`SCO` has three fields, `SCO,<delay>,<reserved>,<code search>`, and accepts
-writes in that shape: delay `0`/`1` and code search `0`/`1` both round-trip.
-Bearpaw writes `SCO,<delay>,<code search>`, which this radio answers `ERR`.
+`SCO` has three fields, `SCO,<delay>,<code search, reserved>,<direction>`, and
+accepts writes in that shape: delay `0`/`1` and direction `0`/`1` both
+round-trip. Bearpaw writes `SCO,<delay>,<code search>`, which this radio
+answers `ERR`.
+
+*Corrected after this section was first written:* the third field was
+labelled "code search" here. It is the search **direction** (`0` Up, `1`
+Down), the shape the BC75XLT exporter already reads, and the radio's own
+`.sr30c_ss` confirms it: `SCO,1,,0` exports as `GeneralSearch 2 (blank) Up`
+(§6). So `SCO,1,,1` above set direction Down, not code search.
 This differs from the BC75XLT, which refused every `SCO` write including an
 echo of its own reply (`has_search_options = false` there). As with `CSG`
 (`docs/wire_captures/2026-08-28/findings.md` §1), the read is self-describing,
@@ -131,6 +139,36 @@ scanner refuses one. This radio stored `1111111111` and returned it on read.
 Bearpaw rejects that mask before the wire on every model, which is still
 right: a scanner with every bank disabled has nothing to scan. Only the stated
 reason ("the scanner refuses it") does not hold here.
+
+## 5. Backlight: `BLT,,,<level>`
+
+`BLT` answers in and out of program mode with the level in its third field.
+Uniden's software offers two levels and wrote each to the radio:
+
+| Software | `BLT` read |
+|---|---|
+| High | `BLT,,,10` |
+| Low | `BLT,,,5` |
+
+Bearpaw can set it ([`sr30c-blt-probe.txt`](sr30c-blt-probe.txt)): `BLT,,,10`
+and `BLT,,,5` each reply `BLT,OK` and read back, outside program mode and
+inside. `BLT,,,7`, which the software never offers, is also accepted and
+stored; what the display does with it is unverified. The radio was left on
+High. This decodes the `BLT,,,10` the read-only probe found (§1, #847).
+
+## 6. The settings file (`.sr30c_ss`, #848)
+
+Uniden's software read this radio into a `.sr30c_ss` within minutes of a
+Bearpaw read; every `C-Freq` row matches it, and the settings sections match
+the wire values above. The layout and its two differences from the BC75XLT
+are in `docs/SS_FILE_FORMAT.md`, "SR30C". The file is committed as
+`crates/bearpaw-api/fixtures/sample.sr30c_ss`.
+
+Two more single-variable tests came out of it:
+- Banks 3 and 9 set off in the software and written gave `SCG,0010000010`,
+  and the saved file changed in one line, `Conventional 3` `Off` → `On`. That
+  is the evidence for #881 (`On` = locked out, on every model).
+- `SCG` answers `NG` outside program mode on this radio.
 
 ## Values for the descriptor (#849)
 
