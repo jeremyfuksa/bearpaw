@@ -203,6 +203,13 @@ pub(crate) async fn post_memory_sync(
 ) -> Result<Json<MemorySyncResponse>, ApiError> {
     use std::sync::mpsc::Sender;
 
+    // REGRESSION GUARD (#893, `an_unlisted_scanner_gets_no_memory_sync`): the
+    // sync sends its own `PRG` from the poll thread, outside
+    // `ProgramModeGuard`, so the guard's refusal does not cover it.
+    if state.model_is_unlisted() {
+        return Err(ApiError::BadRequest("unsupported_model".to_string()));
+    }
+
     if let Some(task_id) = state.sync_task_id.lock().unwrap().clone() {
         return Ok(Json(MemorySyncResponse {
             status: "already_running".to_string(),
@@ -317,6 +324,11 @@ pub(crate) async fn program_mode_start(
 ) -> Result<Json<Value>, ApiError> {
     if state.sync_task_id.lock().unwrap().is_some() {
         return Err(ApiError::Conflict("sync_in_progress".to_string()));
+    }
+    // #893: before the Hold keypress below, which `enter`'s own refusal comes
+    // too late to prevent (`an_unlisted_scanner_is_not_held_by_a_refused_program_mode_start`).
+    if state.model_is_unlisted() {
+        return Err(ApiError::BadRequest("unsupported_model".to_string()));
     }
     let _ = command_sender(&state)?;
     let pre_mode = state
@@ -470,6 +482,104 @@ mod tests {
 
         let result = post_memory_sync(State(state.clone())).await;
         assert_sync_refused(&state, &rx, result);
+    }
+
+    fn connect_model(state: &AppState, model: &str) {
+        state.device.write().unwrap().model = Some(model.to_string());
+    }
+
+    /// REGRESSION GUARD (#893): a scanner Bearpaw does not list never gets
+    /// `PRG`.
+    ///
+    /// An unlisted model connects with the BC125AT's capabilities by fallback
+    /// (`for_model_or_default`), so every write path that opens a bracket --
+    /// channels, banks, lockouts, settings, both `.ss` imports, whose
+    /// `ss_format` check the fallback passes -- would write a guessed memory
+    /// layout. And on an SDS150 `PRG` is accepted with no `EPG`, so only a
+    /// power cycle recovers it (albeebe/radiocli `research/protocol.md`).
+    /// "Nothing reached the wire" is the assertion that matters: a refusal
+    /// after the `PRG` is still the wedge.
+    #[tokio::test]
+    async fn an_unlisted_scanner_cannot_open_program_mode() {
+        let state = default_state();
+        connect_model(&state, "SDS150");
+        let seen = fake_responder(&state, "PRG,OK");
+
+        let result = ProgramModeGuard::enter(&state).await;
+
+        assert!(
+            matches!(&result, Err(ApiError::BadRequest(m)) if m == "unsupported_model"),
+            "got {:?}",
+            result.as_ref().err()
+        );
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+        assert!(!state.program_mode_active.load(Ordering::Relaxed));
+    }
+
+    /// The paired half: a listed model still opens a bracket. Without it, a
+    /// check that refuses whenever ANY model is known passes the guard above,
+    /// and every write on every supported radio breaks.
+    #[tokio::test]
+    async fn a_listed_scanner_still_opens_program_mode() {
+        let state = default_state();
+        connect_model(&state, "BC75XLT");
+        let seen = fake_responder(&state, "PRG,OK");
+
+        let guard = ProgramModeGuard::enter(&state).await;
+
+        assert!(guard.is_ok(), "{:?}", guard.err());
+        assert_eq!(
+            seen.lock().unwrap().first().map(String::as_str),
+            Some("PRG")
+        );
+    }
+
+    /// #893: `program-mode/start` presses Hold BEFORE it opens the bracket, so
+    /// leaving the refusal to `ProgramModeGuard::enter` still parked an
+    /// unlisted radio in Hold (seen against the fake scanner: two `KEY`s, then
+    /// 400). It refuses before any key, as it does for a running sync.
+    #[tokio::test]
+    async fn an_unlisted_scanner_is_not_held_by_a_refused_program_mode_start() {
+        let state = default_state();
+        connect_model(&state, "SDS150");
+        let seen = fake_responder(&state, "PRG,OK");
+
+        let result = program_mode_start(State(state.clone())).await;
+
+        assert!(
+            matches!(&result, Err(ApiError::BadRequest(m)) if m == "unsupported_model"),
+            "got {:?}",
+            result.as_ref().err()
+        );
+        assert!(
+            seen.lock().unwrap().is_empty(),
+            "{:?}",
+            seen.lock().unwrap()
+        );
+    }
+
+    /// #893: the memory sync sends its own `PRG` from the poll thread
+    /// (`memory_sync.rs`), outside the guard, so it needs its own refusal --
+    /// and the frontend starts one on every connect.
+    #[tokio::test]
+    async fn an_unlisted_scanner_gets_no_memory_sync() {
+        let state = default_state();
+        connect_model(&state, "SDS150");
+        let rx = silent_channel(&state);
+
+        let result = post_memory_sync(State(state.clone())).await;
+
+        assert!(
+            matches!(&result, Err(ApiError::BadRequest(m)) if m == "unsupported_model"),
+            "got {:?}",
+            result.as_ref().map(|r| &r.status)
+        );
+        assert!(state.sync_task_id.lock().unwrap().is_none());
+        assert!(rx.try_recv().is_err(), "nothing may be queued");
     }
 
     // REGRESSION GUARD (#262): a `PRG,NG` reply (scanner refused program mode,

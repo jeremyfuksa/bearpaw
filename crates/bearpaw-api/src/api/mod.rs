@@ -109,6 +109,18 @@ impl AppState {
             .unwrap_or_default()
     }
 
+    /// A scanner answered `MDL` with a model Bearpaw does not list (#893).
+    /// Its capabilities are the BC125AT's by fallback, a guess, so nothing
+    /// may write to it or open program mode. `None` (no `MDL` parsed yet) is
+    /// not unlisted: nothing reaches the radio before a scanner is found.
+    pub fn model_is_unlisted(&self) -> bool {
+        self.device
+            .read()
+            .ok()
+            .and_then(|d| d.model.clone())
+            .is_some_and(|m| !crate::config::is_supported_model(&m))
+    }
+
     /// Channel memory with `bank` filled in for the connected scanner.
     ///
     /// REGRESSION GUARD: `channels_with_banks_derives_per_model`, paired with
@@ -9585,6 +9597,39 @@ mod tests {
         let (status, t) = post_json_capture("/api/v1/volume", r#"{"volume":9}"#).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(settings_payload(&t), vec!["VOL,9"]);
+    }
+
+    /// #893, through real routes: an unlisted scanner is read-only, not dead.
+    /// A settings write is refused with nothing on the wire, while volume --
+    /// a live control outside program mode -- still reaches it. The second
+    /// half stops the refusal from creeping down into `send_raw_command`,
+    /// which would pass every "writes are refused" check and leave the radio
+    /// uncontrollable.
+    #[tokio::test]
+    async fn an_unlisted_scanner_is_read_only_but_still_controllable() {
+        let state = default_state();
+        state.device.write().unwrap().model = Some("SDS150".to_string());
+        let fake = FakeScanner::attach(&state, |_| Ok("OK".to_string()));
+        let post = |uri: &'static str, body: &'static str| {
+            router(state.clone()).oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(uri)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+        };
+
+        let write = post("/api/v1/settings/priority", r#"{"mode":2}"#)
+            .await
+            .unwrap();
+        assert_eq!(write.status(), StatusCode::BAD_REQUEST);
+        assert!(fake.transcript().is_empty(), "{:?}", fake.transcript());
+
+        let control = post("/api/v1/volume", r#"{"volume":9}"#).await.unwrap();
+        assert_eq!(control.status(), StatusCode::OK);
+        assert_eq!(fake.transcript(), vec!["VOL,9"]);
     }
 
     #[tokio::test]

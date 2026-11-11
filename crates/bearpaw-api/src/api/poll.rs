@@ -1204,7 +1204,8 @@ fn next_backoff(current: Duration) -> Duration {
 /// `unsupported_model` diagnostic. It is deliberately not refused: an explicit
 /// `device.port` is the user overriding detection on purpose, and a hard
 /// refusal would remove the only escape hatch for a compatible-but-unlisted
-/// model. The diagnostic is what the UI surfaces instead.
+/// model. It is connected READ-ONLY, though (#893): `ProgramModeGuard::enter`
+/// and `post_memory_sync` refuse it, because its capabilities are a guess.
 ///
 /// Tests: `unsupported_model_sets_diagnostic_and_keeps_connection`,
 /// `supported_model_clears_diagnostic`.
@@ -1218,15 +1219,15 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
         let caps = crate::protocol::capabilities::ScannerCapabilities::for_model_or_default(&model);
         if !supported {
             // warn! rather than debug!: this is the one outcome where the user
-            // has done nothing wrong and needs to know why memory operations
-            // may behave oddly. Mirrors config::probe_mdl_on_port's warning on
-            // the autodetect path.
+            // has done nothing wrong and needs to know why every write is
+            // refused. Mirrors config::probe_mdl_on_port's warning on the
+            // autodetect path.
             warn!(
                 "Scanner on {} reports model {:?}, which Bearpaw does not support. \
-                 Supported models: {}. Bearpaw targets the conventional analog 125/126 \
-                 family; channel-memory operations assume {} \
-                 and may misbehave on other hardware. Please report this model at \
-                 https://github.com/jeremyfuksa/bearpaw/issues so support can be considered.",
+                 Supported models: {}. Connected read-only (#893): its memory layout \
+                 would be guessed as {}, so nothing is written to it. Please report \
+                 this model at https://github.com/jeremyfuksa/bearpaw/issues so \
+                 support can be considered.",
                 port_label,
                 model,
                 crate::config::supported_models_list(),
@@ -1248,8 +1249,9 @@ fn update_device_info_from_mdl(state: &AppState, mdl_resp: &str, port_label: &st
                 d.diagnostic_code = Some("unsupported_model".to_string());
                 d.diagnostic_message = Some(format!(
                     "This scanner reports model {}, which Bearpaw does not support yet. \
-                     Supported models: {}. Channel memory operations assume {} \
-                     and may not work correctly on this hardware.",
+                     Supported models: {}. It is connected read-only: you can watch \
+                     and control it, but Bearpaw won't change its channels or \
+                     settings, because it would have to guess their layout ({}).",
                     model,
                     crate::config::supported_models_list(),
                     caps.capacity_summary()

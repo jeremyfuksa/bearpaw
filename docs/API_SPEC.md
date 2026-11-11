@@ -144,8 +144,8 @@ Scanner hardware and connection information.
 | `display_name` | string, omitted when unnamed | The name the user gave this profile (#417); show `model` when absent |
 | `connection_status` | string | "connected", "disconnected", "connecting" |
 | `port` | string or null | Serial or USB port path |
-| `diagnostic_code` | string or null | Machine-readable disconnect reason, when disconnected |
-| `diagnostic_message` | string or null | Human-readable disconnect detail, when disconnected |
+| `diagnostic_code` | string or null | Machine-readable disconnect reason, when disconnected; `unsupported_model` while connected to a model Bearpaw does not list (see below) |
+| `diagnostic_message` | string or null | Human-readable detail for `diagnostic_code` |
 | `capabilities` | object or null | Memory model and feature set of the connected scanner; absent until a scanner identifies itself |
 
 #### ScannerCapabilities
@@ -170,6 +170,14 @@ Serialize-only: the API never accepts capabilities as input. A client asserting
 its own memory model is authority the backend must keep.
 
 Optional fields `vid`, `pid`, and `description` may also appear (USB transport metadata) and are omitted when unset.
+
+**An `unsupported_model` scanner is read-only** (#893). Its `capabilities` are
+the BC125AT family's by fallback, which is a guess, so every request that
+needs program mode (channel, bank, lockout and settings writes, `.ss`
+imports, `program-mode/start`, `POST /memory/sync`) returns
+`400 unsupported_model` before anything reaches the radio. Live status,
+volume, squelch and keys still work. Autodetect never connects one; only an
+explicit `device.port` does.
 
 ### 2.4 Error Response
 
@@ -559,6 +567,7 @@ If a sync is already running, this returns `200 OK` with
 
 **Errors:**
 - `503 Service Unavailable` if scanner disconnected
+- `400 Bad Request` (`unsupported_model`) for a model Bearpaw does not list (#893)
 - `409 Conflict` (`program_mode_active`) while a program-mode bracket is open
   or opening, such as a `program-mode/start` session or a channel write (#721)
 
