@@ -124,6 +124,10 @@ export interface ScannerCapabilities {
    * the value it just reported (hardware 2026-09-02). Named for what Bearpaw
    * can control, per `has_backlight_control`. */
   has_search_options: boolean;
+  /** `SCO`'s code-search field is settable (BC125AT family). Reserved on the SR30C. */
+  has_search_code: boolean;
+  /** `SCO` carries a settable search direction, Up/Down (SR30C, #879). */
+  has_search_direction: boolean;
   /**
    * Close Call band labels, indexed by position in the `CLC` mask.
    *
@@ -354,9 +358,13 @@ export interface PrioritySettings {
   mode: number;
 }
 
+export type SearchDirection = 'Up' | 'Down';
+
 export interface SearchSettings {
   delay: number;
   code_search: boolean;
+  /** Present on a three-field `SCO` (the SR30C), `null` on the BC125AT (#879). */
+  direction?: SearchDirection | null;
 }
 
 export interface CloseCallSettings {

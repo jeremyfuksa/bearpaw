@@ -145,6 +145,17 @@ pub struct ScannerCapabilities {
     /// trusts it puts a rejected `SCO` in the error list of every otherwise
     /// clean restore.
     pub has_search_options: bool,
+    /// Whether `SCO`'s second field (code search) is settable. True on the
+    /// BC125AT family, whose `SCO` is `<delay>,<code search>`. Reserved on the
+    /// SR30C: written `1` it is dropped (#879).
+    pub has_search_code: bool,
+    /// Whether `SCO` carries a settable search direction in a THIRD field:
+    /// `SCO,<delay>,<code search, reserved>,<direction>`, `0` Up and `1`
+    /// Down. True on the SR30C (#879, sr30c-findings.md §4): a write in that
+    /// shape round-trips, and Bearpaw's two-field write gets `ERR`. The
+    /// BC75XLT reads the same three fields but refuses every write, so
+    /// `has_search_options` keeps it out entirely.
+    pub has_search_direction: bool,
     /// Close Call band labels, indexed by their position in the `CLC` mask.
     ///
     /// `None` marks a reserved position -- present in the 5-character mask,
@@ -310,6 +321,8 @@ pub const BC125AT_FAMILY: ScannerCapabilities = ScannerCapabilities {
     has_weather_alert: true,
     has_service_search_groups: true,
     has_search_options: true,
+    has_search_code: true,
+    has_search_direction: false,
     close_call_bands: &[
         Some("VHF Low"),
         Some("Air"),
@@ -370,6 +383,8 @@ pub const BC75XLT: ScannerCapabilities = ScannerCapabilities {
     has_weather_alert: false,
     has_service_search_groups: false,
     has_search_options: false,
+    has_search_code: false,
+    has_search_direction: false,
     close_call_bands: &[
         Some("VHF Low"),
         Some("Air"),
@@ -436,9 +451,11 @@ pub const SR30C: ScannerCapabilities = ScannerCapabilities {
     // No backlight MODE; `BLT,,,<n>` sets the level instead (#847).
     has_backlight_control: false,
     has_backlight_level: true,
-    // Settable, but only as `SCO,<delay>,,<direction>`; the 2-field write
-    // Bearpaw sends replies ERR (sr30c-findings.md §4).
-    has_search_options: false,
+    // `SCO,<delay 0/1>,,<direction>` round-trips; code search is reserved
+    // (sr30c-findings.md §4, #879).
+    has_search_options: true,
+    has_search_code: false,
+    has_search_direction: true,
     // Owner's manual (SR30Com.pdf), "USA BAND PLAN": 25-54, 108-174,
     // 406-512. The copy run found 239.0-347.5 refused.
     coverage_bands: &[(25.0, 54.0), (108.0, 174.0), (406.0, 512.0)],
@@ -680,6 +697,8 @@ mod tests {
         assert!(c.has_weather_alert);
         assert!(c.has_service_search_groups);
         assert!(c.has_search_options);
+        assert!(c.has_search_code);
+        assert!(!c.has_search_direction, "SCO is two fields here");
         assert!(c.has_close_call_hit_scan);
         assert!(c.has_priority_clear);
         assert_eq!(c.close_call_bands[3], Some("UHF"));
@@ -723,6 +742,8 @@ mod tests {
         assert!(!c.has_weather_alert);
         assert!(!c.has_service_search_groups);
         assert!(!c.has_search_options);
+        assert!(!c.has_search_code);
+        assert!(!c.has_search_direction);
         assert!(!c.has_close_call_hit_scan);
         assert!(!c.has_priority_clear);
         // Position 4 is reserved and 5 is UHF -- the reverse of the BC125AT.
@@ -767,10 +788,11 @@ mod tests {
         // KBP,NG outside PRG; the beep field is reserved, the lock round-trips (§4).
         assert!(!c.has_key_beep);
         assert!(c.key_beep_needs_program_mode);
-        // SCO is settable only in its own 3-field shape; Bearpaw's 2-field
-        // write gets ERR (§4), so the control stays hidden until the write
-        // follows the read.
-        assert!(!c.has_search_options);
+        // SCO is `<delay 0/1>,<code search, reserved>,<direction>` (§4, #879):
+        // delay and direction settable, code search not.
+        assert!(c.has_search_options);
+        assert!(!c.has_search_code);
+        assert!(c.has_search_direction);
         // `BLT,,,10` / `BLT,,,5` set the level; there is no mode (§5, #847).
         assert!(!c.has_backlight_control);
         assert!(c.has_backlight_level);

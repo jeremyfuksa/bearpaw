@@ -10,6 +10,7 @@ import type {
   CustomSearchSettings,
   DeviceInfo,
   KeyBeepSettings,
+  SearchDirection,
   LiveState,
   LockoutsResponse,
   PrioritySettings,
@@ -311,10 +312,16 @@ export class ScannerAPIClient {
     });
   }
 
-  async setSearchSettings(delay: number, code_search: boolean): Promise<void> {
+  /** `direction` is required by a scanner with `has_search_direction` (the
+   *  SR30C) and ignored by one without it (#879). */
+  async setSearchSettings(
+    delay: number,
+    code_search: boolean,
+    direction?: SearchDirection,
+  ): Promise<void> {
     await this.request('/settings/search', {
       method: 'POST',
-      body: JSON.stringify({ delay, code_search }),
+      body: JSON.stringify({ delay, code_search, direction }),
     });
   }
 

@@ -31,6 +31,7 @@ pub(crate) struct SsSettings {
     pub custom_ranges: Vec<(u8, i64, i64)>, // (index, lower_100hz, upper_100hz)
     pub search_delay: Option<String>, // SCO field 1
     pub search_code: Option<String>, // SCO field 2 (On->1 Off->0)
+    pub search_direction: Option<String>, // SCO field 3 (Up->0 Down->1), GeneralSearch col 4
     pub cc_mode: Option<String>,   // CloseCall field: Off->0 Pri->1 DND->2
     pub cc_beep: Option<String>,
     pub cc_light: Option<String>,
@@ -160,6 +161,12 @@ pub(crate) fn parse_ss_config(text: &str, caps: &ScannerCapabilities) -> SsConfi
             Some("GeneralSearch") if f.len() >= 3 => {
                 s.search_delay = Some(f[1].to_string());
                 s.search_code = Some(on_off_to_flag(f[2]).to_string());
+                // The BC75XLT layout's fourth column (#879).
+                s.search_direction = match f.get(3).copied() {
+                    Some("Down") => Some("1".to_string()),
+                    Some("Up") => Some("0".to_string()),
+                    _ => None,
+                };
             }
             Some("CloseCall") if f.len() >= 5 => {
                 s.cc_mode = Some(
@@ -487,9 +494,27 @@ fn settings_jobs(
         caps.has_search_options,
         "SCO",
         "General search delay and code search",
-        match (value(&s.search_delay), value(&s.search_code)) {
-            (Some(d), Some(c)) => Some((format!("SCO,{},{}", d, c), "SCO".to_string(), d)),
-            _ => None,
+        if caps.has_search_direction {
+            // The three-field shape (#879): the reserved code-search field
+            // goes out empty, and the file's delay is in seconds (`2` on,
+            // `0` off) where the wire's is a boolean -- the same mapping the
+            // channel delay column takes. Verified on the whole payload.
+            match (value(&s.search_delay), value(&s.search_direction)) {
+                (Some(d), Some(dir)) => {
+                    let d = if d.trim() == "0" { "0" } else { "1" };
+                    Some((
+                        format!("SCO,{d},,{dir}"),
+                        "SCO".to_string(),
+                        format!("{d},,{dir}"),
+                    ))
+                }
+                _ => None,
+            }
+        } else {
+            match (value(&s.search_delay), value(&s.search_code)) {
+                (Some(d), Some(c)) => Some((format!("SCO,{},{}", d, c), "SCO".to_string(), d)),
+                _ => None,
+            }
         },
     );
     gated(
@@ -1372,6 +1397,36 @@ mod tests {
         let cfg = parse_ss_config("Misc\t\t\tOff\t\t\t2\t2\tUSA\r\n", &BC75XLT);
         let (jobs, _) = settings_jobs(&cfg.settings, &BC75XLT);
         assert!(!jobs.iter().any(|(w, _, _)| w.starts_with("BLT")));
+    }
+
+    // #879: Uniden's own SR30C file restores search options in the radio's
+    // three-field shape. `GeneralSearch 2 (blank) Up` is delay on, direction
+    // Up -- `SCO,1,,0`, the exact reply that radio gave when the file was
+    // written. The BC125AT shape (`SCO,2,0`) is what the radio answers ERR
+    // to, so a restore sending it puts an error in every clean SR30C restore.
+    #[test]
+    fn an_sr30c_files_search_options_restore_in_its_shape() {
+        use crate::protocol::capabilities::SR30C;
+        let cfg = parse_ss_config(include_str!("../../../fixtures/sample.sr30c_ss"), &SR30C);
+        let (jobs, skipped) = settings_jobs(&cfg.settings, &SR30C);
+        let sco: Vec<_> = jobs
+            .iter()
+            .filter(|(w, _, _)| w.starts_with("SCO"))
+            .collect();
+        assert_eq!(
+            sco,
+            vec![&(
+                "SCO,1,,0".to_string(),
+                "SCO".to_string(),
+                "1,,0".to_string()
+            )]
+        );
+        assert!(!skipped.iter().any(|s| s.command == "SCO"), "{skipped:?}");
+
+        // Direction Down and delay off, from the same column positions.
+        let cfg = parse_ss_config("GeneralSearch\t0\t\tDown\r\n", &SR30C);
+        let (jobs, _) = settings_jobs(&cfg.settings, &SR30C);
+        assert!(jobs.iter().any(|(w, _, _)| w == "SCO,0,,1"), "{jobs:?}");
     }
 
     // The BC75XLT's file carries a constant delay, so its import keeps each

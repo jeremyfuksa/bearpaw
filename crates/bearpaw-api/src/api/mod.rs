@@ -2135,16 +2135,10 @@ pub(crate) async fn read_settings_snapshot_from_scanner(
         let search = {
             let resp = send_raw_command(state, "SCO", false).await?;
             let parts = parse_command_parts(&resp, "SCO");
-            match usable(&resp)
-                .then(|| parts.first().and_then(|s| s.parse::<i32>().ok()))
+            usable(&resp)
+                .then(|| handlers::settings::search_json(&parts))
                 .flatten()
-            {
-                Some(delay) => json!({
-                    "delay": delay,
-                    "code_search": parts.get(1).map(|s| s == "1").unwrap_or(false)
-                }),
-                None => Value::Null,
-            }
+                .unwrap_or(Value::Null)
         };
         let close_call = {
             let resp = send_raw_command(state, "CLC", false).await?;
@@ -8889,6 +8883,98 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(settings_payload(&t), vec!["SCO,3,1"]);
+    }
+
+    /// An SR30C whose fake `SCO` stores `<delay>,,<direction>` writes, unless
+    /// `sticky`, in which case it answers OK and keeps its old value -- the
+    /// shape it gives a delay of 2 (sr30c-findings.md §4).
+    async fn sr30c_search_request(
+        method: Method,
+        body: &'static str,
+        sticky: bool,
+    ) -> (StatusCode, Value, Vec<String>) {
+        use crate::protocol::capabilities::SR30C;
+        let state = default_state();
+        state.device.write().unwrap().capabilities = Some(SR30C);
+        let sco = std::sync::Arc::new(std::sync::Mutex::new("1,,0".to_string()));
+        let stored = sco.clone();
+        let fake = FakeScanner::attach(&state, move |cmd: &str| {
+            Ok(match cmd {
+                "SCO" => format!("SCO,{}", stored.lock().unwrap()),
+                c if c.starts_with("SCO,") => {
+                    let fields: Vec<&str> = c.trim_start_matches("SCO,").split(',').collect();
+                    if fields.len() != 3 {
+                        // Bearpaw's two-field BC125AT shape: hardware says ERR.
+                        return Ok("SCO,ERR".to_string());
+                    }
+                    if !sticky {
+                        *stored.lock().unwrap() = fields.join(",");
+                    }
+                    "SCO,OK".to_string()
+                }
+                _ => "OK".to_string(),
+            })
+        });
+        let mut request = Request::builder()
+            .method(method)
+            .uri("/api/v1/settings/search");
+        if !body.is_empty() {
+            request = request.header("content-type", "application/json");
+        }
+        let response = router(state)
+            .oneshot(request.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, json, fake.transcript_with_closed_bracket())
+    }
+
+    // #879: the SR30C's `SCO` is `<delay>,<code search, reserved>,<direction>`.
+    // The reserved field goes out EMPTY ("leave unchanged"), never a value.
+    // Paired with `set_search_encodes_delay_and_code_search`: the BC125AT
+    // keeps its two-field shape.
+    #[tokio::test]
+    async fn an_sr30c_search_write_uses_its_three_field_shape() {
+        let (status, json, t) =
+            sr30c_search_request(Method::POST, r#"{"delay":0,"direction":"Down"}"#, false).await;
+        assert_eq!(status, StatusCode::OK, "{json}");
+        assert!(t.contains(&"SCO,0,,1".to_string()), "{t:?}");
+        let (status, _, t) =
+            sr30c_search_request(Method::POST, r#"{"delay":1,"direction":"Up"}"#, false).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(t.contains(&"SCO,1,,0".to_string()), "{t:?}");
+    }
+
+    // The SR30C's delay is boolean: a 2 is OK'd and not applied on the wire,
+    // so it is refused before it.
+    #[tokio::test]
+    async fn an_sr30c_search_delay_is_bounded_by_the_model() {
+        let (status, _, t) =
+            sr30c_search_request(Method::POST, r#"{"delay":2,"direction":"Up"}"#, false).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(!t.iter().any(|c| c.starts_with("SCO,")), "{t:?}");
+    }
+
+    #[tokio::test]
+    async fn an_sr30c_search_write_the_radio_ignores_is_a_failure() {
+        let (status, json, _) =
+            sr30c_search_request(Method::POST, r#"{"delay":0,"direction":"Down"}"#, true).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{json}");
+        assert_eq!(json["error"], "search_not_persisted");
+    }
+
+    // Direction is a third field the old reader dropped. Code search is
+    // reserved there, so it is not reported as a setting.
+    #[tokio::test]
+    async fn an_sr30c_search_read_reports_direction() {
+        let (status, json, _) = sr30c_search_request(Method::GET, "", false).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["delay"], 1);
+        assert_eq!(json["direction"], "Up");
     }
 
     #[tokio::test]
