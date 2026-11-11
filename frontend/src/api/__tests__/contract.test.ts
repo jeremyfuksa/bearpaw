@@ -123,6 +123,7 @@ const CALLS: Array<[string, (c: ScannerAPIClient) => Promise<unknown>]> = [
   ['resetPreferences', (c) => c.resetPreferences()],
   ['updateChannel', (c) => c.updateChannel(1, { frequency: 146.52 } as never)],
   ['setBacklight', (c) => c.setBacklight('AO')],
+  ['setBacklightLevel', (c) => c.setBacklightLevel('Low')],
   ['setBatterySettings', (c) => c.setBatterySettings(3)],
   ['setKeyBeepSettings', (c) => c.setKeyBeepSettings(1, false)],
   ['setPrioritySettings', (c) => c.setPrioritySettings(0)],

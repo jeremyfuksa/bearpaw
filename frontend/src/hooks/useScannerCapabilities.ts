@@ -26,6 +26,7 @@ export const DEFAULT_CAPABILITIES: ScannerCapabilities = {
   has_per_channel_modulation: true,
   has_tone_squelch: true,
   has_backlight_control: true,
+  has_backlight_level: false,
   has_battery_save: true,
   has_contrast: true,
   has_weather_alert: true,

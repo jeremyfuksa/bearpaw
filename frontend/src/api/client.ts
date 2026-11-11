@@ -1,4 +1,5 @@
 import type {
+  BacklightLevel,
   BacklightSettings,
   BatterySettings,
   ChannelData,
@@ -267,6 +268,13 @@ export class ScannerAPIClient {
     await this.request('/settings/backlight', {
       method: 'POST',
       body: JSON.stringify({ event }),
+    });
+  }
+
+  async setBacklightLevel(level: BacklightLevel): Promise<void> {
+    await this.request('/settings/backlight_level', {
+      method: 'POST',
+      body: JSON.stringify({ level }),
     });
   }
 

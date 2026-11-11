@@ -66,6 +66,14 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/settings/backlight_level"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/backlight_level"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/settings/battery"
     },
     {

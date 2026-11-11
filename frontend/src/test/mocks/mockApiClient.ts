@@ -189,6 +189,7 @@ export const createMockApiClient = () => {
       await new Promise((r) => setTimeout(r, response?.delay ?? 0));
       return undefined;
     }),
+    setBacklightLevel: vi.fn(async (_level: string) => undefined),
     getBatterySettings: vi.fn(async () => {
       const response = responses.get('/settings/battery');
       if (response?.error) {

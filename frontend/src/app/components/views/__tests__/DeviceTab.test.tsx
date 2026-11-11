@@ -14,6 +14,7 @@ import { createMockApiClient } from '../../../../test/mocks/mockApiClient';
 import {
   BC125AT_CAPS,
   BC75XLT_CAPS,
+  SR30C_CAPS,
   createTestChannel,
   createTestDeviceInfo,
   createTestLiveState,
@@ -782,6 +783,37 @@ describe('DeviceTab', () => {
       await selectCategory(/Device Config/i);
 
       expect(screen.queryByText('BC125AT')).not.toBeInTheDocument();
+    });
+
+    // #847: the SR30C sets a backlight LEVEL, not a mode. It gets a High/Low
+    // control and none of the BC125AT's mode options, which would each send a
+    // `BLT,<mode>` this radio cannot take.
+    it('offers an SR30C its High/Low backlight level, not the mode list', async () => {
+      mockApiClient.setBacklightLevel = vi.fn().mockResolvedValue(undefined);
+      useStore.setState({
+        deviceInfo: { ...createTestDeviceInfo(), capabilities: SR30C_CAPS },
+      });
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      await userEvent.click(screen.getByRole('combobox', { name: /Backlight/i }));
+      expect(screen.getByRole('option', { name: 'High' })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: /Always On/i })).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('option', { name: 'Low' }));
+
+      expect(mockApiClient.setBacklightLevel).toHaveBeenCalledWith('Low');
+      expect(mockApiClient.setBacklight).not.toHaveBeenCalled();
+    });
+
+    // Paired with the test above: a BC125AT keeps its mode list, and never
+    // sees the level control.
+    it('gives a BC125AT the mode list, not the level control', async () => {
+      renderDeviceTab();
+      await selectCategory(/Device Config/i);
+
+      await userEvent.click(screen.getByRole('combobox', { name: /Backlight/i }));
+      expect(screen.getByRole('option', { name: /Always On/i })).toBeInTheDocument();
+      expect(screen.queryByRole('option', { name: 'Low' })).not.toBeInTheDocument();
     });
 
     // The same controls must still be there for scanners that have them — a
