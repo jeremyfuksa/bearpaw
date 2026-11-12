@@ -25,9 +25,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // family speaks 115200. Using the configured rate here would reopen at a
     // rate detection just proved wrong.
     let serial = Some(ScannerLink {
-        target: config::resolve_scanner_port(&cfg),
+        target: config::resolve_scanner_port(&cfg, None),
         assert_dtr,
-        resolve: Box::new(move || config::resolve_scanner_port(&cfg)),
+        resolve: Box::new(move |exclude| config::resolve_scanner_port(&cfg, exclude)),
     });
 
     run_server(&bind, state, serial).await

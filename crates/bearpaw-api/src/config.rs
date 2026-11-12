@@ -219,11 +219,22 @@ pub struct ResolvedPort {
 ///    with an MDL probe across the known baud rates to confirm the winner is
 ///    actually a scanner before committing.
 /// 5. Direct USB probe for known Uniden VID/PIDs (macOS no-CDC-bind fallback).
-pub fn resolve_scanner_port(cfg: &Config) -> Option<ResolvedPort> {
+/// 6. Last resort: a serial candidate whose `MDL` Bearpaw does not list, so it
+///    can be connected (and named to the user) without being driven (#900).
+///
+/// `exclude` is the target the poll loop already holds open. It is never
+/// opened or probed -- a second open of a serial node can steal its bytes and
+/// a held USB interface cannot be claimed twice -- and, because the caller is
+/// then looking for something BETTER than what it holds, an unlisted radio is
+/// not returned as a result (step 6 is skipped).
+pub fn resolve_scanner_port(cfg: &Config, exclude: Option<&str>) -> Option<ResolvedPort> {
     let baud = cfg.device.baud.unwrap_or(115200);
 
     if let Some(port) = cfg.device.port.clone() {
         if !port.is_empty() {
+            if exclude == Some(port.as_str()) {
+                return None;
+            }
             // An explicit port is the user overriding detection. Probe for the
             // working rate anyway (they may not know their scanner's baud), but
             // never reject the port they named.
@@ -243,7 +254,7 @@ pub fn resolve_scanner_port(cfg: &Config) -> Option<ResolvedPort> {
         if let Ok(ports) = serialport::available_ports() {
             for p in ports.iter().filter(|p| !is_blocked_port(p)) {
                 if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
-                    if info.vid == vid && info.pid == pid {
+                    if info.vid == vid && info.pid == pid && exclude != Some(p.port_name.as_str()) {
                         let (_, rate) = probe_mdl_on_port_any_baud(&p.port_name, baud);
                         return Some(ResolvedPort {
                             port_name: p.port_name.clone(),
@@ -253,8 +264,12 @@ pub fn resolve_scanner_port(cfg: &Config) -> Option<ResolvedPort> {
                 }
             }
         }
+        let pseudo = format!("usb:{:04x}:{:04x}", vid, pid);
+        if exclude == Some(pseudo.as_str()) {
+            return None;
+        }
         return Some(ResolvedPort {
-            port_name: format!("usb:{:04x}:{:04x}", vid, pid),
+            port_name: pseudo,
             baud,
         });
     }
@@ -274,6 +289,9 @@ pub fn resolve_scanner_port(cfg: &Config) -> Option<ResolvedPort> {
     // user keep multiple Uniden scanners attached without surprises.
     if let Some(cache) = load_last_scanner_cache() {
         for p in &available {
+            if exclude == Some(p.port_name.as_str()) {
+                continue;
+            }
             if let serialport::SerialPortType::UsbPort(info) = &p.port_type {
                 if info.serial_number.as_deref() == Some(cache.serial_number.as_str())
                     && matches!(
@@ -296,52 +314,92 @@ pub fn resolve_scanner_port(cfg: &Config) -> Option<ResolvedPort> {
     }
 
     // Scored-and-MDL-probed step: score the available ports, then in
-    // descending score order, MDL-probe each candidate. The first one that
-    // replies with a valid `MDL,<model>` we accept (per ACCEPTED_MDL_MODELS).
-    // If no candidate responds, fall through to the USB-direct probe so
-    // macOS no-CDC-bind still works.
+    // descending score order, MDL-probe each candidate until one replies with
+    // a valid `MDL,<model>` (per ACCEPTED_MDL_MODELS). Probing stops there, so a
+    // supported scanner costs no extra wire traffic. Every earlier answer is
+    // kept for `pick_resolved`: an unlisted radio is the last resort, behind
+    // the USB-direct probe, so that macOS no-CDC-bind still works.
     let scored: Vec<(i32, String)> = available
         .iter()
         .filter_map(|p| score_port(p).map(|score| (score, p.port_name.clone())))
         .collect();
+    // The held port may be one of a device's several nodes (`cu.`/`tty.` x two
+    // drivers); dedupe would keep a SIBLING node, and probing that opens the
+    // scanner the loop already holds. Drop the whole physical device.
+    let scored = match exclude {
+        Some(held) => without_physical_device(scored, &available, held),
+        None => scored,
+    };
     let scored = dedupe_physical_devices(scored, &available);
+    let mut candidates: Vec<(String, MdlProbe, u32)> = Vec::new();
     for (score, name) in &scored {
         if *score <= 0 {
             break;
         }
-        match probe_mdl_on_port_any_baud(name, baud) {
-            (MdlProbe::Supported, rate) => {
-                if rate != baud {
-                    debug!(
-                        "resolved scanner on {} at {} baud (configured {})",
-                        name, rate, baud
-                    );
-                }
-                return Some(ResolvedPort {
-                    port_name: name.clone(),
-                    baud: rate,
-                });
-            }
-            // Keep scanning other candidates: the unsupported unit may not be
-            // the only Uniden on the bus. The warn! in probe_mdl_on_port has
-            // already told the user what we found and why we skipped it.
-            (MdlProbe::Unsupported, _) | (MdlProbe::NoReply, _) | (MdlProbe::OpenFailed, _) => {
-                continue
-            }
+        let (probe, rate) = probe_mdl_on_port_any_baud(name, baud);
+        let supported = matches!(probe, MdlProbe::Supported);
+        if supported && rate != baud {
+            debug!(
+                "resolved scanner on {} at {} baud (configured {})",
+                name, rate, baud
+            );
+        }
+        candidates.push((name.clone(), probe, rate));
+        if supported {
+            break;
         }
     }
-
-    // Second-pass: probe USB directly for any known Uniden scanner. This is
-    // the path hit when macOS sees the device but never binds
-    // AppleUSBCDCACMData, leaving no /dev/cu.usbmodem* serial node.
-    if let Some((vid, pid)) = probe_known_scanner_via_usb() {
-        return Some(ResolvedPort {
-            port_name: format!("usb:{:04x}:{:04x}", vid, pid),
-            baud,
-        });
+    if exclude.is_some() {
+        // The caller already holds an unlisted radio; only a better one helps.
+        candidates.retain(|(_, probe, _)| !matches!(probe, MdlProbe::Unsupported));
     }
 
-    None
+    // Second pass: probe USB directly for any known Uniden scanner. This is
+    // the path hit when macOS sees the device but never binds
+    // AppleUSBCDCACMData, leaving no /dev/cu.usbmodem* serial node. Skipped
+    // when a supported serial candidate answered, and when the held target IS
+    // a USB one: its interface is claimed, so the probe cannot succeed.
+    let supported_serial = candidates
+        .iter()
+        .any(|(_, probe, _)| matches!(probe, MdlProbe::Supported));
+    let usb = if supported_serial || exclude.is_some_and(|e| e.starts_with("usb:")) {
+        None
+    } else {
+        probe_known_scanner_via_usb()
+    };
+
+    pick_resolved(&candidates, usb, baud)
+}
+
+/// Choose among what the probes found. Pure, so the order is testable without
+/// hardware: the first `Supported` serial candidate, then the direct-USB
+/// fallback, then the first `Unsupported` serial candidate, else nothing.
+///
+/// An unlisted radio comes LAST on purpose. The USB fallback accepts any
+/// Uniden-vendor device and has always connected one, and a supported radio
+/// must never lose to a model Bearpaw will not drive.
+fn pick_resolved(
+    serial: &[(String, MdlProbe, u32)],
+    usb: Option<(u16, u16)>,
+    baud: u32,
+) -> Option<ResolvedPort> {
+    let pick = |wanted: fn(&MdlProbe) -> bool| {
+        serial
+            .iter()
+            .find(|(_, probe, _)| wanted(probe))
+            .map(|(name, _, rate)| ResolvedPort {
+                port_name: name.clone(),
+                baud: *rate,
+            })
+    };
+    pick(|p| matches!(p, MdlProbe::Supported))
+        .or_else(|| {
+            usb.map(|(vid, pid)| ResolvedPort {
+                port_name: format!("usb:{:04x}:{:04x}", vid, pid),
+                baud,
+            })
+        })
+        .or_else(|| pick(|p| matches!(p, MdlProbe::Unsupported)))
 }
 
 /// Rank a USB device as a scanner candidate. Lower is better; `None` means
@@ -556,6 +614,33 @@ fn dedupe_physical_devices(
     scored
 }
 
+/// Remove `held` and every other node of the same physical device (same
+/// `(vid, pid, serial)`) from `scored`. A device with no serial number has no
+/// identity to match, so only the named node goes.
+fn without_physical_device(
+    mut scored: Vec<(i32, String)>,
+    ports: &[serialport::SerialPortInfo],
+    held: &str,
+) -> Vec<(i32, String)> {
+    let identity = |name: &str| -> Option<(u16, u16, String)> {
+        ports
+            .iter()
+            .find(|p| p.port_name == name)
+            .and_then(|p| match &p.port_type {
+                serialport::SerialPortType::UsbPort(info) => info
+                    .serial_number
+                    .as_ref()
+                    .map(|sn| (info.vid, info.pid, sn.clone())),
+                _ => None,
+            })
+    };
+    let held_identity = identity(held);
+    scored.retain(|(_, name)| {
+        name != held && (held_identity.is_none() || identity(name) != held_identity)
+    });
+    scored
+}
+
 /// Outcome of an `MDL` probe on a candidate port.
 ///
 /// The `Unsupported` arm exists so the caller can tell "nothing answered" from
@@ -701,8 +786,8 @@ fn probe_mdl_on_port(port_name: &str, baud: u32) -> MdlProbe {
         // generic "no scanner found" is actively misleading.
         warn!(
             "Found a Uniden scanner on {} reporting model {:?}, but Bearpaw does not support it yet. \
-             Supported models: {}. Bearpaw targets the conventional analog 125/126 family; \
-             trunking scanners (TrunkTracker systems/sites/groups) use a different memory model. \
+             Supported models: {}. Bearpaw will connect it so it can say what it found, but \
+             sends it no commands. \
              Please report this model at https://github.com/jeremyfuksa/bearpaw/issues so support can be considered.",
             port_name,
             model,
@@ -1343,5 +1428,123 @@ mod tests {
         // every node unopenable, and detection reported an empty USB bus.
         assert!(matches!(MdlProbe::OpenFailed, MdlProbe::OpenFailed));
         assert!(!matches!(MdlProbe::OpenFailed, MdlProbe::NoReply));
+    }
+
+    fn cand(name: &str, probe: MdlProbe, rate: u32) -> (String, MdlProbe, u32) {
+        (name.to_string(), probe, rate)
+    }
+
+    /// REGRESSION GUARD (#900): a supported radio never loses to an unlisted one.
+    #[test]
+    fn a_supported_candidate_beats_an_unsupported_one() {
+        let picked = pick_resolved(
+            &[
+                cand("a", MdlProbe::Unsupported, 57600),
+                cand("b", MdlProbe::Supported, 115200),
+            ],
+            None,
+            115200,
+        )
+        .expect("a supported candidate must be picked");
+        assert_eq!((picked.port_name.as_str(), picked.baud), ("b", 115200));
+    }
+
+    /// REGRESSION GUARD (#900): the unlisted radio is connected, not skipped.
+    #[test]
+    fn an_unsupported_candidate_is_used_when_nothing_else_answers() {
+        let picked = pick_resolved(
+            &[
+                cand("a", MdlProbe::NoReply, 0),
+                cand("b", MdlProbe::Unsupported, 57600),
+            ],
+            None,
+            115200,
+        )
+        .expect("an unlisted radio is the last resort");
+        assert_eq!((picked.port_name.as_str(), picked.baud), ("b", 57600));
+    }
+
+    /// REGRESSION GUARD (#900): paired with the two above. The USB fallback
+    /// has always beaten nothing and must still beat an unlisted serial radio.
+    #[test]
+    fn the_usb_fallback_still_beats_an_unsupported_serial_candidate() {
+        let picked = pick_resolved(
+            &[cand("b", MdlProbe::Unsupported, 57600)],
+            Some((0x1965, 0x0017)),
+            115200,
+        )
+        .expect("the USB fallback must be picked");
+        assert_eq!(picked.port_name, "usb:1965:0017");
+    }
+
+    #[test]
+    fn nothing_answering_resolves_to_nothing() {
+        assert!(pick_resolved(&[cand("a", MdlProbe::NoReply, 0)], None, 115200).is_none());
+    }
+
+    /// REGRESSION GUARD (#900): the held port is never probed, and that
+    /// includes its sibling nodes. One scanner is up to four nodes; dedupe
+    /// keeps the best-scoring one, which can be a node other than the one the
+    /// poll loop holds, and probing it opens the held scanner a second time.
+    #[test]
+    fn the_held_device_is_dropped_with_all_its_sibling_nodes() {
+        let ports = vec![
+            usb_port("/dev/cu.usbserial-X", SILICON_LABS_VID, 0xEA60, Some("X")),
+            usb_port(
+                "/dev/cu.SLAB_USBtoUART",
+                SILICON_LABS_VID,
+                0xEA60,
+                Some("X"),
+            ),
+            usb_port("/dev/cu.usbserial-Y", SILICON_LABS_VID, 0xEA60, Some("Y")),
+        ];
+        let scored = vec![
+            (60, "/dev/cu.usbserial-X".to_string()),
+            (55, "/dev/cu.SLAB_USBtoUART".to_string()),
+            (50, "/dev/cu.usbserial-Y".to_string()),
+        ];
+        // The held node is the LOWER-scoring sibling.
+        let left = without_physical_device(scored, &ports, "/dev/cu.SLAB_USBtoUART");
+        assert_eq!(left, vec![(50, "/dev/cu.usbserial-Y".to_string())]);
+    }
+
+    #[test]
+    fn a_held_port_with_no_serial_number_drops_only_itself() {
+        let ports = vec![
+            usb_port("/dev/ttyUSB0", 0x1965, 0x0017, None),
+            usb_port("/dev/ttyUSB1", 0x1965, 0x0017, None),
+        ];
+        let scored = vec![
+            (60, "/dev/ttyUSB0".to_string()),
+            (60, "/dev/ttyUSB1".to_string()),
+        ];
+        let left = without_physical_device(scored, &ports, "/dev/ttyUSB0");
+        assert_eq!(left, vec![(60, "/dev/ttyUSB1".to_string())]);
+    }
+
+    /// REGRESSION GUARD (#900): an explicit port that IS the held one is never
+    /// re-probed. Runs without hardware: the exclusion returns before any open.
+    #[test]
+    fn an_explicit_port_that_is_held_is_not_probed() {
+        let mut cfg = Config::default();
+        cfg.device.port = Some("/dev/bearpaw-nonexistent-held".to_string());
+        assert!(resolve_scanner_port(&cfg, Some("/dev/bearpaw-nonexistent-held")).is_none());
+        // Not held: the user's port is returned verbatim, as always.
+        assert_eq!(
+            resolve_scanner_port(&cfg, None).map(|r| r.port_name),
+            Some("/dev/bearpaw-nonexistent-held".to_string())
+        );
+    }
+
+    #[test]
+    fn a_configured_usb_target_that_is_held_is_not_returned_again() {
+        let mut cfg = Config::default();
+        cfg.device.usb_vid = Some(0xffff);
+        cfg.device.usb_pid = Some(0xffff);
+        assert!(resolve_scanner_port(&cfg, Some("usb:ffff:ffff")).is_none());
+        assert_eq!(
+            resolve_scanner_port(&cfg, None).map(|r| r.port_name),
+            Some("usb:ffff:ffff".to_string())
+        );
     }
 }
