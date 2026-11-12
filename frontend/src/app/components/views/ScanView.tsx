@@ -7,8 +7,6 @@ import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
 import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
-import { SUPPORTED_SCANNERS_URL } from '../../../hooks/useUnsupportedScanner';
-import { openExternalUrl } from '../../../tauri-shell';
 import type { ActivityLogEntry } from '../../../types';
 import { ScannerDisplay, type LockoutKind } from '../ScannerUI';
 import type { ScannerMode } from '../../App';
@@ -200,14 +198,6 @@ export function ScanView({
 }: ScanViewProps) {
   const liveState = useStore((state) => state.liveState);
   const fullActivityLog = useStore((state) => state.fullActivityLog);
-  // The two codes the backend gives a radio it cannot find: no scanner at launch
-  // (`scanner_not_found`, which is also what a radio with no `MDL` lands on) and
-  // one that dropped (`scanner_disconnected`). A diagnostic with its own remedy
-  // keeps its own message, and no `deviceInfo` at all means the backend is
-  // unreachable, which a supported-models page does not fix.
-  const notListedPossible = useStore((state) =>
-    ['scanner_not_found', 'scanner_disconnected'].includes(state.deviceInfo?.diagnostic_code ?? ''),
-  );
   const banks = useStore((state) => state.banks);
   const banksKnown = useStore((state) => state.banksKnown);
   const bankNames = useStore((state) => state.bankNames);
@@ -250,17 +240,6 @@ export function ScanView({
           so its type and controls scale alongside the Display when the window grows. */}
       <div className="flex flex-1 min-h-[var(--layout-dashboard-main-height)] items-stretch gap-6 rounded-lg border border-white/5 bg-black/20 p-[9px] transition-all duration-500 ease-in-out [container-type:size]">
         <div className="relative flex-1 min-w-0 self-stretch">
-          {/* "Nothing connected" may mean a radio Bearpaw does not drive. Say where
-              the supported list is. */}
-          {isError && notListedPossible && (
-            <button
-              type="button"
-              onClick={() => openExternalUrl(SUPPORTED_SCANNERS_URL)}
-              className="absolute bottom-3 right-4 z-10 text-xs text-white/60 underline underline-offset-2 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              My scanner isn't listed
-            </button>
-          )}
           <ScannerDisplay
             mainText={mainText}
             subText={subText}
