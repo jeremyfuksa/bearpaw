@@ -21,6 +21,7 @@ import { bankLabel } from '../../../lib/bankNames';
 import { openExternalUrl, revealLogs, isTauriRuntime } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
+import { useUnsupportedScanner } from '../../../hooks/useUnsupportedScanner';
 import type { BacklightLevel, SearchDirection } from '../../../types';
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
@@ -188,6 +189,10 @@ export interface DeviceTabProps {
 export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabProps = {}) {
   const api = getAPI();
   const connectionStatus = useConnectionStatus();
+  // The backend refuses every command to an unlisted radio (400
+  // `unsupported_model`), so this page offers its info card and the app
+  // preferences and nothing that would send one.
+  const { isUnsupported } = useUnsupportedScanner();
   const deviceInfo = useStore((state) => state.deviceInfo);
   const liveState = useStore((state) => state.liveState);
   // Selected raw and defaulted inside the memo below rather than with a
@@ -253,6 +258,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // question on every visit (CLAUDE.md frontend pitfall #5). The band names are
   // wrong for that model too -- `WX` leads its list and it has no Military Air.
   const categories = useMemo<DeviceCategory[]>(() => {
+    if (isUnsupported) return ['Device Config'];
     const all: DeviceCategory[] = [
       'Device Config',
       'Close Call',
@@ -263,7 +269,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     return capabilities.has_service_search_groups
       ? all
       : all.filter((cat) => cat !== 'Service Search');
-  }, [capabilities.has_service_search_groups]);
+  }, [capabilities.has_service_search_groups, isUnsupported]);
 
   // Derived during render rather than corrected by an effect: swapping scanners
   // can strip the category the user is standing on, and an effect-synced copy is
@@ -567,7 +573,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // HOLD at channel 1 for its duration, so re-reading on every sync would make
   // the radio unusable. Refresh is the deliberate re-read.
   useEffect(() => {
-    if (settingsLoaded || syncInProgress) return;
+    if (settingsLoaded || syncInProgress || isUnsupported) return;
     let mounted = true;
     // `loadAllSettings` is async and every setState inside it happens after an
     // await, so nothing is set synchronously here -- the rule cannot see past
@@ -578,7 +584,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     return () => {
       mounted = false;
     };
-  }, [settingsLoaded, syncInProgress, loadAllSettings]);
+  }, [settingsLoaded, syncInProgress, isUnsupported, loadAllSettings]);
 
   // The scanner has no change notification -- it answers questions and never
   // volunteers that something moved. So anything changed on the front panel
@@ -1165,7 +1171,7 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                   {activeRangeCount} of 10 active
                 </span>
               )}
-              {REFRESHABLE_CATEGORIES.includes(activeCategory) && (
+              {REFRESHABLE_CATEGORIES.includes(activeCategory) && !isUnsupported && (
                 <>
                   {settingsReadAt && (
                     <span className="text-sm font-normal text-white/40">
@@ -1425,219 +1431,222 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
         {/* Device Config */}
         {activeCategory === 'Device Config' && (
           <div className="space-y-4 max-w-4xl">
-            <div className="grid grid-cols-2 gap-6">
-              {/* Audio Control */}
-              <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="rounded bg-brand-primary/20 p-1.5 text-brand-primary">
-                    <Radio size={16} aria-hidden />
+            {/* Every card here but Device Information sends a scanner command. */}
+            {!isUnsupported && (
+              <div className="grid grid-cols-2 gap-6">
+                {/* Audio Control */}
+                <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="rounded bg-brand-primary/20 p-1.5 text-brand-primary">
+                      <Radio size={16} aria-hidden />
+                    </div>
+                    <h3 className="font-bold text-white">Audio & Power</h3>
                   </div>
-                  <h3 className="font-bold text-white">Audio & Power</h3>
-                </div>
 
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm font-medium text-white/70">
-                    <span>Volume</span>
-                    <span className="text-white">{volume}</span>
-                  </div>
-                  <Slider
-                    aria-label="Volume"
-                    value={[volume]}
-                    max={15}
-                    step={1}
-                    onValueChange={handleVolumeChange}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm font-medium text-white/70">
-                    <span>Squelch</span>
-                    <span className="text-white">{squelch}</span>
-                  </div>
-                  <Slider
-                    aria-label="Squelch"
-                    value={[squelch]}
-                    max={15}
-                    step={1}
-                    onValueChange={handleSquelchChange}
-                  />
-                </div>
-
-                {capabilities.has_battery_save && (
-                  <div className="space-y-3 pt-2 border-t border-white/5">
+                  <div className="space-y-3">
                     <div className="flex justify-between text-sm font-medium text-white/70">
-                      <span>Battery Saver</span>
-                      <span className="text-white">{`${batterySaver}h`}</span>
+                      <span>Volume</span>
+                      <span className="text-white">{volume}</span>
                     </div>
                     <Slider
-                      aria-label="Battery Saver"
-                      value={[batterySaver]}
-                      min={1}
-                      max={16}
+                      aria-label="Volume"
+                      value={[volume]}
+                      max={15}
                       step={1}
-                      onValueChange={handleBatterySaverChange}
+                      onValueChange={handleVolumeChange}
                     />
                   </div>
-                )}
-              </div>
 
-              {/* Display Settings. Gated as a whole, not control by control:
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm font-medium text-white/70">
+                      <span>Squelch</span>
+                      <span className="text-white">{squelch}</span>
+                    </div>
+                    <Slider
+                      aria-label="Squelch"
+                      value={[squelch]}
+                      max={15}
+                      step={1}
+                      onValueChange={handleSquelchChange}
+                    />
+                  </div>
+
+                  {capabilities.has_battery_save && (
+                    <div className="space-y-3 pt-2 border-t border-white/5">
+                      <div className="flex justify-between text-sm font-medium text-white/70">
+                        <span>Battery Saver</span>
+                        <span className="text-white">{`${batterySaver}h`}</span>
+                      </div>
+                      <Slider
+                        aria-label="Battery Saver"
+                        value={[batterySaver]}
+                        min={1}
+                        max={16}
+                        step={1}
+                        onValueChange={handleBatterySaverChange}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Display Settings. Gated as a whole, not control by control:
                   every control it holds is capability-gated, so on a BC75XLT
                   (no BLT, no CNT, and KBP's beep field reserved) it rendered as
                   an empty titled box. Scanning Logic takes the grid slot instead
                   of leaving the row half empty. */}
-              {showDisplayCard && (
-                <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
-                      <Maximize2 size={16} aria-hidden />
-                    </div>
-                    <h3 className="font-bold text-white">Display & System</h3>
-                  </div>
-
-                  <div className="space-y-4">
-                    {capabilities.has_backlight_control && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-white/70">Backlight</span>
-                        <Select value={backlight} onValueChange={handleBacklightChange}>
-                          <SelectTrigger
-                            aria-label="Backlight"
-                            // Wide, not medium: "Key + Squelch" clips at medium (#805).
-                            className="scanner-input h-7 w-[var(--size-select-wide)] text-sm"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="scanner-select-content">
-                            <SelectItem value="AO">Always On</SelectItem>
-                            <SelectItem value="AF">Always Off</SelectItem>
-                            <SelectItem value="KY">Keypress</SelectItem>
-                            <SelectItem value="SQ">Squelch</SelectItem>
-                            <SelectItem value="KS">Key + Squelch</SelectItem>
-                          </SelectContent>
-                        </Select>
+                {showDisplayCard && (
+                  <div className="bg-white/5 rounded-lg border border-white/10 p-4 space-y-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 bg-blue-500/20 rounded text-blue-400">
+                        <Maximize2 size={16} aria-hidden />
                       </div>
-                    )}
+                      <h3 className="font-bold text-white">Display & System</h3>
+                    </div>
 
-                    {/* The SR30C sets how bright its 15-second backlight is,
+                    <div className="space-y-4">
+                      {capabilities.has_backlight_control && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-white/70">Backlight</span>
+                          <Select value={backlight} onValueChange={handleBacklightChange}>
+                            <SelectTrigger
+                              aria-label="Backlight"
+                              // Wide, not medium: "Key + Squelch" clips at medium (#805).
+                              className="scanner-input h-7 w-[var(--size-select-wide)] text-sm"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="scanner-select-content">
+                              <SelectItem value="AO">Always On</SelectItem>
+                              <SelectItem value="AF">Always Off</SelectItem>
+                              <SelectItem value="KY">Keypress</SelectItem>
+                              <SelectItem value="SQ">Squelch</SelectItem>
+                              <SelectItem value="KS">Key + Squelch</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {/* The SR30C sets how bright its 15-second backlight is,
                       not a mode (#847). Both options mirror Uniden's own
                       software; the radio accepts other values, but what they
                       look like is unverified. */}
-                    {capabilities.has_backlight_level && (
+                      {capabilities.has_backlight_level && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-white/70">Backlight</span>
+                          <Select value={backlightLevel} onValueChange={handleBacklightLevelChange}>
+                            <SelectTrigger
+                              aria-label="Backlight"
+                              className="scanner-input h-7 w-[var(--size-select-wide)] text-sm"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="scanner-select-content">
+                              <SelectItem value="High">High</SelectItem>
+                              <SelectItem value="Low">Low</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {capabilities.has_contrast && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-white/70">Contrast</span>
+                          <Slider
+                            aria-label="Contrast"
+                            value={[contrast]}
+                            min={1}
+                            max={15}
+                            step={1}
+                            className="w-[var(--size-select-wide)]"
+                            onValueChange={handleContrastChange}
+                          />
+                        </div>
+                      )}
+
+                      {capabilities.has_key_beep && (
+                        <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                          <label
+                            htmlFor="key-beep"
+                            className="text-sm font-medium text-white/70 cursor-pointer"
+                          >
+                            Key Beep
+                          </label>
+                          <Switch
+                            id="key-beep"
+                            className="data-[state=checked]:bg-brand-primary"
+                            checked={keyBeepEnabled}
+                            onCheckedChange={handleKeyBeepChange}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* Scanning Logic */}
+                <div
+                  className={cn(
+                    'bg-white/5 rounded-lg border border-white/10 p-4 space-y-3',
+                    showDisplayCard && 'col-span-2',
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="p-1.5 bg-green-500/20 rounded text-green-400">
+                      <Signal size={16} aria-hidden />
+                    </div>
+                    <h3 className="font-bold text-white">Scanning Logic</h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-white/70">Backlight</span>
-                        <Select value={backlightLevel} onValueChange={handleBacklightLevelChange}>
+                        <span className="text-sm font-medium text-white/70">Priority Mode</span>
+                        <Select value={priorityMode} onValueChange={handlePriorityModeChange}>
                           <SelectTrigger
-                            aria-label="Backlight"
-                            className="scanner-input h-7 w-[var(--size-select-wide)] text-sm"
+                            aria-label="Priority Mode"
+                            aria-describedby={noPriorityChannel ? 'priority-no-channel' : undefined}
+                            className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
                           >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="scanner-select-content">
-                            <SelectItem value="High">High</SelectItem>
-                            <SelectItem value="Low">Low</SelectItem>
+                            <SelectItem value="off">Off</SelectItem>
+                            <SelectItem value="on">On</SelectItem>
+                            <SelectItem value="plus">Plus</SelectItem>
+                            <SelectItem value="dnd">DND</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                    )}
+                      {noPriorityChannel && (
+                        <p
+                          id="priority-no-channel"
+                          className="rounded-md border border-amber-400/20 bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-100"
+                        >
+                          No channel is flagged as priority, so these modes will not engage. Flag
+                          one on the Channels page.
+                        </p>
+                      )}
+                    </div>
 
-                    {capabilities.has_contrast && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-white/70">Contrast</span>
-                        <Slider
-                          aria-label="Contrast"
-                          value={[contrast]}
-                          min={1}
-                          max={15}
-                          step={1}
-                          className="w-[var(--size-select-wide)]"
-                          onValueChange={handleContrastChange}
+                    {capabilities.has_weather_alert && (
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          id="weather-alert"
+                          className="scale-75 data-[state=checked]:bg-brand-primary"
+                          checked={weatherAlert}
+                          onCheckedChange={handleWeatherAlertChange}
                         />
-                      </div>
-                    )}
-
-                    {capabilities.has_key_beep && (
-                      <div className="flex items-center justify-between pt-2 border-t border-white/5">
                         <label
-                          htmlFor="key-beep"
+                          htmlFor="weather-alert"
                           className="text-sm font-medium text-white/70 cursor-pointer"
                         >
-                          Key Beep
+                          Weather Alert Priority
                         </label>
-                        <Switch
-                          id="key-beep"
-                          className="data-[state=checked]:bg-brand-primary"
-                          checked={keyBeepEnabled}
-                          onCheckedChange={handleKeyBeepChange}
-                        />
                       </div>
                     )}
                   </div>
                 </div>
-              )}
-              {/* Scanning Logic */}
-              <div
-                className={cn(
-                  'bg-white/5 rounded-lg border border-white/10 p-4 space-y-3',
-                  showDisplayCard && 'col-span-2',
-                )}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="p-1.5 bg-green-500/20 rounded text-green-400">
-                    <Signal size={16} aria-hidden />
-                  </div>
-                  <h3 className="font-bold text-white">Scanning Logic</h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-white/70">Priority Mode</span>
-                      <Select value={priorityMode} onValueChange={handlePriorityModeChange}>
-                        <SelectTrigger
-                          aria-label="Priority Mode"
-                          aria-describedby={noPriorityChannel ? 'priority-no-channel' : undefined}
-                          className="scanner-input h-7 w-[var(--size-select-medium)] text-sm"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="scanner-select-content">
-                          <SelectItem value="off">Off</SelectItem>
-                          <SelectItem value="on">On</SelectItem>
-                          <SelectItem value="plus">Plus</SelectItem>
-                          <SelectItem value="dnd">DND</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {noPriorityChannel && (
-                      <p
-                        id="priority-no-channel"
-                        className="rounded-md border border-amber-400/20 bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-100"
-                      >
-                        No channel is flagged as priority, so these modes will not engage. Flag one
-                        on the Channels page.
-                      </p>
-                    )}
-                  </div>
-
-                  {capabilities.has_weather_alert && (
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        id="weather-alert"
-                        className="scale-75 data-[state=checked]:bg-brand-primary"
-                        checked={weatherAlert}
-                        onCheckedChange={handleWeatherAlertChange}
-                      />
-                      <label
-                        htmlFor="weather-alert"
-                        className="text-sm font-medium text-white/70 cursor-pointer"
-                      >
-                        Weather Alert Priority
-                      </label>
-                    </div>
-                  )}
-                </div>
               </div>
-            </div>
+            )}
 
             {/* Device Info */}
             <div className="bg-white/5 rounded-lg border border-white/10 p-5 space-y-3">

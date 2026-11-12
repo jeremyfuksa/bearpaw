@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -467,5 +467,66 @@ describe('Recent Hits export control', () => {
     useStore.setState({ fullActivityLog: [] });
     render(<ScanView {...baseProps} />);
     expect(screen.getByRole('button', { name: /export activity log/i })).toBeDisabled();
+  });
+});
+
+describe("ScanView 'My scanner isn't listed' link", () => {
+  const props = {
+    mainText: 'Disconnected',
+    subText: 'No scanner connected',
+    scannerMode: 'SCAN' as const,
+    connectionStatus: 'disconnected' as const,
+    isHolding: false,
+    isInitialSyncing: false,
+    chartAnimate: false,
+    dashboardLoading: false,
+    busiestChannels: [],
+    hourlyHeatmap: [],
+    heatmapStats: { max: 0 },
+    squelch: 0,
+    onSquelchChange: () => {},
+    onHoldToggle: () => {},
+    onLockout: () => {},
+    onVolumeChange: () => {},
+    onBankToggle: () => {},
+    onOpenActivityExport: () => {},
+  };
+
+  beforeEach(() => {
+    useStore.setState({
+      liveState: createTestLiveState({ mode: 'SCAN', squelch_open: false }),
+      banks: Array(10).fill(true),
+      fullActivityLog: [],
+      deviceInfo: { connection_status: 'disconnected' },
+    });
+  });
+
+  it('opens the supported-scanners page from the plain disconnected state', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<ScanView {...props} />);
+    screen.getByRole('button', { name: "My scanner isn't listed" }).click();
+    expect(open).toHaveBeenCalledWith(
+      'https://bearpaw.app/docs/getting-started.html',
+      '_blank',
+      'noopener',
+    );
+    open.mockRestore();
+  });
+
+  it('is absent when the disconnect has its own diagnostic', () => {
+    useStore.setState({
+      deviceInfo: {
+        connection_status: 'disconnected',
+        diagnostic_code: 'usb_device_not_accessible',
+      },
+    });
+    render(<ScanView {...props} />);
+    expect(screen.queryByRole('button', { name: "My scanner isn't listed" })).toBeNull();
+  });
+
+  it('is absent while connected', () => {
+    useStore.setState({ deviceInfo: { connection_status: 'connected' } });
+    render(<ScanView {...props} connectionStatus="connected" />);
+    expect(screen.queryByRole('button', { name: "My scanner isn't listed" })).toBeNull();
   });
 });
