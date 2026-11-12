@@ -91,6 +91,13 @@ impl Drop for SearchPause {
     }
 }
 
+/// `VER,Version 1.06.06` -> `Version 1.06.06`. `None` for an empty or
+/// error reply, so the header falls back to "unknown" rather than "ERR".
+fn firmware_from_ver(reply: &str) -> Option<String> {
+    let value = reply.strip_prefix("VER,")?.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
 pub(crate) async fn run_diagnostic(state: &AppState) -> Result<DiagnosticReport, ApiError> {
     // Same refusals as `ProgramModeGuard::enter`, for the same reason: a sync
     // owns the wire for its duration, and a bracket's replies are not ours.
@@ -126,6 +133,15 @@ pub(crate) async fn run_diagnostic(state: &AppState) -> Result<DiagnosticReport,
         lines.push(line);
     }
 
+    // The header's firmware comes from the VER reply this run just read (#908):
+    // `DeviceInfo.firmware` is never populated, so it alone printed "unknown"
+    // directly above a line holding the version.
+    let firmware = lines
+        .iter()
+        .find(|l| l.command == "VER")
+        .and_then(|l| l.reply.as_deref())
+        .and_then(firmware_from_ver);
+
     let device = state.device.read().unwrap();
     let link = match (device.vid, device.pid) {
         (Some(vid), Some(pid)) => format!("usb {vid:04x}:{pid:04x}"),
@@ -133,7 +149,7 @@ pub(crate) async fn run_diagnostic(state: &AppState) -> Result<DiagnosticReport,
     };
     Ok(DiagnosticReport {
         model: device.model.clone(),
-        firmware: device.firmware.clone(),
+        firmware: firmware.or_else(|| device.firmware.clone()),
         link,
         bearpaw_version: env!("CARGO_PKG_VERSION"),
         lines,
@@ -218,6 +234,41 @@ mod tests {
         let (status, _) = post_diagnostic(&state).await;
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(state.diagnostics_running.load(Ordering::Relaxed), 0);
+    }
+
+    /// #908: `DeviceInfo.firmware` is never populated, so the header said
+    /// "unknown" directly above a `VER` line holding the answer.
+    #[tokio::test]
+    async fn the_report_header_takes_firmware_from_the_ver_reply() {
+        let state = unlisted_state();
+        let _fake = FakeScanner::attach(&state, |c| match c {
+            "VER" => Ok("VER,Version 1.06.06".to_string()),
+            other => Ok(format!("{other},OK")),
+        });
+        let (status, body) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::OK);
+        let json: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["report"]["firmware"], "Version 1.06.06");
+        assert!(json["text"]
+            .as_str()
+            .unwrap()
+            .contains("Firmware: Version 1.06.06\n"));
+    }
+
+    #[tokio::test]
+    async fn a_failed_ver_leaves_the_firmware_unknown() {
+        let state = unlisted_state();
+        let _fake = FakeScanner::attach(&state, |c| match c {
+            "VER" => Err("command_timeout".to_string()),
+            other => Ok(format!("{other},OK")),
+        });
+        let (_, body) = post_diagnostic(&state).await;
+        let json: Value = serde_json::from_str(&body).unwrap();
+        assert!(json["report"]["firmware"].is_null());
+        assert!(json["text"]
+            .as_str()
+            .unwrap()
+            .contains("Firmware: unknown\n"));
     }
 
     #[test]
