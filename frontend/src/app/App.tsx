@@ -813,21 +813,21 @@ export default function App() {
     () => ({
       onNavigate: (tab: Tab) => handleTabChange(tab),
       onHold: () => {
-        if (!connected) return;
+        if (!connected || isUnsupported) return;
         api.sendHold().catch((error) => {
           console.warn('Menu: failed to send hold', error);
           toast.error('Failed to send Hold');
         });
       },
       onScan: () => {
-        if (!connected) return;
+        if (!connected || isUnsupported) return;
         api.sendScan().catch((error) => {
           console.warn('Menu: failed to send scan', error);
           toast.error('Failed to send Scan');
         });
       },
       onSyncMemory: () => {
-        if (!connected) return;
+        if (!connected || isUnsupported) return;
         if (useStore.getState().sync.inProgress) {
           toast.info('Memory sync already in progress');
           return;
@@ -856,7 +856,15 @@ export default function App() {
         checkForUpdatesNow();
       },
     }),
-    [api, checkForUpdatesNow, checkingForUpdates, connected, handleTabChange, updateSync],
+    [
+      api,
+      checkForUpdatesNow,
+      checkingForUpdates,
+      connected,
+      handleTabChange,
+      isUnsupported,
+      updateSync,
+    ],
   );
   useMenuEvents(menuHandlers);
 

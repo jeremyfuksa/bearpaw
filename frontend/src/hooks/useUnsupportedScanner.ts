@@ -2,10 +2,19 @@ import { useCallback } from 'react';
 import { toast } from 'sonner';
 import { getAPI } from '../api/useApi';
 import { useStore } from '../store/useStore';
+import type { DeviceInfo } from '../types';
 
 // The getting-started page lists the supported models under "What you'll need";
 // it has no anchor for that list, so link the page.
 export const SUPPORTED_SCANNERS_URL = 'https://bearpaw.app/docs/getting-started.html';
+
+/** The rule, for callers that read the store at invocation time instead of rendering. */
+export function isUnsupportedDevice(deviceInfo: DeviceInfo | null | undefined): boolean {
+  return (
+    deviceInfo?.connection_status === 'connected' &&
+    deviceInfo.diagnostic_code === 'unsupported_model'
+  );
+}
 
 /**
  * Whether the connected radio is one Bearpaw recognises but has no command set
@@ -26,9 +35,7 @@ export function useUnsupportedScanner(): {
   const dismissedKeys = useStore((state) => state.preferences.unsupportedPanelDismissed);
   const updatePreferences = useStore((state) => state.updatePreferences);
 
-  const isUnsupported =
-    deviceInfo?.connection_status === 'connected' &&
-    deviceInfo.diagnostic_code === 'unsupported_model';
+  const isUnsupported = isUnsupportedDevice(deviceInfo);
   const model = isUnsupported ? (deviceInfo?.model ?? null) : null;
   const key = deviceInfo?.scanner_id ?? deviceInfo?.model ?? null;
   const dismissed = key !== null && dismissedKeys.includes(key);

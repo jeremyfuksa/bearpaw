@@ -19,6 +19,9 @@ const api = vi.hoisted(() => {
   const state = { deviceInfo: {} as Record<string, unknown> };
   return {
     state,
+    sendHold: vi.fn(() => Promise.resolve({})),
+    sendKey: vi.fn(() => Promise.resolve({})),
+    toggleTemporaryLockout: vi.fn(() => Promise.resolve({})),
     sendScan: vi.fn(() => Promise.resolve({})),
     setPreference: vi.fn(() => Promise.resolve({})),
     getDeviceInfo: vi.fn(() => Promise.resolve(state.deviceInfo)),
@@ -49,6 +52,15 @@ vi.mock('../../api/useApi', () => {
   }
   return { API_BASE: '/api/v1', getAPI: () => client };
 });
+
+// Menu events only arrive under Tauri; capture the handlers App registers and
+// call them directly, as the native menu would.
+const menu = vi.hoisted(() => ({ handlers: null as null | Record<string, () => void> }));
+vi.mock('../../hooks/useMenuEvents', () => ({
+  useMenuEvents: (handlers: Record<string, () => void>) => {
+    menu.handlers = handlers;
+  },
+}));
 
 const toastError = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({
@@ -101,6 +113,9 @@ function connectUnsupported() {
 describe('an unsupported scanner in App (#900)', () => {
   beforeEach(() => {
     api.sendScan.mockClear();
+    api.sendHold.mockClear();
+    api.sendKey.mockClear();
+    api.toggleTemporaryLockout.mockClear();
     api.getAllSettings.mockClear();
     api.getBanks.mockClear();
     api.syncMemory.mockClear();
@@ -182,6 +197,51 @@ describe('an unsupported scanner in App (#900)', () => {
     });
     const { container } = renderApp();
     await waitFor(() => expect(container.textContent).toContain('EMS Operations'));
+  });
+
+  it('sends nothing from the menu or the keyboard shortcuts', async () => {
+    renderApp();
+    await screen.findByText(FIRST_SENTENCE);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    api.sendScan.mockClear();
+    api.syncMemory.mockClear();
+    const user = userEvent.setup();
+    await user.keyboard('{Control>}s{/Control}');
+    await user.keyboard('{Control>}h{/Control}');
+    await user.keyboard('{Control>}l{/Control}');
+    await user.keyboard('{Control>}{ArrowUp}{/Control}');
+    await user.keyboard('{Control>}{ArrowDown}{/Control}');
+    act(() => {
+      menu.handlers?.onHold();
+      menu.handlers?.onScan();
+      menu.handlers?.onSyncMemory();
+    });
+    expect(menu.handlers, 'App must have registered menu handlers').not.toBeNull();
+    expect(api.sendScan).not.toHaveBeenCalled();
+    expect(api.sendHold).not.toHaveBeenCalled();
+    expect(api.sendKey).not.toHaveBeenCalled();
+    expect(api.toggleTemporaryLockout).not.toHaveBeenCalled();
+    expect(api.syncMemory).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('still sends from the menu and the shortcuts on a supported scanner', async () => {
+    // Positive half: a harness whose keys and menu never reach the API passes
+    // the guard above.
+    connect({ model: 'BC125AT', connection_status: 'connected', scanner_id: 'bc125at-1' });
+    renderApp();
+    await screen.findByRole('tab', { name: 'Device' });
+    const user = userEvent.setup();
+    await user.keyboard('{Control>}s{/Control}');
+    await user.keyboard('{Control>}h{/Control}');
+    expect(api.sendScan).toHaveBeenCalled();
+    expect(api.sendHold).toHaveBeenCalled();
+    act(() => {
+      menu.handlers?.onSyncMemory();
+    });
+    expect(api.syncMemory).toHaveBeenCalled();
   });
 
   it('the Channels tab is not offered for an unsupported scanner', async () => {
