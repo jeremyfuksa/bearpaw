@@ -497,20 +497,35 @@ describe("ScanView 'My scanner isn't listed' link", () => {
       liveState: createTestLiveState({ mode: 'SCAN', squelch_open: false }),
       banks: Array(10).fill(true),
       fullActivityLog: [],
-      deviceInfo: { connection_status: 'disconnected' },
+      // What the backend really sends before any scanner is found.
+      deviceInfo: { connection_status: 'disconnected', diagnostic_code: 'scanner_not_found' },
     });
   });
 
-  it('opens the supported-scanners page from the plain disconnected state', async () => {
+  it('opens the supported-scanners page when no scanner was found at launch', async () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     render(<ScanView {...props} />);
     screen.getByRole('button', { name: "My scanner isn't listed" }).click();
     expect(open).toHaveBeenCalledWith(
-      'https://bearpaw.app/docs/getting-started.html',
+      'https://bearpaw.app/docs/getting-started.html#what-youll-need',
       '_blank',
       'noopener',
     );
     open.mockRestore();
+  });
+
+  it('is offered after a scanner drops, with the diagnostic a disconnect sets', () => {
+    useStore.setState({
+      deviceInfo: { connection_status: 'disconnected', diagnostic_code: 'scanner_disconnected' },
+    });
+    render(<ScanView {...props} />);
+    expect(screen.getByRole('button', { name: "My scanner isn't listed" })).toBeInTheDocument();
+  });
+
+  it('is absent when the backend is unreachable and there is no device info', () => {
+    useStore.setState({ deviceInfo: null });
+    render(<ScanView {...props} />);
+    expect(screen.queryByRole('button', { name: "My scanner isn't listed" })).toBeNull();
   });
 
   it('is absent when the disconnect has its own diagnostic', () => {
