@@ -8,6 +8,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Scroll back through Recent Hits.** The panel still shows five rows, and
+  now the hundred before them are a scroll away. A new hit doesn't move the
+  rows you're reading.
 - **Bearpaw tells you when it finds a scanner it doesn't support yet.** It
   names the model and shows nothing it can't control.
 - **Run a diagnostic on a scanner Bearpaw doesn't support yet, and send the

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { rollUpHits, ScanView, summarizeHeatmap, HEATMAP_DAY_LABELS } from '../ScanView';
 import { useStore } from '../../../../store/useStore';
 import { createTestLiveState, createTestActivityLogEntry } from '../../../../test/fixtures';
@@ -205,7 +205,7 @@ describe('ScanView Recent Hits rendering', () => {
     });
   });
 
-  it('renders at most five rolled-up rows and shows the count suffix', () => {
+  it('shows the first five rows, with older hits further down the list (#817)', () => {
     // Seven distinct channels, newest-first, plus a leading run of three on
     // channel 0 so the first row shows "(3)".
     const entries: ActivityLogEntry[] = [
@@ -227,11 +227,90 @@ describe('ScanView Recent Hits rendering', () => {
 
     // The rolled-up first group carries the count suffix.
     expect(screen.getByText('WOF Rides (3)')).toBeInTheDocument();
-    // Seven groups exist but only HIT_SLOT_COUNT (5) render: the (3) run plus
-    // Ch1–Ch4. Ch5 and Ch6 fall outside the five-slot window.
-    expect(screen.getByText('Ch4')).toBeInTheDocument();
-    expect(screen.queryByText('Ch5')).not.toBeInTheDocument();
-    expect(screen.queryByText('Ch6')).not.toBeInTheDocument();
+    // Groups past the fifth are in the list, reached by scrolling it.
+    const list = screen.getByRole('list', { name: 'Recent hits' });
+    expect(within(list).getByText('Ch5')).toBeInTheDocument();
+    expect(within(list).getByText('Ch6')).toBeInTheDocument();
+    // Focusable, so the keyboard can scroll it too.
+    expect(list).toHaveAttribute('tabindex', '0');
+  });
+
+  it('lists the newest 100 rows and no more', () => {
+    useStore.setState({
+      fullActivityLog: Array.from({ length: 150 }, (_, i) =>
+        createTestActivityLogEntry({
+          id: `h${i}`,
+          timestamp: 1000 - i,
+          channel: i + 1,
+          alpha_tag: `Ch${i + 1}`,
+        }),
+      ),
+    });
+    render(<ScanView {...baseProps} />);
+    expect(screen.getAllByRole('listitem')).toHaveLength(100);
+    expect(screen.getByText('Ch100')).toBeInTheDocument();
+    expect(screen.queryByText('Ch101')).toBeNull();
+  });
+
+  describe('scroll position', () => {
+    // jsdom does no layout, so give each row a position from its place in the
+    // list: 20 px per row.
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop');
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.parentElement ? [...this.parentElement.children].indexOf(this) * 20 : 0;
+        },
+      });
+      return () => {
+        if (original) Object.defineProperty(HTMLElement.prototype, 'offsetTop', original);
+      };
+    });
+
+    const channels = (n: number, newest: number) =>
+      Array.from({ length: n }, (_, i) =>
+        createTestActivityLogEntry({
+          id: `h${newest - i}`,
+          timestamp: newest - i,
+          channel: newest - i,
+          alpha_tag: `Ch${newest - i}`,
+        }),
+      );
+
+    it('stays put while the live state updates', () => {
+      useStore.setState({ fullActivityLog: channels(10, 10) });
+      render(<ScanView {...baseProps} />);
+      const list = screen.getByRole('list', { name: 'Recent hits' });
+      list.scrollTop = 60;
+      act(() => {
+        useStore.setState({ liveState: createTestLiveState({ mode: 'SCAN', frequency: 155.1 }) });
+      });
+      expect(screen.getByRole('list', { name: 'Recent hits' })).toBe(list);
+      expect(list.scrollTop).toBe(60);
+    });
+
+    it('keeps the rows you are reading in place when a new hit arrives', () => {
+      useStore.setState({ fullActivityLog: channels(10, 10) });
+      render(<ScanView {...baseProps} />);
+      const list = screen.getByRole('list', { name: 'Recent hits' });
+      list.scrollTop = 60;
+      act(() => {
+        useStore.setState({ fullActivityLog: channels(11, 11) });
+      });
+      // One row (20 px) arrived above, so the view moves down by one row.
+      expect(list.scrollTop).toBe(80);
+    });
+
+    it('shows a new hit at the top when the list is not scrolled', () => {
+      useStore.setState({ fullActivityLog: channels(10, 10) });
+      render(<ScanView {...baseProps} />);
+      const list = screen.getByRole('list', { name: 'Recent hits' });
+      act(() => {
+        useStore.setState({ fullActivityLog: channels(11, 11) });
+      });
+      expect(list.scrollTop).toBe(0);
+    });
   });
 
   // A BC75XLT has no alpha tags at all, so the tag column rendered an em dash
