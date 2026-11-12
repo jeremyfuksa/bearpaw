@@ -74,6 +74,23 @@ fn error_text(err: &ApiError) -> String {
     }
 }
 
+/// One share of `AppState::diagnostics_running` (#907). A count, so the
+/// first of two overlapping runs to finish cannot resume the search early.
+struct SearchPause(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl SearchPause {
+    fn new(state: &AppState) -> Self {
+        state.diagnostics_running.fetch_add(1, Ordering::SeqCst);
+        Self(state.diagnostics_running.clone())
+    }
+}
+
+impl Drop for SearchPause {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 pub(crate) async fn run_diagnostic(state: &AppState) -> Result<DiagnosticReport, ApiError> {
     // Same refusals as `ProgramModeGuard::enter`, for the same reason: a sync
     // owns the wire for its duration, and a bracket's replies are not ours.
@@ -87,6 +104,10 @@ pub(crate) async fn run_diagnostic(state: &AppState) -> Result<DiagnosticReport,
     }
     // Fails with 503 before anything is sent when no scanner is connected.
     super::command_sender(state)?;
+
+    // Holds off the poll loop's supported-scanner search for the run (#907),
+    // released on every exit by Drop.
+    let _search_paused = SearchPause::new(state);
 
     let mut lines = Vec::with_capacity(DIAGNOSTIC_COMMANDS.len());
     for command in DIAGNOSTIC_COMMANDS {
@@ -166,6 +187,37 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(fake.transcript(), DIAGNOSTIC_COMMANDS);
         assert!(!fake.transcript().iter().any(|c| c == "PRG"));
+    }
+
+    /// #907: the run marks itself so the poll loop's supported-scanner search
+    /// stands down, and unmarks itself when done.
+    #[tokio::test]
+    async fn a_diagnostic_holds_off_the_scanner_search_only_while_it_runs() {
+        let state = unlisted_state();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (s, counter) = (seen.clone(), state.diagnostics_running.clone());
+        let _fake = FakeScanner::attach(&state, move |c| {
+            s.lock().unwrap().push(counter.load(Ordering::Relaxed));
+            Ok(format!("{c},OK"))
+        });
+        let (status, _) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::OK);
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), DIAGNOSTIC_COMMANDS.len());
+        assert!(
+            seen.iter().all(|&n| n == 1),
+            "every command must go out while the search is held off"
+        );
+        assert_eq!(state.diagnostics_running.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn a_refused_diagnostic_does_not_hold_off_the_search() {
+        let state = unlisted_state();
+        *state.program_mode_holders.lock().unwrap() = 1;
+        let (status, _) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(state.diagnostics_running.load(Ordering::Relaxed), 0);
     }
 
     #[test]

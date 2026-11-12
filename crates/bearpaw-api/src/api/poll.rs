@@ -211,6 +211,13 @@ fn better_scanner(
     if !state.model_is_unlisted() || last.elapsed() < RERESOLVE_AFTER {
         return None;
     }
+    // A search MDL-probes every other serial node on this thread, long enough
+    // to expire a running diagnostic's queued reads (#907,
+    // `the_search_waits_while_a_diagnostic_runs`). `last` is left alone so the
+    // search runs on the first tick after the diagnostic ends.
+    if state.diagnostics_running.load(Ordering::SeqCst) > 0 {
+        return None;
+    }
     *last = Instant::now();
     resolve(Some(&held.port_name)).filter(|found| found != held)
 }
@@ -3471,6 +3478,39 @@ mod tests {
             calls.load(Ordering::Relaxed),
             before,
             "a listed scanner must not trigger a resolve"
+        );
+    }
+
+    /// REGRESSION GUARD (#907): no search while a diagnostic runs. Each search
+    /// MDL-probes every other serial node on the poll thread, which held the
+    /// diagnostic's queued reads past their deadline and wrote false
+    /// `command_timeout` lines into the report. The search resumes after.
+    #[test]
+    fn the_search_waits_while_a_diagnostic_runs() {
+        let held = target("/dev/cu.unlisted");
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let c = calls.clone();
+        let mut resolve: PortResolver = Box::new(move |_| {
+            c.fetch_add(1, Ordering::Relaxed);
+            None
+        });
+        let state = unlisted_state();
+
+        state.diagnostics_running.store(1, Ordering::Relaxed);
+        let mut last = due();
+        better_scanner(&state, &held, &mut resolve, &mut last);
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            0,
+            "a running diagnostic must hold off the search"
+        );
+
+        state.diagnostics_running.store(0, Ordering::Relaxed);
+        better_scanner(&state, &held, &mut resolve, &mut last);
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            1,
+            "the search must resume once the diagnostic ends"
         );
     }
 
