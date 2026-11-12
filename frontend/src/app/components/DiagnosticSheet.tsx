@@ -99,8 +99,8 @@ export function DiagnosticSheet({ isOpen, model, onClose }: DiagnosticSheetProps
           {step.kind === 'intro' && (
             <p className="text-sm text-white/80">
               This asks your {model} a few questions about how it works: its model, firmware, and
-              what it shows right now. It only reads. Nothing on your scanner changes. You'll see
-              the whole report before anything is sent, and you choose where it goes.
+              current settings. It writes nothing to your scanner. You'll see the whole report
+              before anything is sent, and you choose how to send it.
             </p>
           )}
           {step.kind === 'running' && (

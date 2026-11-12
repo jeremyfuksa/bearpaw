@@ -51,7 +51,7 @@ describe('DiagnosticSheet', () => {
     renderSheet();
     expect(
       screen.getByText(
-        "This asks your SDS100 a few questions about how it works: its model, firmware, and what it shows right now. It only reads. Nothing on your scanner changes. You'll see the whole report before anything is sent, and you choose where it goes.",
+        "This asks your SDS100 a few questions about how it works: its model, firmware, and current settings. It writes nothing to your scanner. You'll see the whole report before anything is sent, and you choose how to send it.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run diagnostic' })).toBeInTheDocument();
