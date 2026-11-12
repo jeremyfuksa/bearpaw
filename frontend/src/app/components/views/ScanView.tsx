@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { FileText } from 'lucide-react';
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
@@ -150,11 +150,13 @@ function HitSignalBars({ strength }: { strength: number }) {
   );
 }
 
-/** Fixed five-row layout — the most recent five hits always occupy the
- *  list region. Each slot flex-1 to share the height evenly; empty
- *  slots remain in place so the layout doesn't reflow when a hit
- *  arrives and the oldest entry rotates out. */
+/** Five rows fill the list region; older hits continue below and are reached
+ *  by scrolling it (#817). Empty slots pad a short list to five so the layout
+ *  doesn't reflow as the first hits arrive. */
 const HIT_SLOT_COUNT = 5;
+/** How far back the list goes. The log can hold thousands of entries, and the
+ *  whole list re-renders with every live update; Export covers the rest. */
+const RECENT_HITS_LIMIT = 100;
 
 export interface ScanViewProps {
   mainText: string;
@@ -213,9 +215,28 @@ export function ScanView({
   const capabilities = useScannerCapabilities();
   const showTagColumn = capabilities.has_alpha_tags;
   const recentHits = useMemo(
-    () => rollUpHits(fullActivityLog).slice(0, HIT_SLOT_COUNT),
+    () => rollUpHits(fullActivityLog).slice(0, RECENT_HITS_LIMIT),
     [fullActivityLog],
   );
+
+  // A new hit is added at the top. Scrolled back, that would push the rows
+  // being read down by one, so move the scroll by however far the previous
+  // top row moved. At the top (scrollTop 0) the new hit simply shows. Done by
+  // hand because WKWebView has no CSS scroll anchoring; `overflow-anchor:
+  // none` on the list keeps Chromium from adjusting a second time.
+  const listRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<{ id: string; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const rows = list ? [...list.children].filter((el) => el instanceof HTMLElement) : [];
+    const prev = anchorRef.current;
+    if (list && prev && list.scrollTop > 0) {
+      const moved = rows.find((row) => row.dataset.hitId === prev.id);
+      if (moved) list.scrollTop += moved.offsetTop - prev.top;
+    }
+    const first = rows.find((row) => row.dataset.hitId);
+    anchorRef.current = first ? { id: first.dataset.hitId ?? '', top: first.offsetTop } : null;
+  }, [recentHits]);
 
   const isError = connectionStatus === 'disconnected';
   // The last mode survives a disconnect, so `mode === 'SCAN'` alone kept the
@@ -303,12 +324,9 @@ export function ScanView({
             // ago" …). `ch` scales with the font, so the floor tracks the
             // fluid type sizing automatically.
             //
-            // Rows are sized `auto` (content height) and the grid uses
-            // `align-content: space-between` so the first hit sits at the
-            // top of the list, the last hit sits flush against the bottom
-            // (which aligns with the Display panel's bank row beside it),
-            // and the middle hits are spaced evenly between. The minimum
-            // `gap-y` keeps a small floor when the panel is short.
+            // Each row is a fifth of the list's height (`auto-rows-[20%]`, no
+            // row gap), so five fill it exactly and the sixth starts just out
+            // of view: the list scrolls rather than growing (#817).
             // The template is the SAME whether or not the scanner has alpha
             // tags. The third track holds the tag when there is one and the
             // roll-up count when there is not, so it is never an empty
@@ -318,8 +336,14 @@ export function ScanView({
             // column's contents vary in width, and right-aligning
             // "146.8500 (2)" against "27.4050" indents the short rows into a
             // ragged left edge.
-            <div className="grid flex-1 min-h-0 grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] grid-rows-[repeat(5,auto)] content-between gap-x-[clamp(12px,3.5cqmin,60px)] gap-y-[clamp(2px,1.4cqmin,20px)] pr-2 text-[clamp(13px,5cqmin,72px)]">
-              {Array.from({ length: HIT_SLOT_COUNT }, (_, idx) => {
+            <div
+              ref={listRef}
+              role="list"
+              aria-label="Recent hits"
+              tabIndex={0}
+              className="grid flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] auto-rows-[20%] gap-x-[clamp(12px,3.5cqmin,60px)] pr-2 text-[clamp(13px,5cqmin,72px)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              {Array.from({ length: Math.max(HIT_SLOT_COUNT, recentHits.length) }, (_, idx) => {
                 const hit = recentHits[idx];
                 if (!hit) {
                   return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
@@ -328,6 +352,8 @@ export function ScanView({
                 return (
                   <div
                     key={hit.id}
+                    role="listitem"
+                    data-hit-id={hit.id}
                     className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
                   >
                     <span className="whitespace-nowrap text-white/60">
