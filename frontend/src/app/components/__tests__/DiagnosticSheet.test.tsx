@@ -124,12 +124,31 @@ describe('DiagnosticSheet', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/didn't finish/i);
   });
 
+  it('the report closes through the X alone, with no Done button beside it', async () => {
+    api.runDiagnostic.mockResolvedValue(reportResponse());
+    const { onClose } = renderSheet();
+    await userEvent.click(screen.getByRole('button', { name: 'Run diagnostic' }));
+    await screen.findByRole('button', { name: 'Email it' });
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('an error offers Try again and the X, with no Done button', async () => {
+    api.runDiagnostic.mockRejectedValue(new Error('network down'));
+    renderSheet();
+    await userEvent.click(screen.getByRole('button', { name: 'Run diagnostic' }));
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+
   it('reopening the sheet starts again at the intro', async () => {
     api.runDiagnostic.mockResolvedValue(reportResponse());
     const { rerender } = render(<DiagnosticSheet isOpen model="SDS100" onClose={() => {}} />);
     await userEvent.click(screen.getByRole('button', { name: 'Run diagnostic' }));
     await screen.findByRole('button', { name: 'Email it' });
-    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     rerender(<DiagnosticSheet isOpen={false} model="SDS100" onClose={() => {}} />);
     rerender(<DiagnosticSheet isOpen model="SDS100" onClose={() => {}} />);
     expect(screen.queryByRole('button', { name: 'Email it' })).toBeNull();

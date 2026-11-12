@@ -138,9 +138,6 @@ export function DiagnosticSheet({ isOpen, model, onClose }: DiagnosticSheetProps
           )}
           {step.kind === 'report' && (
             <>
-              <button type="button" onClick={close} className={secondary}>
-                Done
-              </button>
               <button type="button" onClick={() => void save(step.text)} className={secondary}>
                 Save report
               </button>
@@ -161,14 +158,9 @@ export function DiagnosticSheet({ isOpen, model, onClose }: DiagnosticSheetProps
             </>
           )}
           {step.kind === 'error' && (
-            <>
-              <button type="button" onClick={close} className={secondary}>
-                Done
-              </button>
-              <button type="button" onClick={() => void run()} className={primary}>
-                Try again
-              </button>
-            </>
+            <button type="button" onClick={() => void run()} className={primary}>
+              Try again
+            </button>
           )}
         </div>
       </DialogContent>
