@@ -8,6 +8,7 @@ mod control;
 mod handlers;
 mod memory_sync;
 mod poll;
+mod probe;
 mod program_mode;
 mod scanner_registry;
 mod security;
@@ -402,6 +403,7 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/memory/import/sr30c_ss",
             post(handlers::import_ss::import_sr30c_ss),
         )
+        .route("/api/v1/diagnostic", post(probe::post_diagnostic))
         .route(
             "/api/v1/preferences",
             get(handlers::preferences::get_preferences).put(handlers::preferences::put_preferences),
@@ -479,6 +481,23 @@ pub(crate) async fn send_raw_command(
     if state.model_is_unlisted() {
         return Err(ApiError::BadRequest("unsupported_model".to_string()));
     }
+    send_queued(state, command, multiline).await
+}
+
+/// Queue one wire command and wait for its reply, with no model check.
+///
+/// REGRESSION GUARD (#895, `an_unlisted_scanner_gets_nothing_from_a_handler`,
+/// `an_unlisted_scanner_gets_exactly_the_diagnostic_commands`): this is
+/// `send_raw_command` minus the unlisted-model refusal, and it exists for ONE
+/// caller besides that function: `probe::run_diagnostic`, whose whole job is to
+/// talk to a scanner Bearpaw does not list, using a fixed read-only list. Any
+/// other caller reopens the hole #893 closed. Handlers go through
+/// `send_raw_command`.
+pub(crate) async fn send_queued(
+    state: &AppState,
+    command: &str,
+    multiline: bool,
+) -> Result<String, ApiError> {
     let sender = command_sender(state)?;
     let started = std::time::Instant::now();
     let command = command.to_string();
@@ -3064,7 +3083,7 @@ pub(crate) fn uuid_simple() -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::protocol::capabilities::BC125AT_FAMILY;
     use axum::body::{to_bytes, Body};
@@ -3124,7 +3143,7 @@ mod tests {
     //
     // `fail_on` injects "connects fine, but this round-trip fails" — the
     // failure mode the priority-swap abort path is built to survive.
-    struct FakeScanner {
+    pub(crate) struct FakeScanner {
         /// Every command the fake received, in order. The atomicity assertion
         /// is about ORDER (clear before set) and ABSENCE (no set after a
         /// failed clear), so the transcript is the thing under test.
@@ -3136,7 +3155,7 @@ mod tests {
         /// Attach a fake scanner to `state`. `responder` maps a wire command to
         /// the reply the scanner would send; returning `Err` simulates a failed
         /// round-trip (the poll loop's error path), NOT a disconnect.
-        fn attach<F>(state: &AppState, responder: F) -> Self
+        pub(crate) fn attach<F>(state: &AppState, responder: F) -> Self
         where
             F: Fn(&str) -> Result<String, String> + Send + 'static,
         {
@@ -3191,7 +3210,7 @@ mod tests {
             }
         }
 
-        fn transcript(&self) -> Vec<String> {
+        pub(crate) fn transcript(&self) -> Vec<String> {
             self.transcript.lock().unwrap().clone()
         }
 
@@ -6722,6 +6741,7 @@ mod tests {
         ("GET", "/api/v1/banks/names"),
         ("PUT", "/api/v1/banks/names"),
         ("GET", "/api/v1/scanners"),
+        ("POST", "/api/v1/diagnostic"),
         ("PATCH", "/api/v1/scanners/1"),
         ("DELETE", "/api/v1/scanners/1"),
     ];

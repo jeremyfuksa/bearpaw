@@ -293,6 +293,10 @@
       "path": "/api/v1/scanners"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/diagnostic"
+    },
+    {
       "method": "PATCH",
       "path": "/api/v1/scanners/1"
     },
