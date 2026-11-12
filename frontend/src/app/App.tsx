@@ -1309,24 +1309,27 @@ export default function App() {
           modelName={deviceInfo?.model || 'BC125AT'}
           shellStatusText={shellStatusText}
           currentTab={currentTab}
-          sessionStats={currentTab === 'Scan' ? sessionStats : null}
+          sessionStats={currentTab === 'Scan' && !isUnsupported ? sessionStats : null}
           showChannelCount={capabilities.reports_live_channel}
           syncedAt={sync.syncedAt}
         />
 
         {/* Announces scan-hit / scanning / connection transitions to screen
-          readers. Mounted here (outside the AnimatePresence tab switch) so its
+          readers. Not mounted for an unlisted radio: nothing from it is shown, so
+          nothing from it is announced. Mounted here (outside the AnimatePresence tab switch) so its
           edge-tracking refs survive tab changes. Pass RAW liveState.mode, not
           getScannerMode() — the announcer gates on `mode === 'SCAN'`. */}
-        <ScanAnnouncer
-          squelchOpen={liveState?.squelch_open ?? false}
-          mode={liveState?.mode ?? ''}
-          frequency={liveState?.frequency}
-          alphaTag={liveState?.alpha_tag}
-          connectionStatus={connectionStatus}
-          isSyncing={isMemorySyncing}
-          scannerName={deviceInfo?.display_name || deviceInfo?.model}
-        />
+        {!isUnsupported && (
+          <ScanAnnouncer
+            squelchOpen={liveState?.squelch_open ?? false}
+            mode={liveState?.mode ?? ''}
+            frequency={liveState?.frequency}
+            alphaTag={liveState?.alpha_tag}
+            connectionStatus={connectionStatus}
+            isSyncing={isMemorySyncing}
+            scannerName={deviceInfo?.display_name || deviceInfo?.model}
+          />
+        )}
 
         <ActivityExportSheet
           isOpen={isExportSheetOpen}

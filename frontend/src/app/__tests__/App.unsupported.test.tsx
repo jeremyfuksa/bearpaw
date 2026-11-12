@@ -142,6 +142,48 @@ describe('an unsupported scanner in App (#900)', () => {
     expect(api.getBanks).not.toHaveBeenCalled();
   });
 
+  it('shows and announces nothing live from the radio, including its live region', async () => {
+    useStore.setState({
+      liveState: createTestLiveState({
+        stale: false,
+        mode: 'SCAN',
+        squelch_open: true,
+        frequency: 155.34,
+        alpha_tag: 'EMS Operations',
+      }),
+    });
+    const { container } = renderApp();
+    await screen.findByText(FIRST_SENTENCE);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    const text = container.textContent ?? '';
+    expect(text).not.toContain('155.34');
+    expect(text).not.toContain('EMS Operations');
+    expect(screen.queryByText(/hits/i)).toBeNull();
+    // Every live region, wherever it is mounted.
+    for (const region of container.querySelectorAll('[role="status"], [aria-live]')) {
+      expect(region.textContent).not.toContain('155.34');
+      expect(region.textContent).not.toContain('EMS Operations');
+    }
+  });
+
+  it('shows the live hit on a supported scanner', async () => {
+    // Positive half: without it, an App that never renders live data passes.
+    connect({ model: 'BC125AT', connection_status: 'connected', scanner_id: 'bc125at-1' });
+    useStore.setState({
+      liveState: createTestLiveState({
+        stale: false,
+        mode: 'SCAN',
+        squelch_open: true,
+        frequency: 155.34,
+        alpha_tag: 'EMS Operations',
+      }),
+    });
+    const { container } = renderApp();
+    await waitFor(() => expect(container.textContent).toContain('EMS Operations'));
+  });
+
   it('the Channels tab is not offered for an unsupported scanner', async () => {
     renderApp();
     await screen.findByText(FIRST_SENTENCE);
