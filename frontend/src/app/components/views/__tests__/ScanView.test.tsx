@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -470,7 +470,10 @@ describe('Recent Hits export control', () => {
   });
 });
 
-describe("ScanView 'My scanner isn't listed' link", () => {
+// #905 drew a "My scanner isn't listed" link here. Removed: a radio that answers
+// MDL connects and gets the unsupported panel, so this screen is nearly always
+// a scanner that is just unplugged, and the link sat on top of bank buttons 8-10.
+describe('ScanView with no scanner found', () => {
   const props = {
     mainText: 'Disconnected',
     subText: 'No scanner connected',
@@ -502,46 +505,8 @@ describe("ScanView 'My scanner isn't listed' link", () => {
     });
   });
 
-  it('opens the supported-scanners page when no scanner was found at launch', async () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+  it('offers no "isn\'t listed" link', () => {
     render(<ScanView {...props} />);
-    screen.getByRole('button', { name: "My scanner isn't listed" }).click();
-    expect(open).toHaveBeenCalledWith(
-      'https://bearpaw.app/docs/getting-started.html#what-youll-need',
-      '_blank',
-      'noopener',
-    );
-    open.mockRestore();
-  });
-
-  it('is offered after a scanner drops, with the diagnostic a disconnect sets', () => {
-    useStore.setState({
-      deviceInfo: { connection_status: 'disconnected', diagnostic_code: 'scanner_disconnected' },
-    });
-    render(<ScanView {...props} />);
-    expect(screen.getByRole('button', { name: "My scanner isn't listed" })).toBeInTheDocument();
-  });
-
-  it('is absent when the backend is unreachable and there is no device info', () => {
-    useStore.setState({ deviceInfo: null });
-    render(<ScanView {...props} />);
-    expect(screen.queryByRole('button', { name: "My scanner isn't listed" })).toBeNull();
-  });
-
-  it('is absent when the disconnect has its own diagnostic', () => {
-    useStore.setState({
-      deviceInfo: {
-        connection_status: 'disconnected',
-        diagnostic_code: 'usb_device_not_accessible',
-      },
-    });
-    render(<ScanView {...props} />);
-    expect(screen.queryByRole('button', { name: "My scanner isn't listed" })).toBeNull();
-  });
-
-  it('is absent while connected', () => {
-    useStore.setState({ deviceInfo: { connection_status: 'connected' } });
-    render(<ScanView {...props} connectionStatus="connected" />);
-    expect(screen.queryByRole('button', { name: "My scanner isn't listed" })).toBeNull();
+    expect(screen.queryByRole('button', { name: /isn't listed/i })).toBeNull();
   });
 });
