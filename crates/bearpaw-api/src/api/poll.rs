@@ -88,9 +88,14 @@ impl PollLoopHandle {
     }
 }
 
-/// Reruns autodetect when the connected scanner has gone away (#416). `None`
-/// means nothing was found; the loop keeps retrying the port it had.
-pub type PortResolver = Box<dyn FnMut() -> Option<ResolvedPort> + Send>;
+/// Reruns autodetect: when the connected scanner has gone away (#416), and
+/// while the held scanner is unlisted (#900). `None` means nothing was found;
+/// the loop keeps what it had.
+///
+/// The argument is `held`, the target the loop holds open; when `Some`, find a
+/// SUPPORTED replacement for it or return `None`, and never open or probe the
+/// held target. `None` when nothing is held.
+pub type PortResolver = Box<dyn FnMut(Option<&str>) -> Option<ResolvedPort> + Send>;
 
 /// Where the poll loop starts, and how it finds a scanner again (#416).
 pub struct ScannerLink {
@@ -130,7 +135,7 @@ pub fn spawn_poll_loop(
                 if thread_stop.load(Ordering::Relaxed) {
                     return;
                 }
-                if let Some(found) = resolve() {
+                if let Some(found) = resolve(None) {
                     info!("Autodetect found {} @ {} baud", found.port_name, found.baud);
                     *state.command_tx.lock().unwrap() = cmd_tx.take();
                     break found;
@@ -179,6 +184,35 @@ enum SessionsEnded {
     Stopped,
     /// The port has not opened for `RERESOLVE_AFTER`; time to look elsewhere.
     Absent,
+    /// The held scanner is unlisted and a better target turned up (#900).
+    Switch(ResolvedPort),
+}
+
+/// While the held scanner is unlisted, look for a supported one (#900).
+///
+/// REGRESSION GUARD (#900, `an_unlisted_connection_keeps_looking_for_a_supported_scanner`,
+/// `the_re_resolve_never_probes_the_open_port`): autodetect connects an
+/// unlisted radio as a last resort, so connecting no longer means "done". The
+/// session loops call this each tick. It consults the resolver only while
+/// `model_is_unlisted()` and at most once per `RERESOLVE_AFTER` (a resolve
+/// MDL-probes every serial node), and it passes the held target to the
+/// resolver: opening the same serial node twice can steal its bytes and a
+/// held USB interface cannot be claimed again. Given a held target the
+/// resolver returns a verified-supported replacement or nothing (explicit
+/// config, the Uniden-vendor USB tier and unlisted serial radios all answer
+/// nothing). This also answers only a target that DIFFERS from the held one,
+/// as a second line against reconnecting to the same radio.
+fn better_scanner(
+    state: &AppState,
+    held: &ResolvedPort,
+    resolve: &mut PortResolver,
+    last: &mut Instant,
+) -> Option<ResolvedPort> {
+    if !state.model_is_unlisted() || last.elapsed() < RERESOLVE_AFTER {
+        return None;
+    }
+    *last = Instant::now();
+    resolve(Some(&held.port_name)).filter(|found| found != held)
 }
 
 /// Run sessions on `target` until it stays absent, then re-resolve and run on
@@ -199,27 +233,41 @@ fn run_poll_loop(
     stop: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
-        let ended = match parse_usb_target(&target.port_name) {
-            Some((vid, pid)) => run_poll_loop_usb(&state, vid, pid, &cmd_rx, stop),
-            None => run_poll_loop_serial(
-                &state,
-                &target.port_name,
-                target.baud,
-                assert_dtr,
-                &cmd_rx,
-                stop,
-            ),
+        let ended = {
+            let mut last_look = Instant::now();
+            let mut watch = || better_scanner(&state, &target, &mut resolve, &mut last_look);
+            match parse_usb_target(&target.port_name) {
+                Some((vid, pid)) => run_poll_loop_usb(&state, vid, pid, &cmd_rx, stop, &mut watch),
+                None => run_poll_loop_serial(
+                    &state,
+                    &target.port_name,
+                    target.baud,
+                    assert_dtr,
+                    &cmd_rx,
+                    stop,
+                    &mut watch,
+                ),
+            }
         };
-        if ended == SessionsEnded::Stopped {
-            return Ok(());
-        }
-        if let Some(found) = resolve() {
-            if found != target {
+        match ended {
+            SessionsEnded::Stopped => return Ok(()),
+            SessionsEnded::Switch(found) => {
                 info!(
-                    "Scanner on {} is gone; autodetect found {} @ {} baud, switching",
+                    "Scanner on {} is not supported; autodetect found {} @ {} baud, switching",
                     target.port_name, found.port_name, found.baud
                 );
                 target = found;
+            }
+            SessionsEnded::Absent => {
+                if let Some(found) = resolve(None) {
+                    if found != target {
+                        info!(
+                            "Scanner on {} is gone; autodetect found {} @ {} baud, switching",
+                            target.port_name, found.port_name, found.baud
+                        );
+                        target = found;
+                    }
+                }
             }
         }
     }
@@ -232,6 +280,7 @@ fn run_poll_loop_serial(
     assert_dtr: bool,
     cmd_rx: &std::sync::mpsc::Receiver<ControlCommand>,
     stop: &AtomicBool,
+    watch: &mut dyn FnMut() -> Option<ResolvedPort>,
 ) -> SessionsEnded {
     let transport = SerialTransport::new(port_name, baud).with_dtr_on_open(assert_dtr);
 
@@ -348,6 +397,10 @@ fn run_poll_loop_serial(
 
         let mut session_dead = false;
         while !session_dead && !stop.load(Ordering::Relaxed) {
+            // An unlisted radio is only a last resort (#900): keep looking.
+            if let Some(better) = watch() {
+                return SessionsEnded::Switch(better);
+            }
             // Drain control commands (hold, scan, direct, start sync)
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
@@ -578,6 +631,7 @@ fn run_poll_loop_usb(
     pid: u16,
     cmd_rx: &std::sync::mpsc::Receiver<ControlCommand>,
     stop: &AtomicBool,
+    watch: &mut dyn FnMut() -> Option<ResolvedPort>,
 ) -> SessionsEnded {
     let transport = UsbTransport::new(vid, pid);
     let port_label = format!("usb:{:04x}:{:04x}", vid, pid);
@@ -724,6 +778,10 @@ fn run_poll_loop_usb(
         // the moment any transport call signals the device is gone.
         let mut session_dead = false;
         while !session_dead && !stop.load(Ordering::Relaxed) {
+            // An unlisted radio is only a last resort (#900): keep looking.
+            if let Some(better) = watch() {
+                return SessionsEnded::Switch(better);
+            }
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
                     ControlCommand::Hold { reply, deadline } => {
@@ -1204,11 +1262,13 @@ fn next_backoff(current: Duration) -> Duration {
 /// `unsupported_model` diagnostic. It is deliberately not refused: an explicit
 /// `device.port` is the user overriding detection on purpose, and a hard
 /// refusal would remove the only escape hatch for a compatible-but-unlisted
-/// model. Autodetect can connect one too: its serial pass skips an unlisted
-/// `MDL`, but the USB fallback accepts any Uniden-vendor device. Once
-/// connected, no handler sends it anything (#893, `AppState::model_is_unlisted`):
-/// its capabilities, key codes and status layout are a guess. Only this poll
-/// loop's own status polling reaches it.
+/// model. Autodetect connects one too, as a last resort (#900): its serial
+/// pass keeps an unlisted `MDL` behind every supported scanner and behind the
+/// USB fallback, which accepts any Uniden-vendor device. Once connected, no
+/// handler sends it anything (#893, `AppState::model_is_unlisted`): its
+/// capabilities, key codes and status layout are a guess. Only this poll
+/// loop's own status polling reaches it, and `better_scanner` keeps looking
+/// for a supported scanner to switch to.
 ///
 /// Tests: `unsupported_model_sets_diagnostic_and_keeps_connection`,
 /// `supported_model_clears_diagnostic`.
@@ -3158,7 +3218,7 @@ mod tests {
                 target("/dev/bearpaw-nonexistent-test-port"),
                 false,
                 // Not an assigned USB vendor id; see the #513 USB guard.
-                Box::new(|| Some(target("usb:ffff:ffff"))),
+                Box::new(|_| Some(target("usb:ffff:ffff"))),
                 cmd_rx,
                 &AtomicBool::new(false),
             )
@@ -3194,7 +3254,7 @@ mod tests {
                 device_only_state(),
                 target("/dev/bearpaw-nonexistent-test-port"),
                 false,
-                Box::new(move || {
+                Box::new(move |_| {
                     counter.fetch_add(1, Ordering::Relaxed);
                     None
                 }),
@@ -3240,7 +3300,7 @@ mod tests {
             state.clone(),
             None,
             false,
-            Box::new(move || {
+            Box::new(move |_| {
                 plugged
                     .load(Ordering::Relaxed)
                     .then(|| target("usb:ffff:ffff"))
@@ -3269,6 +3329,117 @@ mod tests {
         assert!(handle.stop_and_join(Duration::from_secs(3)));
     }
 
+    fn unlisted_state() -> AppState {
+        let state = device_only_state();
+        state.device.write().expect("device lock").model = Some("SDS150".to_string());
+        assert!(state.model_is_unlisted());
+        state
+    }
+
+    /// A `last` timestamp old enough that the next look is due.
+    fn due() -> Instant {
+        Instant::now() - RERESOLVE_AFTER * 2
+    }
+
+    /// REGRESSION GUARD (#900): connecting an unlisted radio is a last resort,
+    /// so the loop must keep looking for a supported one while it holds it.
+    ///
+    /// Driven through `better_scanner`, the one decision both session loops
+    /// call each tick: `run_poll_loop` has no fake transport (see
+    /// `should_announce_connect`), so the wiring itself is covered only by the
+    /// type system. Four halves, each failing a different broken build: the
+    /// resolver is consulted at all; a supported target is returned; the SAME
+    /// unlisted target is not (that would reconnect every few seconds); and a
+    /// LISTED scanner is never disturbed.
+    #[test]
+    fn an_unlisted_connection_keeps_looking_for_a_supported_scanner() {
+        let held = target("/dev/cu.unlisted");
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let answer: Arc<std::sync::Mutex<Option<ResolvedPort>>> =
+            Arc::new(std::sync::Mutex::new(None));
+        let (c, a) = (calls.clone(), answer.clone());
+        let mut resolve: PortResolver = Box::new(move |_| {
+            c.fetch_add(1, Ordering::Relaxed);
+            a.lock().unwrap().clone()
+        });
+        let state = unlisted_state();
+
+        // Nothing better: consulted, nothing returned.
+        let mut last = due();
+        assert_eq!(better_scanner(&state, &held, &mut resolve, &mut last), None);
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            1,
+            "an unlisted connection must consult the resolver"
+        );
+
+        // Throttled: a second look inside RERESOLVE_AFTER does not probe the bus again.
+        assert_eq!(better_scanner(&state, &held, &mut resolve, &mut last), None);
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            1,
+            "the look must be throttled to RERESOLVE_AFTER"
+        );
+
+        // The same unlisted target again: no churn.
+        *answer.lock().unwrap() = Some(held.clone());
+        last = due();
+        assert_eq!(
+            better_scanner(&state, &held, &mut resolve, &mut last),
+            None,
+            "finding the target it already holds must not reconnect"
+        );
+
+        // A supported scanner appears: switch to it.
+        let supported = target("/dev/cu.supported");
+        *answer.lock().unwrap() = Some(supported.clone());
+        last = due();
+        assert_eq!(
+            better_scanner(&state, &held, &mut resolve, &mut last),
+            Some(supported)
+        );
+
+        // A listed scanner is never second-guessed.
+        let listed = device_only_state();
+        update_device_info_from_mdl(&listed, "MDL,BC125AT", "/dev/cu.test");
+        let before = calls.load(Ordering::Relaxed);
+        last = due();
+        assert_eq!(
+            better_scanner(&listed, &held, &mut resolve, &mut last),
+            None
+        );
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            before,
+            "a listed scanner must not trigger a resolve"
+        );
+    }
+
+    /// REGRESSION GUARD (#900): the re-resolve never probes the port the loop
+    /// holds. Opening the same serial node twice can steal its bytes, and a
+    /// held USB interface cannot be claimed again, so the held target is
+    /// handed to the resolver as an exclusion, for both transports.
+    #[test]
+    fn the_re_resolve_never_probes_the_open_port() {
+        for held_name in ["/dev/cu.unlisted", "usb:ffff:ffff"] {
+            let held = target(held_name);
+            let seen: Arc<std::sync::Mutex<Vec<Option<String>>>> =
+                Arc::new(std::sync::Mutex::new(Vec::new()));
+            let s = seen.clone();
+            let mut resolve: PortResolver = Box::new(move |held| {
+                s.lock().unwrap().push(held.map(str::to_string));
+                None
+            });
+            let mut last = due();
+            better_scanner(&unlisted_state(), &held, &mut resolve, &mut last);
+            assert_eq!(
+                *seen.lock().unwrap(),
+                vec![Some(held_name.to_string())],
+                "the resolver must be told not to touch {held_name}"
+            );
+        }
+    }
+
     /// REGRESSION GUARD (#782): with nothing attached, autodetect reruns at a
     /// bounded rate for the whole session. Paired with
     /// `autodetect_does_not_rerun_on_every_failed_open`, which covers the
@@ -3281,7 +3452,7 @@ mod tests {
             device_only_state(),
             None,
             false,
-            Box::new(move || {
+            Box::new(move |_| {
                 counter.fetch_add(1, Ordering::Relaxed);
                 None
             }),
@@ -3347,7 +3518,7 @@ mod tests {
                 loop_state,
                 target("/dev/bearpaw-nonexistent-test-port"),
                 false,
-                Box::new(|| None),
+                Box::new(|_| None),
                 cmd_rx,
                 &AtomicBool::new(false),
             )
@@ -3409,7 +3580,7 @@ mod tests {
                 loop_state,
                 target("usb:ffff:ffff"),
                 false,
-                Box::new(|| None),
+                Box::new(|_| None),
                 cmd_rx,
                 &AtomicBool::new(false),
             )
@@ -3446,7 +3617,7 @@ mod tests {
             device_only_state(),
             Some(self::target(target)),
             false,
-            Box::new(|| None),
+            Box::new(|_| None),
         );
         // Let it reach the reconnect backoff first, so the stop has to be
         // observed by a running loop rather than before it began.
