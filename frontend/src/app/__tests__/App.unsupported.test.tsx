@@ -374,3 +374,80 @@ describe('the diagnostic sheet across a scanner change (#900)', () => {
     expect(screen.queryByText('Scanner diagnostic')).toBeNull();
   });
 });
+
+/**
+ * REGRESSION GUARD (#900): leaving an unsupported scanner for a supported one.
+ *
+ * The backend sends a disconnect and then a connect `device_info` on a switch
+ * (`a_switch_to_a_supported_scanner_reaches_the_frontend`). The connect-edge
+ * refetch and the panel both key on `deviceInfo` from those messages, so this
+ * drives the REAL handler: a socket that records what App subscribes to and
+ * replays messages through it.
+ */
+describe('switching from an unsupported scanner to a supported one (#900)', () => {
+  const handlers = new Map<string, Array<(message: unknown) => void>>();
+  const switchingWs = {
+    ws: {
+      on: (type: string, handler: (message: unknown) => void) => {
+        handlers.set(type, [...(handlers.get(type) ?? []), handler]);
+        return () => {};
+      },
+    } as unknown as ScannerWebSocket,
+    connected: true,
+    connecting: false,
+  };
+
+  function deliver(deviceInfo: DeviceInfo) {
+    act(() => {
+      for (const handler of handlers.get('device_info') ?? [])
+        handler({ type: 'device_info', data: deviceInfo });
+    });
+  }
+
+  beforeEach(() => {
+    handlers.clear();
+    api.getChannels.mockClear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })),
+    );
+    connectUnsupported();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('a switch to a supported scanner replaces the panel with the scanner UI', async () => {
+    render(
+      <WebSocketContext.Provider value={switchingWs}>
+        <App />
+      </WebSocketContext.Provider>,
+    );
+    await screen.findByText(FIRST_SENTENCE);
+    expect(screen.queryByRole('tab', { name: 'Channels' })).toBeNull();
+    api.getChannels.mockClear();
+
+    // The disconnect edge, then the connect edge, as the backend sends them.
+    deliver({
+      model: 'SDS100',
+      connection_status: 'disconnected',
+      diagnostic_code: 'scanner_disconnected',
+      scanner_id: 'sds100-1',
+    });
+    const supported: DeviceInfo = {
+      model: 'BC125AT',
+      connection_status: 'connected',
+      scanner_id: 'bc125at-1',
+    };
+    api.state.deviceInfo = supported as unknown as Record<string, unknown>;
+    useStore.setState({ liveState: createTestLiveState({ stale: false, mode: 'SCAN' }) });
+    deliver(supported);
+
+    await waitFor(() => expect(screen.queryByText(FIRST_SENTENCE)).toBeNull());
+    expect(await screen.findByRole('tab', { name: 'Channels' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /hold/i })).toBeInTheDocument();
+    // The connect edge ran the frontend's connect-time refetch.
+    expect(api.getChannels).toHaveBeenCalled();
+  });
+});

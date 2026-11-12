@@ -4,9 +4,9 @@ import { getAPI } from '../api/useApi';
 import { useStore } from '../store/useStore';
 import type { DeviceInfo } from '../types';
 
-// The getting-started page lists the supported models under "What you'll need";
-// it has no anchor for that list, so link the page.
-export const SUPPORTED_SCANNERS_URL = 'https://bearpaw.app/docs/getting-started.html';
+// The getting-started page lists the supported models under "What you'll need".
+export const SUPPORTED_SCANNERS_URL =
+  'https://bearpaw.app/docs/getting-started.html#what-youll-need';
 
 /** The rule, for callers that read the store at invocation time instead of rendering. */
 export function isUnsupportedDevice(deviceInfo: DeviceInfo | null | undefined): boolean {
