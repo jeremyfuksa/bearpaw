@@ -328,3 +328,49 @@ describe('an unsupported scanner in App (#900)', () => {
     }
   });
 });
+
+describe('the diagnostic sheet across a scanner change (#900)', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })),
+    );
+    connectUnsupported();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('a sheet left open when the scanner drops does not reopen for the next one', async () => {
+    renderApp();
+    await screen.findByText(FIRST_SENTENCE);
+    await userEvent.click(screen.getByRole('button', { name: 'Run diagnostic' }));
+    expect(await screen.findByText('Scanner diagnostic')).toBeInTheDocument();
+
+    // The radio drops with the sheet still open, then an unsupported one connects.
+    act(() => {
+      useStore.setState({
+        deviceInfo: {
+          model: 'SDS100',
+          connection_status: 'disconnected',
+          diagnostic_code: 'scanner_disconnected',
+          scanner_id: 'sds100-1',
+        },
+      });
+    });
+    await waitFor(() => expect(screen.queryByText(FIRST_SENTENCE)).toBeNull());
+    act(() => {
+      useStore.setState({
+        deviceInfo: {
+          model: 'SDS100',
+          connection_status: 'connected',
+          diagnostic_code: 'unsupported_model',
+          scanner_id: 'sds100-1',
+        },
+      });
+    });
+    expect(await screen.findByText(FIRST_SENTENCE)).toBeInTheDocument();
+    expect(screen.queryByText('Scanner diagnostic')).toBeNull();
+  });
+});

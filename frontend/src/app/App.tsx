@@ -169,6 +169,12 @@ export default function App() {
   const [chartAnimate, setChartAnimate] = useState(true);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  // REGRESSION GUARD (App.unsupported.test.tsx :: a sheet left open when the
+  // scanner drops does not reopen for the next one): the sheet unmounts with
+  // the unsupported panel but this flag outlived it, so the next unsupported
+  // connect opened the sheet unasked. Reset during render, not in an effect,
+  // and keyed on `isUnsupported` alone: no per-tick value belongs in any deps.
+  if (!isUnsupported && isDiagnosticOpen) setIsDiagnosticOpen(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const shellStatusText = useShellStatusText();
 

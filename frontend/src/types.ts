@@ -239,10 +239,6 @@ export interface DeviceInfo {
   display_name?: string | null;
 }
 
-/**
- * A scanner profile Bearpaw has stored (#417). These are profiles it KNOWS,
- * not devices that are plugged in: only one scanner is connected at a time.
- */
 /** One command the diagnostic sent: a reply, or the error that replaced it. */
 export interface DiagnosticLine {
   command: string;
@@ -262,6 +258,10 @@ export interface DiagnosticReport {
   text: string;
 }
 
+/**
+ * A scanner profile Bearpaw has stored (#417). These are profiles it KNOWS,
+ * not devices that are plugged in: only one scanner is connected at a time.
+ */
 export interface ScannerProfile {
   scanner_id: string;
   model: string;
