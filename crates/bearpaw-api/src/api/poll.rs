@@ -256,6 +256,12 @@ fn run_poll_loop(
                     "Scanner on {} is not supported; autodetect found {} @ {} baud, switching",
                     target.port_name, found.port_name, found.baud
                 );
+                // REGRESSION GUARD (#900, `a_switch_to_a_supported_scanner_reaches_the_frontend`):
+                // leaving the unlisted session without a disconnect edge left
+                // `connection_status` at "connected", so the new session's MDL
+                // saw no transition and broadcast nothing: the UI kept naming
+                // the unsupported radio until relaunch.
+                mark_switching(&state);
                 target = found;
             }
             SessionsEnded::Absent => {
@@ -1029,6 +1035,17 @@ fn mark_port_opened(state: &AppState, port_label: &str) {
         d.port = Some(port_label.to_string());
         d.clear_connection_diagnostic();
     }
+}
+
+/// Leave an unlisted session for a supported scanner (#900).
+///
+/// The unlisted session ended while still "connected", so the next session's
+/// `MDL` would see no transition and broadcast nothing. Marking the device
+/// disconnected first gives the frontend a real disconnect edge, and the new
+/// session's `MDL` then a real connect edge, which is what its connect-edge
+/// refetches key on. Extracted SO THAT it is testable.
+fn mark_switching(state: &AppState) {
+    mark_disconnected(state, "switching to a supported scanner");
 }
 
 /// After the MDL retries gave up, should the frontend be told a scanner is here?
@@ -3334,6 +3351,48 @@ mod tests {
         state.device.write().expect("device lock").model = Some("SDS150".to_string());
         assert!(state.model_is_unlisted());
         state
+    }
+
+    /// REGRESSION GUARD (#900): switching from an unlisted radio to a supported
+    /// one must reach the frontend as a disconnect then a connect, and the
+    /// unsupported diagnostic must be gone. Without `mark_switching` the status
+    /// stayed "connected" across the switch, so the new session's `MDL` was not
+    /// an edge and nothing was broadcast.
+    #[test]
+    fn a_switch_to_a_supported_scanner_reaches_the_frontend() {
+        let state = crate::api::default_state();
+        update_device_info_from_mdl(&state, "MDL,SDS150", "/dev/cu.unlisted");
+        assert_eq!(
+            state.device.read().unwrap().diagnostic_code.as_deref(),
+            Some("unsupported_model"),
+            "precondition: connected to an unlisted radio"
+        );
+        let mut rx = state.ws_tx.subscribe();
+
+        // What `run_poll_loop` does on `Switch`, then what the new session does.
+        mark_switching(&state);
+        mark_port_opened(&state, "/dev/cu.supported");
+        update_device_info_from_mdl(&state, "MDL,BC125AT", "/dev/cu.supported");
+
+        let mut statuses = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            if m.contains("\"type\":\"device_info\"") {
+                statuses.push(m);
+            }
+        }
+        assert_eq!(
+            statuses.len(),
+            2,
+            "expected a disconnect then a connect broadcast: {statuses:?}"
+        );
+        assert!(statuses[0].contains("\"connection_status\":\"disconnected\""));
+        assert!(statuses[1].contains("\"connection_status\":\"connected\""));
+        assert!(
+            !statuses[1].contains("unsupported_model"),
+            "the connect broadcast must not carry the old diagnostic: {}",
+            statuses[1]
+        );
+        assert!(state.device.read().unwrap().diagnostic_code.is_none());
     }
 
     /// A `last` timestamp old enough that the next look is due.
