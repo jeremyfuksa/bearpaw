@@ -30,7 +30,7 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -80,6 +80,12 @@ pub struct AppState {
     /// Held for a whole `GLF` walk: the scanner has one cursor, and two walks
     /// that interleave split the list between them (#725).
     pub lockout_walk: Arc<tokio::sync::Mutex<()>>,
+    /// How many diagnostics are running (#907). While non-zero the poll loop
+    /// skips its search for a supported scanner: each search MDL-probes every
+    /// other serial node on the poll thread, long enough to expire the
+    /// diagnostic's queued reads as false timeouts. A count, not a flag, so
+    /// one of two overlapping runs finishing cannot resume the search early.
+    pub diagnostics_running: Arc<AtomicUsize>,
 }
 
 impl AppState {
@@ -875,6 +881,7 @@ pub fn default_state() -> AppState {
         program_mode_session: Arc::new(Mutex::new(None)),
         program_mode_active: Arc::new(AtomicBool::new(false)),
         lockout_walk: Arc::new(tokio::sync::Mutex::new(())),
+        diagnostics_running: Arc::new(AtomicUsize::new(0)),
     }
 }
 
