@@ -8,6 +8,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Bearpaw tells you when it finds a scanner it doesn't support yet.** It
+  names the model and shows nothing it can't control.
 - **A paw that lights up as your radio syncs.** Amber outlines illuminate at
   each 20% milestone, then fill on success. Cancelled syncs fade to gray;
   failed syncs show a red circle-and-slash and remain visible until closed.

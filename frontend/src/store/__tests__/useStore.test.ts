@@ -391,6 +391,7 @@ describe('useStore', () => {
       reread_memory_on_connect: false,
       analytics_scope: 'all',
       activity_export_timezone: 'utc',
+      unsupported_panel_dismissed: ['sds100-1'],
     };
 
     it('restores analyticsScope from the backend', () => {
@@ -413,6 +414,7 @@ describe('useStore', () => {
         rereadMemoryOnConnect: false,
         analyticsScope: 'all',
         activityExportTimezone: 'utc',
+        unsupportedPanelDismissed: ['sds100-1'],
       });
     });
 
@@ -439,6 +441,7 @@ describe('useStore', () => {
         rereadMemoryOnConnect: true,
         analyticsScope: 'scanner',
         activityExportTimezone: 'local',
+        unsupportedPanelDismissed: [],
       });
     });
 

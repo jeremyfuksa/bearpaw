@@ -25,12 +25,16 @@ import type { BanksUpdateMessage, LiveState, ProgressMessage, StateUpdateMessage
 import { DeviceTab } from './components/views/DeviceTab';
 import { ChannelsTab } from './components/views/ChannelsTab';
 import { ScanView } from './components/views/ScanView';
+import { UnsupportedScannerPanel } from './components/UnsupportedScannerPanel';
+import { SUPPORTED_SCANNERS_URL, useUnsupportedScanner } from '../hooks/useUnsupportedScanner';
 import { useScannerCapabilities } from '../hooks/useScannerCapabilities';
 import { DataDiagnosticBanner } from './components/DataDiagnosticBanner';
 import { TabBar } from './components/TabBar';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
 
 export type Tab = 'Scan' | 'Device' | 'Channels';
+
+const UNSUPPORTED_TABS: Tab[] = ['Scan', 'Device'];
 export type ScannerMode = 'SCAN' | 'HOLD' | 'SEARCH' | 'CLOSE_CALL';
 
 /**
@@ -105,6 +109,8 @@ export default function App() {
 
   const liveState = useStore((state) => state.liveState);
   const deviceInfo = useStore((state) => state.deviceInfo);
+  const unsupported = useUnsupportedScanner();
+  const isUnsupported = unsupported.isUnsupported;
   const draftScannerId = useStore((state) => state.draftScannerId);
   // Falls back to the BC125AT-family defaults until device_info arrives, so
   // the status bar does not flash a differently-shaped stat row on connect.
@@ -623,7 +629,9 @@ export default function App() {
   // effect fired twice per connect.
   useBankRefresh({
     api,
-    connectionStatus: deviceInfo?.connection_status,
+    // An unlisted radio answers every command with 400 `unsupported_model`
+    // (#899), so these two connect-time reads are told it is not connected.
+    connectionStatus: isUnsupported ? 'disconnected' : deviceInfo?.connection_status,
     syncInProgress: sync.inProgress,
     setBanks,
   });
@@ -636,7 +644,7 @@ export default function App() {
   useAutoMemorySync({
     api,
     channels,
-    deviceInfo,
+    deviceInfo: isUnsupported ? null : deviceInfo,
     preferencesLoaded,
     updateSync,
     setChannels,
@@ -751,6 +759,12 @@ export default function App() {
 
   const connectionStatus = useConnectionStatus();
 
+  // A radio Bearpaw has no command set for gets no Channels page, and a deep
+  // link (`?tab=channels`) that predates the connect must not land on one.
+  useEffect(() => {
+    if (isUnsupported && currentTab === 'Channels') setCurrentTab('Scan');
+  }, [isUnsupported, currentTab]);
+
   // REGRESSION GUARD: App.regression.test.tsx :: "leaving the Device page
   // resumes scan". A write on the Device page (unlock, bank/priority edit) runs
   // inside a PRG/EPG bracket that parks the scanner in HOLD at ch1. We
@@ -763,15 +777,19 @@ export default function App() {
   const handleTabChange = useCallback(
     (tab: string) => {
       const newTab = tab as Tab;
+      if (isUnsupported && newTab === 'Channels') return;
       const leavingDevice = currentTab === 'Device' && newTab !== 'Device';
+      // An unsupported radio never entered a PRG bracket (the backend refuses
+      // every command to it, 400 `unsupported_model`), so there is nothing to
+      // resume and `sendScan` would only fail and toast.
       if (leavingDevice) {
-        requestScanResume('leaving device page', { delayMs: 1000 });
+        if (!isUnsupported) requestScanResume('leaving device page', { delayMs: 1000 });
       } else if (newTab === 'Scan' && isInProgramMode) {
         requestScanResume('exit program mode', { toastOnError: true });
       }
       setCurrentTab(newTab);
     },
-    [currentTab, isInProgramMode, requestScanResume],
+    [currentTab, isInProgramMode, isUnsupported, requestScanResume],
   );
 
   // Update check (#273). Startup runs it silently; the Help menu item runs
@@ -1219,7 +1237,11 @@ export default function App() {
         />
 
         <nav aria-label="Views">
-          <TabBar currentTab={currentTab} onTabChange={handleTabChange} />
+          <TabBar
+            currentTab={currentTab}
+            onTabChange={handleTabChange}
+            tabs={isUnsupported ? UNSUPPORTED_TABS : undefined}
+          />
         </nav>
 
         <main
@@ -1231,7 +1253,21 @@ export default function App() {
         >
           <h2 className="sr-only">{currentTab}</h2>
           <AnimatePresence mode="wait">
-            {currentTab === 'Scan' && (
+            {currentTab === 'Scan' && isUnsupported && (
+              // Held until preferences load so a user who already said "Not now"
+              // never sees the question again, even for one frame.
+              <motion.div key="unsupported" className="h-full">
+                {preferencesLoaded && (
+                  <UnsupportedScannerPanel
+                    model={unsupported.model ?? 'scanner'}
+                    dismissed={unsupported.dismissed}
+                    onDismiss={unsupported.dismiss}
+                    onSeeSupported={() => openExternalUrl(SUPPORTED_SCANNERS_URL)}
+                  />
+                )}
+              </motion.div>
+            )}
+            {currentTab === 'Scan' && !isUnsupported && (
               <ScanView
                 mainText={mainText}
                 subText={subText}
@@ -1262,7 +1298,9 @@ export default function App() {
             )}
             {/* Keyed on the drafts' scanner (#791): a swap drops the store's
                 drafts, and the remount drops the tab's staged reorder. */}
-            {currentTab === 'Channels' && <ChannelsTab key={draftScannerId ?? ''} />}
+            {currentTab === 'Channels' && !isUnsupported && (
+              <ChannelsTab key={draftScannerId ?? ''} />
+            )}
           </AnimatePresence>
         </main>
 
