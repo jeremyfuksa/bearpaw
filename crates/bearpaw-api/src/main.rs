@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let serial = Some(ScannerLink {
         target: config::resolve_scanner_port(&cfg, None),
         assert_dtr,
-        resolve: Box::new(move |exclude| config::resolve_scanner_port(&cfg, exclude)),
+        resolve: Box::new(move |held| config::resolve_scanner_port(&cfg, held)),
     });
 
     run_server(&bind, state, serial).await

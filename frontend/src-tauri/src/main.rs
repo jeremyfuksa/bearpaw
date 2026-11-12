@@ -161,7 +161,7 @@ fn start_backend_runtime(
     let serial_port = Some(bearpaw_api::ScannerLink {
         target: resolved,
         assert_dtr,
-        resolve: Box::new(move |exclude| bearpaw_api::resolve_scanner_port(&cfg, exclude)),
+        resolve: Box::new(move |held| bearpaw_api::resolve_scanner_port(&cfg, held)),
     });
 
     if let Ok(mut slot) = state.bind.lock() {

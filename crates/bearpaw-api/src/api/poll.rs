@@ -88,11 +88,13 @@ impl PollLoopHandle {
     }
 }
 
-/// Reruns autodetect when the connected scanner has gone away (#416). `None`
-/// means nothing was found; the loop keeps retrying the port it had.
+/// Reruns autodetect: when the connected scanner has gone away (#416), and
+/// while the held scanner is unlisted (#900). `None` means nothing was found;
+/// the loop keeps what it had.
 ///
-/// The argument is a target the loop holds open and the resolver must never
-/// open or probe (#900); `None` when nothing is held.
+/// The argument is `held`, the target the loop holds open; when `Some`, find a
+/// SUPPORTED replacement for it or return `None`, and never open or probe the
+/// held target. `None` when nothing is held.
 pub type PortResolver = Box<dyn FnMut(Option<&str>) -> Option<ResolvedPort> + Send>;
 
 /// Where the poll loop starts, and how it finds a scanner again (#416).
@@ -193,11 +195,13 @@ enum SessionsEnded {
 /// unlisted radio as a last resort, so connecting no longer means "done". The
 /// session loops call this each tick. It consults the resolver only while
 /// `model_is_unlisted()` and at most once per `RERESOLVE_AFTER` (a resolve
-/// MDL-probes every serial node), and it passes the held target as an
-/// exclusion: opening the same serial node twice can steal its bytes and a
-/// held USB interface cannot be claimed again. It answers only a target that
-/// DIFFERS from the held one, so finding the same unlisted radio again never
-/// reconnects. The resolver, given an exclusion, returns supported targets only.
+/// MDL-probes every serial node), and it passes the held target to the
+/// resolver: opening the same serial node twice can steal its bytes and a
+/// held USB interface cannot be claimed again. Given a held target the
+/// resolver returns a verified-supported replacement or nothing (explicit
+/// config, the Uniden-vendor USB tier and unlisted serial radios all answer
+/// nothing). This also answers only a target that DIFFERS from the held one,
+/// as a second line against reconnecting to the same radio.
 fn better_scanner(
     state: &AppState,
     held: &ResolvedPort,
@@ -3422,8 +3426,8 @@ mod tests {
             let seen: Arc<std::sync::Mutex<Vec<Option<String>>>> =
                 Arc::new(std::sync::Mutex::new(Vec::new()));
             let s = seen.clone();
-            let mut resolve: PortResolver = Box::new(move |exclude| {
-                s.lock().unwrap().push(exclude.map(str::to_string));
+            let mut resolve: PortResolver = Box::new(move |held| {
+                s.lock().unwrap().push(held.map(str::to_string));
                 None
             });
             let mut last = due();
