@@ -1,0 +1,254 @@
+//! Read-only scanner diagnostic (#895).
+//!
+//! Sends a fixed list of read commands to whatever scanner is connected,
+//! including one Bearpaw does not list, and reports the replies so an owner can
+//! paste them into an issue.
+
+use std::sync::atomic::Ordering;
+
+use axum::{extract::State, Json};
+use serde::Serialize;
+use serde_json::{json, Value};
+
+use super::{send_queued, ApiError, AppState};
+
+/// The ONLY commands the diagnostic sends.
+///
+/// REGRESSION GUARD (#895, `the_diagnostic_never_sends_program_mode_or_writes`,
+/// `an_unlisted_scanner_gets_exactly_the_diagnostic_commands`): every entry is
+/// a bare read, valid outside program mode, with no argument. No `PRG` (an
+/// SDS150 accepts it with no `EPG` and needs a power cycle), no write, no
+/// `CIN`. The list is fixed in code and nothing user-supplied reaches the wire.
+/// Adding a command here is a decision about what an unverified scanner may be
+/// sent, so both tests must be re-read, not just updated.
+pub(crate) const DIAGNOSTIC_COMMANDS: &[&str] = &["MDL", "VER", "STS", "GLG", "PWR", "VOL", "SQL"];
+
+#[derive(Debug, Serialize)]
+pub(crate) struct DiagnosticLine {
+    command: String,
+    reply: Option<String>,
+    error: Option<String>,
+}
+
+/// Carries no USB serial number and no port path: both identify the owner's
+/// machine or unit, and the report is meant to be pasted publicly.
+#[derive(Debug, Serialize)]
+pub(crate) struct DiagnosticReport {
+    model: Option<String>,
+    firmware: Option<String>,
+    link: String,
+    bearpaw_version: &'static str,
+    lines: Vec<DiagnosticLine>,
+}
+
+impl DiagnosticReport {
+    pub(crate) fn to_text(&self) -> String {
+        let mut out = format!(
+            "Bearpaw {}\nModel: {}\nFirmware: {}\nLink: {}\n\n",
+            self.bearpaw_version,
+            self.model.as_deref().unwrap_or("unknown"),
+            self.firmware.as_deref().unwrap_or("unknown"),
+            self.link,
+        );
+        for line in &self.lines {
+            match (&line.reply, &line.error) {
+                (Some(reply), _) => out.push_str(&format!("{} -> {}\n", line.command, reply)),
+                (None, Some(error)) => {
+                    out.push_str(&format!("{} -> (error: {})\n", line.command, error))
+                }
+                (None, None) => out.push_str(&format!("{} -> (no reply)\n", line.command)),
+            }
+        }
+        out
+    }
+}
+
+fn error_text(err: &ApiError) -> String {
+    match err {
+        ApiError::NoScanner => "device_disconnected".to_string(),
+        ApiError::SendFailed => "command_channel_closed".to_string(),
+        ApiError::BadRequest(m)
+        | ApiError::NotFound(m)
+        | ApiError::Conflict(m)
+        | ApiError::Internal(m) => m.clone(),
+    }
+}
+
+pub(crate) async fn run_diagnostic(state: &AppState) -> Result<DiagnosticReport, ApiError> {
+    // Same refusals as `ProgramModeGuard::enter`, for the same reason: a sync
+    // owns the wire for its duration, and a bracket's replies are not ours.
+    if state.sync_task_id.lock().unwrap().is_some() {
+        return Err(ApiError::Conflict("sync_in_progress".to_string()));
+    }
+    if *state.program_mode_holders.lock().unwrap() > 0
+        || state.program_mode_active.load(Ordering::Relaxed)
+    {
+        return Err(ApiError::Conflict("program_mode_active".to_string()));
+    }
+    // Fails with 503 before anything is sent when no scanner is connected.
+    super::command_sender(state)?;
+
+    let mut lines = Vec::with_capacity(DIAGNOSTIC_COMMANDS.len());
+    for command in DIAGNOSTIC_COMMANDS {
+        let line = match send_queued(state, command, false).await {
+            Ok(reply) => DiagnosticLine {
+                command: command.to_string(),
+                reply: Some(reply.trim().to_string()),
+                error: None,
+            },
+            Err(err) => DiagnosticLine {
+                command: command.to_string(),
+                reply: None,
+                error: Some(error_text(&err)),
+            },
+        };
+        lines.push(line);
+    }
+
+    let device = state.device.read().unwrap();
+    let link = match (device.vid, device.pid) {
+        (Some(vid), Some(pid)) => format!("usb {vid:04x}:{pid:04x}"),
+        _ => "serial".to_string(),
+    };
+    Ok(DiagnosticReport {
+        model: device.model.clone(),
+        firmware: device.firmware.clone(),
+        link,
+        bearpaw_version: env!("CARGO_PKG_VERSION"),
+        lines,
+    })
+}
+
+pub(crate) async fn post_diagnostic(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, ApiError> {
+    let report = run_diagnostic(&state).await?;
+    let text = report.to_text();
+    Ok(Json(json!({ "report": report, "text": text })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::tests::FakeScanner;
+    use crate::api::{default_state, router};
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Method, Request, StatusCode};
+    use tower::util::ServiceExt;
+
+    async fn post_diagnostic(state: &AppState) -> (StatusCode, String) {
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v1/diagnostic")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    fn unlisted_state() -> AppState {
+        let state = default_state();
+        state.device.write().unwrap().model = Some("SDS150".to_string());
+        state
+    }
+
+    #[tokio::test]
+    async fn an_unlisted_scanner_gets_exactly_the_diagnostic_commands() {
+        let state = unlisted_state();
+        let fake = FakeScanner::attach(&state, |c| Ok(format!("{c},OK")));
+        let (status, _) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(fake.transcript(), DIAGNOSTIC_COMMANDS);
+        assert!(!fake.transcript().iter().any(|c| c == "PRG"));
+    }
+
+    #[test]
+    fn the_diagnostic_never_sends_program_mode_or_writes() {
+        for cmd in DIAGNOSTIC_COMMANDS {
+            assert!(!cmd.contains(','), "{cmd} carries an argument");
+            assert!(
+                !["PRG", "EPG", "CLR", "DCH", "WIN", "CIN"].contains(cmd),
+                "{cmd} is not a read"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_report_carries_no_serial_or_port() {
+        let state = unlisted_state();
+        {
+            let mut d = state.device.write().unwrap();
+            d.serial_number = Some("SECRET123".to_string());
+            d.port = Some("/dev/cu.usbserial-SECRET".to_string());
+        }
+        let _fake = FakeScanner::attach(&state, |c| Ok(format!("{c},OK")));
+        let (status, body) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!body.contains("SECRET"), "{body}");
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(!json["text"].as_str().unwrap().contains("SECRET"));
+    }
+
+    #[tokio::test]
+    async fn a_command_that_times_out_is_recorded_and_the_probe_continues() {
+        let state = unlisted_state();
+        let fake = FakeScanner::attach(&state, |c| {
+            if c == "GLG" {
+                Err("command_timeout".to_string())
+            } else {
+                Ok(format!("{c},OK"))
+            }
+        });
+        let (status, body) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let lines = json["report"]["lines"].as_array().unwrap();
+        let cmds: Vec<&str> = lines
+            .iter()
+            .map(|l| l["command"].as_str().unwrap())
+            .collect();
+        assert_eq!(cmds, DIAGNOSTIC_COMMANDS);
+        let glg = lines.iter().find(|l| l["command"] == "GLG").unwrap();
+        assert_eq!(glg["error"], "command_timeout");
+        assert!(glg["reply"].is_null());
+        assert!(json["text"]
+            .as_str()
+            .unwrap()
+            .contains("GLG -> (error: command_timeout)"));
+        assert_eq!(fake.transcript(), DIAGNOSTIC_COMMANDS);
+    }
+
+    #[tokio::test]
+    async fn the_diagnostic_waits_for_a_program_mode_bracket() {
+        let state = unlisted_state();
+        let fake = FakeScanner::attach(&state, |c| Ok(format!("{c},OK")));
+        *state.program_mode_holders.lock().unwrap() = 1;
+        let (status, _) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(fake.transcript().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_diagnostic_waits_for_a_memory_sync() {
+        let state = unlisted_state();
+        let fake = FakeScanner::attach(&state, |c| Ok(format!("{c},OK")));
+        *state.sync_task_id.lock().unwrap() = Some("task".to_string());
+        let (status, body) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert!(body.contains("sync_in_progress"), "{body}");
+        assert!(fake.transcript().is_empty());
+    }
+
+    #[tokio::test]
+    async fn no_scanner_is_a_503() {
+        let state = unlisted_state();
+        let (status, _) = post_diagnostic(&state).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+}
