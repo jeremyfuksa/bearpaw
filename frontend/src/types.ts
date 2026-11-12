@@ -243,6 +243,25 @@ export interface DeviceInfo {
  * A scanner profile Bearpaw has stored (#417). These are profiles it KNOWS,
  * not devices that are plugged in: only one scanner is connected at a time.
  */
+/** One command the diagnostic sent: a reply, or the error that replaced it. */
+export interface DiagnosticLine {
+  command: string;
+  reply: string | null;
+  error: string | null;
+}
+
+/** `POST /diagnostic`. `text` is the whole report, exactly what is shown and sent. */
+export interface DiagnosticReport {
+  report: {
+    model: string | null;
+    firmware: string | null;
+    link: string;
+    bearpaw_version: string;
+    lines: DiagnosticLine[];
+  };
+  text: string;
+}
+
 export interface ScannerProfile {
   scanner_id: string;
   model: string;

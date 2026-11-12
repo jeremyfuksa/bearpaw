@@ -30,6 +30,7 @@ import { SUPPORTED_SCANNERS_URL, useUnsupportedScanner } from '../hooks/useUnsup
 import { useScannerCapabilities } from '../hooks/useScannerCapabilities';
 import { DataDiagnosticBanner } from './components/DataDiagnosticBanner';
 import { TabBar } from './components/TabBar';
+import { DiagnosticSheet } from './components/DiagnosticSheet';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
 
 export type Tab = 'Scan' | 'Device' | 'Channels';
@@ -167,6 +168,7 @@ export default function App() {
   // frame first (react-hooks/set-state-in-effect).
   const [chartAnimate, setChartAnimate] = useState(true);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
+  const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
   const [isInProgramMode, setIsInProgramMode] = useState(false);
   const shellStatusText = useShellStatusText();
 
@@ -1269,6 +1271,7 @@ export default function App() {
                   <UnsupportedScannerPanel
                     model={unsupported.model ?? 'scanner'}
                     dismissed={unsupported.dismissed}
+                    onRunDiagnostic={() => setIsDiagnosticOpen(true)}
                     onDismiss={unsupported.dismiss}
                     onSeeSupported={() => openExternalUrl(SUPPORTED_SCANNERS_URL)}
                   />
@@ -1336,6 +1339,16 @@ export default function App() {
             connectionStatus={connectionStatus}
             isSyncing={isMemorySyncing}
             scannerName={deviceInfo?.display_name || deviceInfo?.model}
+          />
+        )}
+
+        {/* Mounted only for an unlisted radio: the sheet's one request is the
+          read-only diagnostic, which the backend serves to nothing else. */}
+        {isUnsupported && (
+          <DiagnosticSheet
+            isOpen={isDiagnosticOpen}
+            model={unsupported.model ?? 'scanner'}
+            onClose={() => setIsDiagnosticOpen(false)}
           />
         )}
 

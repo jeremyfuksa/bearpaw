@@ -10,6 +10,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Bearpaw tells you when it finds a scanner it doesn't support yet.** It
   names the model and shows nothing it can't control.
+- **Run a diagnostic on a scanner Bearpaw doesn't support yet, and send the
+  report.** It reads the model, firmware and what the display shows, and
+  changes nothing on the radio. You see the whole report first, then save it,
+  email it, or open a GitHub issue with it.
 - **A paw that lights up as your radio syncs.** Amber outlines illuminate at
   each 20% milestone, then fill on success. Cancelled syncs fade to gray;
   failed syncs show a red circle-and-slash and remain visible until closed.

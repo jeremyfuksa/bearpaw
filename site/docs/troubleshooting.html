@@ -71,6 +71,11 @@
           <li>
             <a href="#the-scanner-wont-connect">The scanner won't connect</a>
           </li>
+          <li>
+            <a href="#unsupported-scanner"
+              >If Bearpaw says your scanner is unsupported</a
+            >
+          </li>
           <li><a href="#other-common-issues">Other common issues</a></li>
         </ul>
 
@@ -254,6 +259,59 @@
             >.
           </p>
         </div>
+
+        <h2 id="unsupported-scanner">
+          If Bearpaw says your scanner is unsupported
+        </h2>
+        <p>
+          Bearpaw can tell some Uniden scanners apart that it has no commands for
+          yet. When it finds one, the Scan tab says
+          <strong>"Bearpaw found your (model), which is currently unsupported."</strong>
+          It shows no controls, because every one would fail. Nothing is wrong
+          with your scanner or your cable.
+        </p>
+        <p>
+          You can help change that. Choose <strong>Run diagnostic</strong> and
+          Bearpaw asks the scanner a short list of questions. It only reads:
+        </p>
+        <ul>
+          <li>the model and the firmware version,</li>
+          <li>what the scanner's display shows right now,</li>
+          <li>
+            the signal strength, the volume and the
+            <a href="glossary.html#squelch">squelch</a> setting.
+          </li>
+        </ul>
+        <p>
+          It changes nothing on the radio. Your channels, settings and
+          lockouts stay as they are.
+        </p>
+        <p>
+          When it finishes, Bearpaw shows you the whole report. Nothing is sent
+          until you read it and choose where it goes. The report has no USB
+          serial number and no port name. You can:
+        </p>
+        <ul>
+          <li><strong>Save report</strong> to a text file on your computer.</li>
+          <li>
+            <strong>Email it</strong> opens your mail app with the report
+            addressed to <code>info@bearpaw.app</code>.
+          </li>
+          <li>
+            <strong>Open an issue</strong> opens a new GitHub issue in your
+            browser with the report filled in. You press the button to post it.
+          </li>
+        </ul>
+        <p>
+          If the report is too long for an email or an issue, Bearpaw asks you to
+          attach the saved file instead. Saving works with no internet
+          connection.
+        </p>
+        <p>
+          If you choose <strong>Not now</strong>, Bearpaw won't ask again. The
+          <strong>Run diagnostic</strong> link stays on the Scan tab if you
+          change your mind.
+        </p>
 
         <h2 id="other-common-issues">Other common issues</h2>
 
