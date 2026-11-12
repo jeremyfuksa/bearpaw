@@ -135,6 +135,7 @@ const CALLS: Array<[string, (c: ScannerAPIClient) => Promise<unknown>]> = [
   ['setWeatherSettings', (c) => c.setWeatherSettings(false)],
   ['setContrastSettings', (c) => c.setContrastSettings(8)],
   ['exportCsv', (c) => c.exportCsv()],
+  ['runDiagnostic', (c) => c.runDiagnostic()],
   ['exportBc125atSs', (c) => c.exportBc125atSs()],
   ['importCsv', (c) => c.importCsv(new File(['idx,freq\n1,146.52'], 'ch.csv'))],
   ['getPreference', (c) => c.getPreference('theme')],

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 /**
@@ -31,6 +31,7 @@ const api = vi.hoisted(() => {
     syncMemory: vi.fn(() => Promise.resolve({})),
     getAllSettings: vi.fn(() => Promise.resolve({})),
     getScanners: vi.fn(() => Promise.resolve([])),
+    runDiagnostic: vi.fn(() => Promise.resolve({})),
   };
 });
 
@@ -120,6 +121,7 @@ describe('an unsupported scanner in App (#900)', () => {
     api.getBanks.mockClear();
     api.syncMemory.mockClear();
     api.setPreference.mockClear();
+    api.runDiagnostic.mockClear();
     toastError.mockClear();
     vi.stubGlobal(
       'fetch',
@@ -144,6 +146,27 @@ describe('an unsupported scanner in App (#900)', () => {
     expect(screen.queryByRole('button', { name: /hold/i })).toBeNull();
     expect(screen.queryByLabelText(/squelch/i)).toBeNull();
     expect(screen.queryByLabelText(/volume/i)).toBeNull();
+  });
+
+  it('Run diagnostic opens the sheet and runs nothing until asked', async () => {
+    renderApp();
+    await userEvent.click(await screen.findByRole('button', { name: 'Run diagnostic' }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('Scanner diagnostic')).toBeInTheDocument();
+    expect(api.runDiagnostic).not.toHaveBeenCalled();
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Run diagnostic' }));
+    expect(api.runDiagnostic).toHaveBeenCalledTimes(1);
+  });
+
+  it('the resting panel link opens the same sheet', async () => {
+    useStore.setState({
+      preferences: { ...useStore.getState().preferences, unsupportedPanelDismissed: ['sds100-1'] },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole('button', { name: 'Run diagnostic' }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).getByText('Scanner diagnostic')).toBeInTheDocument();
+    expect(api.runDiagnostic).not.toHaveBeenCalled();
   });
 
   it('sends no connect-time command: no memory sync, no bank read', async () => {
@@ -303,6 +326,52 @@ describe('an unsupported scanner in App (#900)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('the diagnostic sheet across a scanner change (#900)', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) })),
+    );
+    connectUnsupported();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('a sheet left open when the scanner drops does not reopen for the next one', async () => {
+    renderApp();
+    await screen.findByText(FIRST_SENTENCE);
+    await userEvent.click(screen.getByRole('button', { name: 'Run diagnostic' }));
+    expect(await screen.findByText('Scanner diagnostic')).toBeInTheDocument();
+
+    // The radio drops with the sheet still open, then an unsupported one connects.
+    act(() => {
+      useStore.setState({
+        deviceInfo: {
+          model: 'SDS100',
+          connection_status: 'disconnected',
+          diagnostic_code: 'scanner_disconnected',
+          scanner_id: 'sds100-1',
+        },
+      });
+    });
+    await waitFor(() => expect(screen.queryByText(FIRST_SENTENCE)).toBeNull());
+    act(() => {
+      useStore.setState({
+        deviceInfo: {
+          model: 'SDS100',
+          connection_status: 'connected',
+          diagnostic_code: 'unsupported_model',
+          scanner_id: 'sds100-1',
+        },
+      });
+    });
+    expect(await screen.findByText(FIRST_SENTENCE)).toBeInTheDocument();
+    expect(screen.queryByText('Scanner diagnostic')).toBeNull();
   });
 });
 

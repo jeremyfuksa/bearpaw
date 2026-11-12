@@ -9,6 +9,7 @@ import type {
   CustomSearchRange,
   CustomSearchSettings,
   DeviceInfo,
+  DiagnosticReport,
   KeyBeepSettings,
   SearchDirection,
   LiveState,
@@ -134,6 +135,15 @@ export class ScannerAPIClient {
 
   async getDeviceInfo(): Promise<DeviceInfo> {
     return this.request<DeviceInfo>('/device/info');
+  }
+
+  /**
+   * Read-only diagnostic of a scanner Bearpaw has no command set for. Refused
+   * with 409 `program_mode_active` / `sync_in_progress` and 503
+   * `device_disconnected`; the code is `APIError.message`.
+   */
+  async runDiagnostic(): Promise<DiagnosticReport> {
+    return this.request<DiagnosticReport>('/diagnostic', { method: 'POST' });
   }
 
   async getBanks(): Promise<{ banks: boolean[] }> {
