@@ -155,13 +155,13 @@ fn start_backend_runtime(
     // binary has always done this correctly; the shell drifted because
     // `resolve_scanner_port` was not re-exported from the crate root, leaving
     // the baud-discarding wrapper as the only reachable option.
-    let resolved = bearpaw_api::resolve_scanner_port(&cfg);
+    let resolved = bearpaw_api::resolve_scanner_port(&cfg, None);
     let resolved_serial = resolved.as_ref().map(|r| r.port_name.clone());
     let assert_dtr = cfg.device.assert_dtr_on_open;
     let serial_port = Some(bearpaw_api::ScannerLink {
         target: resolved,
         assert_dtr,
-        resolve: Box::new(move || bearpaw_api::resolve_scanner_port(&cfg)),
+        resolve: Box::new(move |held| bearpaw_api::resolve_scanner_port(&cfg, held)),
     });
 
     if let Ok(mut slot) = state.bind.lock() {

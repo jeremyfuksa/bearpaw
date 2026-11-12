@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 
 import { getAPI } from '../api/useApi';
 import { useStore } from '../store/useStore';
+import { isUnsupportedDevice } from './useUnsupportedScanner';
 
 interface ShortcutHandlers {
   openActivityLog: () => void;
@@ -62,6 +63,11 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       const modifierPressed = event.ctrlKey || event.metaKey;
       if (!modifierPressed) return;
 
+      // An unlisted radio is sent nothing (400 `unsupported_model`, #899), so
+      // every shortcut that sends a command is dead there. Read at keypress
+      // time, like the other store reads here, so the listener never re-binds.
+      const commandsRefused = isUnsupportedDevice(useStore.getState().deviceInfo);
+
       switch (event.key.toLowerCase()) {
         // Help shortcut is Cmd/Ctrl+/ — a modifier-gated key, matching every
         // other shortcut here (WCAG 2.1.4: no bare single-character shortcut).
@@ -71,10 +77,12 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           break;
         case 's':
           event.preventDefault();
+          if (commandsRefused) break;
           api.sendScan().catch((err) => reportCommandError('scan', err));
           break;
         case 'h':
           event.preventDefault();
+          if (commandsRefused) break;
           api.sendHold().catch((err) => reportCommandError('hold', err));
           break;
         case 'c': {
@@ -91,7 +99,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
             current.openActivityLog();
           } else {
             const liveState = useStore.getState().liveState;
-            if (liveState?.frequency || liveState?.channel) {
+            if (!commandsRefused && (liveState?.frequency || liveState?.channel)) {
               api
                 .toggleTemporaryLockout({
                   frequency: liveState.frequency,
@@ -110,11 +118,13 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           // BC125AT up-arrow key code (docs/BC125AT_PROTOCOL.md §5.7). The
           // backend allowlist only accepts single-char codes; 'UP' is rejected.
           event.preventDefault();
+          if (commandsRefused) break;
           api.sendKey('^').catch((err) => reportCommandError('navigate up', err));
           break;
         case 'arrowdown':
           // BC125AT down-arrow key code.
           event.preventDefault();
+          if (commandsRefused) break;
           api.sendKey('V').catch((err) => reportCommandError('navigate down', err));
           break;
         default:

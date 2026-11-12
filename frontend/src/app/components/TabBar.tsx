@@ -2,11 +2,13 @@ import { useRef } from 'react';
 import bearpawLogo from '@/assets/bearpaw-logo.svg';
 import type { Tab } from '../App';
 
-const TABS: Tab[] = ['Scan', 'Channels', 'Device'];
+const ALL_TABS: Tab[] = ['Scan', 'Channels', 'Device'];
 
 interface TabBarProps {
   currentTab: Tab;
   onTabChange: (tab: Tab) => void;
+  /** Tabs to offer. Absent means all three; an unsupported radio has no Channels. */
+  tabs?: Tab[];
 }
 
 /**
@@ -19,7 +21,7 @@ interface TabBarProps {
  * Arrow selection also runs onTabChange (App's handleTabChange), so the
  * leaving-Device scan-resume fires on keyboard nav just as it does on click.
  */
-export function TabBar({ currentTab, onTabChange }: TabBarProps) {
+export function TabBar({ currentTab, onTabChange, tabs: TABS = ALL_TABS }: TabBarProps) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const focusTab = (index: number) => {

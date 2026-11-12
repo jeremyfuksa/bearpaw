@@ -42,6 +42,12 @@ export interface Preferences {
    * worse surprise than a UTC-stamped export of your local day.
    */
   activityExportTimezone: 'local' | 'utc';
+  /**
+   * Scanners (keyed `scanner_id ?? model`) whose user chose "Not now" on the
+   * unsupported-scanner panel. Stored as a JSON string array under
+   * `unsupported_panel_dismissed`; the panel never asks again for these.
+   */
+  unsupportedPanelDismissed: string[];
 }
 
 /**
@@ -141,6 +147,7 @@ const defaultPreferences: Preferences = {
   rereadMemoryOnConnect: true,
   analyticsScope: 'scanner',
   activityExportTimezone: 'local',
+  unsupportedPanelDismissed: [],
 };
 
 /**
@@ -180,6 +187,9 @@ export function mapStoredPreferences(stored: Record<string, unknown>): Preferenc
     rereadMemoryOnConnect: prefs.reread_memory_on_connect ?? true,
     analyticsScope: prefs.analytics_scope === 'all' ? 'all' : 'scanner',
     activityExportTimezone: prefs.activity_export_timezone === 'utc' ? 'utc' : 'local',
+    unsupportedPanelDismissed: Array.isArray(prefs.unsupported_panel_dismissed)
+      ? prefs.unsupported_panel_dismissed.filter((k: unknown) => typeof k === 'string')
+      : [],
   };
 }
 

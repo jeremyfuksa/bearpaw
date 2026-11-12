@@ -8,6 +8,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Bearpaw tells you when it finds a scanner it doesn't support yet.** It
+  names the model and shows nothing it can't control.
 - **A paw that lights up as your radio syncs.** Amber outlines illuminate at
   each 20% milestone, then fill on success. Cancelled syncs fade to gray;
   failed syncs show a red circle-and-slash and remain visible until closed.
@@ -25,6 +27,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   calibrated on airband and
   VHF, where a full-strength station reads 5 bars and hiss reads 0 or 1. UHF
   and 25–54 MHz still use the uncalibrated scale.
+
+### Changed
+
+- Bearpaw now connects a Uniden scanner it doesn't support yet instead of
+  ignoring it, so it can tell you which model it found. It still sends that
+  scanner no commands, and it switches to a supported scanner as soon as you
+  plug one in.
 
 ### Fixed
 
