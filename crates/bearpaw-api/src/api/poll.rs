@@ -400,6 +400,11 @@ fn run_poll_loop_serial(
         // Initial squelch query. Writes to `state.live.squelch_level` so the
         // first poll tick (and the UI) sees the real scanner squelch rather
         // than 0.
+        // A squelch the input check (#930) opened and could not close goes
+        // back first, so the read below sees the user's level.
+        if let Some(level) = super::find_input::take_pending_squelch(state) {
+            let _ = transport.send(port.as_mut(), &format!("SQL,{level}"));
+        }
         if let Ok(sql_resp) = transport.send(port.as_mut(), "SQL") {
             if let Some(v) = parse_sql_response(&sql_resp) {
                 if let Ok(mut live) = state.live.write() {
@@ -779,6 +784,11 @@ fn run_poll_loop_usb(
         // Initial squelch query. Writes to `state.live.squelch_level` so the
         // first poll tick (and the UI) sees the real scanner squelch rather
         // than 0.
+        // A squelch the input check (#930) opened and could not close goes
+        // back first, so the read below sees the user's level.
+        if let Some(level) = super::find_input::take_pending_squelch(state) {
+            let _ = transport.send(&mut session, &format!("SQL,{level}"));
+        }
         if let Ok(sql_resp) = transport.send(&mut session, "SQL") {
             if let Some(v) = parse_sql_response(&sql_resp) {
                 if let Ok(mut live) = state.live.write() {
@@ -1729,7 +1739,7 @@ fn parse_vol_response(resp: &str) -> Option<u8> {
 }
 
 /// Parse `SQL,n` response. Returns None for malformed input.
-fn parse_sql_response(resp: &str) -> Option<u8> {
+pub(crate) fn parse_sql_response(resp: &str) -> Option<u8> {
     let line = resp.lines().find(|l| !l.trim().is_empty())?.trim();
     let line = line.strip_suffix('\r').unwrap_or(line);
     let (head, val) = line.split_once(',')?;

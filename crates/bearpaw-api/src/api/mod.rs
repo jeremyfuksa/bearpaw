@@ -5,6 +5,7 @@
 
 mod channel_cache;
 mod control;
+mod find_input;
 mod handlers;
 mod memory_sync;
 mod poll;
@@ -86,6 +87,11 @@ pub struct AppState {
     /// diagnostic's queued reads as false timeouts. A count, not a flag, so
     /// one of two overlapping runs finishing cannot resume the search early.
     pub diagnostics_running: Arc<AtomicUsize>,
+    /// Set while `POST /audio/find-input` holds the squelch open (#930).
+    pub find_input_running: Arc<AtomicBool>,
+    /// A squelch restore the input check could not deliver, owed to the
+    /// scanner when it reconnects.
+    pub(crate) pending_squelch: Arc<Mutex<Option<find_input::PendingSquelch>>>,
 }
 
 impl AppState {
@@ -246,6 +252,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/audio/devices",
             get(handlers::audio::get_audio_devices),
+        )
+        .route(
+            "/api/v1/audio/find-input",
+            post(find_input::post_find_input),
         )
         .route("/api/v1/status", get(handlers::status::get_status))
         .route(
@@ -886,6 +896,8 @@ pub fn default_state() -> AppState {
         program_mode_active: Arc::new(AtomicBool::new(false)),
         lockout_walk: Arc::new(tokio::sync::Mutex::new(())),
         diagnostics_running: Arc::new(AtomicUsize::new(0)),
+        find_input_running: Arc::new(AtomicBool::new(false)),
+        pending_squelch: Arc::new(Mutex::new(None)),
     }
 }
 
