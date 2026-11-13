@@ -632,7 +632,7 @@ describe('Recent Hits reset (#818)', () => {
     render(<ScanView {...baseProps} />);
     expect(screen.getByText('Fire')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reset Recent Hits' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Recent Hits' }));
 
     await waitFor(() => expect(screen.getByText('Waiting for signals...')).toBeInTheDocument());
     expect(setPreference).toHaveBeenCalledWith('recent_hits_reset_at', expect.any(Number));
@@ -655,7 +655,7 @@ describe('Recent Hits reset (#818)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     render(<ScanView {...baseProps} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reset Recent Hits' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Recent Hits' }));
 
     await waitFor(() => expect(setPreference).toHaveBeenCalled());
     await act(async () => {});
@@ -666,7 +666,7 @@ describe('Recent Hits reset (#818)', () => {
   it('is disabled while Recent Hits is empty', () => {
     useStore.setState({ fullActivityLog: [] });
     render(<ScanView {...baseProps} />);
-    expect(screen.getByRole('button', { name: 'Reset Recent Hits' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Clear Recent Hits' })).toBeDisabled();
   });
 });
 

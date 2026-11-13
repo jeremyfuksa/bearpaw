@@ -139,7 +139,7 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
 /**
  * The hits Recent Hits shows after a reset (#818): those that ENDED after it.
  * Compared on `ended_at`, not the start time, so a transmission still on the
- * air when Reset was pressed shows up when it ends instead of vanishing.
+ * air when Clear was pressed shows up when it ends instead of vanishing.
  */
 export function hitsSinceReset(
   entries: ActivityLogEntry[],
@@ -245,8 +245,8 @@ export function ScanView({
       .setPreference('recent_hits_reset_at', resetAt)
       .then(() => updatePreferences({ recentHitsResetAt: resetAt }))
       .catch((error) => {
-        console.error('Failed to reset Recent Hits', error);
-        toast.error('Could not reset Recent Hits. Try again.');
+        console.error('Failed to clear Recent Hits', error);
+        toast.error('Could not clear Recent Hits. Try again.');
       });
   }, [updatePreferences]);
 
@@ -333,10 +333,10 @@ export function ScanView({
                   'inline-flex shrink-0 items-center gap-[clamp(4px,1.2cqmin,16px)] rounded-scanner-xs border border-white/10 bg-white/5 px-[clamp(8px,1.8cqmin,28px)] py-[clamp(4px,1cqmin,16px)] text-[clamp(11px,2.6cqmin,44px)] text-white/80 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white',
                   recentHits.length === 0 && 'cursor-not-allowed opacity-50',
                 )}
-                aria-label="Reset Recent Hits"
+                aria-label="Clear Recent Hits"
               >
                 <RotateCcw aria-hidden className="size-[clamp(14px,2.2cqmin,36px)]" />
-                Reset
+                Clear
               </button>
               <button
                 type="button"

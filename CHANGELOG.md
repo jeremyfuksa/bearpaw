@@ -8,7 +8,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Reset Recent Hits.** A Reset button empties the list so it shows only
+- **Clear Recent Hits.** A Clear button empties the list so it shows only
   what comes in next, and it stays empty after a relaunch. Your activity log,
   charts and exports keep every hit (#818).
 - **Scroll back through Recent Hits.** The panel still shows five rows, and
