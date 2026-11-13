@@ -31,6 +31,8 @@ csv = "1"
 rusqlite = { version = "0.41", features = ["bundled"] }
 # Host audio discovery (CoreAudio / WASAPI / ALSA); Linux needs libasound2-dev.
 cpal = "0.15"
+hound = "3.5"
+tempfile = "3.27"
 
 [dev-dependencies]
 tokio-test = "0.4"
