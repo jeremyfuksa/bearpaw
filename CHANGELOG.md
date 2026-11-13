@@ -52,6 +52,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The log names a missing serial port as missing.** When `device.port` in
+  `config.yaml` pointed at a port that doesn't exist, the warning said the
+  port existed and blamed a driver conflict. It now says the port doesn't
+  exist and to check the cable and the setting.
 - **Bearpaw no longer drives a scanner it doesn't know.** Some models Bearpaw
   doesn't support could still connect, on a Mac on their own, and Bearpaw
   then read and wrote their memory as if they were a BC125AT. It now sends

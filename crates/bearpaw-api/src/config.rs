@@ -748,6 +748,21 @@ fn probe_mdl_on_port(port_name: &str, baud: u32) -> MdlProbe {
             // values, so IOKit does not pick a winner -- and every resulting
             // node then fails to open with "Invalid argument". Swallowing the
             // error made that indistinguishable from an empty USB bus.
+            //
+            // A path that does not exist is the other case, and that advice
+            // is wrong for it: autodetect only probes nodes it just listed, so
+            // a missing one is a configured `device.port` naming nothing, or
+            // a scanner unplugged mid-probe. Unix only: Windows reports a
+            // missing COM port and a denied one as the same error, and a COM
+            // name is not a filesystem path.
+            if cfg!(unix) && !std::path::Path::new(port_name).exists() {
+                warn!(
+                    "Scanner candidate {} does not exist ({}). Check that the scanner is \
+                     plugged in, and that device.port in config.yaml names its port.",
+                    port_name, e
+                );
+                return MdlProbe::OpenFailed;
+            }
             warn!(
                 "Scanner candidate {} could not be opened at {} baud: {}. The port \
                  exists but the OS refused it, so a scanner may well be attached. On \
