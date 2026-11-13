@@ -37,6 +37,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Preferences has its own window, off the Device tab.** Open it with the
+  gear in the tab bar, or with ⌘, (Bearpaw → Settings… on a Mac) or Ctrl+,
+  (Edit → Preferences… on Windows and Linux). The tabs now hold only things
+  that change your scanner; Preferences holds everything that changes only
+  Bearpaw.
 - Bearpaw now connects a Uniden scanner it doesn't support yet instead of
   ignoring it, so it can tell you which model it found. It still sends that
   scanner no commands, and it switches to a supported scanner as soon as you

@@ -31,6 +31,7 @@ import { useScannerCapabilities } from '../hooks/useScannerCapabilities';
 import { DataDiagnosticBanner } from './components/DataDiagnosticBanner';
 import { TabBar } from './components/TabBar';
 import { DiagnosticSheet } from './components/DiagnosticSheet';
+import { PreferencesDialog } from './components/PreferencesDialog';
 import { ActivityExportSheet } from './components/views/ActivityExportSheet';
 
 export type Tab = 'Scan' | 'Device' | 'Channels';
@@ -169,6 +170,7 @@ export default function App() {
   const [chartAnimate, setChartAnimate] = useState(true);
   const [isExportSheetOpen, setIsExportSheetOpen] = useState(false);
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState(false);
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   // REGRESSION GUARD (App.unsupported.test.tsx :: a sheet left open when the
   // scanner drops does not reopen for the next one): the sheet unmounts with
   // the unsupported panel but this flag outlived it, so the next unsupported
@@ -863,6 +865,7 @@ export default function App() {
         if (checkingForUpdates) return;
         checkForUpdatesNow();
       },
+      onOpenPreferences: () => setIsPreferencesOpen(true),
     }),
     [
       api,
@@ -1257,6 +1260,7 @@ export default function App() {
             currentTab={currentTab}
             onTabChange={handleTabChange}
             tabs={isUnsupported ? UNSUPPORTED_TABS : undefined}
+            onOpenPreferences={() => setIsPreferencesOpen(true)}
           />
         </nav>
 
@@ -1307,12 +1311,7 @@ export default function App() {
               />
             )}
 
-            {currentTab === 'Device' && (
-              <DeviceTab
-                onCheckForUpdates={checkForUpdatesNow}
-                checkingForUpdates={checkingForUpdates}
-              />
-            )}
+            {currentTab === 'Device' && <DeviceTab />}
             {/* Keyed on the drafts' scanner (#791): a swap drops the store's
                 drafts, and the remount drops the tab's staged reorder. */}
             {currentTab === 'Channels' && !isUnsupported && (
@@ -1357,6 +1356,15 @@ export default function App() {
             onClose={() => setIsDiagnosticOpen(false)}
           />
         )}
+
+        {/* Opening it changes no tab, so it never reaches handleTabChange
+          and cannot skip the leaving-Device scan resume (#926). */}
+        <PreferencesDialog
+          isOpen={isPreferencesOpen}
+          onClose={() => setIsPreferencesOpen(false)}
+          onCheckForUpdates={checkForUpdatesNow}
+          checkingForUpdates={checkingForUpdates}
+        />
 
         <ActivityExportSheet
           isOpen={isExportSheetOpen}

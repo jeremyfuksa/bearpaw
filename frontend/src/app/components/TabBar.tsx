@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Settings } from 'lucide-react';
 import bearpawLogo from '@/assets/bearpaw-logo.svg';
 import type { Tab } from '../App';
 
@@ -9,6 +10,8 @@ interface TabBarProps {
   onTabChange: (tab: Tab) => void;
   /** Tabs to offer. Absent means all three; an unsupported radio has no Channels. */
   tabs?: Tab[];
+  /** Opens the Preferences dialog (#926). Absent hides the gear. */
+  onOpenPreferences?: () => void;
 }
 
 /**
@@ -21,7 +24,12 @@ interface TabBarProps {
  * Arrow selection also runs onTabChange (App's handleTabChange), so the
  * leaving-Device scan-resume fires on keyboard nav just as it does on click.
  */
-export function TabBar({ currentTab, onTabChange, tabs: TABS = ALL_TABS }: TabBarProps) {
+export function TabBar({
+  currentTab,
+  onTabChange,
+  tabs: TABS = ALL_TABS,
+  onOpenPreferences,
+}: TabBarProps) {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const focusTab = (index: number) => {
@@ -95,6 +103,20 @@ export function TabBar({ currentTab, onTabChange, tabs: TABS = ALL_TABS }: TabBa
         aria-hidden
         className="ml-auto h-4 w-auto select-none opacity-70"
       />
+
+      {/* A plain button outside the tablist, not a fourth tab: Preferences
+          changes only Bearpaw, and the tabs are for the radio (#926). */}
+      {onOpenPreferences && (
+        <button
+          type="button"
+          onClick={onOpenPreferences}
+          aria-label="Preferences"
+          title="Preferences"
+          className="ml-3 rounded-md p-1 text-white/60 transition-colors hover:bg-white/5 hover:text-white/80"
+        >
+          <Settings aria-hidden className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }

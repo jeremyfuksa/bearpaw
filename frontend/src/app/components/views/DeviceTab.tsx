@@ -1,24 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import {
-  Lock,
-  Radio,
-  Maximize2,
-  Signal,
-  Settings,
-  FileText,
-  Heart,
-  Code,
-  RefreshCw,
-} from 'lucide-react';
+import { Lock, Radio, Maximize2, Signal, RefreshCw } from 'lucide-react';
 
-import appIcon from '@/assets/app-icon.png';
 import { cn } from '../../../lib/utils';
-import { getAPI, API_BASE } from '../../../api/useApi';
-import { useStore, type Preferences } from '../../../store/useStore';
+import { getAPI } from '../../../api/useApi';
+import { useStore } from '../../../store/useStore';
 import { bankLabel } from '../../../lib/bankNames';
-import { openExternalUrl, revealLogs, isTauriRuntime } from '../../../tauri-shell';
 import { useConnectionStatus } from '../../../hooks/useConnectionStatus';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import { useUnsupportedScanner } from '../../../hooks/useUnsupportedScanner';
@@ -30,19 +18,13 @@ import { SearchRangeEditSheet } from './SearchRangeEditSheet';
 import { KnownScanners } from './KnownScanners';
 
 type DeviceCategory =
-  | 'Locked Channels'
-  | 'Device Config'
-  | 'Close Call'
-  | 'Service Search'
-  | 'Custom Search'
-  | 'Preferences';
+  'Locked Channels' | 'Device Config' | 'Close Call' | 'Service Search' | 'Custom Search';
 
 /**
  * Categories whose contents are read from the scanner and can therefore drift.
  *
  * Locked Channels is absent because it already refetches whenever it is
- * selected and shows its own sync time. Preferences is absent because it is
- * app state in SQLite, not device state -- nothing on the radio can change it.
+ * selected and shows its own sync time.
  */
 const REFRESHABLE_CATEGORIES: DeviceCategory[] = [
   'Device Config',
@@ -57,20 +39,6 @@ interface SearchRange {
   start: string;
   end: string;
 }
-
-// Frontend uses camelCase preference keys; the backend persists snake_case
-// (see default_preferences() in api/mod.rs). Map every key that differs so
-// saved values round-trip through App.tsx's snake_case load path. A missing
-// entry silently falls back to the camelCase key via `?? key`, saving under a
-// key nobody reads back — the setting then looks non-persistent.
-export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
-  hitMinDuration: 'hit_min_duration',
-  dataRetentionDays: 'data_retention_days',
-  checkUpdatesOnLaunch: 'check_updates_on_launch',
-  rereadMemoryOnConnect: 'reread_memory_on_connect',
-  analyticsScope: 'analytics_scope',
-  activityExportTimezone: 'activity_export_timezone',
-};
 
 // Close Call (CLC) mode: UI value -> wire digit. Digits confirmed on hardware
 // (fw 1.06.06, #241): 1 = Priority, 2 = DND. Captured twice — see
@@ -172,26 +140,12 @@ export const SERVICE_SEARCH_LABELS: Record<string, string[]> = {
   EUR: ['Emergency', 'Freenet', 'PMR', 'Marine', 'Aircraft', 'CB Radio', 'HAM Radio'],
 };
 
-export interface DeviceTabProps {
-  /**
-   * Run a manual update check (#273). Owned by App.tsx rather than by a
-   * local `useUpdateCheck` call: the hook also runs the startup check, so a
-   * second instance here would fire an extra request every time this tab
-   * mounts and keep its own unrelated `checking` state.
-   *
-   * Optional so the component still renders bare in tests and outside Tauri.
-   */
-  onCheckForUpdates?: () => void;
-  /** True while a manual check is in flight; disables the button. */
-  checkingForUpdates?: boolean;
-}
-
-export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabProps = {}) {
+export function DeviceTab() {
   const api = getAPI();
   const connectionStatus = useConnectionStatus();
   // The backend refuses every command to an unlisted radio (400
-  // `unsupported_model`), so this page offers its info card and the app
-  // preferences and nothing that would send one.
+  // `unsupported_model`), so this page offers its info card and nothing that
+  // would send one.
   const { isUnsupported } = useUnsupportedScanner();
   const deviceInfo = useStore((state) => state.deviceInfo);
   const liveState = useStore((state) => state.liveState);
@@ -206,8 +160,6 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   // `sync_task_id` is set), so a sync running when this page mounts is the
   // ordinary way the read fails. See the retry effect below.
   const syncInProgress = useStore((state) => state.sync.inProgress);
-  const preferences = useStore((state) => state.preferences);
-  const updatePreferences = useStore((state) => state.updatePreferences);
 
   const [lockedChannelIds, setLockedChannelIds] = useState<number[]>([]);
   // The GLOBAL avoid list (#522). Separate state from `lockedChannelIds`
@@ -223,25 +175,6 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
   const [isClearing, setIsClearing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [bankFilter, setBankFilter] = useState<number | 'all'>('all');
-
-  const handlePreferenceChange = useCallback(
-    async <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
-      const backendKey = PREFERENCE_KEY_MAP[key] ?? key;
-      try {
-        const response = await fetch(`${API_BASE}/preferences`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [backendKey]: value }),
-        });
-        if (!response.ok) throw new Error(`Preference save failed (${response.status})`);
-        updatePreferences({ [key]: value } as Partial<Preferences>);
-      } catch (error) {
-        console.error('Failed to save preference', error);
-        toast.error('Failed to save preference. Your previous setting is still active.');
-      }
-    },
-    [updatePreferences],
-  );
 
   // Device Config Settings
   const [squelch, setSquelch] = useState(2);
@@ -296,10 +229,9 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
     capabilities.has_contrast ||
     capabilities.has_key_beep;
 
-  const activeCategory: DeviceCategory =
-    selectedCategory === 'Preferences' || categories.includes(selectedCategory)
-      ? selectedCategory
-      : 'Device Config';
+  const activeCategory: DeviceCategory = categories.includes(selectedCategory)
+    ? selectedCategory
+    : 'Device Config';
   const [batterySaver, setBatterySaver] = useState(1);
   const [backlight, setBacklight] = useState('AO');
   const [backlightLevel, setBacklightLevel] = useState<BacklightLevel>('High');
@@ -1136,20 +1068,6 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
             {cat}
           </button>
         ))}
-
-        {/* Preferences at bottom */}
-        <button
-          onClick={() => setSelectedCategory('Preferences')}
-          aria-current={activeCategory === 'Preferences' ? 'page' : undefined}
-          className={cn(
-            'text-left px-3 py-2 rounded text-sm font-medium transition-colors mt-auto border-t border-white/10 pt-3',
-            activeCategory === 'Preferences'
-              ? 'bg-brand-hover/20 text-brand-hover'
-              : 'text-white/60 hover:bg-white/5 hover:text-white',
-          )}
-        >
-          Preferences
-        </button>
       </div>
 
       {/* Content */}
@@ -2013,239 +1931,6 @@ export function DeviceTab({ onCheckForUpdates, checkingForUpdates }: DeviceTabPr
                 onSave={(draft) => saveRange(editingRange.id, draft)}
               />
             )}
-          </div>
-        )}
-
-        {/* Preferences */}
-        {activeCategory === 'Preferences' && (
-          <div className="flex h-[calc(100%-4rem)] gap-6 overflow-hidden">
-            {/* Info Sidebar (Left) */}
-            <div className="w-[var(--layout-detail-sidebar-width)] shrink-0 space-y-4 overflow-y-auto border-r border-white/5 pb-4 pr-4">
-              <div className="space-y-3">
-                <div className="bg-white/5 rounded-lg border border-white/5 p-4 space-y-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <img
-                      src={appIcon}
-                      alt="Bearpaw"
-                      className="w-8 h-8 rounded object-cover shadow-lg shadow-brand-primary/20"
-                    />
-                    <div>
-                      <h3 className="font-bold text-white text-base">Bearpaw</h3>
-                      <div className="text-sm text-white/60">v{__APP_VERSION__}</div>
-                    </div>
-                  </div>
-                  <p className="text-sm text-white/50">Created by Jeremy Fuksa · KF0NUI</p>
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={() => openExternalUrl('https://github.com/jeremyfuksa/bearpaw')}
-                      className="flex-1 py-1.5 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5"
-                    >
-                      <Code size={20} aria-hidden /> Github
-                    </button>
-                  </div>
-                  {/* #273: same action as Help → Check for Updates, surfaced
-                      next to the version number people actually look at. */}
-                  {isTauriRuntime() && onCheckForUpdates && (
-                    <button
-                      onClick={onCheckForUpdates}
-                      disabled={checkingForUpdates}
-                      className="w-full py-1.5 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <RefreshCw
-                        size={16}
-                        aria-hidden
-                        className={cn(checkingForUpdates && 'animate-spin')}
-                      />
-                      {checkingForUpdates ? 'Checking…' : 'Check for Updates'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="relative overflow-hidden group rounded-lg">
-                <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 to-orange-900/10" />
-                <div className="relative p-4 space-y-3 border border-orange-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-brand-primary/20 rounded-full">
-                      <Radio aria-hidden className="h-3.5 w-3.5 text-brand-primary" />
-                    </div>
-                    <h3 className="text-sm font-bold text-white">Control your scanner anywhere.</h3>
-                  </div>
-                  <p className="text-sm text-white/60 leading-relaxed">
-                    Your support keeps me building Bearpaw and buys the scanners it learns to work
-                    with next.
-                  </p>
-                  <button
-                    onClick={() => openExternalUrl('https://buymeacoffee.com/jeremyfuksa')}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-brand-primary hover:bg-brand-hover text-white text-sm font-bold rounded transition-colors shadow-lg shadow-brand-hover/20"
-                  >
-                    <Heart aria-hidden className="w-5 h-5 fill-white/20" />
-                    Support Bearpaw
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Main Settings Area (Right) */}
-            <div className="flex-1 space-y-6 overflow-y-auto pr-2">
-              <div className="border-b border-white/5 pb-4">
-                <h2 className="text-2xl font-bold text-white">Application Settings</h2>
-                <p className="text-base text-white/50">Manage your workspace preferences</p>
-              </div>
-
-              {/* General Settings */}
-              <section className="space-y-4">
-                <h3 className="text-base font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
-                  <Settings aria-hidden className="w-4 h-4 text-white/50" /> General
-                </h3>
-                <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
-                  <div className="flex items-center justify-between gap-6">
-                    <div className="space-y-0.5">
-                      <label className="text-base font-medium text-white">
-                        Hit Minimum Duration
-                      </label>
-                      <p className="text-sm text-white/60">
-                        Minimum seconds a transmission must last to be logged as a hit
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <Slider
-                        aria-label="Hit Minimum Duration"
-                        value={[preferences.hitMinDuration]}
-                        onValueChange={(values) =>
-                          handlePreferenceChange('hitMinDuration', values[0])
-                        }
-                        min={0.5}
-                        max={10}
-                        step={0.5}
-                        className="w-[var(--size-select-wide)]"
-                      />
-                      <span className="text-sm text-white/70 w-12 text-right font-mono">
-                        {preferences.hitMinDuration}s
-                      </span>
-                    </div>
-                  </div>
-                  {isTauriRuntime() && (
-                    <div className="flex items-center justify-between gap-6">
-                      <div className="space-y-0.5">
-                        <label className="text-base font-medium text-white">Log Files</label>
-                        <p className="text-sm text-white/60">
-                          Open the folder containing this session's backend log
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => void revealLogs()}
-                        className="shrink-0 py-1.5 px-3 bg-black/20 hover:bg-black/40 rounded text-sm text-white/70 transition-colors border border-white/5"
-                      >
-                        Show Log Files
-                      </button>
-                    </div>
-                  )}
-                  {/* #273: the app is otherwise fully offline, so the one
-                      network call it makes needs an opt-out. */}
-                  {isTauriRuntime() && (
-                    <div className="flex items-center justify-between gap-6">
-                      <div className="space-y-0.5">
-                        <label
-                          htmlFor="check-updates-on-launch"
-                          className="text-base font-medium text-white"
-                        >
-                          Check for Updates on Launch
-                        </label>
-                        <p className="text-sm text-white/60">
-                          Ask GitHub for a newer release when Bearpaw starts
-                        </p>
-                      </div>
-                      <Switch
-                        id="check-updates-on-launch"
-                        checked={preferences.checkUpdatesOnLaunch}
-                        onCheckedChange={(checked) =>
-                          handlePreferenceChange('checkUpdatesOnLaunch', checked)
-                        }
-                      />
-                    </div>
-                  )}
-
-                  {/* Not gated on capabilities: both scanner families cache
-                    channel memory and both can be programmed on their own
-                    keypad, so the choice applies to every model. */}
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label
-                        htmlFor="reread-memory-on-connect"
-                        className="text-base font-medium text-white"
-                      >
-                        Re-read Channels on Connect
-                      </label>
-                      <p className="text-sm text-white/60">
-                        Read channel memory from the scanner at every launch. Turn off for an
-                        instant start from the saved copy.
-                      </p>
-                    </div>
-                    <Switch
-                      id="reread-memory-on-connect"
-                      checked={preferences.rereadMemoryOnConnect}
-                      onCheckedChange={(checked) =>
-                        handlePreferenceChange('rereadMemoryOnConnect', checked)
-                      }
-                    />
-                  </div>
-
-                  {/* Not gated on capabilities: the choice is about the stored
-                    history, which can contain hits from a scanner that is not
-                    the one attached right now. Hiding it when only one scanner
-                    has ever been used would hide it exactly when a user is
-                    trying to work out why their old hits disappeared. */}
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label htmlFor="analytics-scope" className="text-base font-medium text-white">
-                        Combine Scanner Analytics
-                      </label>
-                      <p className="text-sm text-white/60">
-                        Count hits from every scanner you have used, not just the connected one
-                      </p>
-                    </div>
-                    <Switch
-                      id="analytics-scope"
-                      checked={preferences.analyticsScope === 'all'}
-                      onCheckedChange={(checked) =>
-                        handlePreferenceChange('analyticsScope', checked ? 'all' : 'scanner')
-                      }
-                    />
-                  </div>
-                </div>
-              </section>
-
-              {/* Data Settings */}
-              <section className="space-y-4">
-                <h3 className="text-base font-bold text-white/80 flex items-center gap-2 uppercase tracking-wider">
-                  <FileText aria-hidden className="w-4 h-4 text-white/50" /> Data & Storage
-                </h3>
-                <div className="bg-black/20 rounded-lg border border-white/5 p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <label className="text-base font-medium text-white">Data Retention</label>
-                      <p className="text-sm text-white/60">Auto-delete older logs</p>
-                    </div>
-                    <Select
-                      value={String(preferences.dataRetentionDays)}
-                      onValueChange={(value) =>
-                        handlePreferenceChange('dataRetentionDays', parseInt(value))
-                      }
-                    >
-                      <SelectTrigger className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-sm text-white">
-                        <SelectValue placeholder="Select retention" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-white/10 text-white">
-                        <SelectItem value="30">30 Days</SelectItem>
-                        <SelectItem value="90">90 Days</SelectItem>
-                        <SelectItem value="365">1 Year</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </section>
-            </div>
           </div>
         )}
       </div>

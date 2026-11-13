@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 import {
   DeviceTab,
-  PREFERENCE_KEY_MAP,
   CLOSE_CALL_MODE_TO_WIRE,
   CLOSE_CALL_WIRE_TO_MODE,
   closeCallWireToMode,
@@ -699,15 +698,12 @@ describe('DeviceTab', () => {
       },
     );
 
-    it.each([['Locked Channels'], ['Preferences']])(
-      'omits Refresh on %s, which does not read drifting device state',
-      async (category) => {
-        renderDeviceTab();
-        await selectCategory(new RegExp(category, 'i'));
+    it('omits Refresh on Locked Channels, which does not read drifting device state', async () => {
+      renderDeviceTab();
+      await selectCategory(/Locked Channels/i);
 
-        expect(screen.queryByRole('button', { name: /^Refresh$/i })).not.toBeInTheDocument();
-      },
-    );
+      expect(screen.queryByRole('button', { name: /^Refresh$/i })).not.toBeInTheDocument();
+    });
 
     it('re-reads settings and stamps the time', async () => {
       renderDeviceTab();
@@ -721,48 +717,14 @@ describe('DeviceTab', () => {
     });
   });
 
-  describe('Preferences category', () => {
-    it('should render preference controls', async () => {
-      renderDeviceTab();
-      await selectCategory(/Preferences/i);
-      expect(screen.getByText(/Application Settings/i)).toBeInTheDocument();
-    });
-
-    it('should render external links', async () => {
-      renderDeviceTab();
-      await selectCategory(/Preferences/i);
-      expect(screen.getByRole('button', { name: /Github/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Support Bearpaw/i })).toBeInTheDocument();
-    });
-
-    it('applies a preference only after the backend confirms persistence', async () => {
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
-      vi.stubGlobal('fetch', fetchMock);
-      renderDeviceTab();
-      await selectCategory(/Preferences/i);
-
-      await userEvent.click(screen.getByRole('switch', { name: /Combine Scanner Analytics/i }));
-
-      await waitFor(() => expect(useStore.getState().preferences.analyticsScope).toBe('all'));
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/preferences'),
-        expect.objectContaining({ body: JSON.stringify({ analytics_scope: 'all' }) }),
-      );
-    });
-
-    it('keeps the saved preference and reports a persistence failure', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
-      renderDeviceTab();
-      await selectCategory(/Preferences/i);
-
-      await userEvent.click(screen.getByRole('switch', { name: /Combine Scanner Analytics/i }));
-
-      await waitFor(() =>
-        expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/previous setting/i)),
-      );
-      expect(useStore.getState().preferences.analyticsScope).toBe('scanner');
-      expect(screen.getByRole('switch', { name: /Combine Scanner Analytics/i })).not.toBeChecked();
-    });
+  // #926: the tabs hold only things that touch the radio. App settings live in
+  // PreferencesDialog; see PreferencesDialog.test.tsx.
+  it('offers no app preferences', () => {
+    renderDeviceTab();
+    expect(screen.queryByRole('button', { name: /Preferences/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: /Combine Scanner Analytics/i }),
+    ).not.toBeInTheDocument();
   });
 
   describe('capability-gated controls (#404/#405)', () => {
@@ -1056,20 +1018,6 @@ describe('DeviceTab', () => {
         expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Refresh/i)),
       );
     });
-  });
-});
-
-describe('PREFERENCE_KEY_MAP', () => {
-  // Regression guard: preferences set via handlePreferenceChange must map to the
-  // snake_case key the backend persists and App.tsx reads back. A missing entry
-  // silently saves under the camelCase key (via `?? key`) and the setting looks
-  // non-persistent — the auto-connect bug. These keys differ camel↔snake and
-  // are set from the Preferences UI, so each MUST be in the map.
-  it.each([
-    ['dataRetentionDays', 'data_retention_days'],
-    ['hitMinDuration', 'hit_min_duration'],
-  ])('maps %s to %s', (camel, snake) => {
-    expect(PREFERENCE_KEY_MAP[camel as keyof typeof PREFERENCE_KEY_MAP]).toBe(snake);
   });
 });
 

@@ -83,6 +83,7 @@
   --layout-modal-max-height: 80vh;
   --layout-modal-channel-width: 25rem;
   --layout-modal-activity-width: 31.25rem;
+  --layout-modal-preferences-width: 52rem;
   --layout-sidebar-channels-width: 10rem;
   --layout-sidebar-device-width: 12.5rem;
   --layout-search-max-width: 18.75rem;
@@ -206,6 +207,7 @@
   --layout-modal-max-height: 80vh;
   --layout-modal-channel-width: 25rem;
   --layout-modal-activity-width: 31.25rem;
+  --layout-modal-preferences-width: 52rem;
   --layout-sidebar-channels-width: 10rem;
   --layout-sidebar-device-width: 12.5rem;
   --layout-search-max-width: 18.75rem;
