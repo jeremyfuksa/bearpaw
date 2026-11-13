@@ -24,6 +24,7 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   rereadMemoryOnConnect: 'reread_memory_on_connect',
   analyticsScope: 'analytics_scope',
   activityExportTimezone: 'activity_export_timezone',
+  recentHitsTimeFormat: 'recent_hits_time_format',
 };
 
 const SECTIONS = ['General', 'Data & Storage', 'About'] as const;
@@ -198,6 +199,20 @@ export function PreferencesDialog({
                     checked={preferences.analyticsScope === 'all'}
                     onCheckedChange={(checked) =>
                       handlePreferenceChange('analyticsScope', checked ? 'all' : 'scanner')
+                    }
+                  />
+                </Row>
+
+                <Row
+                  label="Show Clock Time in Recent Hits"
+                  htmlFor="recent-hits-time-format"
+                  description="Show when each hit started and how long it lasted, instead of how long ago"
+                >
+                  <Switch
+                    id="recent-hits-time-format"
+                    checked={preferences.recentHitsTimeFormat === 'clock'}
+                    onCheckedChange={(checked) =>
+                      handlePreferenceChange('recentHitsTimeFormat', checked ? 'clock' : 'relative')
                     }
                   />
                 </Row>

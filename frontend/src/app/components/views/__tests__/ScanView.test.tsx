@@ -10,6 +10,7 @@ const setPreference = vi.hoisted(() =>
 vi.mock('../../../../api/useApi', () => ({ getAPI: () => ({ setPreference }) }));
 
 import {
+  formatHitDuration,
   hitsSinceReset,
   rollUpHits,
   ScanView,
@@ -187,6 +188,31 @@ describe('rollUpHits', () => {
   });
 });
 
+describe('Recent Hits duration (#816)', () => {
+  it('totals the airtime of a rolled-up run, not just its newest hit', () => {
+    const rolled = rollUpHits([
+      hit({ id: 'a', timestamp: 30, channel: 7, duration: 4 }),
+      hit({ id: 'b', timestamp: 20, channel: 7, duration: 6.4 }),
+      hit({ id: 'c', timestamp: 10, channel: 2, duration: 3 }),
+    ]);
+    expect(rolled.map((r) => r.duration)).toEqual([10.4, 3]);
+  });
+
+  it('counts a hit with no recorded duration as zero', () => {
+    expect(rollUpHits([hit({ channel: 1, duration: null })])[0].duration).toBe(0);
+  });
+
+  it.each([
+    [0, '0s'],
+    [8.4, '8s'],
+    [59.6, '1m 00s'],
+    [65, '1m 05s'],
+    [3725, '1h 02m'],
+  ])('formats %s seconds as %s', (seconds, label) => {
+    expect(formatHitDuration(seconds)).toBe(label);
+  });
+});
+
 describe('ScanView Recent Hits rendering', () => {
   const baseProps = {
     mainText: 'Scanning...',
@@ -262,6 +288,44 @@ describe('ScanView Recent Hits rendering', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(100);
     expect(screen.getByText('Ch100')).toBeInTheDocument();
     expect(screen.queryByText('Ch101')).toBeNull();
+  });
+
+  describe('time format preference (#816)', () => {
+    const start = Date.UTC(2026, 10, 13, 18, 4, 5) / 1000;
+    const clock = new Date(start * 1000).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+
+    beforeEach(() => {
+      useStore.setState({
+        fullActivityLog: [
+          createTestActivityLogEntry({ id: 'a', timestamp: start, channel: 4, duration: 50 }),
+          createTestActivityLogEntry({ id: 'b', timestamp: start - 90, channel: 4, duration: 15 }),
+        ],
+      });
+    });
+
+    it('shows elapsed time by default', () => {
+      useStore.setState({
+        preferences: { ...useStore.getState().preferences, recentHitsTimeFormat: 'relative' },
+      });
+      render(<ScanView {...baseProps} />);
+      const row = screen.getByRole('listitem');
+      expect(row).toHaveTextContent(/ago/);
+      expect(row).not.toHaveTextContent(clock);
+    });
+
+    it('shows the start time and total duration when set to clock', () => {
+      useStore.setState({
+        preferences: { ...useStore.getState().preferences, recentHitsTimeFormat: 'clock' },
+      });
+      render(<ScanView {...baseProps} />);
+      const row = screen.getByRole('listitem');
+      expect(row).toHaveTextContent(`${clock} · 1m 05s`);
+      expect(row).not.toHaveTextContent(/ago/);
+    });
   });
 
   describe('scroll position', () => {

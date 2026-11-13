@@ -58,6 +58,24 @@ describe('PreferencesDialog', () => {
     );
   });
 
+  it('saves the Recent Hits clock-time switch under the key the store reads back (#816)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    useStore.setState({
+      preferences: { ...useStore.getState().preferences, recentHitsTimeFormat: 'relative' },
+    });
+    renderDialog();
+
+    await userEvent.click(screen.getByRole('switch', { name: /Show Clock Time in Recent Hits/i }));
+
+    await waitFor(() => expect(useStore.getState().preferences.recentHitsTimeFormat).toBe('clock'));
+    // The key mapStoredPreferences reads, so the choice survives a relaunch.
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/preferences'),
+      expect.objectContaining({ body: JSON.stringify({ recent_hits_time_format: 'clock' }) }),
+    );
+  });
+
   it('keeps the saved preference and reports a persistence failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
     renderDialog();
