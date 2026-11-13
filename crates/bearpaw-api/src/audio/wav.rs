@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use hound::{SampleFormat, WavSpec, WavWriter};
 use tempfile::NamedTempFile;
+use thiserror::Error;
 
 use super::segment::ClipBoundary;
 
@@ -18,7 +19,26 @@ pub const SAMPLE_RATE: u32 = 16_000;
 // Stay below RIFF's 32-bit length limit, including header overhead.
 const MAX_FRAMES: u64 = (u32::MAX as u64 - 44) / 2;
 
-type WriteResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+/// Why a clip could not be staged or published. Every error leaves no final clip.
+#[derive(Debug, Error)]
+pub enum ClipError {
+    #[error("expected mono frames at 16000 Hz, got {channels} channel(s) at {sample_rate} Hz")]
+    Format { sample_rate: u32, channels: u16 },
+    #[error("clip exceeds PCM WAV size limit")]
+    TooLong,
+    #[error("non-finite audio frame")]
+    NonFinite,
+    #[error("clip write previously failed")]
+    Poisoned,
+    #[error("clip frames do not match accepted 16000 Hz boundary")]
+    BoundaryMismatch,
+    #[error("wav encoding failed: {0}")]
+    Wav(#[from] hound::Error),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+type WriteResult<T> = Result<T, ClipError>;
 
 /// One unpublished clip. Start on open, append returned pre-roll first, then
 /// live frames. Finalize only for `Segmenter::close()`'s accepted boundary.
@@ -43,7 +63,10 @@ impl ClipWriter {
     /// overwritten. Input must be mono normalized `f32` at exactly 16 kHz.
     pub fn start(destination: &Path, sample_rate: u32, channels: u16) -> WriteResult<Self> {
         if sample_rate != SAMPLE_RATE || channels != 1 {
-            return Err("expected mono frames at 16000 Hz".into());
+            return Err(ClipError::Format {
+                sample_rate,
+                channels,
+            });
         }
         let parent = destination.parent().filter(|p| !p.as_os_str().is_empty());
         let staging = tempfile::Builder::new()
@@ -78,12 +101,12 @@ impl ClipWriter {
 
     fn append_inner(&mut self, frames: &[f32]) -> WriteResult<()> {
         if self.frames.saturating_add(frames.len() as u64) > MAX_FRAMES {
-            return Err("clip exceeds PCM WAV size limit".into());
+            return Err(ClipError::TooLong);
         }
-        let writer = self.writer.as_mut().ok_or("clip write previously failed")?;
+        let writer = self.writer.as_mut().ok_or(ClipError::Poisoned)?;
         for &frame in frames {
             if !frame.is_finite() {
-                return Err("non-finite audio frame".into());
+                return Err(ClipError::NonFinite);
             }
             writer.write_sample((frame.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)?;
         }
@@ -106,12 +129,9 @@ impl ClipWriter {
             || boundary.end_frame.checked_sub(boundary.start_frame) != Some(self.frames)
             || boundary.duration != duration
         {
-            return Err("clip frames do not match accepted 16000 Hz boundary".into());
+            return Err(ClipError::BoundaryMismatch);
         }
-        self.writer
-            .take()
-            .ok_or("clip write previously failed")?
-            .finalize()?;
+        self.writer.take().ok_or(ClipError::Poisoned)?.finalize()?;
         self.staging.as_file().sync_all()?;
         // Do not return PersistError: it would keep the staging file alive.
         self.staging
@@ -204,7 +224,10 @@ mod tests {
         w.append(&[0.5]).unwrap();
         s.open().unwrap();
         s.push_frames(&[0.5]);
-        assert!(w.finalize(&s.close().unwrap()).is_err());
+        assert!(matches!(
+            w.finalize(&s.close().unwrap()),
+            Err(ClipError::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists
+        ));
         assert_eq!(std::fs::read(&path).unwrap(), b"existing");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
@@ -213,29 +236,44 @@ mod tests {
     fn invalid_format_frames_or_boundary_cannot_publish() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("invalid.wav");
-        assert!(ClipWriter::start(&path, 48_000, 1).is_err());
-        assert!(ClipWriter::start(&path, SAMPLE_RATE, 2).is_err());
+        assert!(matches!(
+            ClipWriter::start(&path, 48_000, 1),
+            Err(ClipError::Format {
+                sample_rate: 48_000,
+                channels: 1
+            })
+        ));
+        assert!(matches!(
+            ClipWriter::start(&path, SAMPLE_RATE, 2),
+            Err(ClipError::Format { channels: 2, .. })
+        ));
         let mut s = segmenter(0, 1);
         s.open().unwrap();
         s.push_frames(&[0.5]);
         let boundary = s.close().unwrap();
         let mut w = ClipWriter::start(&path, SAMPLE_RATE, 1).unwrap();
         w.append(&[0.5, 0.5]).unwrap();
-        assert!(w.finalize(&boundary).is_err());
+        assert!(matches!(
+            w.finalize(&boundary),
+            Err(ClipError::BoundaryMismatch)
+        ));
         let mut w = ClipWriter::start(&path, SAMPLE_RATE, 1).unwrap();
         w.append(&[0.5]).unwrap();
         let wrong_rate = ClipBoundary {
             duration: Duration::from_micros(125),
             ..boundary
         };
-        assert!(w.finalize(&wrong_rate).is_err());
+        assert!(matches!(
+            w.finalize(&wrong_rate),
+            Err(ClipError::BoundaryMismatch)
+        ));
         let mut w = ClipWriter::start(&path, SAMPLE_RATE, 1).unwrap();
         w.append(&[0.5]).unwrap();
-        assert!(w.append(&[f32::NAN]).is_err());
-        assert!(w.finalize(&boundary).is_err());
+        assert!(matches!(w.append(&[f32::NAN]), Err(ClipError::NonFinite)));
+        assert!(matches!(w.finalize(&boundary), Err(ClipError::Poisoned)));
         let mut w = ClipWriter::start(&path, SAMPLE_RATE, 1).unwrap();
         w.frames = MAX_FRAMES; // exercise RIFF overflow without a 4 GiB fixture
-        assert!(w.append(&[0.5]).is_err());
+        assert!(matches!(w.append(&[0.5]), Err(ClipError::TooLong)));
         drop(w);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
