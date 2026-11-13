@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Eraser, FileText, Volume2 } from 'lucide-react';
+import { Eraser, FileText, Play, Square, Volume2 } from 'lucide-react';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { toast } from 'sonner';
@@ -8,6 +8,7 @@ import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
 import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
+import { useClipPlayback } from '../../../hooks/useClipPlayback';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import type { ActivityLogEntry } from '../../../types';
 import { ScannerDisplay, type LockoutKind } from '../ScannerUI';
@@ -107,8 +108,13 @@ export interface RolledHit {
   /** Seconds on the air, summed across a rolled-up run (#816). */
   duration: number;
   count: number;
-  /** Any hit in the run has a playable recording (#927). */
-  hasRecording: boolean;
+  /** The run's playable recordings by `hitUid`, oldest first: the order the
+   *  row plays them in (#927). Empty when no hit in the run has one. */
+  clips: string[];
+}
+
+function playableClip(entry: ActivityLogEntry): string[] {
+  return entry.hasAudio === true && entry.hitUid ? [entry.hitUid] : [];
 }
 
 /** Channel number is the grouping identity; frequency is the fallback for
@@ -151,7 +157,7 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
         time: entry.timestamp,
         duration: entry.duration ?? 0,
         count: 1,
-        hasRecording: entry.hasAudio === true,
+        clips: playableClip(entry),
       });
       continue;
     }
@@ -159,7 +165,8 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
     const group = groups[groups.length - 1];
     group.count += 1;
     group.duration += entry.duration ?? 0;
-    group.hasRecording ||= entry.hasAudio === true;
+    // Input is newest first, so each older clip goes to the front.
+    group.clips.unshift(...playableClip(entry));
     strengthSum += normalizeSignal(entry.rssi);
     group.strength = Math.round(strengthSum / group.count);
   }
@@ -274,7 +281,25 @@ export function ScanView({
   );
   // The marker slot exists only once some row has a recording, so a user who
   // never turned recording on gets no empty gap beside every meter.
-  const showRecordingSlot = recentHits.some((hit) => hit.hasRecording);
+  const showRecordingSlot = recentHits.some((hit) => hit.clips.length > 0);
+  const { playingUid, play, stop } = useClipPlayback();
+
+  // The list is ONE Tab stop (#927): up to 100 play buttons in the Tab order
+  // would bury everything after the list. The buttons are tabIndex -1, and the
+  // arrow keys move focus between them; Space and Enter press the focused one.
+  // With no recordings the arrows are left alone, so they still scroll.
+  const handleListKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const buttons = [
+      ...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-clip-play]'),
+    ];
+    if (buttons.length === 0) return;
+    event.preventDefault();
+    const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    const next = at === -1 ? 0 : Math.min(buttons.length - 1, Math.max(0, at + step));
+    buttons[next].focus();
+  }, []);
 
   // Clears Recent Hits only; the stored log is untouched (#818). Saved before
   // the store changes, so a failed save leaves the list as it was.
@@ -427,6 +452,7 @@ export function ScanView({
               role="list"
               aria-label="Recent hits"
               tabIndex={0}
+              onKeyDown={handleListKeyDown}
               className="grid flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] grid-cols-[minmax(14ch,max-content)_auto_minmax(0,1fr)_auto] auto-rows-[20%] gap-x-[clamp(12px,3.5cqmin,60px)] pr-2 text-[clamp(13px,5cqmin,72px)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
             >
               {Array.from({ length: Math.max(HIT_SLOT_COUNT, recentHits.length) }, (_, idx) => {
@@ -435,12 +461,15 @@ export function ScanView({
                   return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
                 }
                 const countSuffix = hit.count > 1 ? ` (${hit.count})` : '';
+                const hasClips = hit.clips.length > 0;
+                const isPlaying = playingUid !== null && hit.clips.includes(playingUid);
+                const rowLabel = [hit.tag, hit.frequency].filter(Boolean).join(', ');
                 return (
                   <div
                     key={hit.id}
                     role="listitem"
                     data-hit-id={hit.id}
-                    className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
+                    className="group/row col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
                   >
                     <span className="whitespace-nowrap tabular-nums text-white/60">
                       {showClockTime
@@ -461,16 +490,53 @@ export function ScanView({
                     <div className="flex items-center gap-[clamp(6px,1.8cqmin,28px)]">
                       {showRecordingSlot && (
                         <span className="flex size-[clamp(12px,3.5cqmin,56px)] items-center justify-center text-white/60">
-                          {hit.hasRecording && (
-                            <Volume2
-                              role="img"
-                              aria-label="Has a recording"
-                              className="size-full"
-                            />
+                          {/* Decorative to a screen reader: the play control's
+                            name already says the row has a recording. */}
+                          {hasClips && (
+                            <Volume2 data-recording-marker aria-hidden className="size-full" />
                           )}
                         </span>
                       )}
-                      <HitSignalBars strength={hit.strength} />
+                      {/* The play control takes the meter's place on hover or
+                        focus, and stays while its row plays. Hidden with
+                        opacity ONLY, never display:none or conditional
+                        rendering, so a screen reader always finds it -- the
+                        reverse of frontend pitfall #6, which is for controls
+                        the scanner cannot honour. */}
+                      <div className="grid items-center justify-items-end [grid-template-areas:'stack']">
+                        <div
+                          // pointer-events-none: an opacity utility gives this
+                          // layer its own stacking context, which paints it
+                          // above the button and swallowed every click on it.
+                          className={cn(
+                            'pointer-events-none [grid-area:stack]',
+                            hasClips &&
+                              'group-hover/row:opacity-0 group-focus-within/row:opacity-0',
+                            isPlaying && 'opacity-0',
+                          )}
+                        >
+                          <HitSignalBars strength={hit.strength} />
+                        </div>
+                        {hasClips && (
+                          <button
+                            type="button"
+                            data-clip-play
+                            tabIndex={-1}
+                            onClick={() => (isPlaying ? stop() : play(hit.clips))}
+                            aria-label={`${isPlaying ? 'Stop' : 'Play'} recording, ${rowLabel}`}
+                            className={cn(
+                              '[grid-area:stack] flex size-[clamp(24px,4.5cqmin,72px)] items-center justify-center rounded-scanner-xs bg-white/10 text-white opacity-0 hover:bg-white/20 focus-visible:outline focus-visible:outline-2 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
+                              isPlaying && 'opacity-100',
+                            )}
+                          >
+                            {isPlaying ? (
+                              <Square aria-hidden className="size-1/2 fill-current" />
+                            ) : (
+                              <Play aria-hidden className="size-1/2 fill-current" />
+                            )}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

@@ -19,9 +19,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Scroll back through Recent Hits.** The panel still shows five rows, and
   now the hundred before them are a scroll away. A new hit doesn't move the
   rows you're reading.
-- **See which hits were recorded.** A speaker icon beside the signal meter
-  in Recent Hits marks each hit that has a recording you can play. It
-  appears once recording is turned on; playing from the list comes next
+- **Play a hit's recording from Recent Hits.** A speaker icon beside the
+  signal meter marks each hit that has a recording. Point at the row, or
+  move to it with the arrow keys, and a play button takes the meter's place;
+  press it again to stop. A row that groups several hits plays their
+  recordings oldest to newest. It appears once recording is turned on
   (#927).
 - **Audio input discovery API.** API clients can list the backend computer's
   sound inputs as a first step toward recording. This does not yet capture

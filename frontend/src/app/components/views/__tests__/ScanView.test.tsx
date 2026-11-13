@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +7,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 const setPreference = vi.hoisted(() =>
   vi.fn((_key: string, value: unknown) => Promise.resolve(value)),
 );
-vi.mock('../../../../api/useApi', () => ({ getAPI: () => ({ setPreference }) }));
+vi.mock('../../../../api/useApi', () => ({
+  API_BASE: '/api/v1',
+  getAPI: () => ({ setPreference }),
+}));
 
 import {
   formatHitDuration,
@@ -187,15 +190,16 @@ describe('rollUpHits', () => {
     expect(rolled[0].count).toBe(2);
   });
 
-  // #927: a rolled-up row plays all of its clips, so it has a recording if any
-  // hit in the run does, not only the newest.
-  it('marks a rolled-up row as recorded when any hit in the run has audio', () => {
+  // #927: a rolled-up row plays all of its clips, oldest to newest, so it has
+  // a recording if any hit in the run does, not only the newest.
+  it('lists a rolled-up row’s clips oldest to newest, skipping hits without one', () => {
     const rolled = rollUpHits([
-      hit({ id: 'a1', timestamp: 30, channel: 1, hasAudio: false }),
-      hit({ id: 'a2', timestamp: 20, channel: 1, hasAudio: true }),
-      hit({ id: 'b1', timestamp: 10, channel: 2, hasAudio: false }),
+      hit({ id: 'a1', timestamp: 40, channel: 1, hitUid: 'u-a1', hasAudio: true }),
+      hit({ id: 'a2', timestamp: 30, channel: 1, hitUid: 'u-a2', hasAudio: false }),
+      hit({ id: 'a3', timestamp: 20, channel: 1, hitUid: 'u-a3', hasAudio: true }),
+      hit({ id: 'b1', timestamp: 10, channel: 2, hitUid: 'u-b1', hasAudio: false }),
     ]);
-    expect(rolled.map((r) => r.hasRecording)).toEqual([true, false]);
+    expect(rolled.map((r) => r.clips)).toEqual([['u-a3', 'u-a1'], []]);
   });
 });
 
@@ -301,18 +305,29 @@ describe('ScanView Recent Hits rendering', () => {
     expect(screen.queryByText('Ch101')).toBeNull();
   });
 
-  describe('recording marker (#927)', () => {
+  describe('recordings (#927)', () => {
     const rowFor = (tag: string) =>
       screen.getByText(tag).closest('[role="listitem"]') as HTMLElement;
+    const marker = (row: HTMLElement) => row.querySelector('[data-recording-marker]');
 
-    it('marks the rows that have a recording and only those', () => {
+    // Newest first: a rolled-up "Rec (2)" with two clips, then a row with none.
+    const seed = () =>
       useStore.setState({
         fullActivityLog: [
           createTestActivityLogEntry({
-            id: 'r',
+            id: 'r2',
+            timestamp: 30,
+            channel: 1,
+            alpha_tag: 'Rec',
+            hitUid: 'uid-new',
+            hasAudio: true,
+          }),
+          createTestActivityLogEntry({
+            id: 'r1',
             timestamp: 20,
             channel: 1,
             alpha_tag: 'Rec',
+            hitUid: 'uid-old',
             hasAudio: true,
           }),
           createTestActivityLogEntry({
@@ -320,15 +335,45 @@ describe('ScanView Recent Hits rendering', () => {
             timestamp: 10,
             channel: 2,
             alpha_tag: 'NoRec',
+            hitUid: 'uid-none',
             hasAudio: false,
+          }),
+          createTestActivityLogEntry({
+            id: 'r3',
+            timestamp: 5,
+            channel: 3,
+            alpha_tag: 'Other',
+            hitUid: 'uid-other',
+            hasAudio: true,
           }),
         ],
       });
+
+    // jsdom has no media playback. Record each <audio> that is played so a
+    // test can end its clip.
+    let played: HTMLMediaElement[];
+    let pause: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      played = [];
+      vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (
+        this: HTMLMediaElement,
+      ) {
+        played.push(this);
+        return Promise.resolve();
+      });
+      pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    const lastSrc = () => played[played.length - 1]?.src;
+    const endClip = () =>
+      act(() => void played[played.length - 1].dispatchEvent(new Event('ended')));
+
+    it('marks the rows that have a recording and only those', () => {
+      seed();
       render(<ScanView {...baseProps} />);
-      expect(
-        within(rowFor('Rec')).getByRole('img', { name: 'Has a recording' }),
-      ).toBeInTheDocument();
-      expect(within(rowFor('NoRec')).queryByRole('img', { name: 'Has a recording' })).toBeNull();
+      expect(marker(rowFor('Rec (2)'))).not.toBeNull();
+      expect(marker(rowFor('NoRec'))).toBeNull();
     });
 
     it('shows no marker anywhere when nothing was recorded', () => {
@@ -338,7 +383,80 @@ describe('ScanView Recent Hits rendering', () => {
         ],
       });
       render(<ScanView {...baseProps} />);
-      expect(screen.queryByRole('img', { name: 'Has a recording' })).toBeNull();
+      expect(document.querySelector('[data-recording-marker]')).toBeNull();
+    });
+
+    // The control is hidden with opacity, never removed, so a screen reader
+    // can always find it; a row without a recording has none at all. getByRole
+    // skips anything display:none or `hidden`, so finding it is the check.
+    it('gives a play control to recorded rows only, in the accessibility tree', () => {
+      seed();
+      render(<ScanView {...baseProps} />);
+      expect(
+        within(rowFor('Rec (2)')).getByRole('button', { name: 'Play recording, Rec, 151.250' }),
+      ).not.toHaveAttribute('hidden');
+      expect(within(rowFor('NoRec')).queryByRole('button')).toBeNull();
+    });
+
+    it('plays a rolled-up row’s clips oldest to newest, then stops', async () => {
+      seed();
+      render(<ScanView {...baseProps} />);
+      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }));
+      await waitFor(() => expect(lastSrc()).toMatch(/\/hits\/uid-old\/audio$/));
+      expect(
+        within(rowFor('Rec (2)')).getByRole('button', { name: /^Stop recording/ }),
+      ).toBeInTheDocument();
+
+      endClip();
+      await waitFor(() => expect(lastSrc()).toMatch(/\/hits\/uid-new\/audio$/));
+      endClip();
+      await waitFor(() =>
+        expect(
+          within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }),
+        ).toBeInTheDocument(),
+      );
+      expect(played).toHaveLength(2);
+    });
+
+    it('stops when the control is pressed again', async () => {
+      seed();
+      render(<ScanView {...baseProps} />);
+      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }));
+      await waitFor(() => expect(played).toHaveLength(1));
+      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Stop recording/ }));
+      expect(pause).toHaveBeenCalled();
+      expect(
+        within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('stops playing when the view goes away', async () => {
+      seed();
+      const { unmount } = render(<ScanView {...baseProps} />);
+      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }));
+      await waitFor(() => expect(played).toHaveLength(1));
+      pause.mockClear();
+      unmount();
+      expect(pause).toHaveBeenCalled();
+    });
+
+    // One Tab stop for the whole list: the play controls are out of the Tab
+    // order, and the arrow keys move between the rows that have one.
+    it('moves between recorded rows with the arrow keys, skipping the rest', () => {
+      seed();
+      render(<ScanView {...baseProps} />);
+      const list = screen.getByRole('list', { name: 'Recent hits' });
+      const recPlay = within(rowFor('Rec (2)')).getByRole('button');
+      const otherPlay = within(rowFor('Other')).getByRole('button');
+      expect(recPlay).toHaveAttribute('tabindex', '-1');
+
+      list.focus();
+      fireEvent.keyDown(list, { key: 'ArrowDown' });
+      expect(recPlay).toHaveFocus();
+      fireEvent.keyDown(recPlay, { key: 'ArrowDown' });
+      expect(otherPlay).toHaveFocus();
+      fireEvent.keyDown(otherPlay, { key: 'ArrowUp' });
+      expect(recPlay).toHaveFocus();
     });
   });
 
