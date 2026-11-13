@@ -6,6 +6,7 @@
 use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
 
+pub mod convert;
 pub mod meter;
 pub mod segment;
 pub mod wav;
