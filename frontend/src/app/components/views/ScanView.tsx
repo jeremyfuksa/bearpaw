@@ -1,7 +1,9 @@
 import { motion } from 'motion/react';
-import { FileText } from 'lucide-react';
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { Eraser, FileText } from 'lucide-react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
+import { toast } from 'sonner';
+import { getAPI } from '../../../api/useApi';
 import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
@@ -134,6 +136,19 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
   return groups;
 }
 
+/**
+ * The hits Recent Hits shows after a reset (#818): those that ENDED after it.
+ * Compared on `ended_at`, not the start time, so a transmission still on the
+ * air when Clear was pressed shows up when it ends instead of vanishing.
+ */
+export function hitsSinceReset(
+  entries: ActivityLogEntry[],
+  resetAt: number | null,
+): ActivityLogEntry[] {
+  if (resetAt === null) return entries;
+  return entries.filter((entry) => (entry.ended_at ?? entry.timestamp) > resetAt);
+}
+
 function HitSignalBars({ strength }: { strength: number }) {
   return (
     <div className="flex shrink-0 items-end gap-[clamp(1px,0.8cqmin,8px)]">
@@ -214,10 +229,26 @@ export function ScanView({
   // frequency, which becomes the row's identity.
   const capabilities = useScannerCapabilities();
   const showTagColumn = capabilities.has_alpha_tags;
+  const recentHitsResetAt = useStore((state) => state.preferences.recentHitsResetAt);
+  const updatePreferences = useStore((state) => state.updatePreferences);
   const recentHits = useMemo(
-    () => rollUpHits(fullActivityLog).slice(0, RECENT_HITS_LIMIT),
-    [fullActivityLog],
+    () =>
+      rollUpHits(hitsSinceReset(fullActivityLog, recentHitsResetAt)).slice(0, RECENT_HITS_LIMIT),
+    [fullActivityLog, recentHitsResetAt],
   );
+
+  // Clears Recent Hits only; the stored log is untouched (#818). Saved before
+  // the store changes, so a failed save leaves the list as it was.
+  const handleResetRecentHits = useCallback(() => {
+    const resetAt = Date.now() / 1000;
+    getAPI()
+      .setPreference('recent_hits_reset_at', resetAt)
+      .then(() => updatePreferences({ recentHitsResetAt: resetAt }))
+      .catch((error) => {
+        console.error('Failed to clear Recent Hits', error);
+        toast.error('Could not clear Recent Hits. Try again.');
+      });
+  }, [updatePreferences]);
 
   // A new hit is added at the top. Scrolled back, that would push the rows
   // being read down by one, so move the scroll by however far the previous
@@ -293,19 +324,34 @@ export function ScanView({
               scanning the page. `aria-label` stays because it is more specific
               than the visible text and contains it, which is what WCAG 2.5.3
               (Label in Name) requires. */}
-            <button
-              type="button"
-              onClick={onOpenActivityExport}
-              disabled={fullActivityLog.length === 0}
-              className={cn(
-                'inline-flex shrink-0 items-center gap-[clamp(4px,1.2cqmin,16px)] rounded-scanner-xs border border-white/10 bg-white/5 px-[clamp(8px,1.8cqmin,28px)] py-[clamp(4px,1cqmin,16px)] text-[clamp(11px,2.6cqmin,44px)] text-white/80 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white',
-                fullActivityLog.length === 0 && 'cursor-not-allowed opacity-50',
-              )}
-              aria-label="Export activity log"
-            >
-              <FileText aria-hidden className="size-[clamp(14px,2.2cqmin,36px)]" />
-              Export
-            </button>
+            <div className="flex shrink-0 items-center gap-[clamp(4px,1.2cqmin,16px)]">
+              <button
+                type="button"
+                onClick={handleResetRecentHits}
+                disabled={recentHits.length === 0}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-[clamp(4px,1.2cqmin,16px)] rounded-scanner-xs border border-white/10 bg-white/5 px-[clamp(8px,1.8cqmin,28px)] py-[clamp(4px,1cqmin,16px)] text-[clamp(11px,2.6cqmin,44px)] text-white/80 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white',
+                  recentHits.length === 0 && 'cursor-not-allowed opacity-50',
+                )}
+                aria-label="Clear Recent Hits"
+              >
+                <Eraser aria-hidden className="size-[clamp(14px,2.2cqmin,36px)]" />
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={onOpenActivityExport}
+                disabled={fullActivityLog.length === 0}
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-[clamp(4px,1.2cqmin,16px)] rounded-scanner-xs border border-white/10 bg-white/5 px-[clamp(8px,1.8cqmin,28px)] py-[clamp(4px,1cqmin,16px)] text-[clamp(11px,2.6cqmin,44px)] text-white/80 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white',
+                  fullActivityLog.length === 0 && 'cursor-not-allowed opacity-50',
+                )}
+                aria-label="Export activity log"
+              >
+                <FileText aria-hidden className="size-[clamp(14px,2.2cqmin,36px)]" />
+                Export
+              </button>
+            </div>
           </div>
           {recentHits.length === 0 ? (
             <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 pr-2 text-white/60 text-[clamp(11px,3cqmin,52px)] italic">

@@ -392,6 +392,7 @@ describe('useStore', () => {
       analytics_scope: 'all',
       activity_export_timezone: 'utc',
       unsupported_panel_dismissed: ['sds100-1'],
+      recent_hits_reset_at: 1_700_000_000,
     };
 
     it('restores analyticsScope from the backend', () => {
@@ -415,6 +416,7 @@ describe('useStore', () => {
         analyticsScope: 'all',
         activityExportTimezone: 'utc',
         unsupportedPanelDismissed: ['sds100-1'],
+        recentHitsResetAt: 1_700_000_000,
       });
     });
 
@@ -442,6 +444,7 @@ describe('useStore', () => {
         analyticsScope: 'scanner',
         activityExportTimezone: 'local',
         unsupportedPanelDismissed: [],
+        recentHitsResetAt: null,
       });
     });
 

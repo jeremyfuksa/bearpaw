@@ -48,6 +48,13 @@ export interface Preferences {
    * `unsupported_panel_dismissed`; the panel never asks again for these.
    */
   unsupportedPanelDismissed: string[];
+  /**
+   * Epoch seconds of the last Recent Hits reset (#818), or null if never reset.
+   * Recent Hits hides hits that ended before it; the activity log, charts and
+   * exports ignore it. Stored so a relaunch, which rehydrates the whole log,
+   * does not bring the cleared hits back.
+   */
+  recentHitsResetAt: number | null;
 }
 
 /**
@@ -148,6 +155,7 @@ const defaultPreferences: Preferences = {
   analyticsScope: 'scanner',
   activityExportTimezone: 'local',
   unsupportedPanelDismissed: [],
+  recentHitsResetAt: null,
 };
 
 /**
@@ -190,6 +198,8 @@ export function mapStoredPreferences(stored: Record<string, unknown>): Preferenc
     unsupportedPanelDismissed: Array.isArray(prefs.unsupported_panel_dismissed)
       ? prefs.unsupported_panel_dismissed.filter((k: unknown) => typeof k === 'string')
       : [],
+    recentHitsResetAt:
+      typeof prefs.recent_hits_reset_at === 'number' ? prefs.recent_hits_reset_at : null,
   };
 }
 

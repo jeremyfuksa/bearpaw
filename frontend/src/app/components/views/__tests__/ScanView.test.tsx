@@ -1,9 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { act, render, screen, within } from '@testing-library/react';
-import { rollUpHits, ScanView, summarizeHeatmap, HEATMAP_DAY_LABELS } from '../ScanView';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+const setPreference = vi.hoisted(() =>
+  vi.fn((_key: string, value: unknown) => Promise.resolve(value)),
+);
+vi.mock('../../../../api/useApi', () => ({ getAPI: () => ({ setPreference }) }));
+
+import {
+  hitsSinceReset,
+  rollUpHits,
+  ScanView,
+  summarizeHeatmap,
+  HEATMAP_DAY_LABELS,
+} from '../ScanView';
 import { useStore } from '../../../../store/useStore';
 import { createTestLiveState, createTestActivityLogEntry } from '../../../../test/fixtures';
 import type { ActivityLogEntry, ScannerCapabilities } from '../../../../types';
@@ -546,6 +558,115 @@ describe('Recent Hits export control', () => {
     useStore.setState({ fullActivityLog: [] });
     render(<ScanView {...baseProps} />);
     expect(screen.getByRole('button', { name: /export activity log/i })).toBeDisabled();
+  });
+});
+
+describe('hitsSinceReset (#818)', () => {
+  it('keeps every hit when Recent Hits was never reset', () => {
+    const entries = [hit({ id: 'a', timestamp: 10, ended_at: 12 })];
+    expect(hitsSinceReset(entries, null)).toBe(entries);
+  });
+
+  it('keeps hits that ended after the reset, including one on the air when it was pressed', () => {
+    const entries = [
+      hit({ id: 'after', timestamp: 200, ended_at: 205 }),
+      hit({ id: 'straddles', timestamp: 145, ended_at: 155 }),
+      hit({ id: 'before', timestamp: 100, ended_at: 105 }),
+    ];
+    expect(hitsSinceReset(entries, 150).map((e) => e.id)).toEqual(['after', 'straddles']);
+  });
+
+  it('falls back to the start time for a hit with no end time', () => {
+    const entries = [
+      hit({ id: 'new', timestamp: 160, ended_at: null }),
+      hit({ id: 'old', timestamp: 140, ended_at: null }),
+    ];
+    expect(hitsSinceReset(entries, 150).map((e) => e.id)).toEqual(['new']);
+  });
+});
+
+describe('Recent Hits reset (#818)', () => {
+  const baseProps = {
+    mainText: 'Scanning...',
+    subText: '',
+    scannerMode: 'SCAN' as const,
+    connectionStatus: 'connected' as const,
+    isHolding: false,
+    isInitialSyncing: false,
+    chartAnimate: false,
+    dashboardLoading: false,
+    busiestChannels: [],
+    hourlyHeatmap: [],
+    heatmapStats: { max: 0 },
+    squelch: 0,
+    onSquelchChange: () => {},
+    onHoldToggle: () => {},
+    onLockout: () => {},
+    onVolumeChange: () => {},
+    onBankToggle: () => {},
+    onOpenActivityExport: () => {},
+  };
+  const log = [
+    createTestActivityLogEntry({ id: 'new', timestamp: 200, ended_at: 205, alpha_tag: 'Fire' }),
+    createTestActivityLogEntry({
+      id: 'old',
+      timestamp: 100,
+      ended_at: 105,
+      channel: 2,
+      alpha_tag: 'Police',
+    }),
+  ];
+
+  beforeEach(() => {
+    setPreference.mockReset();
+    setPreference.mockImplementation((_key: string, value: unknown) => Promise.resolve(value));
+    useStore.setState({
+      liveState: createTestLiveState({ mode: 'SCAN', squelch_open: false }),
+      banks: Array(10).fill(true),
+      fullActivityLog: log,
+      preferences: { ...useStore.getState().preferences, recentHitsResetAt: null },
+    });
+  });
+
+  it('empties Recent Hits, saves when, and leaves the activity log alone', async () => {
+    render(<ScanView {...baseProps} />);
+    expect(screen.getByText('Fire')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Recent Hits' }));
+
+    await waitFor(() => expect(screen.getByText('Waiting for signals...')).toBeInTheDocument());
+    expect(setPreference).toHaveBeenCalledWith('recent_hits_reset_at', expect.any(Number));
+    expect(useStore.getState().preferences.recentHitsResetAt).toBe(setPreference.mock.calls[0][1]);
+    expect(useStore.getState().fullActivityLog).toBe(log);
+    expect(screen.getByRole('button', { name: /export activity log/i })).toBeEnabled();
+  });
+
+  it('applies a stored reset on launch, so the cleared hits stay cleared', () => {
+    useStore.setState({
+      preferences: { ...useStore.getState().preferences, recentHitsResetAt: 150 },
+    });
+    render(<ScanView {...baseProps} />);
+    expect(screen.getByText('Fire')).toBeInTheDocument();
+    expect(screen.queryByText('Police')).toBeNull();
+  });
+
+  it('keeps the list when the reset cannot be saved', async () => {
+    setPreference.mockRejectedValueOnce(new Error('offline'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<ScanView {...baseProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Recent Hits' }));
+
+    await waitFor(() => expect(setPreference).toHaveBeenCalled());
+    await act(async () => {});
+    expect(useStore.getState().preferences.recentHitsResetAt).toBeNull();
+    expect(screen.getByText('Police')).toBeInTheDocument();
+  });
+
+  it('is disabled while Recent Hits is empty', () => {
+    useStore.setState({ fullActivityLog: [] });
+    render(<ScanView {...baseProps} />);
+    expect(screen.getByRole('button', { name: 'Clear Recent Hits' })).toBeDisabled();
   });
 });
 
