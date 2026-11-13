@@ -186,6 +186,17 @@ describe('rollUpHits', () => {
     expect(rolled[0].tag).toBe('');
     expect(rolled[0].count).toBe(2);
   });
+
+  // #927: a rolled-up row plays all of its clips, so it has a recording if any
+  // hit in the run does, not only the newest.
+  it('marks a rolled-up row as recorded when any hit in the run has audio', () => {
+    const rolled = rollUpHits([
+      hit({ id: 'a1', timestamp: 30, channel: 1, hasAudio: false }),
+      hit({ id: 'a2', timestamp: 20, channel: 1, hasAudio: true }),
+      hit({ id: 'b1', timestamp: 10, channel: 2, hasAudio: false }),
+    ]);
+    expect(rolled.map((r) => r.hasRecording)).toEqual([true, false]);
+  });
 });
 
 describe('Recent Hits duration (#816)', () => {
@@ -288,6 +299,47 @@ describe('ScanView Recent Hits rendering', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(100);
     expect(screen.getByText('Ch100')).toBeInTheDocument();
     expect(screen.queryByText('Ch101')).toBeNull();
+  });
+
+  describe('recording marker (#927)', () => {
+    const rowFor = (tag: string) =>
+      screen.getByText(tag).closest('[role="listitem"]') as HTMLElement;
+
+    it('marks the rows that have a recording and only those', () => {
+      useStore.setState({
+        fullActivityLog: [
+          createTestActivityLogEntry({
+            id: 'r',
+            timestamp: 20,
+            channel: 1,
+            alpha_tag: 'Rec',
+            hasAudio: true,
+          }),
+          createTestActivityLogEntry({
+            id: 'n',
+            timestamp: 10,
+            channel: 2,
+            alpha_tag: 'NoRec',
+            hasAudio: false,
+          }),
+        ],
+      });
+      render(<ScanView {...baseProps} />);
+      expect(
+        within(rowFor('Rec')).getByRole('img', { name: 'Has a recording' }),
+      ).toBeInTheDocument();
+      expect(within(rowFor('NoRec')).queryByRole('img', { name: 'Has a recording' })).toBeNull();
+    });
+
+    it('shows no marker anywhere when nothing was recorded', () => {
+      useStore.setState({
+        fullActivityLog: [
+          createTestActivityLogEntry({ id: 'n', alpha_tag: 'NoRec', hasAudio: false }),
+        ],
+      });
+      render(<ScanView {...baseProps} />);
+      expect(screen.queryByRole('img', { name: 'Has a recording' })).toBeNull();
+    });
   });
 
   describe('time format preference (#816)', () => {

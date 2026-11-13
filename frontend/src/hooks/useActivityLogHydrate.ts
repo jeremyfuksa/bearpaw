@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { API_BASE } from '../api/useApi';
+import { isPlayableRecording } from '../lib/recording';
 import { useStore } from '../store/useStore';
 import type { ActivityLogEntry } from '../types';
 
@@ -12,6 +13,8 @@ interface BackendHit {
   rssi?: number;
   duration?: number | null;
   ended_at?: number | null;
+  hit_uid?: string | null;
+  recording_status?: string | null;
 }
 
 /**
@@ -54,7 +57,8 @@ export function useActivityLogHydrate(): void {
           alpha_tag: row.alpha_tag ?? null,
           type: 'hit',
           rssi: row.rssi,
-          hasAudio: false,
+          hitUid: row.hit_uid ?? null,
+          hasAudio: isPlayableRecording(row.recording_status),
           duration: row.duration ?? null,
           ended_at: row.ended_at ?? null,
         }));

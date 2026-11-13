@@ -307,7 +307,7 @@ export interface StateUpdateMessage {
 export interface EventMessage {
   type: 'event';
   timestamp: number;
-  event: 'scan_hit' | 'hold' | 'scan_start' | 'state_stale';
+  event: 'scan_hit' | 'hold' | 'scan_start' | 'state_stale' | 'recording_finished';
   data: Record<string, unknown> & {
     frequency?: number;
     channel?: number;
@@ -315,6 +315,11 @@ export interface EventMessage {
     rssi?: number;
     duration?: number;
     message?: string;
+    /** Joins a hit to its recording (#927). On `scan_hit` and `recording_finished`. */
+    hit_uid?: string;
+    /** On `recording_finished`: `ready`, `partial`, `failed` or `too_short`. */
+    recording_status?: string;
+    recording_duration?: number;
   };
 }
 
@@ -339,6 +344,9 @@ export interface ActivityLogEntry {
   alpha_tag?: string | null;
   type: 'hit' | 'hold' | 'manual';
   rssi?: number;
+  /** The backend's id for this hit, shared with its recording (#927). */
+  hitUid?: string | null;
+  /** True once the hit has a recording that can be played. */
   hasAudio?: boolean;
   duration?: number | null;
   ended_at?: number | null;

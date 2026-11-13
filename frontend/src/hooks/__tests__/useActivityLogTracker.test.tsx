@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { useActivityLogTracker } from '../useActivityLogTracker';
 import { useStore } from '../../store/useStore';
 import type { WSMessage } from '../../types';
+import { createTestActivityLogEntry } from '../../test/fixtures';
 
 // A minimal stand-in for ScannerWebSocket: records listeners by event and lets
 // the test push messages through them. `on` returns a real unsubscribe so the
@@ -131,5 +132,53 @@ describe('useActivityLogTracker', () => {
     // A lone squelch-close at a low sequence must NOT emit a bogus entry.
     fakeWs.emit('state_update', stateUpdate(1, 20_000, false));
     expect(addSpy).not.toHaveBeenCalled();
+  });
+
+  // #927: a hit's recording is joined to its row by `hit_uid`, which the
+  // backend allocates at squelch-open and sends on `scan_hit`.
+  it('carries the hit_uid from scan_hit onto the logged entry', () => {
+    renderHook(() => useActivityLogTracker());
+    fakeWs.emit('event', {
+      type: 'event',
+      timestamp: 10_000,
+      event: 'scan_hit',
+      data: { frequency: 146.85, channel: 1, rssi: 50, hit_uid: '1794540552100-2a' },
+    });
+    fakeWs.emit('state_update', stateUpdate(5000, 10_000, true));
+    fakeWs.emit('state_update', stateUpdate(5001, 10_100, false));
+    expect(addSpy.mock.calls[0][0].hitUid).toBe('1794540552100-2a');
+  });
+
+  describe('recording_finished (#927)', () => {
+    const finished = (hit_uid: string, recording_status: string): WSMessage => ({
+      type: 'event',
+      timestamp: 10_200,
+      event: 'recording_finished',
+      data: { hit_uid, recording_status, recording_duration: 4.2 },
+    });
+
+    beforeEach(() => {
+      useStore.setState({
+        fullActivityLog: [
+          createTestActivityLogEntry({ id: 'a', hitUid: 'uid-a', hasAudio: false }),
+          createTestActivityLogEntry({ id: 'b', hitUid: 'uid-b', hasAudio: false }),
+        ],
+      });
+    });
+
+    const hasAudio = () =>
+      Object.fromEntries(useStore.getState().fullActivityLog.map((e) => [e.id, e.hasAudio]));
+
+    it.each(['ready', 'partial'])('marks only that hit as playable when %s', (status) => {
+      renderHook(() => useActivityLogTracker());
+      fakeWs.emit('event', finished('uid-a', status));
+      expect(hasAudio()).toEqual({ a: true, b: false });
+    });
+
+    it.each(['failed', 'too_short'])('leaves the hit unplayable when %s', (status) => {
+      renderHook(() => useActivityLogTracker());
+      fakeWs.emit('event', finished('uid-a', status));
+      expect(hasAudio()).toEqual({ a: false, b: false });
+    });
   });
 });

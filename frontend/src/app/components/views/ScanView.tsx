@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Eraser, FileText } from 'lucide-react';
+import { Eraser, FileText, Volume2 } from 'lucide-react';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { toast } from 'sonner';
@@ -107,6 +107,8 @@ export interface RolledHit {
   /** Seconds on the air, summed across a rolled-up run (#816). */
   duration: number;
   count: number;
+  /** Any hit in the run has a playable recording (#927). */
+  hasRecording: boolean;
 }
 
 /** Channel number is the grouping identity; frequency is the fallback for
@@ -149,6 +151,7 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
         time: entry.timestamp,
         duration: entry.duration ?? 0,
         count: 1,
+        hasRecording: entry.hasAudio === true,
       });
       continue;
     }
@@ -156,6 +159,7 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
     const group = groups[groups.length - 1];
     group.count += 1;
     group.duration += entry.duration ?? 0;
+    group.hasRecording ||= entry.hasAudio === true;
     strengthSum += normalizeSignal(entry.rssi);
     group.strength = Math.round(strengthSum / group.count);
   }
@@ -268,6 +272,9 @@ export function ScanView({
       rollUpHits(hitsSinceReset(fullActivityLog, recentHitsResetAt)).slice(0, RECENT_HITS_LIMIT),
     [fullActivityLog, recentHitsResetAt],
   );
+  // The marker slot exists only once some row has a recording, so a user who
+  // never turned recording on gets no empty gap beside every meter.
+  const showRecordingSlot = recentHits.some((hit) => hit.hasRecording);
 
   // Clears Recent Hits only; the stored log is untouched (#818). Saved before
   // the store changes, so a failed save leaves the list as it was.
@@ -446,7 +453,25 @@ export function ScanView({
                     <span className="whitespace-nowrap text-white/60" title={hit.tag || undefined}>
                       {showTagColumn ? `${hit.tag || '—'}${countSuffix}` : countSuffix.trimStart()}
                     </span>
-                    <HitSignalBars strength={hit.strength} />
+                    {/* #927: the speaker sits in a fixed slot left of the
+                      meter, always visible, so the icons line up down the list
+                      and a Voice Control user can see which hits have audio. A
+                      row with no recording keeps the slot empty, so the meters
+                      line up too. */}
+                    <div className="flex items-center gap-[clamp(6px,1.8cqmin,28px)]">
+                      {showRecordingSlot && (
+                        <span className="flex size-[clamp(12px,3.5cqmin,56px)] items-center justify-center text-white/60">
+                          {hit.hasRecording && (
+                            <Volume2
+                              role="img"
+                              aria-label="Has a recording"
+                              className="size-full"
+                            />
+                          )}
+                        </span>
+                      )}
+                      <HitSignalBars strength={hit.strength} />
+                    </div>
                   </div>
                 );
               })}
