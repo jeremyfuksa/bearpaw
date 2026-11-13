@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { FileText, RotateCcw } from 'lucide-react';
+import { Eraser, FileText } from 'lucide-react';
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, LabelList, ResponsiveContainer, XAxis } from 'recharts';
 import { toast } from 'sonner';
@@ -335,7 +335,7 @@ export function ScanView({
                 )}
                 aria-label="Clear Recent Hits"
               >
-                <RotateCcw aria-hidden className="size-[clamp(14px,2.2cqmin,36px)]" />
+                <Eraser aria-hidden className="size-[clamp(14px,2.2cqmin,36px)]" />
                 Clear
               </button>
               <button
