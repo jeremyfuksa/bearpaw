@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Tauri merges this into the bundle's Info.plist. It is the text the
+	     microphone prompt shows when Bearpaw first opens an audio input (#930). -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Bearpaw records hits from the audio input your scanner is connected to.</string>
+</dict>
+</plist>
