@@ -150,6 +150,8 @@ export interface AppStore {
   setMemoryDraft: (index: number, draft: ChannelDraft) => void;
   clearMemoryDrafts: () => void;
   addToFullActivityLog: (entry: ActivityLogEntry) => void;
+  /** Sets `hasAudio` on the logged hit with this `hitUid` (#927). */
+  setHitHasAudio: (hitUid: string, hasAudio: boolean) => void;
   hydrateActivityLogs: (
     entries: ActivityLogEntry[],
     options?: { replace?: boolean; preserveSince?: number },
@@ -327,6 +329,12 @@ export const useStore = create<AppStore>((set) => ({
   addToFullActivityLog: (entry) =>
     set((prev) => ({
       fullActivityLog: [entry, ...prev.fullActivityLog],
+    })),
+  setHitHasAudio: (hitUid, hasAudio) =>
+    set((prev) => ({
+      fullActivityLog: prev.fullActivityLog.map((entry) =>
+        entry.hitUid === hitUid ? { ...entry, hasAudio } : entry,
+      ),
     })),
 
   hydrateActivityLogs: (entries, options) =>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isPlayableRecording } from '../lib/recording';
 import { useStore } from '../store/useStore';
 import { useWebSocket } from '../websocket/useWebSocket';
 import type { ActivityLogEntry, EventMessage, StateUpdateMessage } from '../types';
@@ -83,6 +84,19 @@ export function useActivityLogTracker(): void {
 
     const unsubscribeEvent = ws.on('event', (message) => {
       const payload = message as EventMessage;
+      // #927: the backend finishes a clip after squelch closes (post-roll),
+      // so the row this names is already in the log.
+      if (payload.event === 'recording_finished') {
+        if (payload.data.hit_uid) {
+          useStore
+            .getState()
+            .setHitHasAudio(
+              payload.data.hit_uid,
+              isPlayableRecording(payload.data.recording_status),
+            );
+        }
+        return;
+      }
       if (payload.event !== 'scan_hit') return;
       squelchOpenStartTimeRef.current = payload.timestamp;
       currentHitDataRef.current = {
@@ -93,6 +107,7 @@ export function useActivityLogTracker(): void {
         alpha_tag: payload.data.alpha_tag ?? null,
         type: 'hit',
         rssi: payload.data.rssi,
+        hitUid: payload.data.hit_uid ?? null,
         hasAudio: false,
         duration: 0,
         ended_at: 0,

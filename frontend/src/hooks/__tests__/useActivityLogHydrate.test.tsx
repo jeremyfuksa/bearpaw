@@ -132,4 +132,26 @@ describe('useActivityLogHydrate', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  // #927: the backend's hit-to-recording association lights up `hasAudio`.
+  // Only a finished clip that can be played counts.
+  it.each([
+    ['ready', true],
+    ['partial', true],
+    ['failed', false],
+    ['too_short', false],
+    [undefined, false],
+  ])('maps recording_status %s to hasAudio %s', async (recording_status, expected) => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [
+        { id: 1, timestamp: 100, frequency: 146.85, hit_uid: 'uid-1', recording_status },
+      ],
+    } as unknown as Response);
+    renderHook(() => useActivityLogHydrate());
+    await waitFor(() => expect(useStore.getState().fullActivityLog).toHaveLength(1));
+    const [entry] = useStore.getState().fullActivityLog;
+    expect(entry.hitUid).toBe('uid-1');
+    expect(entry.hasAudio).toBe(expected);
+  });
 });
