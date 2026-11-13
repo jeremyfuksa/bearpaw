@@ -90,9 +90,10 @@ export function useActivityLogTracker(): void {
         if (payload.data.hit_uid) {
           useStore
             .getState()
-            .setHitHasAudio(
+            .setHitRecording(
               payload.data.hit_uid,
               isPlayableRecording(payload.data.recording_status),
+              payload.data.recording_duration ?? null,
             );
         }
         return;

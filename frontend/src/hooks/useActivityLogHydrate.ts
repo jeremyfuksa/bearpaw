@@ -15,6 +15,7 @@ interface BackendHit {
   ended_at?: number | null;
   hit_uid?: string | null;
   recording_status?: string | null;
+  recording_duration?: number | null;
 }
 
 /**
@@ -59,6 +60,7 @@ export function useActivityLogHydrate(): void {
           rssi: row.rssi,
           hitUid: row.hit_uid ?? null,
           hasAudio: isPlayableRecording(row.recording_status),
+          recordingDuration: row.recording_duration ?? null,
           duration: row.duration ?? null,
           ended_at: row.ended_at ?? null,
         }));
