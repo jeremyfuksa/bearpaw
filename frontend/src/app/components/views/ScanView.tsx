@@ -8,7 +8,7 @@ import { cn } from '../../../lib/utils';
 import { useStore } from '../../../store/useStore';
 import type { ConnectionStatus } from '../../../hooks/useConnectionStatus';
 import type { BusiestChannel, HeatmapStats } from '../../../hooks/useDashboardAnalytics';
-import { useClipPlayback } from '../../../hooks/useClipPlayback';
+import { useClipPlayback, type Clip } from '../../../hooks/useClipPlayback';
 import { useScannerCapabilities } from '../../../hooks/useScannerCapabilities';
 import type { ActivityLogEntry } from '../../../types';
 import { ScannerDisplay, type LockoutKind } from '../ScannerUI';
@@ -108,13 +108,21 @@ export interface RolledHit {
   /** Seconds on the air, summed across a rolled-up run (#816). */
   duration: number;
   count: number;
-  /** The run's playable recordings by `hitUid`, oldest first: the order the
-   *  row plays them in (#927). Empty when no hit in the run has one. */
-  clips: string[];
+  /** The run's playable recordings, oldest first: the order the row plays
+   *  them in (#927). Empty when no hit in the run has one. */
+  clips: Clip[];
 }
 
-function playableClip(entry: ActivityLogEntry): string[] {
-  return entry.hasAudio === true && entry.hitUid ? [entry.hitUid] : [];
+function playableClip(entry: ActivityLogEntry): Clip[] {
+  return entry.hasAudio === true && entry.hitUid
+    ? [{ uid: entry.hitUid, duration: entry.recordingDuration ?? 0 }]
+    : [];
+}
+
+/** "0:04": playback position, the way a media player writes it. */
+function formatPlaybackTime(seconds: number) {
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
 
 /** Channel number is the grouping identity; frequency is the fallback for
@@ -282,7 +290,8 @@ export function ScanView({
   // The marker slot exists only once some row has a recording, so a user who
   // never turned recording on gets no empty gap beside every meter.
   const showRecordingSlot = recentHits.some((hit) => hit.clips.length > 0);
-  const { playingUid, play, stop } = useClipPlayback();
+  const { position, play, stop } = useClipPlayback();
+  const playingUid = position?.uid ?? null;
 
   // The list is ONE Tab stop (#927): up to 100 play buttons in the Tab order
   // would bury everything after the list. The buttons are tabIndex -1, and the
@@ -319,19 +328,32 @@ export function ScanView({
   // top row moved. At the top (scrollTop 0) the new hit simply shows. Done by
   // hand because WKWebView has no CSS scroll anchoring; `overflow-anchor:
   // none` on the list keeps Chromium from adjusting a second time.
+  //
+  // A PLAYING row is the anchor instead, at any scroll position (#927): the
+  // row you are listening to holds its place. It is found by `data-playing`,
+  // not its id, because a hit joining a rolled-up row changes the row's id.
   const listRef = useRef<HTMLDivElement>(null);
-  const anchorRef = useRef<{ id: string; top: number } | null>(null);
+  const anchorRef = useRef<{ id: string | null; top: number } | null>(null);
   useLayoutEffect(() => {
     const list = listRef.current;
     const rows = list ? [...list.children].filter((el) => el instanceof HTMLElement) : [];
+    const find = (id: string | null) =>
+      rows.find((row) =>
+        id === null ? row.dataset.playing !== undefined : row.dataset.hitId === id,
+      );
     const prev = anchorRef.current;
-    if (list && prev && list.scrollTop > 0) {
-      const moved = rows.find((row) => row.dataset.hitId === prev.id);
+    if (list && prev && (prev.id === null || list.scrollTop > 0)) {
+      const moved = find(prev.id);
       if (moved) list.scrollTop += moved.offsetTop - prev.top;
     }
-    const first = rows.find((row) => row.dataset.hitId);
-    anchorRef.current = first ? { id: first.dataset.hitId ?? '', top: first.offsetTop } : null;
-  }, [recentHits]);
+    const anchor = find(null) ?? rows.find((row) => row.dataset.hitId);
+    anchorRef.current = anchor
+      ? {
+          id: anchor.dataset.playing !== undefined ? null : (anchor.dataset.hitId ?? ''),
+          top: anchor.offsetTop,
+        }
+      : null;
+  }, [recentHits, playingUid]);
 
   const isError = connectionStatus === 'disconnected';
   // The last mode survives a disconnect, so `mode === 'SCAN'` alone kept the
@@ -460,21 +482,42 @@ export function ScanView({
                 if (!hit) {
                   return <div key={`empty-${idx}`} className="col-span-4" aria-hidden="true" />;
                 }
-                const countSuffix = hit.count > 1 ? ` (${hit.count})` : '';
                 const hasClips = hit.clips.length > 0;
-                const isPlaying = playingUid !== null && hit.clips.includes(playingUid);
+                const playing =
+                  position && hit.clips.some((clip) => clip.uid === position.uid) ? position : null;
+                // While a rolled-up row plays, "2 of 6" replaces its "(6)". The
+                // queue is fixed at Play, so it keeps counting six even if a
+                // seventh hit joins the row meanwhile. Nothing here is announced.
+                const countSuffix = playing
+                  ? playing.count > 1
+                    ? ` ${playing.index + 1} of ${playing.count}`
+                    : ''
+                  : hit.count > 1
+                    ? ` (${hit.count})`
+                    : '';
                 const rowLabel = [hit.tag, hit.frequency].filter(Boolean).join(', ');
                 return (
                   <div
                     key={hit.id}
                     role="listitem"
                     data-hit-id={hit.id}
-                    className="group/row col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
+                    data-playing={playing ? '' : undefined}
+                    className={cn(
+                      'group/row relative col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)]',
+                      playing ? 'bg-brand-primary/12' : 'hover:bg-white/5',
+                    )}
                   >
-                    <span className="whitespace-nowrap tabular-nums text-white/60">
-                      {showClockTime
-                        ? `${formatClockTime(hit.time, clockTimezone)} · ${formatHitDuration(hit.duration)}`
-                        : getRelativeTime(hit.time)}
+                    <span
+                      className={cn(
+                        'whitespace-nowrap tabular-nums',
+                        playing ? 'text-brand-light' : 'text-white/60',
+                      )}
+                    >
+                      {playing
+                        ? `${formatPlaybackTime(playing.elapsed)} / ${formatPlaybackTime(playing.total)}`
+                        : showClockTime
+                          ? `${formatClockTime(hit.time, clockTimezone)} · ${formatHitDuration(hit.duration)}`
+                          : getRelativeTime(hit.time)}
                     </span>
                     <span className="whitespace-nowrap text-right font-mono text-brand-light">
                       {hit.frequency}
@@ -512,7 +555,7 @@ export function ScanView({
                             'pointer-events-none [grid-area:stack]',
                             hasClips &&
                               'group-hover/row:opacity-0 group-focus-within/row:opacity-0',
-                            isPlaying && 'opacity-0',
+                            playing && 'opacity-0',
                           )}
                         >
                           <HitSignalBars strength={hit.strength} />
@@ -522,22 +565,40 @@ export function ScanView({
                             type="button"
                             data-clip-play
                             tabIndex={-1}
-                            onClick={() => (isPlaying ? stop() : play(hit.clips))}
-                            aria-label={`${isPlaying ? 'Stop' : 'Play'} recording, ${rowLabel}`}
+                            onClick={() => (playing ? stop() : play(hit.clips))}
+                            aria-label={`${playing ? 'Stop' : 'Play'} recording, ${rowLabel}`}
                             className={cn(
-                              '[grid-area:stack] flex size-[clamp(24px,4.5cqmin,72px)] items-center justify-center rounded-scanner-xs bg-white/10 text-white opacity-0 hover:bg-white/20 focus-visible:outline focus-visible:outline-2 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
-                              isPlaying && 'opacity-100',
+                              '[grid-area:stack] flex size-[clamp(24px,4.5cqmin,72px)] items-center justify-center rounded-full border opacity-0 focus-visible:outline focus-visible:outline-2 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
+                              playing
+                                ? 'border-brand-primary bg-brand-primary text-text-display-dark opacity-100'
+                                : 'border-white/15 bg-white/5 text-text-scanner-light hover:border-brand-primary hover:text-brand-light',
                             )}
                           >
-                            {isPlaying ? (
-                              <Square aria-hidden className="size-1/2 fill-current" />
+                            {playing ? (
+                              <Square aria-hidden className="size-[45%] fill-current" />
                             ) : (
-                              <Play aria-hidden className="size-1/2 fill-current" />
+                              <Play aria-hidden className="size-[45%] fill-current" />
                             )}
                           </button>
                         )}
                       </div>
                     </div>
+                    {/* Progress across the whole queue, along the row's bottom
+                      edge. Decorative: nothing announces progress. */}
+                    {playing && (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-[clamp(2px,1cqmin,12px)] bottom-[3px] h-[2px] overflow-hidden rounded-full bg-brand-primary/20"
+                      >
+                        <span
+                          data-progress
+                          className="block h-full bg-brand-primary"
+                          style={{
+                            width: `${playing.total > 0 ? (playing.elapsed / playing.total) * 100 : 0}%`,
+                          }}
+                        />
+                      </span>
+                    )}
                   </div>
                 );
               })}

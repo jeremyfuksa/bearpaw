@@ -348,6 +348,8 @@ export interface ActivityLogEntry {
   hitUid?: string | null;
   /** True once the hit has a recording that can be played. */
   hasAudio?: boolean;
+  /** The recording's length in seconds, when the backend has reported it. */
+  recordingDuration?: number | null;
   duration?: number | null;
   ended_at?: number | null;
 }

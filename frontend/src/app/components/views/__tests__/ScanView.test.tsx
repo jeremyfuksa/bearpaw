@@ -194,12 +194,26 @@ describe('rollUpHits', () => {
   // a recording if any hit in the run does, not only the newest.
   it('lists a rolled-up row’s clips oldest to newest, skipping hits without one', () => {
     const rolled = rollUpHits([
-      hit({ id: 'a1', timestamp: 40, channel: 1, hitUid: 'u-a1', hasAudio: true }),
+      hit({
+        id: 'a1',
+        timestamp: 40,
+        channel: 1,
+        hitUid: 'u-a1',
+        hasAudio: true,
+        recordingDuration: 4.2,
+      }),
       hit({ id: 'a2', timestamp: 30, channel: 1, hitUid: 'u-a2', hasAudio: false }),
       hit({ id: 'a3', timestamp: 20, channel: 1, hitUid: 'u-a3', hasAudio: true }),
       hit({ id: 'b1', timestamp: 10, channel: 2, hitUid: 'u-b1', hasAudio: false }),
     ]);
-    expect(rolled.map((r) => r.clips)).toEqual([['u-a3', 'u-a1'], []]);
+    // A clip with no reported length counts as 0 s toward the row's total.
+    expect(rolled.map((r) => r.clips)).toEqual([
+      [
+        { uid: 'u-a3', duration: 0 },
+        { uid: 'u-a1', duration: 4.2 },
+      ],
+      [],
+    ]);
   });
 });
 
@@ -306,8 +320,10 @@ describe('ScanView Recent Hits rendering', () => {
   });
 
   describe('recordings (#927)', () => {
+    // By the tag at the START of the cell: the rest of it reads "(2)" at rest
+    // and "1 of 2" while the row plays.
     const rowFor = (tag: string) =>
-      screen.getByText(tag).closest('[role="listitem"]') as HTMLElement;
+      screen.getByText(new RegExp(`^${tag}( |$)`)).closest('[role="listitem"]') as HTMLElement;
     const marker = (row: HTMLElement) => row.querySelector('[data-recording-marker]');
 
     // Newest first: a rolled-up "Rec (2)" with two clips, then a row with none.
@@ -321,6 +337,7 @@ describe('ScanView Recent Hits rendering', () => {
             alpha_tag: 'Rec',
             hitUid: 'uid-new',
             hasAudio: true,
+            recordingDuration: 5,
           }),
           createTestActivityLogEntry({
             id: 'r1',
@@ -329,6 +346,7 @@ describe('ScanView Recent Hits rendering', () => {
             alpha_tag: 'Rec',
             hitUid: 'uid-old',
             hasAudio: true,
+            recordingDuration: 3,
           }),
           createTestActivityLogEntry({
             id: 'n',
@@ -372,7 +390,7 @@ describe('ScanView Recent Hits rendering', () => {
     it('marks the rows that have a recording and only those', () => {
       seed();
       render(<ScanView {...baseProps} />);
-      expect(marker(rowFor('Rec (2)'))).not.toBeNull();
+      expect(marker(rowFor('Rec'))).not.toBeNull();
       expect(marker(rowFor('NoRec'))).toBeNull();
     });
 
@@ -393,7 +411,7 @@ describe('ScanView Recent Hits rendering', () => {
       seed();
       render(<ScanView {...baseProps} />);
       expect(
-        within(rowFor('Rec (2)')).getByRole('button', { name: 'Play recording, Rec, 151.250' }),
+        within(rowFor('Rec')).getByRole('button', { name: 'Play recording, Rec, 151.250' }),
       ).not.toHaveAttribute('hidden');
       expect(within(rowFor('NoRec')).queryByRole('button')).toBeNull();
     });
@@ -401,10 +419,10 @@ describe('ScanView Recent Hits rendering', () => {
     it('plays a rolled-up row’s clips oldest to newest, then stops', async () => {
       seed();
       render(<ScanView {...baseProps} />);
-      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }));
+      fireEvent.click(within(rowFor('Rec')).getByRole('button', { name: /^Play recording/ }));
       await waitFor(() => expect(lastSrc()).toMatch(/\/hits\/uid-old\/audio$/));
       expect(
-        within(rowFor('Rec (2)')).getByRole('button', { name: /^Stop recording/ }),
+        within(rowFor('Rec')).getByRole('button', { name: /^Stop recording/ }),
       ).toBeInTheDocument();
 
       endClip();
@@ -412,7 +430,7 @@ describe('ScanView Recent Hits rendering', () => {
       endClip();
       await waitFor(() =>
         expect(
-          within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }),
+          within(rowFor('Rec')).getByRole('button', { name: /^Play recording/ }),
         ).toBeInTheDocument(),
       );
       expect(played).toHaveLength(2);
@@ -421,19 +439,19 @@ describe('ScanView Recent Hits rendering', () => {
     it('stops when the control is pressed again', async () => {
       seed();
       render(<ScanView {...baseProps} />);
-      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }));
+      fireEvent.click(within(rowFor('Rec')).getByRole('button', { name: /^Play recording/ }));
       await waitFor(() => expect(played).toHaveLength(1));
-      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Stop recording/ }));
+      fireEvent.click(within(rowFor('Rec')).getByRole('button', { name: /^Stop recording/ }));
       expect(pause).toHaveBeenCalled();
       expect(
-        within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }),
+        within(rowFor('Rec')).getByRole('button', { name: /^Play recording/ }),
       ).toBeInTheDocument();
     });
 
     it('stops playing when the view goes away', async () => {
       seed();
       const { unmount } = render(<ScanView {...baseProps} />);
-      fireEvent.click(within(rowFor('Rec (2)')).getByRole('button', { name: /^Play recording/ }));
+      fireEvent.click(within(rowFor('Rec')).getByRole('button', { name: /^Play recording/ }));
       await waitFor(() => expect(played).toHaveLength(1));
       pause.mockClear();
       unmount();
@@ -446,7 +464,7 @@ describe('ScanView Recent Hits rendering', () => {
       seed();
       render(<ScanView {...baseProps} />);
       const list = screen.getByRole('list', { name: 'Recent hits' });
-      const recPlay = within(rowFor('Rec (2)')).getByRole('button');
+      const recPlay = within(rowFor('Rec')).getByRole('button');
       const otherPlay = within(rowFor('Other')).getByRole('button');
       expect(recPlay).toHaveAttribute('tabindex', '-1');
 
@@ -457,6 +475,58 @@ describe('ScanView Recent Hits rendering', () => {
       expect(otherPlay).toHaveFocus();
       fireEvent.keyDown(otherPlay, { key: 'ArrowUp' });
       expect(recPlay).toHaveFocus();
+    });
+
+    // While a row plays: the time column reads elapsed / total across the
+    // whole queue, the tag column says which clip of how many, and a progress
+    // line runs along the bottom edge (#927, decided from the mockup).
+    describe('the playing row', () => {
+      const playingRow = () => document.querySelector('[data-playing]') as HTMLElement | null;
+      const progress = () =>
+        (playingRow()?.querySelector('[data-progress]') as HTMLElement | null)?.style.width;
+      const tick = (seconds: number) =>
+        act(() => {
+          const audio = played[played.length - 1];
+          Object.defineProperty(audio, 'currentTime', { configurable: true, value: seconds });
+          audio.dispatchEvent(new Event('timeupdate'));
+        });
+
+      it('shows elapsed / total, which clip, and progress, then returns to normal', async () => {
+        seed();
+        render(<ScanView {...baseProps} />);
+        expect(playingRow()).toBeNull();
+        fireEvent.click(within(rowFor('Rec')).getByRole('button', { name: /^Play recording/ }));
+        await waitFor(() => expect(played).toHaveLength(1));
+
+        const row = playingRow()!;
+        expect(row).toHaveTextContent('0:00 / 0:08');
+        expect(row).toHaveTextContent('Rec 1 of 2');
+        expect(row).not.toHaveTextContent('(2)');
+
+        tick(2); // 2 s into the 3 s first clip
+        expect(playingRow()).toHaveTextContent('0:02 / 0:08');
+        expect(progress()).toBe('25%');
+
+        endClip();
+        await waitFor(() => expect(played).toHaveLength(2));
+        tick(1); // 3 s of the first clip, then 1 s of the second
+        expect(playingRow()).toHaveTextContent('0:04 / 0:08');
+        expect(playingRow()).toHaveTextContent('Rec 2 of 2');
+        expect(progress()).toBe('50%');
+
+        endClip();
+        await waitFor(() => expect(playingRow()).toBeNull());
+        expect(screen.getByText('Rec (2)')).toBeInTheDocument();
+      });
+
+      it('shows no clip count on a row with a single clip', async () => {
+        seed();
+        render(<ScanView {...baseProps} />);
+        fireEvent.click(within(rowFor('Other')).getByRole('button', { name: /^Play recording/ }));
+        await waitFor(() => expect(played).toHaveLength(1));
+        expect(playingRow()).toHaveTextContent('Other');
+        expect(playingRow()).not.toHaveTextContent(/of 1/);
+      });
     });
   });
 
@@ -572,6 +642,31 @@ describe('ScanView Recent Hits rendering', () => {
         useStore.setState({ fullActivityLog: channels(11, 11) });
       });
       expect(list.scrollTop).toBe(0);
+    });
+
+    // #927: a playing row holds its place on screen even with the list at the
+    // top, the same anchoring #925 does for a scrolled list.
+    it('holds a playing row in place when a new hit arrives above it', async () => {
+      vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+      vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+      try {
+        const withClip = (entries: ActivityLogEntry[]) =>
+          entries.map((e) =>
+            e.id === 'h8' ? { ...e, hitUid: 'u-8', hasAudio: true, recordingDuration: 4 } : e,
+          );
+        useStore.setState({ fullActivityLog: withClip(channels(10, 10)) });
+        render(<ScanView {...baseProps} />);
+        const list = screen.getByRole('list', { name: 'Recent hits' });
+        fireEvent.click(screen.getByRole('button', { name: /^Play recording/ }));
+        await waitFor(() => expect(document.querySelector('[data-playing]')).not.toBeNull());
+
+        act(() => {
+          useStore.setState({ fullActivityLog: withClip(channels(11, 11)) });
+        });
+        expect(list.scrollTop).toBe(20);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 

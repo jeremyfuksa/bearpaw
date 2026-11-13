@@ -23,8 +23,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   signal meter marks each hit that has a recording. Point at the row, or
   move to it with the arrow keys, and a play button takes the meter's place;
   press it again to stop. A row that groups several hits plays their
-  recordings oldest to newest. It appears once recording is turned on
-  (#927).
+  recordings oldest to newest. While it plays, the row shows how far along
+  it is and which recording of how many, and it stays put on screen when
+  new hits arrive. It appears once recording is turned on (#927).
 - **Audio input discovery API.** API clients can list the backend computer's
   sound inputs as a first step toward recording. This does not yet capture
   audio or add recording controls to the app (#383).

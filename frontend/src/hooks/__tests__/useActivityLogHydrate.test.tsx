@@ -154,4 +154,24 @@ describe('useActivityLogHydrate', () => {
     expect(entry.hitUid).toBe('uid-1');
     expect(entry.hasAudio).toBe(expected);
   });
+
+  // The playing row's elapsed / total needs every clip's length up front.
+  it('carries the recording length', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [
+        {
+          id: 1,
+          timestamp: 100,
+          frequency: 146.85,
+          hit_uid: 'uid-1',
+          recording_status: 'ready',
+          recording_duration: 4.2,
+        },
+      ],
+    } as unknown as Response);
+    renderHook(() => useActivityLogHydrate());
+    await waitFor(() => expect(useStore.getState().fullActivityLog).toHaveLength(1));
+    expect(useStore.getState().fullActivityLog[0].recordingDuration).toBe(4.2);
+  });
 });

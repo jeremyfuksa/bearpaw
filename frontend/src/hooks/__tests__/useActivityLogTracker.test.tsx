@@ -180,5 +180,13 @@ describe('useActivityLogTracker', () => {
       fakeWs.emit('event', finished('uid-a', status));
       expect(hasAudio()).toEqual({ a: false, b: false });
     });
+
+    it('records the clip length on the hit', () => {
+      renderHook(() => useActivityLogTracker());
+      fakeWs.emit('event', finished('uid-a', 'ready'));
+      const [a, b] = useStore.getState().fullActivityLog;
+      expect(a.recordingDuration).toBe(4.2);
+      expect(b.recordingDuration).toBeUndefined();
+    });
   });
 });
