@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The bundle is signed with the hardened runtime, under which macOS
+	     denies microphone access outright, with no prompt, unless the app
+	     holds this entitlement (#930). -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>
