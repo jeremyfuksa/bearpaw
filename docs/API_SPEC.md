@@ -1007,6 +1007,37 @@ Segmentation, WAV storage, retention, playback and independent monitor volume
 remain follow-up work for #383. Recording is not complete without monitoring,
 because plugging into the headphone jack mutes the scanner's speaker.
 
+#### Finding the scanner's input
+
+`POST /api/v1/audio/find-input` (#930) finds which input the scanner's cable is
+in. It meters every input for 0.7 s, sends `SQL,0` so the scanner plays steady
+hiss, meters again for 1 s, and puts the squelch back. It takes about 2.5 s once
+the inputs are open; the first run after launch can take several seconds longer
+while the OS opens them.
+
+```json
+{"input": "1:USB Audio",
+ "inputs": [{"id": "1:USB Audio", "name": "USB Audio",
+             "quiet_dbfs": -88.2, "hiss_dbfs": -21.4, "hiss_peak": 0.41}]}
+```
+
+`input` is the input whose RMS rose at least 12 dB and reached at least
+-50 dBFS, or `null` when none did. Each input is compared with its own quiet
+reading, so a microphone that hears the room does not win by being loud.
+`inputs` lists every input that opened, with ids as in `GET /audio/devices`.
+`hiss_peak` (0.0–1.0) is the largest sample during the hiss; near 1.0 the
+recording would clip. A `null` dBFS means the input delivered no samples.
+
+The squelch is restored to the level the scanner reported in its `SQL` reply,
+not the UI's, on every way out, including when the caller disconnects. While
+it is open the live `squelch_level` reads 0, so the hiss is not logged as a hit.
+A restore that cannot reach the radio is sent when the same model reconnects.
+
+Errors: `503` with no scanner; `400 unsupported_model`; `409 sync_in_progress`,
+`409 program_mode_active`, or `409 find_input_in_progress` while another check
+runs; `400` when the squelch cannot be read or opened; `500` when no input can
+be enumerated.
+
 ---
 
 ## 4. WebSocket API
