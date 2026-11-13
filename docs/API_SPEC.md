@@ -979,18 +979,26 @@ browser's computer. It works without a connected scanner. Uses the platform's
 default audio host (CoreAudio on macOS, WASAPI on Windows, ALSA on Linux).
 
 ```json
-{"devices": [{"name": "USB Audio", "channels": 2, "sample_rate": 48000}]}
+{"devices": [{"id": "0:USB Audio", "name": "USB Audio", "channels": 2, "sample_rate": 48000}]}
 ```
 
 Entries are sorted by name. `channels` and `sample_rate` (Hz) describe the
-device's default input configuration, not a recording format. Names may be
-duplicated or change; they are display labels, not persistent selection IDs.
-No default-device identity or saved selection is promised by this endpoint.
+configuration CPAL would open by default, not the device's native default or a
+recording format. On ALSA, CPAL prefers 44.1 kHz and stereo where supported.
+Names are display labels and may be duplicated. Each opaque `id` combines the
+original input enumeration index and name, before sorting or skipping entries,
+so identical adapters differ. IDs are valid only for the current enumeration
+order/topology; re-enumerate after device changes, and do not save IDs as durable
+preferences. No default-device identity or saved selection is promised.
 
-An empty host returns `200` with `{"devices": []}`. Enumeration, device-name,
-default-configuration or worker failures return `500` with the standard
-`{"error": "...", "message": "...", "code": 500}` envelope, never a partial
-list or a successful empty list. Error text begins with `audio_`.
+An empty host returns `200` with `{"devices": []}`. Devices whose name or default
+configuration cannot be read are skipped with a warning; other inputs remain
+available. If every device is skipped the list is empty too. Host enumeration
+and worker failures return `500` with the standard
+`{"error": "...", "message": "...", "code": 500}` envelope. After five seconds,
+the request returns `500 audio_discovery_timeout`. Error text begins with
+`audio_`. The timeout bounds the HTTP wait but cannot cancel an OS call already
+running on the blocking worker; that worker can still delay runtime shutdown.
 
 This is discovery only: it opens no stream and does not record or monitor audio.
 The scanner's USB control link carries no audio; future capture requires a cable
