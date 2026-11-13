@@ -84,7 +84,7 @@ jobs:
           echo "pkgs=$APT_PKGS" >> "$GITHUB_OUTPUT"
           echo "key=apt-v3-$ImageOS-$ImageVersion-$(echo "$APT_PKGS" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
         env:
-          APT_PKGS: libudev-dev pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          APT_PKGS: libudev-dev libasound2-dev pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
       - name: Cache apt packages
         uses: actions/cache@v6
         with:

@@ -30,6 +30,11 @@
     "active": true,
     "targets": ["app", "dmg", "nsis", "deb", "appimage"],
     "icon": ["icons/icon.png"],
+    "linux": {
+      "deb": {
+        "depends": ["libasound2 | libasound2t64"]
+      }
+    },
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "10.15"
