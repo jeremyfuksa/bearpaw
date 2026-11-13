@@ -45,6 +45,9 @@ mod menu_ids {
     // Reveals the current backend log file in the OS file manager. Handled
     // entirely in the Rust shell (see on_menu_event) — no frontend event.
     pub const HELP_SHOW_LOGS: &str = "bearpaw:help:show-logs";
+    // Opens the Preferences dialog (#926): Bearpaw's own settings, kept apart
+    // from the tabs, which hold only things that touch the radio.
+    pub const APP_PREFERENCES: &str = "bearpaw:app:preferences";
 }
 
 #[derive(Default)]
@@ -302,13 +305,33 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
     // Apple menu — the standard macOS app submenu. About/Hide/Quit live
     // here per platform convention. Tauri's PredefinedMenuItem variants
     // fill in the localised labels.
-    let app_submenu = SubmenuBuilder::new(app, "Bearpaw")
+    // Preferences (#926), CmdOrCtrl+, on every platform. macOS puts it in the
+    // app menu as "Settings…" (Apple's name since Ventura). Windows and Linux
+    // have no system standard; Edit → Preferences… with Ctrl+, is what most
+    // cross-platform apps do (VS Code, Slack, Discord).
+    let macos = cfg!(target_os = "macos");
+    let preferences_item = MenuItemBuilder::with_id(
+        menu_ids::APP_PREFERENCES,
+        if macos {
+            "Settings…"
+        } else {
+            "Preferences…"
+        },
+    )
+    .accelerator("CmdOrCtrl+,")
+    .build(app)?;
+
+    let mut app_submenu = SubmenuBuilder::new(app, "Bearpaw")
         .item(&PredefinedMenuItem::about(
             app,
             Some("About Bearpaw"),
             Some(about_metadata.clone()),
         )?)
-        .separator()
+        .separator();
+    if macos {
+        app_submenu = app_submenu.item(&preferences_item).separator();
+    }
+    let app_submenu = app_submenu
         .item(&PredefinedMenuItem::hide(app, None)?)
         .item(&PredefinedMenuItem::hide_others(app, None)?)
         .item(&PredefinedMenuItem::show_all(app, None)?)
@@ -319,15 +342,18 @@ fn build_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Men
     // Edit: required, not decorative (#766). On macOS the webview carries out
     // Cmd+A/C/V/X/Z through these menu items, so without them every text
     // field in the app silently ignores those shortcuts.
-    let edit_submenu = SubmenuBuilder::new(app, "Edit")
+    let mut edit_submenu = SubmenuBuilder::new(app, "Edit")
         .undo()
         .redo()
         .separator()
         .cut()
         .copy()
         .paste()
-        .select_all()
-        .build()?;
+        .select_all();
+    if !macos {
+        edit_submenu = edit_submenu.separator().item(&preferences_item);
+    }
+    let edit_submenu = edit_submenu.build()?;
 
     // View: navigate between the three top-level tabs. ⌘1/⌘2/⌘3 match
     // common Mac muscle memory (Safari, Finder, etc.).

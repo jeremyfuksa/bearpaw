@@ -11,6 +11,7 @@ export interface MenuEventHandlers {
   onOpenDocs: () => void;
   onOpenIssues: () => void;
   onCheckForUpdates: () => void;
+  onOpenPreferences: () => void;
 }
 
 const NAV_TABS: Record<string, Tab> = {
@@ -29,6 +30,7 @@ const EVENT_NAMES = [
   'bearpaw:help:docs',
   'bearpaw:help:issues',
   'bearpaw:help:check-updates',
+  'bearpaw:app:preferences',
 ] as const;
 
 export function useMenuEvents(handlers: MenuEventHandlers): void {
@@ -64,6 +66,9 @@ export function useMenuEvents(handlers: MenuEventHandlers): void {
               break;
             case 'bearpaw:help:check-updates':
               handlers.onCheckForUpdates();
+              break;
+            case 'bearpaw:app:preferences':
+              handlers.onOpenPreferences();
               break;
           }
         });

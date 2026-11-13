@@ -275,11 +275,12 @@ describe('an unsupported scanner in App (#900)', () => {
     expect(screen.getByRole('tab', { name: 'Device' })).toBeInTheDocument();
   });
 
-  it('the Device page offers the info card and preferences, and reads no settings', async () => {
+  it('the Device page offers the info card, preferences stay reachable, and no settings are read', async () => {
     renderApp();
     await screen.findByText(FIRST_SENTENCE);
     await userEvent.click(screen.getByRole('tab', { name: 'Device' }));
     expect(await screen.findByText('Device Information')).toBeInTheDocument();
+    // The tab-bar gear (#926): app settings do not depend on the radio.
     expect(screen.getByRole('button', { name: 'Preferences' })).toBeInTheDocument();
     // Every card below sends a command; the backend would answer each with 400.
     expect(screen.queryByText('Audio & Power')).toBeNull();

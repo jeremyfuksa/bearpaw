@@ -51,7 +51,7 @@
             <li class="docs-nav-child"><a href="service-search.html">Service Search</a></li>
             <li class="docs-nav-child"><a href="custom-search.html">Custom Search</a></li>
             <li class="docs-nav-child"><a href="locked-channels.html">Locked Channels</a></li>
-            <li class="docs-nav-child"><a href="preferences.html" aria-current="page">Preferences</a></li>
+            <li><a href="preferences.html" aria-current="page">Preferences</a></li>
             <li><a href="troubleshooting.html">Menu & Troubleshooting</a></li>
             <li><a href="glossary.html">Glossary</a></li>
           </ul>
@@ -62,17 +62,27 @@
         <h1>Preferences</h1>
         <p>
           These settings live in the app on your computer, not the scanner.
-          Unlike the other Device pages, nothing here is written to the radio.
+          Nothing here is written to the radio, which is why they sit apart
+          from the Scan, Channels and Device tabs.
+        </p>
+        <p>
+          Open Preferences with the gear at the right end of the tab bar, or
+          with <strong>Bearpaw &rarr; Settings…</strong> on a Mac and
+          <strong>Edit &rarr; Preferences…</strong> on Windows and Linux.
+          The shortcut is <kbd>⌘,</kbd> on a Mac and <kbd>Ctrl+,</kbd>
+          elsewhere. It's split into three sections: General, Data &amp;
+          Storage, and About.
         </p>
 
         <figure class="docs-figure">
           <img
             src="assets/device-preferences.webp"
-            alt="The Preferences section: an About card with the app version, a GitHub link and a Check for Updates button; a support card headed Control your scanner anywhere, with a Support Bearpaw button; and Application Settings holding Hit Minimum Duration, a Show Log Files button, a Check for Updates on Launch toggle, a Re-read Channels on Connect toggle, and a Combine Scanner Analytics toggle."
+            alt="The Preferences dialog: a section list on the left with General, Data & Storage and About, and the General section on the right holding Hit Minimum Duration, a Re-read Channels on Connect toggle, and a Combine Scanner Analytics toggle."
           />
           <figcaption>Preferences — the app's own settings.</figcaption>
         </figure>
 
+        <h2 id="general">General</h2>
         <ul>
           <li>
             <strong>Hit Minimum Duration</strong>: 0.5 to 10 seconds. The shortest
@@ -80,24 +90,6 @@
             <a href="scan.html#recent-hits">activity log</a>. Raise it to filter
             out brief static bursts; lower it to catch quick exchanges. It's an
             app-side logging filter, separate from how the scanner behaves.
-          </li>
-          <li>
-            <strong>Show Log Files</strong>: opens the folder holding this
-            session's backend log on your computer. Useful when
-            <a href="troubleshooting.html">troubleshooting</a> a connection
-            problem, or when attaching a log to a bug report.
-          </li>
-          <li>
-            <strong>Data Retention</strong>: 30 Days, 90 Days, or 1 Year. How long
-            the app keeps its own activity and analytics logs before automatically
-            deleting the old ones.
-          </li>
-          <li>
-            <strong>Check for Updates on Launch</strong>: on or off. Asks GitHub
-            once at startup whether a newer release exists, and shows a
-            notification if one does. Turn it off and Bearpaw never contacts the
-            network on its own — you can still check any time from
-            <strong>Help &rarr; Check for Updates</strong>.
           </li>
           <li id="reread-channels">
             <strong>Re-read Channels on Connect</strong>: on or off, on by
@@ -124,6 +116,45 @@
               which also shows how old the current list is.
             </p>
           </li>
+          <li>
+            <strong>Combine Scanner Analytics</strong>: on or off. Counts hits
+            from every scanner you've used with Bearpaw, not just the one
+            connected now.
+          </li>
+        </ul>
+
+        <h2 id="data-storage">Data &amp; Storage</h2>
+        <ul>
+          <li>
+            <strong>Data Retention</strong>: 30 Days, 90 Days, or 1 Year. How long
+            the app keeps its own activity and analytics logs before automatically
+            deleting the old ones.
+          </li>
+          <li>
+            <strong>Show Log Files</strong>: opens the folder holding this
+            session's backend log on your computer. Useful when
+            <a href="troubleshooting.html">troubleshooting</a> a connection
+            problem, or when attaching a log to a bug report.
+          </li>
+        </ul>
+
+        <h2 id="about">About</h2>
+        <p>
+          The app version and a link to the project on GitHub, then the update
+          settings:
+        </p>
+        <ul>
+          <li>
+            <strong>Check for Updates on Launch</strong>: on or off. Asks GitHub
+            once at startup whether a newer release exists, and shows a
+            notification if one does. Turn it off and Bearpaw never contacts the
+            network on its own.
+          </li>
+          <li>
+            <strong>Check for Updates</strong>: runs the same check as
+            <strong>Help &rarr; Check for Updates</strong>, and always tells you
+            the result, even when you're already up to date.
+          </li>
         </ul>
         <div class="callout">
           <p>
@@ -135,12 +166,8 @@
           </p>
         </div>
         <p>
-          The page also has an <strong>About</strong> card — the app version, a
-          link to the project on GitHub, and a
-          <strong>Check for Updates</strong> button that runs the same check as
-          the Help menu and always tells you the result, even when you're already
-          up to date. Below it, a <strong>Support Bearpaw</strong> button. Support
-          keeps Bearpaw going and buys the scanners it learns to work with next.
+          Below that, a <strong>Support Bearpaw</strong> button. Support keeps
+          Bearpaw going and buys the scanners it learns to work with next.
         </p>
         <p class="docs-support">
           Did this help? Your support keeps me building Bearpaw and buys the
