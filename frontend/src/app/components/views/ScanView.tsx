@@ -64,9 +64,15 @@ function getRelativeTime(date: Date | number) {
   return `${days} days ago`;
 }
 
-/** Start time for the clock form of Recent Hits (#816), in the viewer's locale. */
-function formatClockTime(epochSeconds: number) {
-  return new Date(epochSeconds * 1000).toLocaleTimeString([], {
+/** Start time for the clock form of Recent Hits (#816). Local time follows the
+ *  viewer's locale; UTC is 24-hour and labelled, the way radio logs write it. */
+export function formatClockTime(epochSeconds: number, timezone: 'local' | 'utc') {
+  const date = new Date(epochSeconds * 1000);
+  if (timezone === 'utc') {
+    const time = date.toLocaleTimeString('en-GB', { timeZone: 'UTC', hourCycle: 'h23' });
+    return `${time} UTC`;
+  }
+  return date.toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',
@@ -255,6 +261,7 @@ export function ScanView({
   const showTagColumn = capabilities.has_alpha_tags;
   const recentHitsResetAt = useStore((state) => state.preferences.recentHitsResetAt);
   const showClockTime = useStore((state) => state.preferences.recentHitsTimeFormat === 'clock');
+  const clockTimezone = useStore((state) => state.preferences.recentHitsTimezone);
   const updatePreferences = useStore((state) => state.updatePreferences);
   const recentHits = useMemo(
     () =>
@@ -430,7 +437,7 @@ export function ScanView({
                   >
                     <span className="whitespace-nowrap tabular-nums text-white/60">
                       {showClockTime
-                        ? `${formatClockTime(hit.time)} · ${formatHitDuration(hit.duration)}`
+                        ? `${formatClockTime(hit.time, clockTimezone)} · ${formatHitDuration(hit.duration)}`
                         : getRelativeTime(hit.time)}
                     </span>
                     <span className="whitespace-nowrap text-right font-mono text-brand-light">

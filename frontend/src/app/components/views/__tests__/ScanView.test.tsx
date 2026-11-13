@@ -319,12 +319,28 @@ describe('ScanView Recent Hits rendering', () => {
 
     it('shows the start time and total duration when set to clock', () => {
       useStore.setState({
-        preferences: { ...useStore.getState().preferences, recentHitsTimeFormat: 'clock' },
+        preferences: {
+          ...useStore.getState().preferences,
+          recentHitsTimeFormat: 'clock',
+          recentHitsTimezone: 'local',
+        },
       });
       render(<ScanView {...baseProps} />);
       const row = screen.getByRole('listitem');
       expect(row).toHaveTextContent(`${clock} · 1m 05s`);
       expect(row).not.toHaveTextContent(/ago/);
+    });
+
+    it('shows the start time in UTC when that time zone is chosen', () => {
+      useStore.setState({
+        preferences: {
+          ...useStore.getState().preferences,
+          recentHitsTimeFormat: 'clock',
+          recentHitsTimezone: 'utc',
+        },
+      });
+      render(<ScanView {...baseProps} />);
+      expect(screen.getByRole('listitem')).toHaveTextContent('18:04:05 UTC · 1m 05s');
     });
   });
 

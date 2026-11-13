@@ -25,6 +25,7 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   analyticsScope: 'analytics_scope',
   activityExportTimezone: 'activity_export_timezone',
   recentHitsTimeFormat: 'recent_hits_time_format',
+  recentHitsTimezone: 'recent_hits_timezone',
 };
 
 const SECTIONS = ['General', 'Data & Storage', 'About'] as const;
@@ -216,6 +217,33 @@ export function PreferencesDialog({
                     }
                   />
                 </Row>
+
+                {/* Only with clock time on: elapsed time has no time zone, so
+                    the control would change nothing. */}
+                {preferences.recentHitsTimeFormat === 'clock' && (
+                  <Row
+                    label="Recent Hits Time Zone"
+                    description="Show start times in your local time or in UTC"
+                  >
+                    <Select
+                      value={preferences.recentHitsTimezone}
+                      onValueChange={(value) =>
+                        handlePreferenceChange('recentHitsTimezone', value as 'local' | 'utc')
+                      }
+                    >
+                      <SelectTrigger
+                        aria-label="Recent Hits Time Zone"
+                        className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-sm text-white"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="border-white/10 bg-gray-900 text-white">
+                        <SelectItem value="local">Local</SelectItem>
+                        <SelectItem value="utc">UTC</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Row>
+                )}
               </>
             )}
 

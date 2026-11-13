@@ -10,8 +10,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **See when a hit started and how long it lasted.** Turn on Show Clock Time
   in Recent Hits, in Preferences, and each row shows its start time and
-  length instead of how long ago it happened. A row that groups several hits
-  on one channel shows their total time on the air (#816).
+  length instead of how long ago it happened, in local time or UTC. A row
+  that groups several hits on one channel shows their total time on the air
+  (#816).
 - **Clear Recent Hits.** A Clear button empties the list so it shows only
   what comes in next, and it stays empty after a relaunch. Your activity log,
   charts and exports keep every hit (#818).
