@@ -1,10 +1,12 @@
 //! Host-side audio discovery, independent of the scanner's USB control link.
 //! Audio requires a cable from the scanner's headphone jack to a host input.
-//! This module does not open streams or persist device selections.
+//! Discovery opens no streams; `meter` opens them briefly to measure levels.
+//! Nothing here persists a device selection.
 
 use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
 
+pub mod meter;
 pub mod segment;
 pub mod wav;
 
@@ -43,6 +45,12 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     })))
 }
 
+/// An input's id: enumeration index plus name. Discovery and the meter must
+/// agree on it, so the setup flow can name the input it found.
+fn device_id(index: usize, name: &str) -> String {
+    format!("{index}:{name}")
+}
+
 fn collect_devices(
     devices: impl Iterator<Item = Result<AudioDeviceInfo, String>>,
 ) -> Vec<AudioDeviceInfo> {
@@ -50,7 +58,7 @@ fn collect_devices(
         .enumerate()
         .filter_map(|(index, result)| match result {
             Ok(mut device) => {
-                device.id = format!("{index}:{}", device.name);
+                device.id = device_id(index, &device.name);
                 Some(device)
             }
             Err(error) => {
