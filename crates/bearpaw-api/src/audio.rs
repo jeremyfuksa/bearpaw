@@ -5,6 +5,8 @@
 use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
 
+pub mod segment;
+
 /// A snapshot of an input and the configuration CPAL would open by default.
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct AudioDeviceInfo {
