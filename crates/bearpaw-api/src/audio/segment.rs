@@ -36,6 +36,7 @@ pub struct Segmenter {
     min_frames: u64,
     ring: VecDeque<f32>,
     cursor: u64,
+    accepted_end_frame: u64,
     active: Option<(u64, u64)>,
 }
 
@@ -50,6 +51,7 @@ impl Segmenter {
             min_frames,
             ring: VecDeque::new(),
             cursor: 0,
+            accepted_end_frame: 0,
             active: None,
         }
     }
@@ -71,25 +73,31 @@ impl Segmenter {
     }
 
     /// Open at the current cursor and return available pre-roll, oldest first.
+    /// Pre-roll starts no earlier than the previous accepted clip's end; audio
+    /// in the gap after that end remains eligible, including discarded clips.
     /// Repeated opens are ignored (`None`) until a close: callers may forward
     /// repeated polled squelch states without restarting the minimum gate.
     pub fn open(&mut self) -> Option<Vec<f32>> {
         if self.active.is_some() {
             return None;
         }
-        self.active = Some((self.cursor - self.ring.len() as u64, self.cursor));
-        Some(self.ring.iter().copied().collect())
+        let ring_start = self.cursor - self.ring.len() as u64;
+        let start_frame = ring_start.max(self.accepted_end_frame);
+        let skip = (start_frame - ring_start) as usize;
+        self.active = Some((start_frame, self.cursor));
+        Some(self.ring.iter().skip(skip).copied().collect())
     }
 
     /// Close at the current cursor. Return no clip for an unmatched close or
     /// a transmission below the minimum. Padding cannot rescue a key-up.
-    /// The ring survives closes, so adjacent clips may share pre-roll frames.
+    /// Only an accepted clip advances the floor for the next clip's pre-roll.
     pub fn close(&mut self) -> Option<ClipBoundary> {
         let (start_frame, open_frame) = self.active.take()?;
         let live_frames = self.cursor - open_frame;
         if live_frames == 0 || live_frames < self.min_frames {
             return None;
         }
+        self.accepted_end_frame = self.cursor;
         let frames = self.cursor - start_frame;
         let rate = u64::from(self.sample_rate.get());
         Some(ClipBoundary {
@@ -144,19 +152,74 @@ mod tests {
     }
 
     #[test]
-    fn back_to_back_hits_keep_separate_boundaries_and_fresh_pre_roll() {
+    fn back_to_back_hits_do_not_share_pre_roll() {
         let mut s = segmenter(2, 2);
         assert_eq!(s.open(), Some(vec![])); // startup has no pre-roll
         s.push_frames(&[0.1, 0.2, 0.3]);
         let first = s.close().unwrap();
-        assert_eq!(s.open(), Some(vec![0.2, 0.3]));
+        assert_eq!(s.open(), Some(vec![]));
         s.push_frames(&[0.4, 0.5]);
         let second = s.close().unwrap();
         assert_eq!((first.start_frame, first.end_frame), (0, 3));
         assert_eq!(
             (second.start_frame, second.open_frame, second.end_frame),
-            (1, 3, 5)
+            (3, 3, 5)
         );
+        assert_eq!(second.duration, Duration::from_millis(2));
+    }
+
+    #[test]
+    fn short_gap_pre_roll_starts_at_the_previous_accepted_end() {
+        let mut s = segmenter(4, 2);
+        s.open().unwrap();
+        s.push_frames(&[0.1, 0.2, 0.3]);
+        let first = s.close().unwrap();
+        s.push_frames(&[0.4, 0.5]);
+        assert_eq!(s.open(), Some(vec![0.4, 0.5]));
+        s.push_frames(&[0.6, 0.7]);
+        let second = s.close().unwrap();
+        assert_eq!(second.start_frame, first.end_frame);
+        assert_eq!((second.open_frame, second.end_frame), (5, 7));
+        assert_eq!(second.duration, Duration::from_millis(4));
+    }
+
+    #[test]
+    fn long_gap_keeps_the_full_bounded_pre_roll() {
+        let mut s = segmenter(2, 2);
+        s.open().unwrap();
+        s.push_frames(&[0.1, 0.2, 0.3]);
+        let first = s.close().unwrap();
+        s.push_frames(&[0.4, 0.5, 0.6, 0.7, 0.8]);
+        assert_eq!(s.open(), Some(vec![0.7, 0.8]));
+        s.push_frames(&[0.9, 1.0]);
+        let second = s.close().unwrap();
+        assert!(second.start_frame > first.end_frame);
+        assert_eq!(
+            (second.start_frame, second.open_frame, second.end_frame),
+            (6, 8, 10)
+        );
+        assert_eq!(second.duration, Duration::from_millis(4));
+    }
+
+    #[test]
+    fn discarded_clips_do_not_advance_the_previous_accepted_end() {
+        let mut s = segmenter(10, 3);
+        s.open().unwrap();
+        s.push_frames(&[0.1, 0.2, 0.3]);
+        let first = s.close().unwrap();
+        s.push_frames(&[0.4]);
+        s.open().unwrap();
+        s.push_frames(&[0.5, 0.6]);
+        assert_eq!(s.close(), None); // below minimum, despite pre-roll
+        s.open().unwrap();
+        assert_eq!(s.close(), None); // empty clips do not advance it either
+        s.push_frames(&[0.7]);
+        assert_eq!(s.open(), Some(vec![0.4, 0.5, 0.6, 0.7]));
+        s.push_frames(&[0.8, 0.9, 1.0]);
+        let second = s.close().unwrap();
+        assert_eq!(second.start_frame, first.end_frame);
+        assert_eq!((second.open_frame, second.end_frame), (7, 10));
+        assert_eq!(second.duration, Duration::from_millis(7));
     }
 
     #[test]
