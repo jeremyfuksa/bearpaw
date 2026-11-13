@@ -58,6 +58,39 @@ describe('PreferencesDialog', () => {
     );
   });
 
+  it('saves the Recent Hits clock-time switch under the key the store reads back (#816)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    useStore.setState({
+      preferences: { ...useStore.getState().preferences, recentHitsTimeFormat: 'relative' },
+    });
+    renderDialog();
+
+    await userEvent.click(screen.getByRole('switch', { name: /Show Clock Time in Recent Hits/i }));
+
+    await waitFor(() => expect(useStore.getState().preferences.recentHitsTimeFormat).toBe('clock'));
+    // The key mapStoredPreferences reads, so the choice survives a relaunch.
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/preferences'),
+      expect.objectContaining({ body: JSON.stringify({ recent_hits_time_format: 'clock' }) }),
+    );
+  });
+
+  it('offers the Recent Hits time zone only while clock time is on', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response));
+    useStore.setState({
+      preferences: { ...useStore.getState().preferences, recentHitsTimeFormat: 'relative' },
+    });
+    renderDialog();
+    expect(screen.queryByRole('combobox', { name: 'Recent Hits Time Zone' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('switch', { name: /Show Clock Time in Recent Hits/i }));
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Recent Hits Time Zone' }),
+    ).toBeInTheDocument();
+  });
+
   it('keeps the saved preference and reports a persistence failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
     renderDialog();
@@ -88,6 +121,8 @@ describe('PREFERENCE_KEY_MAP', () => {
   it.each([
     ['dataRetentionDays', 'data_retention_days'],
     ['hitMinDuration', 'hit_min_duration'],
+    ['recentHitsTimeFormat', 'recent_hits_time_format'],
+    ['recentHitsTimezone', 'recent_hits_timezone'],
   ])('maps %s to %s', (camel, snake) => {
     expect(PREFERENCE_KEY_MAP[camel as keyof typeof PREFERENCE_KEY_MAP]).toBe(snake);
   });

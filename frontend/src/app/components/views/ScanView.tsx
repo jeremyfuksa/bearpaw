@@ -64,6 +64,30 @@ function getRelativeTime(date: Date | number) {
   return `${days} days ago`;
 }
 
+/** Start time for the clock form of Recent Hits (#816). Local time follows the
+ *  viewer's locale; UTC is 24-hour and labelled, the way radio logs write it. */
+export function formatClockTime(epochSeconds: number, timezone: 'local' | 'utc') {
+  const date = new Date(epochSeconds * 1000);
+  if (timezone === 'utc') {
+    const time = date.toLocaleTimeString('en-GB', { timeZone: 'UTC', hourCycle: 'h23' });
+    return `${time} UTC`;
+  }
+  return date.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+/** "8s", "1m 05s", "1h 02m": how long a hit, or a rolled-up run, was on the air. */
+export function formatHitDuration(seconds: number) {
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${minutes}m ${String(total % 60).padStart(2, '0')}s`;
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+}
+
 /** `rssi` is 0–100 (the scanner's own 0–5 bars × 20 where it reports them,
  *  #815), so this recovers the LCD's bar count exactly. A value of 0–5 is a
  *  weak 0–100 reading, never a bar count: treating it as one drew 3% as 3 bars. */
@@ -80,6 +104,8 @@ export interface RolledHit {
   tag: string;
   strength: number;
   time: number;
+  /** Seconds on the air, summed across a rolled-up run (#816). */
+  duration: number;
   count: number;
 }
 
@@ -97,7 +123,9 @@ function hitGroupKey(entry: ActivityLogEntry): string {
  * A different channel breaks the run: `A, A, B, A` yields three rows, not two.
  *
  * Signal strength is the rounded average of the group's normalized strengths;
- * the `(N)` count suffix is only appended when the group has more than one hit.
+ * duration is the group's TOTAL airtime, not the newest hit's (#816): a row
+ * reading "WOF Rides (6)" is one conversation, and its length is the sum.
+ * The `(N)` count suffix is only appended when the group has more than one hit.
  */
 export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
   const groups: RolledHit[] = [];
@@ -119,6 +147,7 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
         tag: entry.alpha_tag || '',
         strength: strengthSum,
         time: entry.timestamp,
+        duration: entry.duration ?? 0,
         count: 1,
       });
       continue;
@@ -126,6 +155,7 @@ export function rollUpHits(entries: ActivityLogEntry[]): RolledHit[] {
     // Extend the current (last-pushed) group.
     const group = groups[groups.length - 1];
     group.count += 1;
+    group.duration += entry.duration ?? 0;
     strengthSum += normalizeSignal(entry.rssi);
     group.strength = Math.round(strengthSum / group.count);
   }
@@ -230,6 +260,8 @@ export function ScanView({
   const capabilities = useScannerCapabilities();
   const showTagColumn = capabilities.has_alpha_tags;
   const recentHitsResetAt = useStore((state) => state.preferences.recentHitsResetAt);
+  const showClockTime = useStore((state) => state.preferences.recentHitsTimeFormat === 'clock');
+  const clockTimezone = useStore((state) => state.preferences.recentHitsTimezone);
   const updatePreferences = useStore((state) => state.updatePreferences);
   const recentHits = useMemo(
     () =>
@@ -368,7 +400,8 @@ export function ScanView({
             // ("59 seconds ago") and doesn't wobble as the relative-time
             // string ticks ("17 seconds ago" → "18 seconds ago" → "1 minute
             // ago" …). `ch` scales with the font, so the floor tracks the
-            // fluid type sizing automatically.
+            // fluid type sizing automatically. The clock form (#816) is
+            // wider and does not tick, so `max-content` simply takes it.
             //
             // Each row is a fifth of the list's height (`auto-rows-[20%]`, no
             // row gap), so five fill it exactly and the sixth starts just out
@@ -402,8 +435,10 @@ export function ScanView({
                     data-hit-id={hit.id}
                     className="col-span-4 grid grid-cols-subgrid items-center rounded-[4px] px-[clamp(2px,1cqmin,12px)] hover:bg-white/5"
                   >
-                    <span className="whitespace-nowrap text-white/60">
-                      {getRelativeTime(hit.time)}
+                    <span className="whitespace-nowrap tabular-nums text-white/60">
+                      {showClockTime
+                        ? `${formatClockTime(hit.time, clockTimezone)} · ${formatHitDuration(hit.duration)}`
+                        : getRelativeTime(hit.time)}
                     </span>
                     <span className="whitespace-nowrap text-right font-mono text-brand-light">
                       {hit.frequency}

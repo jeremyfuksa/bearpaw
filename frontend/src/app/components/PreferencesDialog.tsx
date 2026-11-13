@@ -24,6 +24,8 @@ export const PREFERENCE_KEY_MAP: Partial<Record<keyof Preferences, string>> = {
   rereadMemoryOnConnect: 'reread_memory_on_connect',
   analyticsScope: 'analytics_scope',
   activityExportTimezone: 'activity_export_timezone',
+  recentHitsTimeFormat: 'recent_hits_time_format',
+  recentHitsTimezone: 'recent_hits_timezone',
 };
 
 const SECTIONS = ['General', 'Data & Storage', 'About'] as const;
@@ -201,6 +203,47 @@ export function PreferencesDialog({
                     }
                   />
                 </Row>
+
+                <Row
+                  label="Show Clock Time in Recent Hits"
+                  htmlFor="recent-hits-time-format"
+                  description="Show when each hit started and how long it lasted, instead of how long ago"
+                >
+                  <Switch
+                    id="recent-hits-time-format"
+                    checked={preferences.recentHitsTimeFormat === 'clock'}
+                    onCheckedChange={(checked) =>
+                      handlePreferenceChange('recentHitsTimeFormat', checked ? 'clock' : 'relative')
+                    }
+                  />
+                </Row>
+
+                {/* Only with clock time on: elapsed time has no time zone, so
+                    the control would change nothing. */}
+                {preferences.recentHitsTimeFormat === 'clock' && (
+                  <Row
+                    label="Recent Hits Time Zone"
+                    description="Show start times in your local time or in UTC"
+                  >
+                    <Select
+                      value={preferences.recentHitsTimezone}
+                      onValueChange={(value) =>
+                        handlePreferenceChange('recentHitsTimezone', value as 'local' | 'utc')
+                      }
+                    >
+                      <SelectTrigger
+                        aria-label="Recent Hits Time Zone"
+                        className="h-8 w-[var(--size-select-medium)] border-white/10 bg-white/5 text-sm text-white"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="border-white/10 bg-gray-900 text-white">
+                        <SelectItem value="local">Local</SelectItem>
+                        <SelectItem value="utc">UTC</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Row>
+                )}
               </>
             )}
 

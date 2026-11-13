@@ -55,6 +55,19 @@ export interface Preferences {
    * does not bring the cleared hits back.
    */
   recentHitsResetAt: number | null;
+  /**
+   * How Recent Hits stamps each row (#816): 'relative' ("3 minutes ago") or
+   * 'clock' (the start time and how long it lasted). An option, not a
+   * replacement: elapsed time is the default because it answers "is this
+   * still going on", which a clock time makes you work out.
+   */
+  recentHitsTimeFormat: 'relative' | 'clock';
+  /**
+   * Whether the clock form of Recent Hits reads local time or UTC. Separate
+   * from `activityExportTimezone` on purpose: someone may log in UTC and still
+   * want to read the screen in local time, or the other way round.
+   */
+  recentHitsTimezone: 'local' | 'utc';
 }
 
 /**
@@ -156,6 +169,8 @@ const defaultPreferences: Preferences = {
   activityExportTimezone: 'local',
   unsupportedPanelDismissed: [],
   recentHitsResetAt: null,
+  recentHitsTimeFormat: 'relative',
+  recentHitsTimezone: 'local',
 };
 
 /**
@@ -200,6 +215,8 @@ export function mapStoredPreferences(stored: Record<string, unknown>): Preferenc
       : [],
     recentHitsResetAt:
       typeof prefs.recent_hits_reset_at === 'number' ? prefs.recent_hits_reset_at : null,
+    recentHitsTimeFormat: prefs.recent_hits_time_format === 'clock' ? 'clock' : 'relative',
+    recentHitsTimezone: prefs.recent_hits_timezone === 'utc' ? 'utc' : 'local',
   };
 }
 

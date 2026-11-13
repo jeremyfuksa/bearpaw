@@ -393,6 +393,8 @@ describe('useStore', () => {
       activity_export_timezone: 'utc',
       unsupported_panel_dismissed: ['sds100-1'],
       recent_hits_reset_at: 1_700_000_000,
+      recent_hits_time_format: 'clock',
+      recent_hits_timezone: 'utc',
     };
 
     it('restores analyticsScope from the backend', () => {
@@ -417,6 +419,8 @@ describe('useStore', () => {
         activityExportTimezone: 'utc',
         unsupportedPanelDismissed: ['sds100-1'],
         recentHitsResetAt: 1_700_000_000,
+        recentHitsTimeFormat: 'clock',
+        recentHitsTimezone: 'utc',
       });
     });
 
@@ -445,6 +449,8 @@ describe('useStore', () => {
         activityExportTimezone: 'local',
         unsupportedPanelDismissed: [],
         recentHitsResetAt: null,
+        recentHitsTimeFormat: 'relative',
+        recentHitsTimezone: 'local',
       });
     });
 
