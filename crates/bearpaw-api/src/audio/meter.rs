@@ -107,8 +107,7 @@ impl InputMeter {
 }
 
 fn open(device: &cpal::Device) -> Result<(String, Arc<Mutex<Level>>, cpal::Stream), String> {
-    let name = device.name().map_err(|e| e.to_string())?;
-    let config = device.default_input_config().map_err(|e| e.to_string())?;
+    let (name, config) = super::input_config(device)?;
     let level = Arc::new(Mutex::new(Level::default()));
     let format = config.sample_format();
     let config: cpal::StreamConfig = config.into();
