@@ -28,7 +28,7 @@ serialport = "4"
 rusb = { version = "0.9", features = ["vendored"] }
 thiserror = "2"
 csv = "1"
-rusqlite = { version = "0.41", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 # Host audio discovery (CoreAudio / WASAPI / ALSA); Linux needs libasound2-dev.
 cpal = "0.15"
 hound = "3.5"
