@@ -1,11 +1,12 @@
 //! Host-side audio discovery, independent of the scanner's USB control link.
 //! Audio requires a cable from the scanner's headphone jack to a host input.
-//! Discovery opens no streams; `meter` opens them briefly to measure levels.
+//! Discovery opens no streams; `meter` measures levels and `capture` delivers frames.
 //! Nothing here persists a device selection.
 
 use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
 
+pub mod capture;
 pub mod convert;
 pub mod meter;
 pub mod segment;
@@ -46,10 +47,18 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     })))
 }
 
-/// An input's id: enumeration index plus name. Discovery and the meter must
+/// An input's id: enumeration index plus name. Discovery, meter and capture must
 /// agree on it, so the setup flow can name the input it found.
 fn device_id(index: usize, name: &str) -> String {
     format!("{index}:{name}")
+}
+
+/// Shared default-input lookup for metering and capture. Opening/playing stays
+/// on the caller's thread because a CPAL stream is not always Send.
+fn input_config(device: &cpal::Device) -> Result<(String, cpal::SupportedStreamConfig), String> {
+    let name = device.name().map_err(|e| e.to_string())?;
+    let config = device.default_input_config().map_err(|e| e.to_string())?;
+    Ok((name, config))
 }
 
 fn collect_devices(
