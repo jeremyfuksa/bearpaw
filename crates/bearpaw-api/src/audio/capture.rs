@@ -268,13 +268,13 @@ fn open(id: &str, output: Output) -> Result<(String, cpal::Stream), String> {
     let device = devices
         .enumerate()
         .find_map(|(index, device)| {
-            let name = device.name().ok()?;
+            let name = super::device_name(&device).ok()?;
             (super::device_id(index, &name) == id).then_some(device)
         })
         .ok_or_else(|| format!("audio_input_not_found: {id}"))?;
     let (name, config) = super::input_config(&device)?;
     let format = config.sample_format();
-    let sink = output.converter(config.sample_rate().0, config.channels())?;
+    let sink = output.converter(config.sample_rate(), config.channels())?;
     let config = config.into();
     let stream = match format {
         SampleFormat::F32 => build::<f32>(&device, &config, sink),
@@ -299,7 +299,7 @@ where
     let errors = sink.output.events.clone();
     device
         .build_input_stream(
-            config,
+            config.clone(),
             move |data: &[T], _| sink.push(data),
             move |error| {
                 let _ = errors.try_send(Event::Failed(error.to_string()));
