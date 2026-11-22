@@ -32,9 +32,7 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         .input_devices()
         .map_err(|e| format!("audio_enumerate_failed: {e}"))?;
     Ok(collect_devices(devices.map(|device| {
-        let name = device
-            .name()
-            .map_err(|e| format!("audio_device_name_failed: {e}"))?;
+        let name = device_name(&device).map_err(|e| format!("audio_device_name_failed: {e}"))?;
         let config = device
             .default_input_config()
             .map_err(|e| format!("audio_device_config_failed: {name}: {e}"))?;
@@ -42,7 +40,7 @@ pub fn list_input_devices() -> Result<Vec<AudioDeviceInfo>, String> {
             id: String::new(),
             name,
             channels: config.channels(),
-            sample_rate: config.sample_rate().0,
+            sample_rate: config.sample_rate(),
         })
     })))
 }
@@ -53,10 +51,17 @@ fn device_id(index: usize, name: &str) -> String {
     format!("{index}:{name}")
 }
 
+/// A device's name. cpal 0.18 removed `DeviceTrait::name()`; the description's
+/// name is the same string (CoreAudio reads both from `get_device_name`), so ids
+/// built from it are unchanged.
+fn device_name(device: &cpal::Device) -> Result<String, cpal::Error> {
+    Ok(device.description()?.name().to_string())
+}
+
 /// Shared default-input lookup for metering and capture. Opening/playing stays
 /// on the caller's thread because a CPAL stream is not always Send.
 fn input_config(device: &cpal::Device) -> Result<(String, cpal::SupportedStreamConfig), String> {
-    let name = device.name().map_err(|e| e.to_string())?;
+    let name = device_name(device).map_err(|e| e.to_string())?;
     let config = device.default_input_config().map_err(|e| e.to_string())?;
     Ok((name, config))
 }

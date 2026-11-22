@@ -133,7 +133,7 @@ where
 {
     device
         .build_input_stream(
-            config,
+            config.clone(),
             move |data: &[T], _| {
                 let mut level = level.lock().unwrap();
                 for &sample in data {
