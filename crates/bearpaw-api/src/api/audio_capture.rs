@@ -124,14 +124,24 @@ impl CaptureService {
     }
 
     fn spawn(&self, selected: Option<&str>) -> Result<Box<dyn Session>, ApiError> {
+        // Ids are opaque: a device name can begin or end with spaces, and
+        // discovery puts the name in verbatim. Trim only to ask "is anything
+        // selected?"; the stored id reaches lookup and spawn unchanged.
         let id = selected
-            .map(str::trim)
-            .filter(|id| !id.is_empty())
+            .filter(|id| !id.trim().is_empty())
             .ok_or_else(|| ApiError::BadRequest("audio_input_required".into()))?;
         let inputs = self.host.inputs().map_err(ApiError::Internal)?;
         if !inputs.iter().any(|input| input.id == id) {
             // Ids are topology-sensitive. Name the failure; do not fall back to
             // the default input or the first one that happens to be present.
+            //
+            // Known limit, not an oversight: an id is `index:name`, so two
+            // same-named inputs that exchange enumeration positions between
+            // launches each still resolve -- to the sibling. The id cannot
+            // express the difference, and refusing every duplicated name would
+            // also refuse a selection the user just made from a fresh list.
+            // Telling them apart needs a stable per-device identity in
+            // discovery, which this slice deliberately does not change.
             return Err(ApiError::NotFound("audio_input_not_found".into()));
         }
         self.host
@@ -212,6 +222,7 @@ mod tests {
     struct FakeHost {
         inputs: Vec<String>,
         spawns: AtomicUsize,
+        last_id: std::sync::Mutex<Option<String>>,
         fail_spawn: bool,
         drop_frames: u64,
     }
@@ -223,6 +234,7 @@ mod tests {
 
         fn spawn(&self, id: &str) -> Result<Box<dyn Session>, String> {
             self.spawns.fetch_add(1, Ordering::SeqCst);
+            *self.last_id.lock().unwrap() = Some(id.to_string());
             if self.fail_spawn {
                 return Err("device busy".into());
             }
@@ -257,6 +269,7 @@ mod tests {
         Arc::new(FakeHost {
             inputs: ids.iter().map(|id| id.to_string()).collect(),
             spawns: AtomicUsize::new(0),
+            last_id: std::sync::Mutex::new(None),
             fail_spawn: false,
             drop_frames: 0,
         })
@@ -314,10 +327,52 @@ mod tests {
     }
 
     #[test]
+    fn an_id_is_passed_through_verbatim_including_surrounding_whitespace() {
+        // Discovery builds the id from the device name unmodified, and a name may
+        // legitimately end in a space. Trimming before lookup would report an
+        // available input as missing for a selection saved exactly as offered.
+        let host = host(&["0:USB ", "1:Built-in"]);
+        let mut service = CaptureService::with_host(host.clone());
+        service.start(Some("0:USB ")).unwrap();
+        assert_eq!(
+            host.last_id.lock().unwrap().as_deref(),
+            Some("0:USB "),
+            "the id must reach spawn unchanged"
+        );
+        // A trimmed value is a different id, and is not found.
+        let mut other = CaptureService::with_host(host.clone());
+        assert!(matches!(
+            other.start(Some("0:USB")).unwrap_err(),
+            ApiError::NotFound(message) if message == "audio_input_not_found"
+        ));
+    }
+
+    #[test]
+    fn a_duplicated_name_resolves_only_by_its_indexed_id() {
+        // Identical adapters share a name and differ only by enumeration index,
+        // which is the whole reason the id carries the index. This pins that the
+        // index is honoured verbatim, so a name-only match is never invented.
+        let host = host(&["0:USB", "1:USB"]);
+        let mut service = CaptureService::with_host(host.clone());
+        service.start(Some("1:USB")).unwrap();
+        assert_eq!(host.last_id.lock().unwrap().as_deref(), Some("1:USB"));
+        service.stop();
+        service.start(Some("0:USB")).unwrap();
+        assert_eq!(host.last_id.lock().unwrap().as_deref(), Some("0:USB"));
+        service.stop();
+        // The bare name is not an id, however tempting a prefix match would be.
+        assert!(matches!(
+            service.start(Some("USB")).unwrap_err(),
+            ApiError::NotFound(message) if message == "audio_input_not_found"
+        ));
+    }
+
+    #[test]
     fn a_host_failure_surfaces_in_status_and_can_be_retried() {
         let host = Arc::new(FakeHost {
             inputs: vec!["0:USB".to_string()],
             spawns: AtomicUsize::new(0),
+            last_id: std::sync::Mutex::new(None),
             fail_spawn: true,
             drop_frames: 0,
         });
@@ -339,6 +394,7 @@ mod tests {
         let host = Arc::new(FakeHost {
             inputs: vec!["0:USB".to_string()],
             spawns: AtomicUsize::new(0),
+            last_id: std::sync::Mutex::new(None),
             fail_spawn: false,
             drop_frames: 12,
         });
@@ -382,6 +438,7 @@ mod tests {
             host: Arc::new(FakeHost {
                 inputs: vec!["0:USB".to_string()],
                 spawns: AtomicUsize::new(0),
+                last_id: std::sync::Mutex::new(None),
                 fail_spawn: false,
                 drop_frames: 0,
             }),

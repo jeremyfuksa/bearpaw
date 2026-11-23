@@ -1076,9 +1076,17 @@ PUT /api/v1/preferences/audio_input_device   {"value": "1:USB Audio"}
 An id encodes an enumeration index, so it is only valid for the enumeration and
 topology that produced it. The preference is re-checked on every start, and a
 stored id that no longer resolves is refused rather than replaced, so the wrong
-input is never captured silently. Changing the preference while capture runs
-takes effect at the next stop and start; a running capture keeps the input it
-opened.
+input is never captured silently. The id is compared exactly as stored: a device
+name may contain leading or trailing spaces, so clients must save the `id`
+byte-for-byte and must not trim it.
+
+Ids cannot distinguish two inputs that share a name and swap enumeration
+positions between launches: `0:USB` then resolves to the other adapter. That is
+undetectable from the id, because the id *is* the index plus the name. Browsers
+of the list should therefore re-enumerate before saving, and a client that needs
+to be certain which physical adapter is recorded must ask the user to re-pick
+after a topology change. Changing the preference while capture runs takes effect
+at the next stop and start; a running capture keeps the input it opened.
 
 Errors use the standard envelope:
 
