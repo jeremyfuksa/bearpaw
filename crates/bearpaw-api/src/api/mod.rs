@@ -56,6 +56,10 @@ pub struct AppState {
     pub analytics_log: Arc<Mutex<Vec<ActivityHit>>>,
     pub active_hit: Arc<Mutex<Option<ActiveHit>>>,
     pub next_hit_id: Arc<AtomicU64>,
+    /// Counter for `new_hit_uid`. Separate from `next_hit_id`, which numbers
+    /// STORED rows: a uid is allocated at squelch-open, so a hit that turns out
+    /// too short to store still consumed one and must never share it.
+    pub next_hit_uid: Arc<AtomicU64>,
     pub session_id: Arc<String>,
     pub preferences_db_path: Arc<String>,
     pub analytics_db_path: Arc<String>,
@@ -199,10 +203,21 @@ pub struct ActivityHit {
     /// channel numbers comparable. Telling two units of the SAME model apart
     /// needs the identity work in #414.
     pub scanner_id: Option<String>,
+    /// Durable id for this hit, allocated when the squelch opened (#383).
+    ///
+    /// `None` on rows recorded before Bearpaw allocated ids. Those rows stay
+    /// readable history; nothing invents an id for them, so a client must
+    /// treat `None` as "this hit predates recording", not as "its recording is
+    /// missing".
+    pub hit_uid: Option<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ActiveHit {
+    /// Allocated at squelch-open, before any row exists, so the live
+    /// `scan_hit` event and the later stored row name the same hit. See
+    /// `new_hit_uid`.
+    pub hit_uid: String,
     pub timestamp: f64,
     pub frequency: f64,
     pub channel: Option<u16>,
@@ -233,7 +248,7 @@ const CHANNEL_CACHE_FLUSH_SECS: u64 = 30;
 /// scanner session (#688). One USB tick is at worst three 500 ms transfers plus
 /// the 200 ms interval, so 3 s covers it with room; past that, exit anyway.
 const POLL_LOOP_STOP_TIMEOUT: Duration = Duration::from_secs(3);
-const ANALYTICS_SCHEMA_VERSION: i32 = 2;
+const ANALYTICS_SCHEMA_VERSION: i32 = 3;
 
 /// How many recorded hits are loaded into the in-memory activity log at
 /// startup, **per scanner**.
@@ -881,6 +896,7 @@ pub fn default_state() -> AppState {
         analytics_log: Arc::new(Mutex::new(loaded_hits)),
         active_hit: Arc::new(Mutex::new(None)),
         next_hit_id: Arc::new(AtomicU64::new(next_hit_id)),
+        next_hit_uid: Arc::new(AtomicU64::new(0)),
         session_id: Arc::new(format!("session-{}", uuid_simple())),
         preferences_db_path: Arc::new(preferences_db_path),
         analytics_db_path: Arc::new(analytics_db_path),
@@ -1027,8 +1043,14 @@ pub(crate) fn is_hit(live: &LiveState) -> bool {
 pub(crate) fn track_analytics_transition(state: &AppState, live: &LiveState, prev_hit: bool) {
     let hit = is_hit(live);
     if hit && !prev_hit {
+        // The uid is allocated at OPEN, not at close: the live `scan_hit`
+        // event is broadcast from this same transition, and a recording's
+        // file has to be named before the row that will outlive it exists.
+        // Joining the two later by timestamp would be guesswork at 5 Hz.
+        let hit_uid = new_hit_uid(state);
         let mut active = state.active_hit.lock().unwrap();
         *active = Some(ActiveHit {
+            hit_uid,
             timestamp: live.timestamp,
             frequency: live.frequency,
             channel: live.channel,
@@ -1078,6 +1100,7 @@ pub(crate) fn track_analytics_transition(state: &AppState, live: &LiveState, pre
                     // ends the hit), and reading here keeps the one source of
                     // truth -- DeviceInfo -- as the only place a model lives.
                     scanner_id: state.device.read().ok().and_then(|d| d.model.clone()),
+                    hit_uid: Some(open_hit.hit_uid),
                 };
                 {
                     state.analytics_log.lock().unwrap().push(entry.clone());
@@ -1086,6 +1109,19 @@ pub(crate) fn track_analytics_transition(state: &AppState, live: &LiveState, pre
             }
         }
     }
+}
+
+/// A process-unique, restart-safe id for one hit.
+///
+/// Allocated at squelch-OPEN, not when the row is written: the id has to name
+/// things that exist before the row does (the live `scan_hit` the UI renders,
+/// and a recording's file), and joining those to the row later by timestamp
+/// would be guesswork at 5 Hz. Milliseconds keep two runs apart; the counter
+/// keeps two hits in the same millisecond apart. It is also a legal file stem,
+/// so a recorder can use it as one.
+pub(crate) fn new_hit_uid(state: &AppState) -> String {
+    let counter = state.next_hit_uid.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{:x}", (epoch_now() * 1000.0) as u64, counter)
 }
 
 pub(crate) fn min_hit_duration(state: &AppState) -> f64 {
@@ -1309,7 +1345,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
         // before Bearpaw tracked this", so they get their own allowance rather
         // than competing with an identified scanner.
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT id, timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id
+            "SELECT id, timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id, hit_uid
              FROM (
                  SELECT *, ROW_NUMBER() OVER (
                      PARTITION BY scanner_id ORDER BY timestamp DESC
@@ -1332,6 +1368,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
                 let session_id: String = row.get(10)?;
                 let ended_at: Option<f64> = row.get(11)?;
                 let scanner_id: Option<String> = row.get(12)?;
+                let hit_uid: Option<String> = row.get(13)?;
                 Ok(ActivityHit {
                     id: id.to_string(),
                     timestamp,
@@ -1346,6 +1383,7 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
                     session_id,
                     ended_at: ended_at.unwrap_or(timestamp),
                     scanner_id,
+                    hit_uid,
                 })
             });
             if let Ok(rows) = rows {
@@ -1384,8 +1422,8 @@ fn load_analytics_hits_from_db(path: &str) -> Vec<ActivityHit> {
 fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
     if let Some(conn) = open_sqlite(path) {
         let _ = conn.execute(
-            "INSERT INTO scan_hits (timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO scan_hits (timestamp, frequency, channel, alpha_tag, modulation, rssi, duration, mode, bank, session_id, ended_at, scanner_id, hit_uid)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             rusqlite::params![
                 hit.timestamp,
                 hit.frequency,
@@ -1398,7 +1436,8 @@ fn insert_analytics_hit(path: &str, hit: &ActivityHit) {
                 hit.bank,
                 hit.session_id,
                 hit.ended_at,
-                hit.scanner_id
+                hit.scanner_id,
+                hit.hit_uid
             ],
         );
     }
@@ -1903,6 +1942,30 @@ fn migrate_analytics_db(path: &str, conn: &rusqlite::Connection) -> Result<(), M
             "
             ALTER TABLE scan_hits ADD COLUMN scanner_id TEXT;
             CREATE INDEX IF NOT EXISTS idx_hits_scanner ON scan_hits(scanner_id);
+            ",
+        )?;
+    }
+    if current < 3 {
+        // A durable identity per hit (#383). Allocated at squelch-open and
+        // carried by both the live `scan_hit` event and the stored row, so a
+        // recording, a playback request and a rendered row can name the same
+        // transmission without guessing from a timestamp.
+        //
+        // Nullable on purpose: rows written before this migration have no uid.
+        // They stay readable history and nothing invents an id for them, which
+        // is why the index is UNIQUE rather than NOT NULL -- SQLite allows many
+        // NULLs in a unique index, so old rows coexist while a repeated uid is
+        // still refused. That refusal is the point: an id that can repeat cannot
+        // join anything reliably.
+        //
+        // Later recording slices add their columns in their own step; this one
+        // owns `hit_uid` alone.
+        run_migration_step(
+            conn,
+            3,
+            "
+            ALTER TABLE scan_hits ADD COLUMN hit_uid TEXT;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_hits_hit_uid ON scan_hits(hit_uid);
             ",
         )?;
     }
@@ -4741,13 +4804,14 @@ pub(crate) mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-    /// A v1 database carrying real hits must reach v2 with every row intact.
+    /// A v1 database carrying real hits must reach the current schema with
+    /// every row intact.
     ///
     /// Migrations are forward-only (#418), so a step that drops rows on the way
     /// up is unrecoverable except from the pre-migration `.bak`.
     #[test]
-    fn analytics_v1_upgrades_to_v2_without_losing_hits() {
-        let path = temp_db_file("analytics-v1-to-v2");
+    fn analytics_v1_upgrades_to_the_current_schema_without_losing_hits() {
+        let path = temp_db_file("analytics-v1-to-current");
         seed_v1_analytics_db(&path, &[(146.7, Some("KC FIRE 1")), (154.1, None)]);
 
         init_analytics_db(path.to_str().expect("path to string")).expect("migrate");
@@ -4756,11 +4820,14 @@ pub(crate) mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 2, "the step must bump the version");
+        assert_eq!(
+            version, ANALYTICS_SCHEMA_VERSION,
+            "the step must bump the version"
+        );
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM scan_hits", [], |row| row.get(0))
             .expect("count rows");
-        assert_eq!(rows, 2, "no hit may be lost on the way to v2");
+        assert_eq!(rows, 2, "no hit may be lost on the way up");
         let _ = std::fs::remove_file(&path);
     }
 
@@ -4839,12 +4906,136 @@ pub(crate) mod tests {
             session_id: "s".to_string(),
             ended_at: 105.0,
             scanner_id: Some("BC75XLT".to_string()),
+            hit_uid: None,
         };
         insert_analytics_hit(&p, &hit);
 
         let loaded = load_analytics_hits_from_db(&p);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].scanner_id.as_deref(), Some("BC75XLT"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The hit id survives a restart, because it is what a recording is filed
+    /// under (#383). An id that exists only in memory names nothing after the
+    /// next launch.
+    #[test]
+    fn a_hit_uid_round_trips_through_sqlite() {
+        let path = temp_db_file("analytics-hit-uid");
+        let p = path.to_str().expect("path to string").to_string();
+        init_analytics_db(&p).expect("migrate");
+
+        let hit = ActivityHit {
+            id: "1".to_string(),
+            timestamp: 100.0,
+            frequency: 146.7,
+            channel: Some(12),
+            alpha_tag: None,
+            rssi: 36,
+            duration: 5.0,
+            modulation: "NFM".to_string(),
+            mode: ScannerMode::Scan,
+            bank: Some(1),
+            session_id: "s".to_string(),
+            ended_at: 105.0,
+            scanner_id: Some("BC125AT".to_string()),
+            hit_uid: Some("1794540552100-2a".to_string()),
+        };
+        insert_analytics_hit(&p, &hit);
+
+        let loaded = load_analytics_hits_from_db(&p);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].hit_uid.as_deref(), Some("1794540552100-2a"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Every hit recorded before this migration stays readable, with no
+    /// invented id.
+    ///
+    /// `hit_uid` is nullable precisely so this holds: a client must be able to
+    /// tell "this hit predates recordings" from "this hit's recording is
+    /// missing". Filling the column with a generated value would make old
+    /// history indistinguishable from new hits that lost their audio.
+    #[test]
+    fn a_row_recorded_before_the_migration_keeps_a_null_hit_uid() {
+        let path = temp_db_file("analytics-hit-uid-legacy");
+        seed_v1_analytics_db(&path, &[(146.7, Some("KC FIRE 1"))]);
+
+        let p = path.to_str().expect("path to string").to_string();
+        init_analytics_db(&p).expect("migrate");
+
+        let loaded = load_analytics_hits_from_db(&p);
+        assert_eq!(loaded.len(), 1, "the old row is still there");
+        assert_eq!(loaded[0].frequency, 146.7);
+        assert_eq!(loaded[0].hit_uid, None, "an id is not invented for history");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The id is what a recording joins on, so a repeat would join two hits to
+    /// one clip.
+    ///
+    /// The index is UNIQUE, and the second half is why that is safe to add to a
+    /// table that already holds rows: SQLite allows many NULLs in a unique
+    /// index, so the pre-migration rows coexist while a duplicated id is
+    /// refused.
+    #[test]
+    fn a_repeated_hit_uid_is_refused_but_many_nulls_are_allowed() {
+        let path = temp_db_file("analytics-hit-uid-unique");
+        let p = path.to_str().expect("path to string").to_string();
+        init_analytics_db(&p).expect("migrate");
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+
+        let insert = |uid: Option<&str>| {
+            conn.execute(
+                "INSERT INTO scan_hits (timestamp, frequency, modulation, rssi, duration, mode, session_id, ended_at, hit_uid)
+                 VALUES (1.0, 146.7, 'NFM', 30, 5.0, 'SCAN', 's', 6.0, ?1)",
+                rusqlite::params![uid],
+            )
+        };
+        insert(None).expect("a pre-migration row with no id");
+        insert(None).expect("a second one -- many NULLs must be allowed");
+        insert(Some("u-1")).expect("first use of an id");
+        assert!(
+            insert(Some("u-1")).is_err(),
+            "a repeated id must be refused, or two hits join one clip"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The migration adds the column and the unique index, and bumps the
+    /// version, in one step.
+    #[test]
+    fn the_analytics_migration_adds_a_unique_hit_uid() {
+        let path = temp_db_file("analytics-hit-uid-schema");
+        seed_v1_analytics_db(&path, &[]);
+        let p = path.to_str().expect("path to string");
+        init_analytics_db(p).expect("migrate");
+
+        let conn = rusqlite::Connection::open(&path).expect("reopen");
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(scan_hits)")
+            .expect("table_info")
+            .query_map([], |row| row.get::<usize, String>(1))
+            .expect("rows")
+            .flatten()
+            .collect();
+        assert!(
+            columns.iter().any(|c| c == "hit_uid"),
+            "scan_hits must carry hit_uid: {columns:?}"
+        );
+        let unique_index: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master \
+                 WHERE type = 'index' AND name = 'idx_hits_hit_uid' AND sql LIKE '%UNIQUE%'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("index lookup");
+        assert_eq!(unique_index, 1, "the id must be unique, not merely indexed");
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, ANALYTICS_SCHEMA_VERSION);
         let _ = std::fs::remove_file(&path);
     }
 
@@ -4882,6 +5073,7 @@ pub(crate) mod tests {
             session_id: "s".to_string(),
             ended_at: ts + 1.0,
             scanner_id: Some(scanner.to_string()),
+            hit_uid: None,
         };
 
         // The quiet scanner recorded FIRST, so every one of its hits is older

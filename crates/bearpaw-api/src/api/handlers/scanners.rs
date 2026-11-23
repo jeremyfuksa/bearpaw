@@ -402,6 +402,7 @@ mod tests {
             session_id: "s".to_string(),
             ended_at: epoch_now(),
             scanner_id: model.map(str::to_string),
+            hit_uid: None,
         };
         insert_analytics_hit(&state.analytics_db_path, &hit);
         state.analytics_log.lock().unwrap().push(hit);

@@ -907,7 +907,8 @@ Get activity log entries with optional filtering.
     "mode": "SCAN",
     "bank": 1,
     "session_id": "session-abc123",
-    "ended_at": 1704412812.623
+    "ended_at": 1704412812.623,
+    "hit_uid": "1794540552100-2a"
   }
 ]
 ```
@@ -926,6 +927,7 @@ Get activity log entries with optional filtering.
 | `bank` | number or null | Bank number |
 | `session_id` | string | Session identifier |
 | `ended_at` | number or null | Unix timestamp when hit ended |
+| `hit_uid` | string or null | Durable id for this hit, allocated when the squelch opened. The same value the `scan_hit` event carried, so a client can join the two. `null` on hits recorded before Bearpaw allocated ids; that means "predates recordings", not "its recording is missing". |
 
 **Errors:**
 - `503 Service Unavailable` if analytics not enabled
