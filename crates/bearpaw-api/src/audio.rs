@@ -1,7 +1,8 @@
 //! Host-side audio discovery, independent of the scanner's USB control link.
 //! Audio requires a cable from the scanner's headphone jack to a host input.
-//! Discovery opens no streams; `meter` measures levels and `capture` delivers frames.
-//! Nothing here persists a device selection.
+//! Discovery opens no streams; `meter` measures levels, `capture` delivers frames,
+//! and `monitor` holds the frames a future output stream plays. Nothing here
+//! persists a device selection.
 
 use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
@@ -9,6 +10,7 @@ use serde::Serialize;
 pub mod capture;
 pub mod convert;
 pub mod meter;
+pub mod monitor;
 pub mod segment;
 pub mod wav;
 
