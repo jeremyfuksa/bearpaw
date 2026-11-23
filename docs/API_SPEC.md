@@ -988,8 +988,10 @@ recording format. On ALSA, CPAL prefers 44.1 kHz and stereo where supported.
 Names are display labels and may be duplicated. Each opaque `id` combines the
 original input enumeration index and name, before sorting or skipping entries,
 so identical adapters differ. IDs are valid only for the current enumeration
-order/topology; re-enumerate after device changes, and do not save IDs as durable
-preferences. No default-device identity or saved selection is promised.
+order/topology; re-enumerate after device changes. A saved id is a remembered
+choice, not a durable device identity: re-check it against a fresh enumeration
+and refuse it by name when it no longer resolves (see **Starting and stopping
+capture**), never trust it across a topology change.
 
 An empty host returns `200` with `{"devices": []}`. Devices whose name or default
 configuration cannot be read are skipped with a warning; other inputs remain
@@ -1037,6 +1039,61 @@ Errors: `503` with no scanner; `400 unsupported_model`; `409 sync_in_progress`,
 `409 program_mode_active`, or `409 find_input_in_progress` while another check
 runs; `400` when the squelch cannot be read or opened; `500` when no input can
 be enumerated.
+
+#### Starting and stopping capture
+
+Three routes own the one host capture. Nothing starts one at launch, and each is
+safe to call when nothing is running.
+
+| Route | Meaning |
+| --- | --- |
+| `POST /api/v1/audio/capture/start` | Start the input named by the `audio_input_device` preference. Idempotent: while a capture runs it returns the current status without re-enumerating or switching inputs. |
+| `POST /api/v1/audio/capture/stop` | Stop it. Idempotent, and returns at once — it never waits for a device to close. |
+| `GET /api/v1/audio/capture/status` | Current status. No side effects. |
+
+All three return the same body:
+
+```json
+{"running": true, "connected": false, "device_name": "USB Audio",
+ "last_error": "device lost", "dropped_frames": 128}
+```
+
+`running` means a capture worker is alive, including while it retries after a
+device failure; it is not proof that audio is arriving. `connected` means the
+input opened and is playing. `device_name` and `dropped_frames` are carried over
+from the last session, so a stopped capture still names the input it used and
+how many samples a full queue discarded. `last_error` is the retained last
+failure — including a start that was refused, which is how a client answers "why
+is nothing running?" after a restart.
+
+The selection is the preference `audio_input_device`, holding an `id` exactly as
+`GET /audio/devices` returns it, and `""` when nothing has been chosen:
+
+```json
+PUT /api/v1/preferences/audio_input_device   {"value": "1:USB Audio"}
+```
+
+An id encodes an enumeration index, so it is only valid for the enumeration and
+topology that produced it. The preference is re-checked on every start, and a
+stored id that no longer resolves is refused rather than replaced, so the wrong
+input is never captured silently. Changing the preference while capture runs
+takes effect at the next stop and start; a running capture keeps the input it
+opened.
+
+Errors use the standard envelope:
+
+| Status | `error` | When |
+| --- | --- | --- |
+| `400` | `audio_input_required` | No input is selected (missing, empty or whitespace preference). |
+| `404` | `audio_input_not_found` | The selected id is not in the current enumeration — unplugged, reordered or renamed. |
+| `500` | `audio_enumerate_failed: ...` | The host could not list inputs. |
+| `500` | `audio_capture_start_failed: ...` | The input resolved but would not open or play. |
+| `500` | `audio_capture_task_failed: ...` | The blocking worker did not run. |
+
+This slice starts and stops a stream only: no frames are written to disk,
+segmented, associated with a hit, monitored or played back, so **recording still
+does not work in the app**. Monitoring is still required, because the headphone
+cable mutes the scanner's speaker.
 
 ---
 
