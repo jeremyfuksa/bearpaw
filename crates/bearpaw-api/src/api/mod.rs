@@ -3,6 +3,7 @@
 //! Compatibility-first API surface so the Rust backend can replace the Python backend
 //! without frontend contract regressions.
 
+mod audio_capture;
 mod channel_cache;
 mod control;
 mod find_input;
@@ -60,6 +61,7 @@ pub struct AppState {
     pub preferences_db_path: Arc<String>,
     pub analytics_db_path: Arc<String>,
     pub preferences: Arc<Mutex<Map<String, Value>>>,
+    pub(crate) audio_capture: Arc<Mutex<audio_capture::CaptureService>>,
     pub ws_tx: broadcast::Sender<String>,
     pub sequence: Arc<AtomicU64>,
     /// Held across sequence take + ws_tx.send so two producers can't take
@@ -257,6 +259,9 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/audio/find-input",
             post(find_input::post_find_input),
         )
+        .route("/api/v1/audio/capture/start", post(audio_capture::start))
+        .route("/api/v1/audio/capture/stop", post(audio_capture::stop))
+        .route("/api/v1/audio/capture/status", get(audio_capture::status))
         .route("/api/v1/status", get(handlers::status::get_status))
         .route(
             "/api/v1/device/info",
@@ -769,8 +774,9 @@ pub async fn run_server_with_shutdown(
         }
     });
 
-    // `router(state)` moves the state, so take the shutdown handle first.
+    // `router(state)` moves the state, so take the shutdown handles first.
     let shutdown_state = state.clone();
+    let capture_state = shutdown_state.clone();
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!("Bearpaw API listening on http://{}", bind);
@@ -797,6 +803,12 @@ pub async fn run_server_with_shutdown(
             );
         }
     }
+    // Release the host input before exit. The analytics and channel-cache loops
+    // above hold `AppState` clones for the life of the runtime, so dropping the
+    // caller's handle does not drop the capture service: without this, a started
+    // capture would keep the device open after the HTTP surface that can stop it
+    // has gone. Never joins the owner thread; it only asks it to shut down.
+    capture_state.audio_capture.lock().unwrap().stop();
     // Final flush before exit. This is the one that makes a clean quit lose
     // nothing: without it, up to CHANNEL_CACHE_FLUSH_SECS of channel edits
     // would be absent from the cache on next launch, and the user would see
@@ -885,6 +897,7 @@ pub fn default_state() -> AppState {
         preferences_db_path: Arc::new(preferences_db_path),
         analytics_db_path: Arc::new(analytics_db_path),
         preferences: Arc::new(Mutex::new(loaded_preferences)),
+        audio_capture: Arc::new(Mutex::new(audio_capture::CaptureService::new())),
         ws_tx,
         sequence: Arc::new(AtomicU64::new(0)),
         sequence_send: Arc::new(Mutex::new(())),
@@ -948,6 +961,10 @@ pub(crate) fn default_preferences() -> Map<String, Value> {
     m.insert(
         "audio_output_device".to_string(),
         Value::String("default".to_string()),
+    );
+    m.insert(
+        "audio_input_device".to_string(),
+        Value::String(String::new()),
     );
     m.insert(
         "recordings_path".to_string(),
