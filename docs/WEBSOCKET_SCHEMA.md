@@ -63,10 +63,18 @@ Two event subtypes are carried under `type: "event"`, distinguished by `event`.
     "frequency": 151.2500,
     "channel": 25,
     "alpha_tag": "Police Dispatch",
-    "rssi": 75
+    "rssi": 75,
+    "hit_uid": "1794540552100-2a"
   }
 }
 ```
+
+`hit_uid` is the durable id for this hit, allocated at squelch-open. The stored
+row for the same hit carries it in `GET /api/v1/analytics/activity-log`, so a
+client joins the live event to persisted history by that id rather than by
+timestamp. It names one transmission for its whole life, including when the
+transmission is too short to store: then no row appears, and the id is not
+reused. See #383.
 
 **`state_stale`** — the backend stopped receiving fresh polls (scanner went
 quiet or disconnected):

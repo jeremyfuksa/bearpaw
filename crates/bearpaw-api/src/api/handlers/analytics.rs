@@ -282,6 +282,7 @@ mod tests {
             session_id: "s".to_string(),
             ended_at: 105.0,
             scanner_id: scanner_id.map(str::to_string),
+            hit_uid: None,
         }
     }
 

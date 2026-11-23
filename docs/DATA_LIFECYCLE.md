@@ -35,6 +35,12 @@ Define how Bearpaw stores, migrates, retains, and cleans up local data so app up
   pre-#414 install is moved onto the first real profile it is a complete image
   of, once (`channel_cache::adopt_placeholder_cache`).
 - Analytics DB: `analytics.db` (scan hit history and aggregates)
+  - `scan_hits` (schema version 3, #383): one row per stored hit. Version 3
+    adds `hit_uid`, the durable id allocated when the squelch opened, unique
+    where present. It is nullable by design: rows recorded before the migration
+    keep `NULL` rather than being given an invented id, which is how a client
+    tells "this hit predates recordings" from "this hit's recording is
+    missing".
 
 Cached channel memory is **disposable**. It is a read accelerator; the scanner
 is the source of truth, and losing the cache costs a memory sync, never data.

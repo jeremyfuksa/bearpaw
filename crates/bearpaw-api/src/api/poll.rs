@@ -1694,6 +1694,15 @@ fn broadcast_live_update(state: &AppState, live: LiveState) {
     let _ = state.ws_tx.send(msg.to_string());
 
     if is_hit(&live) && !prev_hit {
+        // The uid was allocated by `track_analytics_transition` a moment ago,
+        // in this same transition. Sending it with the opening event lets a
+        // client join a later recording and the stored row to the hit it has
+        // already rendered, instead of matching on timestamps.
+        let hit_uid = state
+            .active_hit
+            .lock()
+            .ok()
+            .and_then(|active| active.as_ref().map(|hit| hit.hit_uid.clone()));
         let event = json!({
             "type": "event",
             "timestamp": live.timestamp,
@@ -1703,6 +1712,7 @@ fn broadcast_live_update(state: &AppState, live: LiveState) {
                 "channel": live.channel,
                 "alpha_tag": live.alpha_tag,
                 "rssi": live.rssi,
+                "hit_uid": hit_uid,
             }
         });
         let _ = state.ws_tx.send(event.to_string());
@@ -1919,6 +1929,132 @@ mod tests {
         let log = state.analytics_log.lock().unwrap();
         assert_eq!(log.len(), 1, "one hit is logged");
         assert_eq!(log[0].rssi, 100, "the hit keeps its strongest reading");
+    }
+
+    /// Drain the socket and return the `hit_uid` of every `scan_hit` in it.
+    fn scan_hit_uids(rx: &mut tokio::sync::broadcast::Receiver<String>) -> Vec<String> {
+        let mut out = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            let v: serde_json::Value = serde_json::from_str(&m).expect("ws message is json");
+            if v["event"] == "scan_hit" {
+                out.push(
+                    v["data"]["hit_uid"]
+                        .as_str()
+                        .expect("every scan_hit names its hit (#383)")
+                        .to_string(),
+                );
+            }
+        }
+        out
+    }
+
+    /// The hit's id is allocated when the squelch OPENS, and it is the same id
+    /// the stored row carries.
+    ///
+    /// This is the join every later slice depends on: the live event paints a
+    /// row before the transmission has ended, and the recording and the stored
+    /// history have to name that same row. Allocating at close would be too
+    /// late for the event; joining by timestamp at 5 Hz would be guesswork.
+    #[test]
+    fn a_hit_uid_is_allocated_at_squelch_open_and_names_the_stored_row() {
+        let state = crate::api::default_state();
+        let mut rx = state.ws_tx.subscribe();
+        let frame = |t: f64, squelch_open: bool| LiveState {
+            timestamp: t,
+            frequency: 162.55,
+            channel: Some(3),
+            squelch_open,
+            squelch_level: 2,
+            ..LiveState::default()
+        };
+
+        broadcast_live_update(&state, frame(0.0, false));
+        broadcast_live_update(&state, frame(1.0, true));
+        let opened = scan_hit_uids(&mut rx);
+        assert_eq!(opened.len(), 1, "one hit opens");
+        assert!(!opened[0].is_empty(), "the opening event carries an id");
+        assert!(
+            state.analytics_log.lock().unwrap().is_empty(),
+            "no row exists yet -- the id is allocated before the row"
+        );
+
+        broadcast_live_update(&state, frame(5.0, false));
+        let log = state.analytics_log.lock().unwrap();
+        assert_eq!(log.len(), 1);
+        assert_eq!(
+            log[0].hit_uid.as_deref(),
+            Some(opened[0].as_str()),
+            "the row carries the id the event announced"
+        );
+    }
+
+    /// A hit too short to store still consumes an id, and the next hit gets a
+    /// new one.
+    ///
+    /// The counter is the reason ids cannot repeat: a hit below the minimum
+    /// leaves no row, and reusing its id for the next transmission would point
+    /// whatever was recorded at the first hit's audio at the second hit's row.
+    /// The row's acceptance is the only minimum-length authority (#937); this
+    /// only asserts ids are not recycled across it.
+    #[test]
+    fn a_hit_too_short_to_store_still_consumes_its_uid() {
+        let state = crate::api::default_state();
+        let mut rx = state.ws_tx.subscribe();
+        let frame = |t: f64, squelch_open: bool| LiveState {
+            timestamp: t,
+            frequency: 155.1,
+            channel: Some(7),
+            squelch_open,
+            squelch_level: 2,
+            ..LiveState::default()
+        };
+
+        // 0.5 s at the default 2.0 s minimum: a key-up, no row.
+        broadcast_live_update(&state, frame(0.0, false));
+        broadcast_live_update(&state, frame(1.0, true));
+        broadcast_live_update(&state, frame(1.5, false));
+        assert!(
+            state.analytics_log.lock().unwrap().is_empty(),
+            "a key-up below the minimum writes no row"
+        );
+
+        broadcast_live_update(&state, frame(10.0, true));
+        broadcast_live_update(&state, frame(20.0, false));
+
+        let uids = scan_hit_uids(&mut rx);
+        assert_eq!(uids.len(), 2, "both hits opened");
+        assert_ne!(uids[0], uids[1], "the dropped hit's id is not recycled");
+
+        let log = state.analytics_log.lock().unwrap();
+        assert_eq!(log.len(), 1, "only the long hit is stored");
+        assert_eq!(
+            log[0].hit_uid.as_deref(),
+            Some(uids[1].as_str()),
+            "the stored row belongs to the second hit"
+        );
+    }
+
+    /// Ids are unique within a process even when many hits start in the same
+    /// millisecond.
+    ///
+    /// The millisecond prefix keeps two runs apart; the counter is what makes
+    /// simultaneous hits distinguishable. A timestamp-only id would collide
+    /// here, and the unique index would then drop a row.
+    #[test]
+    fn hit_uids_do_not_repeat() {
+        let state = crate::api::default_state();
+        let ids: std::collections::HashSet<String> = (0..1_000)
+            .map(|_| crate::api::new_hit_uid(&state))
+            .collect();
+        assert_eq!(ids.len(), 1_000, "every allocated id is distinct");
+        for id in &ids {
+            let (millis, counter) = id.split_once('-').expect("millis-counter");
+            assert!(millis.parse::<u64>().is_ok(), "{id} starts with millis");
+            assert!(
+                u64::from_str_radix(counter, 16).is_ok(),
+                "{id} ends in a hex counter"
+            );
+        }
     }
 
     /// REGRESSION GUARD (#722): an open squelch at `SQL,0` is not a hit.
