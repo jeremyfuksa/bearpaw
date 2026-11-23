@@ -7,6 +7,7 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use serde::Serialize;
 
 pub mod capture;
+pub mod continuity;
 pub mod convert;
 pub mod meter;
 pub mod segment;
