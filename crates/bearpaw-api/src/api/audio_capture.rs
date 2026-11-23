@@ -104,7 +104,11 @@ impl CaptureService {
         if self.status().running {
             return Ok(self.status());
         }
-        // A worker that died is never reused; drop it before spawning again.
+        // A worker that died is never reused. Keep what it last reported before
+        // dropping the handle: if the replacement start is refused, status must
+        // still name the input that ran and the frames it dropped, exactly as a
+        // stopped capture does.
+        self.last = self.status();
         self.session = None;
         match self.spawn(selected) {
             Ok(session) => {
@@ -428,12 +432,19 @@ mod tests {
 
     #[test]
     fn a_worker_that_died_reports_a_stopped_capture() {
-        struct DeadSession;
+        struct DeadSession(CaptureStatus);
         impl Session for DeadSession {
             fn status(&self) -> CaptureStatus {
-                CaptureStatus::default() // running and connected both false
+                self.0.clone()
             }
         }
+        let dead = CaptureStatus {
+            // A dead worker reports neither running nor connected.
+            device_name: Some("USB".into()),
+            last_error: Some("device lost".into()),
+            dropped_frames: 7,
+            ..CaptureStatus::default()
+        };
         let mut service = CaptureService {
             host: Arc::new(FakeHost {
                 inputs: vec!["0:USB".to_string()],
@@ -442,11 +453,21 @@ mod tests {
                 fail_spawn: false,
                 drop_frames: 0,
             }),
-            session: Some(Box::new(DeadSession)),
+            session: Some(Box::new(DeadSession(dead))),
             last: CaptureStatus::default(),
         };
         let status = service.status();
         assert!(!status.running && !status.connected);
+        // A refused replacement keeps the dead session's report instead of
+        // reverting to the older/empty one (#1052 review).
+        assert!(matches!(
+            service.start(None).unwrap_err(),
+            ApiError::BadRequest(message) if message == "audio_input_required"
+        ));
+        let kept = service.status();
+        assert_eq!(kept.device_name.as_deref(), Some("USB"));
+        assert_eq!(kept.dropped_frames, 7);
+        assert_eq!(kept.last_error.as_deref(), Some("audio_input_required"));
         // Start treats it as stopped and replaces the handle.
         assert!(service.start(Some("0:USB")).unwrap().running);
     }
