@@ -1095,8 +1095,18 @@ Errors use the standard envelope:
 | `400` | `audio_input_required` | No input is selected (missing, empty or whitespace preference). |
 | `404` | `audio_input_not_found` | The selected id is not in the current enumeration — unplugged, reordered or renamed. |
 | `500` | `audio_enumerate_failed: ...` | The host could not list inputs. |
-| `500` | `audio_capture_start_failed: ...` | The input resolved but would not open or play. |
+| `500` | `audio_capture_start_failed: ...` | The capture thread could not be launched (an OS thread error), not a device that refused to open. |
 | `500` | `audio_capture_task_failed: ...` | The blocking worker did not run. |
+
+**A `200` from start means a worker was launched, not that the device opened.**
+The capture thread opens and plays the input itself, so a device that enumerates
+but then refuses to open returns `200` with `running: true, connected: false`,
+keeps the reason in `last_error`, and retries every two seconds — it does not
+report `audio_capture_start_failed`. A device that disappears between the
+enumeration and the open reports `last_error: "audio_input_not_found: <id>"`
+from the capture layer, which is a status string, not the route's `404`. Clients
+must poll `status` for `connected` rather than reading `200` as "capturing", and
+surface `last_error` while `connected` is false.
 
 This slice starts and stops a stream only: no frames are written to disk,
 segmented, associated with a hit, monitored or played back, so **recording still

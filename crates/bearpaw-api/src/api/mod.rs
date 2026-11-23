@@ -774,8 +774,9 @@ pub async fn run_server_with_shutdown(
         }
     });
 
-    // `router(state)` moves the state, so take the shutdown handle first.
+    // `router(state)` moves the state, so take the shutdown handles first.
     let shutdown_state = state.clone();
+    let capture_state = shutdown_state.clone();
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
     info!("Bearpaw API listening on http://{}", bind);
@@ -802,6 +803,12 @@ pub async fn run_server_with_shutdown(
             );
         }
     }
+    // Release the host input before exit. The analytics and channel-cache loops
+    // above hold `AppState` clones for the life of the runtime, so dropping the
+    // caller's handle does not drop the capture service: without this, a started
+    // capture would keep the device open after the HTTP surface that can stop it
+    // has gone. Never joins the owner thread; it only asks it to shut down.
+    capture_state.audio_capture.lock().unwrap().stop();
     // Final flush before exit. This is the one that makes a clean quit lose
     // nothing: without it, up to CHANNEL_CACHE_FLUSH_SECS of channel edits
     // would be absent from the cache on next launch, and the user would see

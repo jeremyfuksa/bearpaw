@@ -575,6 +575,49 @@ mod tests {
         assert_eq!(body["running"], false);
     }
 
+    // REGRESSION GUARD (#1052 review): the background cleanup loops hold
+    // `AppState` clones for the life of the runtime, so a started capture would
+    // outlive the server that can stop it unless shutdown stops it explicitly.
+    #[tokio::test]
+    async fn server_shutdown_stops_a_running_capture() {
+        let state = crate::api::default_state();
+        let host = host(&["0:USB"]);
+        *state.audio_capture.lock().unwrap() = CaptureService::with_host(host.clone());
+        state
+            .preferences
+            .lock()
+            .unwrap()
+            .insert(PREFERENCE_KEY.into(), json!("0:USB"));
+        state
+            .audio_capture
+            .lock()
+            .unwrap()
+            .start(Some("0:USB"))
+            .unwrap();
+
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(crate::api::run_server_with_shutdown(
+            "127.0.0.1:0",
+            state.clone(),
+            None,
+            async {
+                let _ = rx.await;
+            },
+        ));
+        tx.send(()).expect("ask the server to stop");
+        tokio::time::timeout(std::time::Duration::from_secs(10), server)
+            .await
+            .expect("the server must return once shutdown resolves")
+            .expect("join")
+            .expect("clean shutdown");
+
+        assert_eq!(host.spawns.load(Ordering::SeqCst), 1);
+        assert!(
+            !state.audio_capture.lock().unwrap().status().running,
+            "shutdown must stop the capture, not leave the device open"
+        );
+    }
+
     #[tokio::test]
     async fn the_selected_input_round_trips_through_preferences() {
         let state = crate::api::default_state();
